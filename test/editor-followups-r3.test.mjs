@@ -32,7 +32,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const status = (page) => page.evaluate('window.BeesonEditor.status()');
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 const CLEAR = `(async () => {
   localStorage.clear();
@@ -107,7 +106,7 @@ for (const platform of PLATFORMS) {
     assert.match(edited, /<p>Paragraph 5 [^\n]*<\/p>\n  <div class="qr" data-qr="https:\/\/example.com" style="(width: \d+px; )?translate: -?\d+px -?\d+px"><\/div>\n/);
     await undoRedo(page, full, edited);
     await savedAs(page, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a QR code inserted on a slide with room is put after the last block of the column (${platform})`, async (t) => {
@@ -147,7 +146,7 @@ for (const platform of PLATFORMS) {
       const p = await pasteboard(page);
       for (const side of ['left', 'top', 'right', 'bottom']) assert.ok(Math.abs(p[side] - 32) < 1, `at ${z * 100} percent: ${JSON.stringify(p)}`);
     }
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Zoom to Selection centers a figure at the edge of the slide, with the pasteboard grown (${platform})`, async (t) => {
@@ -167,7 +166,7 @@ for (const platform of PLATFORMS) {
     const q = await pasteboard(page);
     assert.ok(Math.abs(q.left - 32) < 1 && Math.abs(q.right - 32) < 1, JSON.stringify(q));
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -221,7 +220,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(Object.keys(saved.files), ['image.png']);
     assert.equal(saved.files['image.png'].size, IMAGE_BYTES);
     assert.deepEqual(saved.files['image.png'].head, PNG);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`an image pasted into a text is put on the slide, and not into the text (${platform})`, async (t) => {
@@ -235,7 +234,7 @@ for (const platform of PLATFORMS) {
     assert.match(edited, /<figure class="figure-box">\n {4}<img src="media\/image.png">\n {2}<\/figure>/);
     assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present h2 img').length`), 0);
     await undoRedo(page, page.source, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -269,7 +268,7 @@ for (const platform of PLATFORMS) {
     const saved = await page.evaluate(SAVE_INTO(`nav-drop-${platform}`));
     assert.equal(saved.text, edited);
     assert.deepEqual(Object.keys(saved.files), ['figure-light.png']);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -339,7 +338,7 @@ for (const platform of PLATFORMS) {
     assert.ok(!edited.includes('<h1>Every layout</h1>'), 'the heading was not deleted');
     assert.equal(await shownFrames(page), 1);
     await undoRedo(page, locked, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -373,7 +372,7 @@ for (const platform of PLATFORMS) {
     assert.equal(pasted.split('data-group="g2"').length - 1, 2, 'the pasted copies are not one new group');
     await undoRedo(page, grouped, pasted);
     await savedAs(page, pasted);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -401,7 +400,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('Reveal.slide(4)');
     await frames(page);
     assert.deepEqual(await coriolis(page), shown, 'the duplicate lost its highlights at a redo');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -433,7 +432,7 @@ for (const platform of PLATFORMS) {
     await click(page, await center(page, '.beeson-edit-top [data-command="insert.formula"]'));
     await sleep(300);
     assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present div.math').length`), displays + 1);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -506,7 +505,7 @@ for (const platform of PLATFORMS) {
       await redo(page);
       await sleep(100);
       assert.ok(unmoved(await render(page)).includes(html));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 }

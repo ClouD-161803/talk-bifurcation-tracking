@@ -28,7 +28,6 @@ after(async () => {
 const js = (v) => JSON.stringify(v);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
 
 function sameText(actual, expected, message = 'the text differs') {
@@ -141,7 +140,7 @@ async function saved(page, name) {
   const before = await rendered(page);
   const { text } = await saveAndReopen(page, name);
   assert.equal(text, before);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 test('the class play of a video is in the scope rule of the editor', () => {
@@ -276,7 +275,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.deepEqual(await page.evaluate(`(() => { const v = ${VIDEO}; return { paused: v.paused, time: v.currentTime }; })()`), { paused: true, time: 0 }, 'the video is not rewound at the end of the preview');
     sameText(await rendered(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a preview of the Steps pane keeps the video of slide 12 at full opacity before and after its step`, async (t) => {
@@ -297,7 +296,7 @@ for (const platform of PLATFORMS) {
     const dim = seen.filter((s) => Number(s.opacity) < 0.99);
     assert.deepEqual(dim.slice(0, 3), [], 'the video is faded or dimmed by the preview');
     sameText(await rendered(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   for (const command of ['preview.steps', 'preview.slide']) {
@@ -331,7 +330,7 @@ for (const platform of PLATFORMS) {
       const VIDEO = `[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length)`;
       assert.deepEqual(await page.evaluate(`(() => { const v = ${VIDEO}; return { paused: v.paused, time: v.currentTime }; })()`), { paused: true, time: 0 }, 'the video of the canvas is played');
       sameText(await rendered(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -493,7 +492,7 @@ for (const platform of PLATFORMS) {
     assert.ok(from && from.time < 0.5, `the scene is not played from its start at its step: ${JSON.stringify(from)}, read ${JSON.stringify(seen.filter((s) => s.step !== '0' && s.step !== '1').slice(0, 4))}`);
     await page.waitFor(`document.getElementById('play').playing`);
     sameText(await rendered(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a preview from a step at which a viewer is shown, after another preview, plays the scene from its start`, async (t) => {
@@ -516,6 +515,6 @@ for (const platform of PLATFORMS) {
     const now = (await page.evaluate('window.__from'))[0];
     assert.ok(now.playing && now.time < 1, `the scene is not played from its start: ${JSON.stringify(now)}`);
     await page.waitFor(`!document.documentElement.classList.contains('beeson-previewing')`, 20000);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

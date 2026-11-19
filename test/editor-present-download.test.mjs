@@ -6,7 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { click } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/layers.html';
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let browser;
 let server;
@@ -97,7 +96,7 @@ test('Save and present with a save that is a download plays the saved text and d
   assert.equal(await page.evaluate(`${SHOW}.Reveal.getIndices().h`), 0);
   assert.equal(await page.evaluate(shownLead), 'The old lead-in. Saved');
   await endShow(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the show in a tab of Presenter View after a save that is a download plays the saved text', { timeout: 120000 }, async (t) => {
@@ -113,5 +112,5 @@ test('the show in a tab of Presenter View after a save that is a download plays 
   assert.equal(await page.evaluate(`window.__tab.document.getElementById('old-lead').textContent`), 'The old lead-in. Saved');
   assert.deepEqual(await page.evaluate('window.__downloads.map((d) => d.name)'), ['layers.html']);
   await page.evaluate('window.__tab.close()');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

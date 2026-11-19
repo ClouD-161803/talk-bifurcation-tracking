@@ -27,7 +27,6 @@ describe('a figure with a caption in the fields', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
 
   const PANEL = '#beeson-edit-panel-format';
@@ -92,7 +91,7 @@ describe('a figure with a caption in the fields', () => {
         assert.ok(near(await fieldValue(page, id), v, 1), `${id} reads ${await fieldValue(page, id)} against ${v}: ${js(g)}`);
       }
       assert.ok(g.frame.top <= g.picture.top + 1, `the top line of the frame is above the picture: ${js(g)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Align Top and a typed Y of 0 put the visible top of a figure on the edge of the slide (${platform})`, async (t) => {
@@ -110,7 +109,7 @@ describe('a figure with a caption in the fields', () => {
       g = await geometry(page);
       assert.ok(near(g.picture.top, 0, 1), `a typed Y of 0 puts the picture at ${g.picture.top}`);
       await checkEdit(page, `r13-2-typed-y-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a figure keeps the aspect of its picture and its caption on the slide (${platform})`, async (t) => {
@@ -128,7 +127,7 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(near(await fieldValue(page, 'height'), h, 3) && near(await fieldValue(page, 'y'), y, 1));
       assert.ok(near(await fieldValue(page, 'width'), g.picture.width, 1));
       await checkEdit(page, `r13-2-typed-height-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag of a figure snaps the visible top of its picture to the edge of the slide (${platform})`, async (t) => {
@@ -148,7 +147,7 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(near(g.picture.top, 0, 1), `the drag puts the picture at ${g.picture.top}`);
       assert.ok(near(await fieldValue(page, 'y'), 0, 1));
       await checkEdit(page, `r13-2-snap-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -191,7 +190,7 @@ describe('a figure with a caption in the fields', () => {
         const width = Number((await page.evaluate(`Reveal.getCurrentSlide().querySelector('figure img.for-light').getAttribute('style')`)).match(/width:\s*([\d.]+)px/)[1]);
         assert.ok(near(width, g1.picture.width, 1), `the file holds width ${width} against the drawn ${g1.picture.width}`);
         await checkEdit(page, `r13-2-corner-${handle}-${scale}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -232,7 +231,7 @@ describe('a figure with a caption in the fields', () => {
         }
         await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at2.x, y: at2.y, button: 'left', buttons: 0, clickCount: 1 });
         await frames(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -278,7 +277,7 @@ describe('a figure with a caption in the fields', () => {
         await agree('with the inspector open');
         await choose(page, 'View', 'Slide Only');
         await agree('after a third Slide Only');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -323,7 +322,7 @@ describe('a figure with a caption in the fields', () => {
         await frames(page);
         assert.deepEqual(await word(page), { text: 'styles', block, editing: true }, 'the redo selects the word again');
         await checkEdit(page, `r13-2-list-${id}-${platform}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -342,7 +341,7 @@ describe('a figure with a caption in the fields', () => {
       await frames(page);
       assert.equal((await selected(page)).text, all, 'the redo selects the items again');
       await checkEdit(page, `r13-2-list-items-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -377,7 +376,7 @@ describe('a figure with a caption in the fields', () => {
       assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Duplicate Slide');
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -403,7 +402,7 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(turned.angle > 5, `the handle turned the figure: ${js(turned)}`);
       assert.deepEqual({ w: turned.w, h: turned.h }, { w: rest.w, h: rest.h }, `after the rotate handle: ${js(turned)}`);
       await checkEdit(page, `r13-2-turned-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a turned figure comes back as typed and gives the same size at Angle 0 (${platform})`, async (t) => {
@@ -422,7 +421,7 @@ describe('a figure with a caption in the fields', () => {
       const at0 = await sizeFields(page);
       assert.ok(near(at0.h, 700, 2) && near(at0.w, at29.w, 1), `at Angle 0 the size is ${js(at0)} against ${js(at29)}`);
       await checkEdit(page, `r13-2-turned-height-${platform}.html`, typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo of a typed Height gives back Width and Height in their fields (${platform})`, async (t) => {
@@ -434,7 +433,7 @@ describe('a figure with a caption in the fields', () => {
       await frames(page);
       assert.equal(await render(page), page.source);
       assert.deepEqual({ w: Number(await page.evaluate(`document.querySelector('#beeson-edit-num-width').value`)), h: Number(await page.evaluate(`document.querySelector('#beeson-edit-num-height').value`)) }, { w: 600, h: 875 });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -464,7 +463,6 @@ describe('Height typed into the Arrange pane', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck = 'test-deck.html', slide = FIGURES) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -528,7 +526,7 @@ describe('Height typed into the Arrange pane', () => {
       await redo(page);
       await byteExact(page);
       assert.deepEqual(await size(page), { w: 600, h: 875 });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a figure with a caption reads back as typed, with the aspect of the picture kept (${platform})`, async (t) => {
@@ -548,7 +546,7 @@ describe('Height typed into the Arrange pane', () => {
       const edited = await render(page);
       const { text } = await saveAndReopen(page, `r27-2-height-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height that a whole px of width gives reads back as typed, also on another wrap of the caption (${platform})`, async (t) => {
@@ -566,7 +564,7 @@ describe('Height typed into the Arrange pane', () => {
         await undo(page);
         await byteExact(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a value typed as a size field shows it is not an entry of the history (${platform})`, async (t) => {
@@ -585,7 +583,7 @@ describe('Height typed into the Arrange pane', () => {
       await undo(page);
       await byteExact(page);
       assert.equal((await state(page, 'edit.undo')).enabled, false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -635,7 +633,7 @@ describe('Height typed into the Arrange pane', () => {
       const edited = await render(page);
       const { text } = await saveAndReopen(page, `r27-2-row-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the menu of a row bar has Resize Row to Fit Content, as the menu of a column bar has the column command (${platform})`, async (t) => {
@@ -649,7 +647,7 @@ describe('Height typed into the Arrange pane', () => {
       await click(page, item);
       await sleep(150);
       await byteExact(page, [FIT_MOON]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Row to Fit Content of the Table pane fits the rows of a range, as one entry of the history (${platform})`, async (t) => {
@@ -670,7 +668,7 @@ describe('Height typed into the Arrange pane', () => {
       await undo(page);
       await byteExact(page);
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'the fit is more than one entry of the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Format > Table has Resize Row to Fit Content, dimmed on a row without a written height (${platform})`, async (t) => {
@@ -692,7 +690,7 @@ describe('Height typed into the Arrange pane', () => {
       await click(page, item);
       await sleep(150);
       await byteExact(page, [FIT_EUROPA]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -724,7 +722,7 @@ describe('Height typed into the Arrange pane', () => {
       await press(page, mac ? 'Backspace' : 'Delete');
       await sleep(200);
       assert.equal(await count(page), n, 'the key did not delete the slide');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -755,7 +753,6 @@ describe('a Height that no whole width gives', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : ', ' + js(arg)})).then(() => true)`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, slide) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -845,7 +842,7 @@ describe('a Height that no whole width gives', () => {
           await byteExact(page);
           assert.equal((await state(page, 'edit.undo')).enabled, false, `a typed Height of ${h} is more than one entry of the history`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -869,7 +866,7 @@ describe('a Height that no whole width gives', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r31-2-height-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -904,7 +901,7 @@ describe('a Height that no whole width gives', () => {
       assert.deepEqual(await cellMenu(page), ['Distribute Rows Evenly', 'Distribute Columns Evenly', 'Resize Row to Fit Content', 'Resize Column to Fit Content']);
       await press(page, 'Escape');
       assert.deepEqual(await formatTable(page), ['table.distributeRows', 'table.distributeColumns', 'table.fitRow', 'table.fitColumn']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Column to Fit Content fits every column of a table selected as an object, as one entry of the history (${platform})`, async (t) => {
@@ -931,7 +928,7 @@ describe('a Height that no whole width gives', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r31-2-fit-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Column to Fit Content sets the widest text of the column of the caret on one line (${platform})`, async (t) => {
@@ -944,7 +941,7 @@ describe('a Height that no whole width gives', () => {
       assert.equal(widths(await render(page), 1)[1], 90, 'another column changed');
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Column to Fit Content of Format > Table fits every column of a table selected as an object, and is dimmed on a table without a column to fit (${platform})`, async (t) => {
@@ -962,7 +959,7 @@ describe('a Height that no whole width gives', () => {
       await frames(page);
       await selectTable(page);
       assert.equal((await state(page, 'table.fitColumn')).enabled, false, 'the command is not dimmed on a table whose first row is one merged cell');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -991,7 +988,6 @@ describe('Width or Height typed and typed back', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, { deck = 'test-deck.html', slide = FIGURES } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1077,7 +1073,7 @@ describe('Width or Height typed and typed back', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r36-2-width-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of the figure of slide 5 keeps its letterbox, and the old Height typed back gives the file back (${platform})`, async (t) => {
@@ -1101,7 +1097,7 @@ describe('Width or Height typed and typed back', () => {
       await redo(page);
       await redo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure of 500 by 707 typed to a Height of 744 and back to 707 reads 500 by 707 (${platform})`, async (t) => {
@@ -1126,7 +1122,7 @@ describe('Width or Height typed and typed back', () => {
       await byteExact(page);
       const { text } = await saveAndReopen(page, `r36-2-707-${platform}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     const KINDS = [
@@ -1162,7 +1158,7 @@ describe('Width or Height typed and typed back', () => {
           assert.equal(await render(page), edited);
           const { text } = await saveAndReopen(page, `r36-2-${slide}-${id}-${platform}.html`);
           assert.equal(text, edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         });
       }
     }
@@ -1193,7 +1189,7 @@ describe('Width or Height typed and typed back', () => {
         assert.equal(await render(page), edited);
         const { text } = await saveAndReopen(page, `r36-2-split-${id}-${platform}.html`);
         assert.equal(text, edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1221,7 +1217,6 @@ describe('a typed Height read at a collapsed width', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, slide) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1280,7 +1275,7 @@ describe('a typed Height read at a collapsed width', () => {
           await byteExact(page);
         }
         assert.deepEqual(wrong, [], `the sizes read: ${read.join(', ')}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

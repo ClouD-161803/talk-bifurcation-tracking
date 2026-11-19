@@ -117,4 +117,4 @@ export const SAVE_INTO = (folder) => `(async () => {
   return { text: await (await deck.getFile()).text(), files };
 })()`;
 
-export const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico') && !/status of 404 .*\/cross-deck\/b\//.test(e) && !(/blocked by CORS policy|net::ERR_FAILED/.test(e) && e.includes('/cross-deck/a/')));
+export const errors = (page) => page.errors.filter((e) => !/status of 404 .*\/cross-deck\/b\//.test(e) && !(/blocked by CORS policy|net::ERR_FAILED/.test(e) && e.includes('/cross-deck/a/')));

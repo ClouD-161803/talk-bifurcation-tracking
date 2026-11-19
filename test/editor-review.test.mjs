@@ -68,7 +68,6 @@ const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function roundTrip(page, edits) {
   await byteExact(page, edits);
@@ -126,7 +125,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a rehearsal writes data-timing on each slide shown, as one entry of the history, on ${platform}`, async () => {
@@ -162,7 +161,7 @@ for (const platform of PLATFORMS) {
     assert.ok(!(await render(page)).includes('data-timing'));
     await undo(page);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Don't Keep leaves the timings of the slides as they were on ${platform}`, async () => {
@@ -200,7 +199,7 @@ for (const platform of PLATFORMS) {
     await click(page, '.reveal section.present > h2');
     await frames(page);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-side .slot').hidden`), true, 'the transition is shown with a text selected');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Magic Move writes data-auto-animate on both slides and the same data-id on the heading and the figure on ${platform}`, async () => {
@@ -229,7 +228,7 @@ for (const platform of PLATFORMS) {
     const off = await render(page);
     assert.equal(off.split('data-auto-animate>\n  <h2 data-id="magic-1">').length - 1, 0);
     assert.equal(off.split(heading).length - 1, 2);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the Slide Sorter groups the slides under the section slides, and a drag moves a slide on ${platform}`, async () => {
@@ -262,7 +261,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-sorter').hidden`), true);
     assert.equal(await page.evaluate('Reveal.getIndices().h'), 2);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -290,7 +289,6 @@ describe('Present in place over the editor', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   let saves = 0;
 
@@ -322,7 +320,7 @@ describe('Present in place over the editor', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r9-8-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -365,7 +363,7 @@ describe('Present in place over the editor', () => {
       assert.equal(await page.evaluate('document.fullscreenElement'), null);
       assert.equal(await editorHeading(page), 'Chapter two', 'the editor is not at the slide shown last');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a show that the browser does not take into full screen fills the window, and Esc ends it (${platform})`, async (t) => {
@@ -381,7 +379,7 @@ describe('Present in place over the editor', () => {
       await page.waitFor(stageGone);
       assert.equal(await editorHeading(page), 'Figures are first class citizens, too');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Present with unsaved changes asks first, and the saved file is then played in place over the whole screen (${platform})`, async (t) => {
@@ -399,7 +397,7 @@ describe('Present in place over the editor', () => {
       await page.waitFor(stageGone);
       assert.equal(await page.evaluate('window.BeesonEditor.status().dirty'), false);
       assert.equal(await page.evaluate(`document.querySelector('.reveal .slides [data-visibility="hidden"]')`), null);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -414,7 +412,7 @@ describe('Present in place over the editor', () => {
       await press(page, 'Escape');
       await page.waitFor(stageGone);
       assert.equal(await editorHeading(page), 'Five');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -461,7 +459,7 @@ describe('Present in place over the editor', () => {
       assert.ok(await page.evaluate(fullStage));
       await press(page, 'Escape');
       await page.waitFor(stageGone);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the show in place, f leaves full screen and enters it again, and the show goes on (${platform})`, async (t) => {
@@ -482,7 +480,7 @@ describe('Present in place over the editor', () => {
       await page.waitFor(stageGone);
       assert.equal(await page.evaluate('document.fullscreenElement'), null);
       assert.equal(await editorHeading(page), 'Show your steps one at a time');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the show in place, e returns to the editor at the slide shown, and the deck is never loaded with edit in the frame (${platform})`, async (t) => {
@@ -497,7 +495,7 @@ describe('Present in place over the editor', () => {
       assert.equal(await page.evaluate('document.fullscreenElement'), null);
       assert.equal(await editorHeading(page), 'Figures are first class citizens, too', 'e does not return to the editor at the slide shown');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the show in place, s opens the speaker view with the notes, and the show goes on (${platform})`, async (t) => {
@@ -513,7 +511,7 @@ describe('Present in place over the editor', () => {
       await press(page, 'Escape');
       await page.waitFor(stageGone);
       assert.equal(await editorHeading(page), 'Show your steps one at a time');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the show in place, the show goes on when the speaker view leaves full screen late (${platform})`, async (t) => {
@@ -538,7 +536,7 @@ describe('Present in place over the editor', () => {
       const up = await page.evaluate('window.__late');
       await page.evaluate(inShow('(w.__speaker?.close(), true)')).catch(() => {});
       assert.equal(up, true, 'the show ends when the speaker view leaves full screen late');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the show in place, the scrubber opens near the bottom edge, and a click on a tick shows its slide (${platform})`, async (t) => {
@@ -561,7 +559,7 @@ describe('Present in place over the editor', () => {
       await press(page, 'Escape');
       await page.waitFor(stageGone);
       assert.equal(await editorHeading(page), heading);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -612,7 +610,7 @@ describe('Present in place over the editor', () => {
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       await page.evaluate(`${TAB}.close(), true`);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -635,7 +633,7 @@ describe('Present in place over the editor', () => {
         await page.evaluate(`window.BeesonEditor.exec('play.rehearse'), true`);
         await page.waitFor(`!!document.querySelector('dialog.beeson-edit-presenter.rehearse[open]')`, 20000);
         looks.push(['rehearsal', mode, await page.evaluate(LOOK)]);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
       const off = [];
@@ -714,7 +712,7 @@ describe('Present in place over the editor', () => {
       await frames(page);
       assert.deepEqual(await page.evaluate(SELECTED_ROWS), [HEADING, PARA], 'Mod does not take a row off the selection');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the chip menu of a selected row gives every selected element one step together, as one entry of the history (${platform})`, async (t) => {
@@ -750,7 +748,7 @@ describe('Present in place over the editor', () => {
         await frames(page);
         assert.ok((await page.evaluate(overlap(row))) <= 0, `the chip of ${label} covers the text of its row by ${await page.evaluate(overlap(row))} px`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the two Preview buttons of the Steps tab name what they play (${platform})`, async (t) => {
@@ -758,7 +756,7 @@ describe('Present in place over the editor', () => {
       await openSteps(page);
       const labels = await page.evaluate(`[document.querySelector('.beeson-edit-transition .preview'), document.querySelector('.beeson-edit-side .head button.play')].map((b) => b?.textContent.trim())`);
       assert.deepEqual(labels, ['Preview Transition', 'Preview Steps']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -798,7 +796,7 @@ describe('Present in place over the editor', () => {
         await page.evaluate(speakerKey(keyCode));
         assert.ok(await within(page, stageGone, 5000), `${name} in the speaker view does not end the show`);
         assert.equal(await editorHeading(page), shown, `${name} in the speaker view does not return to the slide shown`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -813,7 +811,7 @@ describe('Present in place over the editor', () => {
         await press(page, key);
         await page.waitFor(stageGone, 5000);
         assert.ok(await within(page, 'window.__speakerKept.closed', 3000), `the speaker view is left open after ${key} in the show`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -855,7 +853,6 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
 
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}${arg ? `, ${JSON.stringify(arg)}` : ''})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -886,7 +883,7 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
       assert.ok(!overlap(boxes.ghost, boxes.line), `the ghost ${JSON.stringify(boxes.ghost)} covers the drop line ${JSON.stringify(boxes.line)}`);
       assert.ok(!overlap(boxes.ghost, boxes.target), `the ghost ${JSON.stringify(boxes.ghost)} covers the row after the drop line ${JSON.stringify(boxes.target)}`);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -940,7 +937,7 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
       assert.equal(end.phase, 'ended');
       assert.deepEqual(await idle(page), before);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Preview cuts into a slide with None, and Esc ends it, from the head of the Steps tab on ${platform}`, async () => {
@@ -957,7 +954,7 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
       assert.deepEqual(log[1].shots, [0, 1]);
       assert.equal(log[2].removed, true, 'Esc does not end the preview');
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Preview plays Magic Move into the next slide, moving the matched heading on ${platform}`, async () => {
@@ -975,7 +972,7 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
       assert.equal(play.moving, 1, 'the heading of the next slide is not moved');
       assert.equal(await page.evaluate('Reveal.getIndices().h'), 3);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1011,7 +1008,7 @@ describe('Preview Transition and Use Rehearsed Timings', () => {
       await end();
       assert.equal(readFileSync(file, 'utf8'), text);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), text);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

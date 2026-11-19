@@ -23,7 +23,6 @@ describe('a formula as an object with its menu', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   let saves = 0;
 
@@ -55,7 +54,7 @@ describe('a formula as an object with its menu', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r9-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -120,7 +119,7 @@ describe('a formula as an object with its menu', () => {
       assert.equal(await page.evaluate(`document.querySelector('.beeson-math textarea')?.value`), '\\tilde U');
       await press(page, 'Escape');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -166,7 +165,7 @@ describe('a formula as an object with its menu', () => {
         await frames(page);
         assert.deepEqual(await selected(page), []);
         await roundTrip(page, 2);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -287,7 +286,7 @@ describe('a formula as an object with its menu', () => {
       const m = await objectMenu(page, '.reveal section.present pre code', ['pre'], 'a selected code box');
       assert.equal(item(m, 'Delete')?.off, false);
       await closeMenu(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -407,7 +406,7 @@ describe('a formula as an object with its menu', () => {
       await type(page, 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}');
       await page.waitFor(`!document.querySelector('.beeson-math .error').textContent`);
       assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-math .preview svg').length`), 1);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -462,7 +461,7 @@ describe('a formula as an object with its menu', () => {
       assert.match(spoken.at(-1), /^You can type LaTeX in equation boxes\..*expressed as$/s);
       await byteExact(page);
       assert.equal((await cmd(page, 'edit.undo')).enabled, false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Start Speaking and Stop Speaking are dimmed without speechSynthesis (${platform})`, async (t) => {
@@ -510,7 +509,7 @@ describe('a formula as an object with its menu', () => {
         await frames(page);
       }
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -538,7 +537,7 @@ describe('a formula as an object with its menu', () => {
           assert.ok(off < 1, `with heads ${heads} the grip of the end ${i + 1} is ${off.toFixed(1)} px off the end point of its line`);
         }
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -567,7 +566,6 @@ describe('the TeX popover by the keyboard', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   const sameRect = (a, b, by = 2) => !!a && !!b && near(a.left, b.left, by) && near(a.top, b.top, by) && near(a.width, b.width, by) && near(a.height, b.height, by);
   const mouse = (page, type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
@@ -726,7 +724,7 @@ describe('the TeX popover by the keyboard', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector(${js(DISPLAY)})`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -792,7 +790,7 @@ describe('the TeX popover by the keyboard', () => {
       await frames(page);
       assert.equal(await sheetOpen(page), false, 'Return on Cancel does not close the popover');
       assert.equal(await render(page), page.source, 'Return on Cancel changes the formula');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Return on Apply of the TeX popover applies the TeX, and the formula is then selected for the keys of the editor (${platform})`, async (t) => {
@@ -824,7 +822,7 @@ describe('the TeX popover by the keyboard', () => {
       const removed = await render(page);
       assert.ok(!removed.includes(String.raw`\ddot x = 0,`), 'Delete does not remove the formula after the popover closes');
       await checkEdit(page, nudged, removed, `r11-4-delete-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`after Insert of a new formula from its TeX popover, the formula is selected for the keys of the editor (${platform})`, async (t) => {
@@ -848,7 +846,7 @@ describe('the TeX popover by the keyboard', () => {
       assert.equal(await render(page), inserted);
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -892,7 +890,7 @@ describe('the TeX popover by the keyboard', () => {
       assert.ok(picked.includes('ol'), `the marquee does not select the list: ${js(picked)}`);
       assert.ok(picked.includes('math'), `the marquee does not select the display, which it covers after the scroll: ${js(picked)}`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -918,7 +916,6 @@ describe('a formula sheet replaced by another', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -1004,7 +1001,7 @@ describe('a formula sheet replaced by another', () => {
             assert.equal((await status(page)).dirty, false, 'the editor reports unsaved changes');
           }
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1033,7 +1030,7 @@ describe('a formula sheet replaced by another', () => {
       await clickAway(page);
       assert.equal(await render(page), entered, 'the box with its formula is not kept');
       assert.equal((await state(page, 'edit.undo')).label, label, 'the history is changed');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1082,11 +1079,11 @@ describe('a formula sheet replaced by another', () => {
       assert.equal(await render(page), edited, 'three redos do not write the edits again');
       const { text } = await saveAndReopen(page, 'r29-1-breaks.html');
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
       const expected = [['li', '', 'none', true], ['li', 'Keep', '""', true], ['li', 'Words<br>kept', '""', true], ['p', '', '', true], ['p', 'Tail', '', true]];
       const shown = await show(t, edited, BREAKS);
       assert.deepEqual(await shown.evaluate(marks(`document.querySelector(${js(SLIDE)})`)), expected, 'the show draws the emptied item with its dash');
-      assert.deepEqual(errors(shown), []);
+      assert.deepEqual(shown.errors, []);
       const print = await show(t, edited, BREAKS, '?print-pdf');
       const pages = await print.evaluate(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('h2')?.textContent === 'Breaks').map((s) => ${marks('s')})`);
       assert.ok(pages.length >= 1, 'the print view does not have the slide Breaks');
@@ -1153,7 +1150,7 @@ describe('a formula sheet replaced by another', () => {
       assert.equal(await render(page), typed, 'a redo of the typing does not move the line again');
       const { text } = await saveAndReopen(page, 'r29-1-flow.html');
       assert.equal(text, typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1197,7 +1194,6 @@ describe('the commit key of the formula sheets', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const until = async (page, expr, ms = 3000) => {
     for (const end = Date.now() + ms; Date.now() < end; await wait(page, 50)) if (await page.evaluate(expr)) return true;
     return false;
@@ -1248,7 +1244,7 @@ describe('the commit key of the formula sheets', () => {
       assert.match(await render(page), /<div class="math">\\\[x\^2\\\]<\/div>/);
       await undoAll(page, source);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the commit key of the Edit Formula sheet typed after an error lands on ${platform}`, async () => {
@@ -1274,7 +1270,7 @@ describe('the commit key of the formula sheets', () => {
       await byteExact(page, [[OLD, String.raw`-\frac{a}{b}`]]);
       await undoAll(page, readFileSync(LAYOUTS, 'utf8'));
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1287,7 +1283,7 @@ describe('the commit key of the formula sheets', () => {
     ]`);
       assert.equal(title, 'Fade from this slide into the next slide, the default of the theme');
       assert.match(group, /next slide/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1336,7 +1332,7 @@ describe('the commit key of the formula sheets', () => {
       assert.deepEqual(content.filter((t) => t.marked).map((t) => t.layout), ['content']);
       assert.deepEqual(figure.filter((t) => t.marked).map((t) => t.layout), ['figure']);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

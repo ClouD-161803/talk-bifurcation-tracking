@@ -27,7 +27,6 @@ describe('layers of new elements and repeated pastes', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -100,7 +99,7 @@ describe('layers of new elements and repeated pastes', () => {
       await redo(page);
       assert.equal(await render(page), drawn);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`1: a text box under a shape is layered, and a new shape and a new line are put in front (${platform})`, async (t) => {
@@ -130,7 +129,7 @@ describe('layers of new elements and repeated pastes', () => {
       assert.equal(await render(page), lined);
       await saveAndReopen(page);
       assert.equal(await topAt(page, 'line'), 'new line');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const what of ['shape', 'line', 'both']) {
@@ -207,7 +206,7 @@ describe('layers of new elements and repeated pastes', () => {
           const { text } = await saveAndReopen(page);
           const saved = [...section(text, 'Target').matchAll(/translate: [^;"]+/g)].map((m) => m[0]);
           assert.deepEqual(saved, [0, 20, 40, 0, 20].flatMap(of).map((p) => `translate: ${p.slice(2)}`), `the saved offsets differ, ${why}`);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -250,7 +249,6 @@ describe('fast layer commands and new elements in front', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg ? `, ${js(arg)}` : ''})).then(() => true)`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName).join(',')`);
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
@@ -419,7 +417,7 @@ describe('fast layer commands and new elements in front', () => {
       for (const k of TIMES) {
         assert.ok(large[k] < RATIO * small[k] + SLACK, `${k} took ${large[k]} ms with ${large.rows} rows, and ${small[k]} ms with ${small.rows} rows`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const o of ['forward', 'front']) {
@@ -443,7 +441,7 @@ describe('fast layer commands and new elements in front', () => {
         assert.equal(await render(page), base);
         await redo(page);
         assert.equal(await render(page), edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -461,7 +459,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, box);
       assert.equal(await drawnAtCenter(page, box), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new formula dragged onto a shape is drawn in front of it, and its undo gives the file back (${platform})`, async (t) => {
@@ -478,7 +476,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, `${math} mjx-container`);
       assert.equal(await drawnAtCenter(page, `${math} mjx-container`), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new figure dragged onto a shape is drawn in front of it (${platform})`, { timeout: 60000 }, async (t) => {
@@ -496,7 +494,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, img);
       assert.equal(await drawnAtCenter(page, img), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Send to Back of a shape over the words of the text column draws the words over it and keeps the layout (${platform})`, async (t) => {
@@ -517,7 +515,7 @@ describe('fast layer commands and new elements in front', () => {
       assert.equal(await drawnAt(page, `${S} > ul`, shape), 'words');
       await undo(page);
       assert.equal(await render(page), DECK_SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Reset Slide leaves the place of a line (${platform})`, async (t) => {
@@ -532,7 +530,7 @@ describe('fast layer commands and new elements in front', () => {
       assert.deepEqual(await corners(page, [line]), was, 'the line moved');
       await undo(page);
       assert.equal(await render(page), DECK_SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -618,7 +616,7 @@ describe('fast layer commands and new elements in front', () => {
         await exec(page, 'arrange.resetRotation');
         await frames(page);
         assert.equal(await render(page), expected);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -645,7 +643,7 @@ describe('fast layer commands and new elements in front', () => {
         await exec(page, 'arrange.resetRotation');
         await frames(page);
         results.push(await render(page));
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
       assert.match(results[0], /<figure class="figure-box" style="translate: [^"]+">/);
@@ -679,7 +677,7 @@ describe('fast layer commands and new elements in front', () => {
       assert.equal(both.split(',').length, 2);
       assert.deepEqual(await held(mid, 50, -40), [both, both], 'the selection after Esc in a drag of the line with the figure');
       assert.equal(await render(page), base);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

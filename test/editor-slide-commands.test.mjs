@@ -23,7 +23,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 let saves = 0;
 
@@ -145,7 +144,7 @@ for (const platform of PLATFORMS) {
     await agree(page, 'after the redo of Move Slide Down', { n: 13, current: 6, selected: [6] });
     await key(page, UNDO);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -202,7 +201,7 @@ for (const platform of PLATFORMS) {
     }
     const { text } = await saveAndReopen(page, `r9-3-${++saves}.html`);
     assert.equal(text, page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -255,7 +254,7 @@ for (const platform of PLATFORMS) {
       return out;
     })()`);
     assert.deepEqual(failed, []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -432,7 +431,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'edit.undo')).label, 'Undo New Section');
     await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 

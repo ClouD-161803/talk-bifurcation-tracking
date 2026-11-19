@@ -25,7 +25,6 @@ after(async () => {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(window.BeesonEditor.status()))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(platform) {
   const page = await browser.newPage();
@@ -53,7 +52,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `math-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 async function inlineKey(page, platform) {
@@ -146,7 +145,7 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false);
     await byteExact(page);
     assert.equal((await settle(page)).undo, false, 'a canceled formula is kept in the history');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`an empty TeX is a gray prompt and not an error (${platform})`, async (t) => {
@@ -164,7 +163,7 @@ for (const platform of ['mac', 'other']) {
     await sleep(400);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-math .error')?.classList.contains('prompt')`), false, 'an error of the TeX is gray');
     await press(page, 'Escape');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a TeX typed in the Formula pane is written into the display (${platform})`, async (t) => {

@@ -21,7 +21,6 @@ after(async () => {
 
 const js = (v) => JSON.stringify(v);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
@@ -102,7 +101,7 @@ for (const platform of PLATFORMS) {
     await page.waitFor(stageGone, 5000);
     assert.equal(await page.evaluate('Reveal.getIndices().h'), 6);
     assert.ok(await within(page, `${SPEAKER}.closed`, 3000), 'the speaker view is left open');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -117,7 +116,7 @@ for (const platform of PLATFORMS) {
       assert.ok(await within(page, stageGone, 5000), `a ${how} in the speaker view at the last step does not end the show`);
       assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST, 'the editor is not on the last slide');
       assert.ok(await within(page, `${SPEAKER}.closed`, 3000), 'the speaker view is left open');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     }
   });
 
@@ -148,7 +147,7 @@ for (const platform of PLATFORMS) {
     assert.ok(await within(page, `!${DISPLAY}`, 5000), 'a click in the tab at the last step does not end the show');
     assert.ok(await within(page, `${TAB}.closed`, 3000), 'the tab of the show is left open');
     assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST, 'the editor is not on the last slide');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a click in the tab of Presenter View before the last step moves the show, and the display follows it (${platform})`, async (t) => {
@@ -193,6 +192,6 @@ for (const platform of PLATFORMS) {
       const text = await read(n);
       for (const [, k, total] of text.matchAll(/(\d+) of (\d+)/g)) assert.ok(Number(k) <= Number(total), `slide ${n} reads ${text}`);
     }
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

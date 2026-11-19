@@ -26,7 +26,6 @@ const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.s
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 }, scheme, keep = false } = {}) {
   const page = await browser.newPage(size);
@@ -76,7 +75,7 @@ for (const platform of PLATFORMS) {
     })()`);
     assert.match(url ?? '', /\/brand\/lockup-light\.png/);
     assert.doesNotMatch(url, /test\/pages\/brand/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -123,7 +122,7 @@ for (const platform of PLATFORMS) {
     assert.ok(!/class="[^"]*\b(visible|current-fragment)\b/.test(edited), 'a class of reveal.js is written');
     await undoRedo(page, small, edited);
     await savedAs(page, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -177,7 +176,7 @@ for (const platform of PLATFORMS) {
       await undo(page);
       await sleep(100);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 }
@@ -196,7 +195,7 @@ for (const platform of PLATFORMS) {
     })()`);
     assert.ok(paints.slide.some((p) => p.startsWith('circle') && !p.includes('rgb(0, 0, 0) none')), 'the slide does not have a colored mark');
     assert.deepEqual(paints.thumb, paints.slide);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -247,7 +246,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await sleep(100);
     assert.equal(await render(page), hidden);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -265,7 +264,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'shell.format');
     await frames(page);
     assert.equal((await inspector(page)).shown, false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
     const again = await load(t, platform, { n: 3, keep: true });
     assert.equal((await inspector(again)).shown, false);
@@ -275,7 +274,7 @@ for (const platform of PLATFORMS) {
     const third = await load(t, platform, { n: 3, keep: true });
     assert.deepEqual(await inspector(third), { shown: true, tab: 'Format' });
     assert.equal(await render(third), third.source);
-    assert.deepEqual(errors(third), []);
+    assert.deepEqual(third.errors, []);
   });
 }
 
@@ -310,7 +309,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await sleep(100);
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -345,7 +344,7 @@ for (const platform of PLATFORMS) {
     })()`);
     assert.ok(Math.abs(written - theme) < 1, `the written paragraph is ${written} px under the list, and paragraphs are ${theme} px apart`);
     await undoRedo(page, page.source, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -386,7 +385,7 @@ for (const platform of PLATFORMS) {
     assert.match(edited, /<p>Paragraph 5 [^\n]*<\/p>\n  <div class="qr" data-qr="https:\/\/example.com" style="translate: \d+px -?\d+px"><\/div>\n/);
     await undoRedo(page, full, edited);
     await savedAs(page, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a QR code inserted on a full wide slide is put off its text, inside the slide (${platform})`, async (t) => {
@@ -406,7 +405,7 @@ for (const platform of PLATFORMS) {
       }).length;
     })()`);
     assert.equal(over, 0, `the QR code lies over text: ${JSON.stringify(qr)}`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -447,7 +446,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await navGeometry(again)).nav, 200);
     assert.equal(await again.evaluate(`localStorage.getItem('beeson-nav-w')`), '200');
     assert.equal(await render(again), again.source);
-    assert.deepEqual(errors(again), []);
+    assert.deepEqual(again.errors, []);
   });
 }
 
@@ -512,7 +511,7 @@ for (const platform of PLATFORMS) {
       for (const s of sheet.sections) assert.ok(s.left >= sheet.box.left && s.right <= sheet.box.right, `the group ${s.head} is outside the sheet`);
       const low = Math.max(...sheet.sections.map((s) => s.bottom));
       assert.ok(sheet.box.bottom - low <= 32, `a band of ${Math.round(sheet.box.bottom - low)} px is blank under the groups`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 }
@@ -564,7 +563,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate('window.BeesonEditorShell.stage.zoom'), null);
     assert.match(await face(), /^\d+%$/);
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -592,6 +591,6 @@ for (const platform of PLATFORMS) {
     const end = await edges(page, 'max', 'max');
     assert.ok(Math.abs(end.right - 32) < 1.5 && Math.abs(end.bottom - 32) < 1.5, `at the lower right the pasteboard is ${JSON.stringify(end)}`);
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

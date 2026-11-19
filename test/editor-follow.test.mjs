@@ -62,7 +62,6 @@ const SERVED_HANDLE = `({
 const typeH2 = (from, to) => `(() => { const h = [...document.querySelectorAll('.reveal h2')].find((h) => h.textContent === ${JSON.stringify(from)}); h.firstChild.data = ${JSON.stringify(to)}; h.dispatchEvent(new Event('input', { bubbles: true })); })()`;
 const slideOf = (h2) => `Reveal.getIndices([...document.querySelectorAll('.reveal h2')].find((h) => h.textContent === ${JSON.stringify(h2)}).closest('section')).h + 1`;
 const h2s = `[...document.querySelectorAll('.reveal h2')].map((h) => h.textContent)`;
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 test('a change of the file without unsaved edits loads the page again, with the changed slide marked', async (t) => {
   const { page, edit } = await servedCopy(t);
@@ -75,7 +74,7 @@ test('a change of the file without unsaved edits loads the page again, with the 
   assert.deepEqual(s.changed, [slide]);
   assert.equal(s.message, `Loaded the changes of the file on slide ${slide}`);
   assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .row.changed').length`), 1);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a save merges the edits into a file changed meanwhile, and loads the page again with both', async (t) => {
@@ -96,7 +95,7 @@ test('a save merges the edits into a file changed meanwhile, and loads the page 
   s = await page.evaluate('window.BeesonEditor.status()');
   assert.match(s.message, new RegExp(`^Saved 1 edit to index\\.html at \\d.*, merged with the changes of the file on slide ${theirs}$`));
   assert.deepEqual([s.dirty, s.changed], [false, [theirs]]);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a save of a text that the file changed too asks which to keep, and Cancel saves nothing', async (t) => {
@@ -126,7 +125,7 @@ test('a save of a text that the file changed too asks which to keep, and Cancel 
   await press('Keep mine');
   await until(page, reloaded);
   assert.equal(disk(), replaced('<h2>Show your steps one at a time</h2>', '<h2>Steps, by hand</h2>').replace('<h2>Equations are first class citizens</h2>', '<h2>Equations, by an agent</h2>'));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('after a reload of the editor, the file of the deck is written again without a picker', async (t) => {
@@ -150,7 +149,7 @@ test('after a reload of the editor, the file of the deck is written again withou
   const s = await page.evaluate('window.BeesonEditor.status()');
   assert.deepEqual([s.watching, s.dirty], [true, false]);
   assert.ok((await page.evaluate(h2s)).includes('Equations, by an agent'));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a file read while it is written is read again until it is whole, and the changed slide is still marked', async (t) => {
@@ -181,5 +180,5 @@ test('a file read while it is written is read again until it is whole, and the c
   const s = await page.evaluate('window.BeesonEditor.status()');
   assert.deepEqual(s.changed, [slide]);
   assert.equal(s.message, `Loaded the changes of the file on slide ${slide}`);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

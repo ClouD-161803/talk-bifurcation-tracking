@@ -28,7 +28,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const boxOf = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, right: r.right, bottom: r.bottom }; })()`);
 
   async function load(t, platform, { deck = LAYOUTS, n = 0, text = readFileSync(deck, 'utf8'), change = '', clear = true, size = { width: 1600, height: 1000 } } = {}) {
@@ -123,7 +122,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await choose(page, 'Slide Only');
       assert.deepEqual(await panes(page), { navigator: true, format: false, steps: true, slideOnly: false });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag of the zoom slider near its tick at 100% snaps to 100% (${platform})`, async (t) => {
@@ -150,7 +149,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       for (let i = 0; i < 3; i++) await press(page, 'ArrowLeft');
       assert.notEqual(await readout(), '100%');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Customize Toolbar adds and removes items by drags, sets Show, keeps the layout for the deck, and the default set restores it (${platform})`, async (t) => {
@@ -230,7 +229,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await press(page, 'Escape');
       assert.equal(await kept(page), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Customize Toolbar works from the keyboard: Return adds an item, Delete takes one off, and Esc closes the sheet (${platform})`, async (t) => {
@@ -255,7 +254,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-customize').hidden`), true);
       assert.equal(await kept(page), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the gear menu of Find sets the scope to the slides and notes, the notes only, or the alt texts (${platform})`, async (t) => {
@@ -300,7 +299,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await click(page, '.beeson-find .search .clear');
       await type(page, 'variant');
       assert.equal(await count(), 'Not found');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -328,7 +327,6 @@ describe('a split button folded into More', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const layer = (page) => page.evaluate(`!!document.querySelector('${LAYER}')`);
   const rafs = (page) => page.evaluate('Beeson.backdrops.filter((b) => b.raf).length');
   const menus = (page) => page.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`);
@@ -417,7 +415,7 @@ describe('a split button folded into More', () => {
       const keys = Object.values(lists).flat().filter((r) => r !== '-' && r.keys).map((r) => r.keys);
       if (platform === 'other') assert.ok(keys.every((k) => !glyphs.test(k)), `a key in the form of the Mac: ${keys}`);
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the right arrow opens the submenu of Preview in More, the left arrow and Esc close it, and Return runs Play Steps (${platform})`, async (t) => {
@@ -444,7 +442,7 @@ describe('a split button folded into More', () => {
       await frames(page);
       assert.equal(await menus(page), 0);
       assert.equal(await layer(page), true, 'Play Steps does not play the steps');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`while a preview plays, the item Play Slide of the submenu of Preview reads Stop and stops it (${platform})`, async (t) => {
@@ -468,7 +466,7 @@ describe('a split button folded into More', () => {
       await hover(page, 'Preview', 0);
       assert.equal((await labels(page, 1))[0], 'Play Slide');
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a click on Trace Backdrop in the submenu of Preview in More traces the backdrop (${platform})`, async (t) => {
@@ -479,7 +477,7 @@ describe('a split button folded into More', () => {
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'preview.backdrop'`));
       await frames(page);
       assert.ok((await rafs(page)) > 0, 'the backdrop is not traced');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a folded View is a submenu of More with Navigator first, before a rule, then the items of its arrow, with the keys of the platform (${platform})`, async (t) => {
@@ -523,7 +521,7 @@ describe('a split button folded into More', () => {
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'view.navigator'`));
       await frames(page);
       assert.equal((await state(page, 'view.navigator')).checked, !nav, 'Navigator is not run from the submenu');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -549,7 +547,6 @@ describe('the inspector and toolbar fit the window', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
   const rectOf = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; })()`);
 
@@ -627,7 +624,7 @@ describe('the inspector and toolbar fit the window', () => {
         }
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`while Customize Toolbar is open in a narrow window, every toolbar item and the whole default set are inside the window (${platform})`, async (t) => {
@@ -656,7 +653,7 @@ describe('the inspector and toolbar fit the window', () => {
         await click(page, '.beeson-edit-customize .done');
         await frames(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -686,7 +683,7 @@ describe('the inspector and toolbar fit the window', () => {
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await panes(), { navigator: true, format: false, slideOnly: false, inspector: false });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Language popup of the Code pane is drawn in the control tokens of the inspector, in light and dark mode (${platform})`, async (t) => {
@@ -711,7 +708,7 @@ describe('the inspector and toolbar fit the window', () => {
       })()`);
         assert.ok(look, `the Code pane does not show the Language popup (${scheme})`);
         assert.deepEqual(look, { background: true, color: true, font: true, round: true, height: 24 }, `the Language popup is not drawn in the control tokens (${scheme})`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -735,7 +732,7 @@ describe('the inspector and toolbar fit the window', () => {
         await frames(page);
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the keyboard sheet is drawn under the menu bar and inside the window at every size (${platform})`, async (t) => {
@@ -756,7 +753,7 @@ describe('the inspector and toolbar fit the window', () => {
         await press(page, 'Escape');
         await frames(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`while the Add Slide gallery is open the insert buttons stay live, and one click on Table opens the table grid (${platform})`, async (t) => {
@@ -780,7 +777,7 @@ describe('the inspector and toolbar fit the window', () => {
       await frames(page);
       assert.ok(await page.evaluate(`!document.querySelector('.beeson-edit-gallery[open]')`), 'Escape does not close the gallery');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -807,7 +804,6 @@ describe('the Format pane closed in a narrow window', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -880,7 +876,7 @@ describe('the Format pane closed in a narrow window', () => {
       await page.evaluate(`Reveal.slide(${WHITE_FIGURE})`);
       await wait(page, 300);
       assert.ok(inside((await boxes(page)).drawn), 'the drawn image runs past the slide after a reopen');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -903,7 +899,7 @@ describe('the Format pane closed in a narrow window', () => {
       assert.deepEqual(await panes(page), { nav: true, inspector: false, format: false, stored: '0' }, 'Format closed by hand is opened again by a reopen');
       await resize(page, 1600, 1000);
       assert.deepEqual(await panes(page), { nav: true, inspector: false, format: false, stored: '0' }, 'Format closed by hand is opened again by a widen after a reopen');
-      assert.deepEqual(errors(page).filter((e) => !e.includes('beforeunload')), []);
+      assert.deepEqual(page.errors.filter((e) => !e.includes('beforeunload')), []);
     });
   }
 
@@ -952,7 +948,7 @@ describe('the Format pane closed in a narrow window', () => {
       await press(page, 'Escape');
       await wait(page, 300);
       await fits('after the sheet is closed with Icon and Text');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -976,7 +972,6 @@ describe('Slide Only twice, and the last small texts', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, scheme, { width = 1600, height = 1000 } = {}) {
     const page = await browser.newPage({ width, height });
@@ -1026,7 +1021,7 @@ describe('Slide Only twice, and the last small texts', () => {
         seen.push(await measure(page, 'dialog.beeson-edit-presenter .hint'));
         assert.equal(seen.length, 5);
         assert.deepEqual(below(seen, 4.5), []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1055,7 +1050,7 @@ describe('Slide Only twice, and the last small texts', () => {
         await frames(page);
         assert.deepEqual(await panes(page), start);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1099,7 +1094,7 @@ describe('Slide Only twice, and the last small texts', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1136,7 +1131,7 @@ describe('Slide Only twice, and the last small texts', () => {
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-top').classList.contains('compact')`), false, 'the labels are not drawn again at 1600 px');
       await exec(page, 'view.customizeToolbar');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1165,7 +1160,6 @@ describe('the width of the navigator when narrow', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
@@ -1228,7 +1222,7 @@ describe('the width of the navigator when narrow', () => {
       const tables = await boxes(page, ':scope > table');
       assert.equal(tables.length, 2);
       assert.ok(covers(tables[1], tables[0]) < 0.5, `the second table at ${js(tables[1])} lies on the first at ${js(tables[0])}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag of the edge of the navigator past its widest drawn width stores the drawn width (${platform})`, async (t) => {
@@ -1252,7 +1246,7 @@ describe('the width of the navigator when narrow', () => {
       const g2 = await geo();
       assert.ok(Math.abs(g2.nav - (g1.nav - 40)) <= 2, `a drag 40 px to the left took the navigator from ${g1.nav} to ${g2.nav} px`);
       assert.ok(Math.abs(g2.now - g2.nav) <= 1 && Math.abs(g2.stored - g2.nav) <= 1, `after the drag to the left, ${js(g2)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a display formula stays selected and framed after its TeX is applied in the Formula pane, and after an undo and a redo (${platform})`, async (t) => {
@@ -1291,7 +1285,7 @@ describe('the width of the navigator when narrow', () => {
       assert.deepEqual(await framed(), { selected: true, framed: true }, 'after a redo of the TeX');
       const { text } = await saveAndReopen(page, `r13-4-formula-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

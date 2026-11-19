@@ -32,7 +32,6 @@ describe('the rows and selection of the Object List', () => {
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.tagName.toLowerCase())`);
   const active = (page) => page.evaluate(`document.activeElement.closest(${js(OBJECTS)}) ? 'list:' + document.activeElement.textContent : document.activeElement.tagName`);
   const rows = (page) =>
@@ -64,7 +63,7 @@ describe('the rows and selection of the Object List', () => {
     await redo(page);
     assert.equal(await render(page), edited);
     await saveAndReopen(page, `r10-2-${Math.random().toString(36).slice(2)}.html`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   async function openList(page, platform) {
@@ -106,7 +105,7 @@ describe('the rows and selection of the Object List', () => {
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelector(${js(OBJECTS)}).hidden`), true);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: a click, Shift, the command modifier, and the arrow keys select rows, and the list shows the selection of the canvas`, async (t) => {
@@ -131,7 +130,7 @@ describe('the rows and selection of the Object List', () => {
       assert.equal((await rows(page))[0], '1 Figure: A caption under a zone. *');
       assert.equal((await rows(page)).filter((r) => r.endsWith('*')).length, 1);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the padlock of a row locks and unlocks its object as one entry of the history`, async (t) => {
@@ -183,7 +182,7 @@ describe('the rows and selection of the Object List', () => {
       await redo(page);
       assert.equal(await render(page), edited);
       await saveAndReopen(page, `r10-2-drag-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the members of a group are rows under its group row, which folds`, async (t) => {
@@ -221,7 +220,7 @@ describe('the rows and selection of the Object List', () => {
       await frames(page);
       assert.deepEqual(await rows(page), FRONT_TO_BACK);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -278,7 +277,7 @@ describe('the rows and selection of the Object List', () => {
       await click(page, `${ROW}:nth-child(4)`, { modifiers: 'Mod' });
       assert.deepEqual((await inspector(page)).tabs, []);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -365,7 +364,6 @@ describe('the drag of a group row', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform, { deck = GROUPS, n = 0 } = {}) {
     const page = await browser.newPage();
@@ -441,7 +439,7 @@ describe('the drag of a group row', () => {
       await redo(page);
       assert.equal(await render(page), front);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -465,7 +463,6 @@ describe('Arrange keys and the drop line of rows', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const settle = async (page) => {
     await page.evaluate('new Promise((d) => setTimeout(() => d(true), 120))');
     await frames(page);
@@ -545,7 +542,7 @@ describe('Arrange keys and the drop line of rows', () => {
       await undoKey(page);
       await settle(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -582,7 +579,7 @@ describe('Arrange keys and the drop line of rows', () => {
       await undoKey(page);
       await settle(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

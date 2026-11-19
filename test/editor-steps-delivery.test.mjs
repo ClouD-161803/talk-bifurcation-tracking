@@ -9,7 +9,6 @@ import { click, clickText, press, saveAndReopen, type } from './helpers/editor.m
 const PLATFORMS = ['mac', 'other'];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let browser;
 let server;
@@ -68,7 +67,7 @@ for (const platform of PLATFORMS) {
       assert.ok(menu.top >= 0 && menu.bottom <= height && menu.left >= 0 && menu.right <= width, 'the menu leaves the window');
       if (menu.top >= box.row.bottom || menu.bottom <= box.row.top) assert.ok(Math.abs(menu.left - box.chip.left) < 8, 'the menu is not at its chip');
       else assert.ok(menu.right <= box.row.left, 'the menu is neither under nor beside its row');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     }
   });
 }
@@ -184,7 +183,7 @@ for (const platform of PLATFORMS) {
     assert.match(text, /data-autoslide="1500"/);
     assert.deepEqual(newProblems(page, text), []);
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -216,7 +215,7 @@ test('a step After Previous is shown by itself after its delay in the deck', asy
   const [first, second, third] = await page.evaluate('window.__shownAt');
   assert.ok(second - first >= 590, `the second step is shown ${Math.round(second - first)} ms after the first, before its delay of 600 ms`);
   assert.equal(third, null, 'the step after the delayed step is shown without a click');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 const UL = '<ul>\n    <li class="fragment" data-fragment-index="1">Each step';
@@ -255,7 +254,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual((await menuLabels(page)).slice(-2), ['List All at Once', '✓ List Item by Item']);
     await press(page, 'Escape');
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -283,7 +282,7 @@ test('a list delivered all at once moves the later steps up, and item by item mo
   await page.evaluate(`window.BeesonEditor.exec('steps.deliver', { el: document.querySelector('.reveal section.present ul'), by: 'item' })`);
   assert.deepEqual(await cards(page), [{ head: null, rows: ['0 A small para'] }, { head: '2–3', rows: ['  1 A first item', '  2 A second ite'] }]);
   assert.deepEqual(newProblems(page, await rendered(page)), []);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a list keeps the delay of its step through a change of its delivery', async (t) => {

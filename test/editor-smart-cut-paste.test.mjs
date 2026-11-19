@@ -23,7 +23,6 @@ describe('a word formatted or cut with its space', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -68,7 +67,7 @@ describe('a word formatted or cut with its space', () => {
     assert.equal(await render(page), edited, 'the redo does not give the edit back');
     const { text } = await saveAndReopen(page, `r18-6-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -159,7 +158,6 @@ describe('a word pasted with the spaces of PowerPoint', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -228,7 +226,7 @@ describe('a word pasted with the spaces of PowerPoint', () => {
     assert.equal(await render(page), edited, 'the redo does not write the paste again');
     const { text } = await saveAndReopen(page, `r24-1-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return line;
   }
 
@@ -288,7 +286,7 @@ describe('a word pasted with the spaces of PowerPoint', () => {
       assert.deepEqual(now, { value: '1', focused: true, all: true }, 'one Undo does not put the shown value back, selected');
       assert.equal(await render(page), page.source, 'the Undo changes the file');
       assert.equal((await state(page, 'edit.undo')).label, label, 'the Undo changes the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -315,7 +313,6 @@ describe('Paste of the menus sets the spaces', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => d(true)), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -360,7 +357,7 @@ describe('Paste of the menus sets the spaces', () => {
       await exec(page, 'backdrop.select');
       await wait(page, 600);
       assert.deepEqual(await requested(page), []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Drawing popup opened before the list of Media > Backdrop… lists an entry whose file is not found at its place (${platform})`, async (t) => {
@@ -371,7 +368,7 @@ describe('Paste of the menus sets the spaces', () => {
       const items = await drawingItems(page);
       assert.deepEqual(items, ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Broucke Families', 'mark'], 'the popup leaves out an entry whose file is not found');
       assert.ok((await requested(page)).length > 0, 'the popup does not read the files');
-      assert.deepEqual(errors(page).filter((e) => !FILES.test(e)), []);
+      assert.deepEqual(page.errors.filter((e) => !FILES.test(e)), []);
     });
   }
 
@@ -432,7 +429,7 @@ describe('Paste of the menus sets the spaces', () => {
     assert.equal(await render(page), edited, 'the redo does not write the paste again');
     const { text } = await saveAndReopen(page, `r25-1-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return line;
   }
 
@@ -489,7 +486,7 @@ describe('Paste of the menus sets the spaces', () => {
           assert.ok(m.row <= m.width && m.right <= m.width + 0.5, `the top row is ${m.row} px wide and ends at ${m.right} px in a window of ${m.width} px`);
           if (width >= 560) assert.ok(m.body <= m.width, `the body is ${m.body} px wide in a window of ${m.width} px`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -514,7 +511,6 @@ describe('a word pasted by a break or formula', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -583,7 +579,7 @@ describe('a word pasted by a break or formula', () => {
           }
           await clickAway(page);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -637,7 +633,7 @@ describe('a word pasted by a break or formula', () => {
     assert.ok((await render(page)) === edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r26-5-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -699,7 +695,7 @@ describe('a word pasted by a break or formula', () => {
       const expected = [['li', 'One', '""', true], ['li', '', 'none', true], ['p', '', '', true]];
       const shown = await show(t, edited, 0);
       assert.deepEqual(await shown.evaluate(marks(`document.querySelector(${js(SLIDE)})`)), expected, 'the show draws the emptied item with its dash');
-      assert.deepEqual(errors(shown), []);
+      assert.deepEqual(shown.errors, []);
       const print = await show(t, edited, 0, '?print-pdf');
       const pages = await print.evaluate(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('h2')?.textContent === 'Items').map((s) => ${marks('s')})`);
       assert.ok(pages.length >= 1, 'the print view does not have the slide Items');
@@ -726,7 +722,7 @@ describe('a word pasted by a break or formula', () => {
       const expected = [['li', 'Top<ul><li></li></ul>', '""', true], ['li', '', 'none', true], ['p', 'Below', '', true]];
       const shown = await show(t, edited, 5);
       assert.deepEqual(await shown.evaluate(marks(`document.querySelector(${js(SLIDE)})`)), expected, 'the show draws the emptied nested item with its dash');
-      assert.deepEqual(errors(shown), []);
+      assert.deepEqual(shown.errors, []);
       const print = await show(t, edited, 5, '?print-pdf');
       const pages = await print.evaluate(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('h2')?.textContent === 'Nested').map((s) => ${marks('s')})`);
       assert.ok(pages.length >= 1, 'the print view does not have the slide Nested');
@@ -818,7 +814,7 @@ describe('a word pasted by a break or formula', () => {
         await sleep(300);
         const shaped = await placed(page, `document.querySelector(${js(SLIDE)})`);
         assert.deepEqual(shaped.map((m) => [m.text, m.gap, m.drop]), SHAPED, `a mark of the shape is not 54 px before its words: ${js(shaped)}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -840,7 +836,7 @@ describe('a word pasted by a break or formula', () => {
         assert.deepEqual(numbers.map((m) => [m.text, m.after]), NUMBERS, `a number does not end 30 px before its words: ${js(numbers)}`);
         const indent = await page.evaluate(`[...${root}.querySelectorAll('li')].map((li) => getComputedStyle(li).paddingLeft)`);
         assert.deepEqual(indent, ['54px', '54px', '54px', '54px'], 'the words of an item are moved');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

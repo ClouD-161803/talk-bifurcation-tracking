@@ -22,7 +22,6 @@ describe('list styles and the space after the caret', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -56,7 +55,7 @@ describe('list styles and the space after the caret', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r14-7-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -198,7 +197,7 @@ describe('list styles and the space after the caret', () => {
       await redo(page);
       assert.equal(await render(page), nested);
       assert.equal((await caretIn(page)).tag, 'li');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -221,7 +220,6 @@ describe('the caret after undo of Return or typing', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -302,7 +300,7 @@ describe('the caret after undo of Return or typing', () => {
         await press(page, 'Mod+Z');
         await wait(page);
         await typedIn(page, page.source, needle, 'q');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -321,7 +319,7 @@ describe('the caret after undo of Return or typing', () => {
       assert.deepEqual(await selected(page), { els: [], caret: true }, 'the caret is not in the list after the undo');
       const at = page.source.indexOf('<li class="fragment" data-fragment-index="1">Each step');
       await typedIn(page, page.source, page.source.slice(at, page.source.indexOf('</ul>', at)), 'q');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -354,7 +352,7 @@ describe('the caret after undo of Return or typing', () => {
       assert.deepEqual(await labels(page), ['Undo Move', 'Redo Position']);
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -378,7 +376,7 @@ describe('the caret after undo of Return or typing', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-13-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -488,7 +486,7 @@ describe('the caret after undo of Return or typing', () => {
       assert.deepEqual(await starts(page), [1, 4, 7]);
       await undo(page);
       assert.equal(await render(page), cut);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -524,7 +522,7 @@ describe('the caret after undo of Return or typing', () => {
       await wait(page, 600);
       assert.equal(await render(page), poster);
       assert.deepEqual(await held(page), { els: ['video'], focus: 'input.range', same: true }, 'the redo changes the selection or the focus');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -547,7 +545,6 @@ describe('pastes with blank lines, and undo of Return', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -580,7 +577,7 @@ describe('pastes with blank lines, and undo of Return', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r17-7-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 

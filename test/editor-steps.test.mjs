@@ -10,7 +10,6 @@ import { tokenize } from '../src/editor/tokens.ts';
 
 const PLATFORMS = ['mac', 'other'];
 const REDO = { mac: 'Mod+Shift+Z', other: 'Mod+Y' };
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 let browser;
@@ -123,7 +122,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await undoLabel(page), 'Undo Move Step');
     await undoRedo(page, platform, page.source, edited);
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the menu of a chip sets the step, the start, the effect, and Show Last on ${platform}`, async (t) => {
@@ -173,7 +172,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await rendered(page), plain);
     await undoRedo(page, platform, last, plain);
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a row selects its element, a selected element marks its row, and Alt with an arrow moves a step on ${platform}`, async (t) => {
@@ -209,7 +208,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await rendered(page), earlier);
     assert.equal(await undoLabel(page), 'Undo Move Step Earlier');
     await undoRedo(page, platform, source, earlier);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Preview plays the steps of the slide and ends on its last layer on ${platform}`, async (t) => {
@@ -239,7 +238,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`document.documentElement.classList.contains('beeson-previewing')`), false);
     assert.deepEqual(await layers(), ['Up to step 2', '*From step 3']);
     assert.equal(await rendered(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a preview after an edit plays the steps of the edit on ${platform}`, async (t) => {
@@ -251,7 +250,7 @@ for (const platform of PLATFORMS) {
     await click(page, '.beeson-edit-side .head .play');
     const played = await previewFrames(page);
     assert.deepEqual(played.find((f) => f.step === '2')?.read, ['The effectiv']);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`each row shows its text, or at least 24 characters of it with an ellipsis and a tooltip, at 1440 by 900 on ${platform}`, async (t) => {
@@ -277,7 +276,7 @@ for (const platform of PLATFORMS) {
       }
     }
     assert.ok(checked > 5, `only ${checked} rows are cut`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -291,7 +290,6 @@ describe('Play From, code line steps, and Delay', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 
@@ -387,7 +385,7 @@ describe('Play From, code line steps, and Delay', () => {
       await clickText(page, SMALL);
       await frames(page);
       await saved(page, small);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Small keeps the other declarations of the pre, and off gives its tag back byte for byte on ${platform}`, async (t) => {
@@ -403,7 +401,7 @@ describe('Play From, code line steps, and Delay', () => {
       await clickText(page, SMALL);
       await frames(page);
       assert.equal(await rendered(page), text);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -492,7 +490,7 @@ describe('Play From, code line steps, and Delay', () => {
       assert.deepEqual(await field(), { value: '', unit: 's', arrows: ['Increase Delay (dimmed)', 'Decrease Delay (dimmed)'] });
       assert.deepEqual(newProblems(page, least), []);
       await saved(page, least);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -526,7 +524,7 @@ describe('Play From, code line steps, and Delay', () => {
       assert.equal(await page.evaluate('window.typeset'), 0);
       await press(page, 'Escape');
       assert.equal(await page.evaluate(`!!document.querySelector('.beeson-complete')`), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -580,7 +578,7 @@ describe('Play From, code line steps, and Delay', () => {
       await press(page, 'Mod+Z');
       await frames(page);
       assert.deepEqual(await lineRows(page), ['0 Line 4', '1 Lines 5–7', '2 Lines 8–9']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the line steps of a code box move with the other steps, and are not split on ${platform}`, async (t) => {
@@ -610,7 +608,7 @@ describe('Play From, code line steps, and Delay', () => {
       assert.deepEqual(await lineRows(page), ['0 Line 4', '1 Lines 5–7', '2 Lines 8–9']);
       await undoRedo(page, platform, moved, once);
       await saved(page, once);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Play From plays the steps of the slide in place from the chosen step on ${platform}`, async (t) => {
@@ -653,7 +651,7 @@ describe('Play From, code line steps, and Delay', () => {
       assert.equal((await menuLabels(page)).at(-1), '-Play From Step');
       await press(page, 'Escape');
       assert.equal(await rendered(page), text);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -666,7 +664,6 @@ describe('the selected row through undo and redo', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
 
   let browser;
@@ -749,7 +746,7 @@ describe('the selected row through undo and redo', () => {
         await click(page, `${STEPPER}:last-child`);
         await frames(page);
         assert.equal(await rendered(page), delayed(500));
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -778,7 +775,6 @@ describe('center, ghost, Dim, and lines as steps', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}, ${js(arg ?? null)} ?? undefined)).then(() => true)`);
@@ -883,7 +879,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await caretIn(page, 'p');
       await exec(page, 'text.align.left');
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Center acts on a list and a display selected as objects, on a caption, and on a small paragraph, and draws the display centered (${platform})`, async (t) => {
@@ -910,7 +906,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
         ['<figcaption class="caption">', '<figcaption class="caption center">'],
       ]));
       assert.equal((await state(page, 'text.style.small')).checked, true, 'a centered small paragraph is not read as Small');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Text pane shows Left and Center, and the Format Painter carries the alignment (${platform})`, async (t) => {
@@ -928,7 +924,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await exec(page, 'text.pasteStyle');
       await frames(page);
       assert.equal(await render(page), edited([['<p>Alpha', '<p class="center">Alpha'], ['<p class="small">Beta', '<p class="small center">Beta']]));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Faint writes the class ghost on a figure, a block, and a line, and each is drawn at the ghost opacity (${platform})`, async (t) => {
@@ -953,7 +949,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       assert.equal(await style(page, 'svg.line', 'opacity'), GHOST);
       await exec(page, 'arrange.faint');
       assert.equal(await render(page), expected);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Reset Slide keeps the class ghost, and a ghosted step is drawn ghosted in the editor (${platform})`, async (t) => {
@@ -966,7 +962,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await page.evaluate('Reveal.slide(3)');
       await frames(page);
       assert.equal(await style(page, 'p.faint', 'opacity'), GHOST);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Dim of the Steps pane writes semi-fade-out, and Preview Steps draws the element dimmed from its step on (${platform})`, async (t) => {
@@ -986,7 +982,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       assert.ok(seen.every(Boolean), `the preview did not draw each of its steps 0 to 3: ${js(played.map((f) => f.step))}`);
       assert.deepEqual(seen.map((s) => s[1]), ['1', GHOST, GHOST, GHOST], 'the dimmed Zeta');
       assert.deepEqual(seen.map((s) => s[3]), ['1', '1', '1', GHOST], 'Theta, dimmed at its own step');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Magic Move pairs a line by its tone and heads, and Magic Move to Copy gives a line a data-id (${platform})`, async (t) => {
@@ -1006,7 +1002,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       assert.equal(copies[0], copies[1]);
       await undo(page);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a line is added as the last step and is listed as a Line in the Steps pane (${platform})`, async (t) => {
@@ -1022,7 +1018,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       const kinds = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .rows .row .kind')].map((k) => k.textContent)`);
       assert.ok(kinds.includes('Line'), `the rows are ${kinds}`);
       await roundTrip(page, expected);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1042,7 +1038,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       assert.deepEqual(kind, ['push', [1, 1]]);
       await exec(page, 'slide.transition.fade');
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1074,7 +1070,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await frames(page);
       assert.match(await render(page), /<img src="\.\.\/\.\.\/demo\/figure-light\.png" alt="A figure" style="width: 600px; scale: 1\.5; clip-path: inset\(16\.667% round 50%\)" class="oval">/);
       assert.equal(await style(page, 'figure img', 'clipPath'), 'inset(16.667% round 50%)');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Oval on a cropped picture keeps its crop inside the ellipse, and taking it off gives the crop back (${platform})`, async (t) => {
@@ -1090,7 +1086,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await selectPicture(page, '.reveal section.present figure img');
       await exec(page, 'figure.oval');
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a ghosted picture replaced by a video stays ghosted (${platform})`, async (t) => {
@@ -1105,7 +1101,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       await frames(page);
       assert.match(await render(page), /<video class="faint"[^>]*>/);
       assert.equal(await style(page, 'figure video', 'opacity'), GHOST);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1130,7 +1126,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
     read();
   })`);
     assert.ok(seen.some((f) => f.a < -100 && f.b > 100), `no frame had the slide left moved out to the left and the next slide moving in from the right: ${JSON.stringify(seen.filter((_, i) => i % 6 === 0))}`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('a semi-fade-out fragment is drawn at the ghost opacity from its step on, and on the complete slide', { timeout: 60000 }, async (t) => {
@@ -1147,7 +1143,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
       seen.push(await page.evaluate(`[getComputedStyle(Reveal.getCurrentSlide().querySelector('.semi-fade-out')).opacity, Reveal.getCurrentSlide().hasAttribute('data-complete')]`));
     }
     assert.deepEqual(seen, [['1', false], [GHOST, false], [GHOST, false], [GHOST, false], [GHOST, true]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('a ghosted fragment is drawn at the ghost opacity at its step, after it, with data-complete, and in the print view', { timeout: 90000 }, async (t) => {
@@ -1210,7 +1206,6 @@ describe('a dimmed step in the presenter display', () => {
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, slide = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1252,7 +1247,7 @@ describe('a dimmed step in the presenter display', () => {
       assert.deepEqual(current.map((s) => s[0]), ['1', GHOST, GHOST, GHOST], 'Zeta on the current slide');
       assert.deepEqual(current.map((s) => s[1]), ['1', '1', '1', '0.45'], 'Eta on the current slide');
       assert.equal(next[0][0], GHOST, 'Zeta on the next step');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V14 ${platform}: Preview Transition draws a step set to Dim at the ghost opacity on the slide it leaves`, async (t) => {
@@ -1260,7 +1255,7 @@ describe('a dimmed step in the presenter display', () => {
       const dim = await readAtPlay(page, opacitiesOf('.beeson-edit-preview .shot', ['Zeta', 'Eta', 'Theta']), () => exec(page, 'slide.previewTransition'));
       assert.deepEqual(dim, [GHOST, '1', '1']);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1316,7 +1311,7 @@ describe('a dimmed step in the presenter display', () => {
       }
       for (let i = 0; i < KINDS.length; i++) await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

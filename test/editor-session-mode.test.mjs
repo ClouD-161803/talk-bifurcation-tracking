@@ -19,7 +19,6 @@ const exec = (page, id) => {
   return run;
 };
 const askShown = `!!document.querySelector('dialog.beeson-edit-dialog.ask[open]')`;
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 let browser;
 before(async () => {
@@ -41,7 +40,7 @@ test('22: a page opened with edit and session neither offers nor keeps a draft',
     assert.equal(await page.evaluate(draftText), old, 'the draft of the earlier visit was replaced');
     s = await status(page);
     assert.equal(s.recover, false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -194,7 +193,7 @@ test('10 and 12: Present, Export, and Print in a session wait for the saver and 
     const s = await status(page);
     assert.ok((await page.evaluate(`${E}.render()`)).includes(' Go.'), 'the edit was undone');
     assert.equal(s.undo, true, 'the history was cleared');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -224,7 +223,7 @@ test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a sessi
     assert.equal(held, true, 'the key of Open reaches the browser in a session');
     assert.ok((await page.evaluate(`${E}.render()`)).includes(' Go.'));
     assert.equal((await status(page)).undo, true);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -262,7 +261,7 @@ test('after end(), the editor saves, keeps drafts, and asks about unsaved change
       assert.equal(await page.evaluate('window.__saves'), 0, 'Save after end() calls the saver of the session');
       assert.ok((await page.evaluate('window.__written ?? ""')).includes(' Go.'));
     }
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -288,7 +287,7 @@ test('begin() is idempotent, and end() without begin() does nothing', async () =
     assert.equal(await enabled(plain, 'file.open'), false);
     await plain.evaluate(`${E}.session.end(), true`);
     assert.equal(await enabled(plain, 'file.open'), true);
-    assert.deepEqual(errors(plain), []);
+    assert.deepEqual(plain.errors, []);
   } finally {
     await plain.close();
   }
@@ -306,7 +305,7 @@ test('the state line of a session shows why a command failed, until the next edi
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-titlebar .state').classList.contains('warn')`), true);
     await typeGo(page);
     await page.waitFor(`!${E}.status().message.includes('The session has ended')`, 5000);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -331,7 +330,7 @@ test('Present and an export in a session give up with the reason when the edits 
     await page.evaluate('window.__timers.run(), true');
     await assert.rejects(pdf, /not sent yet/);
     assert.equal(await page.evaluate('window.__opened.length'), 0, 'the print view is opened without the edits');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }

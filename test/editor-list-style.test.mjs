@@ -23,7 +23,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -57,7 +56,7 @@ describe('Tab, Italic, and list styles on lists', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r12-6-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -311,7 +310,6 @@ describe('the chevron, ring, and dash of lists', () => {
     await page.evaluate('new Promise((d) => setTimeout(() => d(true), 120))');
     await frames(page);
   };
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -346,7 +344,7 @@ describe('the chevron, ring, and dash of lists', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r20-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -624,7 +622,7 @@ describe('the chevron, ring, and dash of lists', () => {
       await click(page, (await selector('List'))[0]);
       await settle(page);
       await roundTrip(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Bullets on a dot list and a dash list selected together keeps the bullet of each (${platform})`, async (t) => {
@@ -640,7 +638,7 @@ describe('the chevron, ring, and dash of lists', () => {
       await click(page, await page.evaluate(`(() => { const r = ${bullets}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Format > Text lists Dots and Dashes between Arrows and Numbers, disabled in the notes, and Dashes in a new text box is written once its text is typed (${platform})`, async (t) => {
@@ -699,7 +697,6 @@ describe('a moved list kept whole', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -814,7 +811,7 @@ describe('a moved list kept whole', () => {
       assert.deepEqual((await boxes(page, `${SLIDE} > ol`))['ol item 1'], { ...list, top: Math.round((list.top + shift) * 10) / 10 }, 'the list is moved by Enter');
       const { text } = await saveAndReopen(page, `r32-2-1-${platform}.html`);
       assert.equal(text, typedOut);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -844,7 +841,7 @@ describe('a moved list kept whole', () => {
       await undo(page);
       await frames(page);
       assert.equal(await render(page), text, 'the undo does not give the list back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -865,7 +862,7 @@ describe('a moved list kept whole', () => {
       await exec(page, 'text.list.none');
       await frames(page);
       assert.equal(await render(page), typed, 'the paragraph is not written with the bytes of the box');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -901,7 +898,7 @@ describe('a moved list kept whole', () => {
       assert.equal((await boxes(page, `${SLIDE} > p`))['p Second'].top, second.top, 'the paragraph is not drawn at the height of the item');
       const { text } = await saveAndReopen(page, `r32-2-4-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -931,7 +928,7 @@ describe('a moved list kept whole', () => {
       assert.equal(await render(page), out, 'the redo does not give the list back');
       const { text } = await saveAndReopen(page, `r32-2-5-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -957,7 +954,7 @@ describe('a moved list kept whole', () => {
       await exec(page, 'text.list.ul');
       await frames(page);
       assert.equal(await render(page), page.source, 'Dashes does not give the list back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1007,7 +1004,7 @@ describe('a moved list kept whole', () => {
       samePlace((await boxes(page, `${SLIDE} > p`))['p alpha'], list, 'the paragraph');
       const { text } = await saveAndReopen(page, `r32-2-6-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1033,7 +1030,7 @@ describe('a moved list kept whole', () => {
       assert.deepEqual([drawn['p gamma'].left, drawn['p gamma'].width], [drawn['ol alpha'].left, drawn['ol alpha'].width], 'the paragraph is not drawn at the left edge and with the width of the list');
       const { text } = await saveAndReopen(page, `r32-2-7-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1056,7 +1053,6 @@ describe('Start at and starts of cut lists', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -1090,7 +1086,7 @@ describe('Start at and starts of cut lists', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 

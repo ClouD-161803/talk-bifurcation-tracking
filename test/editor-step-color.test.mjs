@@ -29,7 +29,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(t, platform) {
   const page = await browser.newPage();
@@ -120,7 +119,7 @@ for (const platform of PLATFORMS) {
       [SPANNED, LEAD],
       ['<p class="fragment" data-fragment-index="2" data-highlight="hl-equation-boxes" data-tone="violet">', STEP2],
     ]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -163,7 +162,7 @@ test('after a color at a new step, the next color is set at the step that was ma
   await page.waitFor(`${colored}?.dataset.tone === 'red'`);
   assert.match(await page.evaluate(`${button}.textContent`), /^Step \d/);
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-swatches [data-command="text.tone.red"]').getAttribute('aria-pressed')`), 'true');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('Format > Text Color > Color at a Step… opens the steps of the Text pane, and a step of another color is refused', async (t) => {
@@ -186,7 +185,7 @@ test('Format > Text Color > Color at a Step… opens the steps of the Text pane,
     [STEP4, '<p class="fragment" data-fragment-index="4" data-highlight="potential hl-equation-boxes" data-tone="violet">'],
   ]);
   await roundTrip(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('two text elements selected as objects are colored at a step with one class, as one entry of the history', async (t) => {
@@ -202,5 +201,5 @@ test('two text elements selected as objects are colored at a step with one class
   assert.ok(name?.startsWith('hl-'), 'the paragraph of step 4 does not highlight a new class');
   assert.equal(edited.split(`<span class="${name}">`).length, 3, 'the two paragraphs are not wrapped in spans of the class');
   await roundTrip(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

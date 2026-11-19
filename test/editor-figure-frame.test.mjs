@@ -40,7 +40,6 @@ describe('the figure frame in fields, Align, and snap', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = 1) => Math.abs(a - b) <= by;
   const show = (b) => `${Math.round(b.left)}, ${Math.round(b.top)}, ${Math.round(b.width)} × ${Math.round(b.height)}`;
 
@@ -207,7 +206,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           await redo(page);
           await frames(page);
           assert.equal(await render(page), edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -248,7 +247,7 @@ describe('the figure frame in fields, Align, and snap', () => {
             for (const b of boxes) assert.ok(b.top >= span[0] - 1 && bottom(b) <= span[1] + 1, `Distribute Vertically of ${where} puts an element at ${show(b)}, outside ${span.map(Math.round).join(' to ')}`);
             await roundTrip(page, await render(page));
           }
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -297,7 +296,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.ok(near(drawn.left, union.left) && near(drawn.top, union.top) && near(right(drawn), union.right) && near(bottom(drawn), union.bottom), `the frame of a group of ${where} is at ${show(drawn)}`);
           assert.equal(await fieldValue(page, 'x'), Math.round(union.left), `X of a group of ${where}`);
           assert.equal(await fieldValue(page, 'y'), Math.round(union.top), `Y of a group of ${where}`);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -337,7 +336,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.ok(near(cx(moved), cx(frame), 0.6), `a drag of the heading to the center of the frame of ${where} at ${Math.round(cx(frame))} puts its center at ${Math.round(cx(moved))}`);
           assert.ok(line, `a drag of the heading to the center of the frame of ${where} draws no guide there`);
           await roundTrip(page, await render(page));
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -369,7 +368,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           await press(page, 'Escape');
           await frames(page);
           await roundTrip(page, locked);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -402,7 +401,7 @@ describe('the figure frame in fields, Align, and snap', () => {
         assert.equal(edited, SOURCE.replace('<figure class="figure-box">\n        <img src="../../demo/figure-light.png" alt="A figure in both modes">', '<figure class="figure-box fragment" data-fragment-index="1">\n        <img src="../../demo/figure-light.png" alt="A figure in both modes">'));
         assert.equal((await state(other, 'steps.add')).enabled, false, `${ADD} is enabled on a figure that it made a step`);
         await roundTrip(other, edited);
-        assert.deepEqual(errors(other), []);
+        assert.deepEqual(other.errors, []);
       });
     }
   }
@@ -422,7 +421,7 @@ describe('the figure frame in fields, Align, and snap', () => {
         for (const tag of tags) assert.ok(!/fragment/.test(tag), `Show with Slide leaves the step on ${tag}`);
         assert.equal((await state(page, 'steps.add')).enabled, true, `${ADD} is dimmed once the figure is not a step`);
         await roundTrip(page, edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -475,7 +474,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.equal(count(slideOf(pasted, EMPTY), caption), n === FIGURE_BOX_PAIR ? 1 : 0, `the keys of Copy and Paste of ${where} do not bring the caption that it holds`);
           assert.deepEqual(await selected(page), [n === FIGURE_BOX_PAIR ? 'figure.figure-box' : 'div.figure-box'], `the figure pasted from ${where} is not selected`);
           await roundTrip(page, pasted);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -541,7 +540,7 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.deepEqual(await holds(page, slot, el), [true], `a redo of ${what} does not put its element into the ${slot}`);
           assert.deepEqual(await holders(page), [false], `a redo of ${what} shows the placeholder again`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -576,7 +575,7 @@ describe('the figure frame in fields, Align, and snap', () => {
         await settle(page);
         await byteExact(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -611,7 +610,6 @@ describe('a plot handled as an opaque figure', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const title = (page) => page.evaluate(`document.querySelector('.beeson-edit-menubar .state, .beeson-edit-header .state')?.textContent ?? null`);
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const menuLabels = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.getClientRects().length).map((i) => i.querySelector('.label')?.firstChild?.textContent ?? '')`);
@@ -685,7 +683,7 @@ describe('a plot handled as an opaque figure', () => {
       assert.equal(await page.evaluate(`!!document.querySelector('.beeson-plotdata')`), false, 'Mod+Shift+D opens the Plot Data window');
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'Mod+Shift+D adds a history entry');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a plot in a zone is an opaque figure, moved, duplicated, and deleted with its block kept (${platform})`, async (t) => {
@@ -739,7 +737,7 @@ describe('a plot handled as an opaque figure', () => {
       await roundTrip(page, source);
       const { text } = await saveAndReopen(page, `r20-1-${++saves}.html`);
       assert.equal(text, deleted);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a plot over a text is reported as a plot, and its row of the Object List reads Plot (${platform})`, async (t) => {
@@ -756,7 +754,7 @@ describe('a plot handled as an opaque figure', () => {
       await wait(page);
       const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row')].map((r) => r.querySelector('.name').textContent)`);
       assert.ok(rows.includes('Plot'), `the Object List does not name the plot: ${rows.join(', ')}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a plot in a plate is locked and given a step as other figures are (${platform})`, async (t) => {
@@ -788,7 +786,7 @@ describe('a plot handled as an opaque figure', () => {
       await roundTrip(page, source);
       const { text } = await saveAndReopen(page, `r20-1-${++saves}.html`);
       assert.equal(text, stepped);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

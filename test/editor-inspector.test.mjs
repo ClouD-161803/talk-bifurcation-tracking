@@ -130,7 +130,6 @@ async function saved(page, edits) {
   assert.ok(edits.every(([, after]) => text.includes(after)));
 }
 
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function typeInto(page, selector, text) {
   await click(page, `${PANEL} ${selector}`);
@@ -168,7 +167,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [moved]);
     await saved(page, [moved]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a click on Bold in the Text pane keeps the range of the text, and formats it on ${platform}`, async () => {
@@ -198,7 +197,7 @@ for (const platform of PLATFORMS) {
     await redo(page);
     await byteExact(page, [bold]);
     await saved(page, [bold]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Align Left of two elements writes both offsets as one entry of the history on ${platform}`, async () => {
@@ -231,7 +230,7 @@ for (const platform of PLATFORMS) {
     assert.ok(Math.abs(Math.min(p2.left, f2.left) - left) <= 1, 'the pair is not at the left edge');
     assert.ok(Math.abs(f2.left - p2.left - (f.left - p.left)) <= 1, 'the figure did not keep its distance from the paragraph');
     await saved(page, edits);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Narrow in the Slide pane writes the class of the section on ${platform}`, async () => {
@@ -248,7 +247,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [narrow]);
     await saved(page, [narrow]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the description typed into the Image pane is written into the alt of the image on ${platform}`, async () => {
@@ -265,7 +264,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [alt]);
     await saved(page, [alt]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -279,7 +278,7 @@ test('Edit Alt Text… of the context menu shows the Image pane with its descrip
   assert.equal(await page.evaluate(`document.activeElement?.getAttribute('name')`), 'alt');
   await press(page, 'ArrowLeft');
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the text of a QR code is written into its data-qr and drawn again, also after an undo', async () => {
@@ -298,7 +297,7 @@ test('the text of a QR code is written into its data-qr and drawn again, also af
   assert.equal(await modules(), before, 'the QR code is not drawn again after an undo');
   await typeInto(page, 'textarea[name="qr"]', ' ');
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 describe('panes kept across a change they depend on', () => {
@@ -565,7 +564,6 @@ describe('the Text and Code panes in new boxes', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   const caretAtEnd = (page, selector) =>
     page.evaluate(`(() => {
@@ -603,7 +601,7 @@ describe('the Text and Code panes in new boxes', () => {
       const typed = PARAGRAPH.replace('inline.', 'inline. “Halo” — it’s done – ok');
       await byteExact(page, [[PARAGRAPH, typed]]);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -642,7 +640,7 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), text);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a format chosen at the end of a footnote is typed after it on ${platform}`, async () => {
@@ -712,7 +710,7 @@ describe('the Text and Code panes in new boxes', () => {
       await undo(page3);
       await byteExact(page3);
       await saved(page3);
-      assert.deepEqual(errors(page3), []);
+      assert.deepEqual(page3.errors, []);
     });
   }
 
@@ -758,7 +756,7 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), after);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -796,7 +794,7 @@ describe('the Text and Code panes in new boxes', () => {
         const head = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-side .list-head').getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })()`);
         assert.ok(menu.top <= head.bottom && menu.bottom >= head.top, `the menu is not level with its row: ${JSON.stringify([menu, head])}`);
         await press(page, 'Escape');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -841,7 +839,7 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), split);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -859,7 +857,7 @@ describe('the Text and Code panes in new boxes', () => {
       const note = await page.evaluate(`(() => { const n = document.querySelector(${JSON.stringify(sel)}); return { tex: n.dataset.tex, shown: n.textContent }; })()`);
       assert.equal(note.tex, '“Content \\(\\mathcal{L}_{1}\\)”, from the last section slide');
       assert.ok(!note.shown.includes('\\('));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -890,7 +888,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function open(platform, { deck = 'test-deck.html', size = { width: 1440, height: 900 } } = {}) {
     const page = await browser.newPage(size);
@@ -944,7 +941,7 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r6-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -1102,7 +1099,7 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await exec(page, 'zoom.in');
       assert.equal(await zoomOf(page), 4);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1184,7 +1181,7 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.notEqual(await posterBytes(page, video), half);
       const edited = page.source.replace(clipOf(mode), clipOf(mode).replace(`poster="demo/${clip}.png"`, `poster="media/${clip}-2.png"`));
       assert.equal(await render(page), edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1257,7 +1254,7 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.equal(await render(page), filled);
       const { text } = await saveAndReopen(page, `r6-3-${++saves}.html`);
       assert.equal(text, filled);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

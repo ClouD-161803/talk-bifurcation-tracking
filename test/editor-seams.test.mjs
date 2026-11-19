@@ -65,7 +65,7 @@ test('a deck with every layout is saved and opened again without a problem', asy
   await page.evaluate(`document.querySelector('.reveal .slides p.caption').firstChild.data = 'An edited caption.'`);
   const { text } = await saveAndReopen(page, 'layouts.html');
   assert.ok(text.includes('<p class="caption">An edited caption.</p>'));
-  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+  assert.deepEqual(page.errors, []);
 });
 
 const slowHandle = (ms) => `window.BeesonEditor.attach({

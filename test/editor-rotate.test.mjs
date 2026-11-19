@@ -28,7 +28,6 @@ describe('the rotate handle drawn above the frame', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   let saves = 0;
@@ -72,7 +71,7 @@ describe('the rotate handle drawn above the frame', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r8-2-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -284,7 +283,7 @@ describe('the rotate handle drawn above the frame', () => {
       const raw = await page.evaluate('window.rawThumbs');
       assert.deepEqual(raw, [], `a thumbnail is drawn with raw TeX: ${js(raw)}`);
       assert.ok((await page.evaluate('window.typesetThumbs')) > 0, 'the thumbnail of slide 5 is not drawn with its typeset formulas');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -312,7 +311,6 @@ describe('a figure with a caption turned as one', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
@@ -436,7 +434,7 @@ describe('a figure with a caption turned as one', () => {
       assert.deepEqual({ w: size.w, h: size.h }, { w: rest.w, h: rest.h }, `W and H at 0° ${js(rest)} and at 30° ${js(size)}`);
       await assertTurnedFrame(page, 30, size);
       await checkEdit(page, `r15-1-angle-${platform}.html`, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure with a caption turned by its rotate handle is framed turned, and its corner grip resizes it with the corner across kept (${platform})`, async (t) => {
@@ -468,7 +466,7 @@ describe('a figure with a caption turned as one', () => {
       const kept = (await overlay(page)).grips.nw;
       assert.ok(dist(kept, nw) <= 3, `the corner nw moved from ${js(nw)} to ${js(kept)}`);
       await checkEdit(page, `r15-1-resize-${platform}.html`, turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`X and Y of a turned figure and text are those of the unturned box, and a typed X or Y reads back (${platform})`, async (t) => {
@@ -494,7 +492,7 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'angle', 30);
       const turnedH2 = await fields(page);
       assert.ok(near(turnedH2.x, h2.x, 1) && near(turnedH2.y, h2.y, 1), `the heading at 0° ${js(h2)} and at 30° ${js(turnedH2)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`X and Y of a turned group are those of its unturned frame, and a typed X reads back (${platform})`, async (t) => {
@@ -508,7 +506,7 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'x', 200);
       assert.equal(await fieldValue(page, 'x'), 200);
       await checkEdit(page, `r15-1-group-x-${platform}.html`, last);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure turned by the field Angle or by its rotate handle is not reported over the texts that its picture does not cover (${platform})`, async (t) => {
@@ -537,7 +535,7 @@ describe('a figure with a caption turned as one', () => {
       s = await checked();
       assert.ok(s.outlined.includes('p'), `the turned figure over the paragraph: ${js(s)}`);
       assert.match(s.message, /\d+ texts? (is|are) under a picture/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a group selected with another object is drawn as one frame, beside the frame of the other object (${platform})`, async (t) => {
@@ -553,7 +551,7 @@ describe('a figure with a caption turned as one', () => {
       assert.equal(both.length, 2, `the group with the heading is drawn as ${js(both)}`);
       const union = both.find((f) => f.union);
       assert.ok(union && near(union.width, alone[0].width, 2) && near(union.height, alone[0].height, 2), `the frame of the group ${js(union)} against ${js(alone[0])}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a group turned by 180 degrees reads back as typed (${platform})`, async (t) => {
@@ -564,7 +562,7 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'height', 700);
       assert.equal(await fieldValue(page, 'height'), 700);
       await checkEdit(page, `r15-1-group-height-${platform}.html`, last);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -593,7 +591,6 @@ describe('groups with a turned member, and cancelled turns', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const enabled = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`);
 
@@ -714,7 +711,7 @@ describe('groups with a turned member, and cancelled turns', () => {
       await exec(page, 'arrange.resetRotation');
       await frames(page);
       assert.equal(await render(page), grouped, 'Reset Rotation after the turns by the rotate handle');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const own of [false, true]) {
@@ -733,7 +730,7 @@ describe('groups with a turned member, and cancelled turns', () => {
         await frames(page);
         assert.equal(await render(page), grouped, 'Reset Rotation after the cancelled drag');
         await undoes(page, thirty, 'Reset Rotation');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -759,7 +756,7 @@ describe('groups with a turned member, and cancelled turns', () => {
       assert.deepEqual(await names(), rows);
       assert.equal(await undoLabel(page), label);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Esc during a drag of a thumbnail of the navigator cancels it, and the release leaves the file (${platform})`, async (t) => {
@@ -777,7 +774,7 @@ describe('groups with a turned member, and cancelled turns', () => {
       await frames(page);
       assert.equal(await undoLabel(page), label);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -804,7 +801,6 @@ describe('the hold at multiples of 45 degrees', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const exec = (page, id, args) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${args ? `, ${js(args)}` : ''})).then(() => true)`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -878,7 +874,7 @@ describe('the hold at multiples of 45 degrees', () => {
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 45deg"']]);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a turn on from 43 to 50 degrees leaves the hold and follows the pointer to the degree (${platform})`, async (t) => {
@@ -890,7 +886,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual(await shown(page), { readout: '50°', spoke: null });
       await release();
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 50deg"']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the free modifier turns the hold off, and Shift keeps its steps of 15 degrees (${platform})`, async (t) => {
@@ -908,7 +904,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual(await shown(page), { readout: '30°', spoke: null });
       await release();
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 30deg"']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the hold acts on the absolute angle, and a turn back to 0 gives back the file (${platform})`, async (t) => {
@@ -927,7 +923,7 @@ describe('the hold at multiples of 45 degrees', () => {
       await release();
       await byteExact(page);
       assert.equal(await angle(page, QR), '');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a group is held by the angle of its first member, and its other member keeps its angle to it (${platform})`, async (t) => {
@@ -947,7 +943,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.match(edited, /<div class="qr" data-qr="two" style="width: 240px; rotate: 100deg; translate: -?\d+px -?\d+px" data-group="g1"><\/div>/);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a multiple selection is held by its first object, and the other object turns by the same delta (${platform})`, async (t) => {
@@ -966,7 +962,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual([await angle(page, P), await angle(page, QR)], ['45deg', '65deg']);
       assert.ok(near(await center(page, `.reveal ${P}`), p0) && near(await center(page, `.reveal ${QR}`), q0), 'an object is not turned about its own center');
       assert.match(await render(page), /<p style="rotate: 45deg">Export[\s\S]*<div class="qr" data-qr="three" style="width: 240px; rotate: 65deg"><\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Esc during a drag held at 45 degrees puts the page and the file back (${platform})`, async (t) => {
@@ -981,7 +977,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.equal(await angle(page, QR), '');
       assert.equal(await render(page), page.source);
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'the cancelled drag is in the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

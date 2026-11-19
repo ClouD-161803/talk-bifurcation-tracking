@@ -32,7 +32,6 @@ const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)
 const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
 const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(platform = 'mac') {
   const page = await browser.newPage();
@@ -144,7 +143,7 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
   await show(page, 'Theorems');
   assert.deepEqual(await heads(page, 'Theorems'), ['Definition 1.', 'Theorem 1 (stable manifold).', 'Proof.']);
   assert.equal(await onTop(page), true);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the submenu Theorem of the Insert menu lists the kinds of the deck, read when it is opened', async (t) => {
@@ -190,7 +189,7 @@ test('the submenu Theorem of the Insert menu lists the kinds of the deck, read w
   await settle(page);
   await byteExact(page);
   assert.deepEqual((await heads(page, 'More theorems')).slice(0, 2), ['Lemma 2.', 'Theorem 3.']);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 for (const platform of ['mac', 'other']) {
@@ -224,7 +223,7 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes(true)'), []);
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.sheetClashes()'), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -306,5 +305,5 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
   await show(page, 'More theorems');
   await pane(page, 'p.theorem[data-kind="conjecture"]');
   assert.deepEqual(await theoremSection(page), { kind: 'conjecture', name: '', note: 'The kind conjecture is not defined in the preamble.' });
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

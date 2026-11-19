@@ -26,7 +26,6 @@ describe('the close and keys of Slide Sorter', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform, { n = 0 } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -100,7 +99,7 @@ describe('the close and keys of Slide Sorter', () => {
       await openTable(page);
       await click(page, '.beeson-edit-sorter .tile:nth-of-type(3) .pic', { count: 2 });
       await closed(page, 'double click');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -145,7 +144,7 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'Escape');
       await sleep(200);
       assert.equal((await page.evaluate('window.__opened')).length, 2);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -164,7 +163,7 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'Enter');
       await sleep(200);
       assert.equal(await page.evaluate('Math.round(window.BeesonEditorShell.stage.zoom * 100)'), 140);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -189,7 +188,7 @@ describe('the close and keys of Slide Sorter', () => {
       await sleep(100);
       assert.deepEqual(await keysIn(page, 'Slide', ['Duplicate Slide', 'Delete Slide']), { 'Duplicate Slide': dup, 'Delete Slide': del });
       assert.deepEqual(await keysIn(page, 'Edit', ['Duplicate', 'Delete']), { Duplicate: dup, Delete: del });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -232,7 +231,7 @@ describe('the close and keys of Slide Sorter', () => {
         }
         await press(page, 'Escape');
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -266,7 +265,7 @@ describe('the close and keys of Slide Sorter', () => {
       await sleep(100);
       m = await menus(page);
       assert.equal(m.classes.length, 1, 'the Menu key opened no menu');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -285,7 +284,7 @@ describe('the close and keys of Slide Sorter', () => {
       const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r) => r.getAttribute('aria-selected'))`);
       assert.ok(rows.length > 5);
       assert.deepEqual(rows, rows.map(() => 'true'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -326,7 +325,7 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'ArrowRight');
       await sleep(100);
       assert.deepEqual(await tiles(page), { focus: 5, selected: [5] });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -350,7 +349,6 @@ describe('New Slide, Select All, and Delete on tiles', () => {
   const settle = (page) => page.evaluate('new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), 150))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const MOD_A = { mac: '⌘A', other: 'Ctrl+A' };
 
   async function load(t, platform) {
@@ -422,7 +420,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
         await undo(page);
         await settle(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -447,7 +445,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
       await settle(page);
       assert.deepEqual((await tiles(page)).selected, [...Array(n).keys()]);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Edit > Select All and Edit > Delete with a row of the navigator focused (${platform})`, async (t) => {
@@ -474,7 +472,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -526,7 +524,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
         await click(page, await item(page, 'Delete'));
         await settle(page);
         assert.equal(figures(await render(page)), figures(page.source) - 1, 'Delete in the menu of the figure does not delete it');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -564,7 +562,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const rect = (page, selector) => page.evaluate(`(() => { const e = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
   async function load(t, platform, { deck = LAYOUTS, n = 0 } = {}) {
@@ -655,7 +652,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await frames(page);
       await byteExact(page);
       assert.equal(await undoLabel(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a double click on the name of a section head renames its section slide, and Esc keeps the name (${platform})`, async (t) => {
@@ -683,7 +680,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       assert.equal(await undoLabel(page), 'Undo Rename Section');
       await byteExact(page, [['<h2>Chapter one</h2>', '<h2>Part one</h2>']]);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Add Slide popover draws its tiles 120 px wide in three columns, as in Keynote (${platform})`, async (t) => {
@@ -715,7 +712,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await page.waitFor(`document.querySelectorAll('.reveal .slides > section').length === 14`);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal .slides > section')[5].matches('.split')`), true);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Distribute centers one element on the slide, with Align to Selection dimmed for it (${platform})`, async (t) => {
@@ -745,7 +742,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       const framed = await rect(page, SELECTED);
       assert.ok(Math.abs(framed.y - slide.y) <= 1.5, `the figure is centered at ${framed.y}, and the slide at ${slide.y}`);
       await roundTrip(page, both);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Distribute is dimmed for two elements with Align to Slide and with Align to Selection (${platform})`, async (t) => {
@@ -760,7 +757,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
         assert.equal((await state(page, 'arrange.distribute.horizontal')).enabled, false, `two elements are distributed with Align to ${ref}`);
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Arrowhead at Start in the Line pane and in Format > Line writes marker-start alone (${platform})`, async (t) => {
@@ -801,7 +798,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await frames(page);
       await byteExact(page, [[end, start]]);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

@@ -29,7 +29,6 @@ describe('readouts and X and Y of a group', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
@@ -88,7 +87,7 @@ describe('readouts and X and Y of a group', () => {
       await frames(page);
       f = await fieldsOf(page);
       assert.ok(near(readout.w, f.w) && near(readout.h, f.h), `after the resize the fields read ${js(f)}, and the last readout ${readout.text}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -158,7 +157,7 @@ describe('readouts and X and Y of a group', () => {
         const tag = (await render(page)).match(/<p style="(width: \d+px; )?translate: -?\d+px -?\d+px">Typed<\/p>/)?.[0];
         assert.ok(tag, 'the box is written with its offset');
         await roundTrip(page, [['A small paragraph.</p>\n', `A small paragraph.</p>\n  ${tag}\n`]]);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -201,7 +200,7 @@ describe('readouts and X and Y of a group', () => {
       const done = await fieldsOf(page);
       same('after the resize, the last readout and the fields', readout, done);
       same('after the resize, the frame and the fields', await frameOf(page), done);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -253,7 +252,7 @@ describe('readouts and X and Y of a group', () => {
       assert.equal(await render(page), typed);
       const { text } = await saveAndReopen(page, `r7-1-${++saves}.html`);
       assert.equal(text, typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -268,7 +267,7 @@ describe('readouts and X and Y of a group', () => {
       await frames(page);
       assert.equal(await page.evaluate(`window.BeesonEditor.selection().length`), 2);
       assert.deepEqual(await positionFieldsOf(page), { x: '', y: '' });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -287,7 +286,7 @@ describe('readouts and X and Y of a group', () => {
     const first = await loadTime(t, platform);
     await first.page.evaluate(`window.BeesonEditor.open(${js(readFileSync(LAYOUTS, 'utf8'))})`);
     const second = await loadTime(t, platform, paused && 3 * first.ms);
-    const errs = [...errors(first.page), ...errors(second.page)];
+    const errs = [...first.page.errors, ...second.page.errors];
     await Promise.all([first.page.close(), second.page.close()]);
     return { first: first.ms, second: second.ms, errs };
   }
@@ -331,7 +330,6 @@ describe('Width and Height of a turned group', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
   const PANEL = '#beeson-edit-panel-format';
@@ -399,7 +397,7 @@ describe('Width and Height of a turned group', () => {
         assert.equal(await render(page), typed, `a second ${field} of ${value} changes the file`);
         assert.deepEqual(await sizeFields(page), read);
         await checkEdit(page, `r14-5-group-${field}-${platform}.html`, turned);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -421,7 +419,7 @@ describe('Width and Height of a turned group', () => {
       assert.ok(m, `the readout is ${js(readout)}`);
       assert.ok(Math.abs(Number(m[1]) - read.w) <= 1 && Math.abs(Number(m[2]) - read.h) <= 1, `the readout ${js(readout)} against the fields ${js(read)}`);
       await checkEdit(page, `r14-5-turned-resize-${platform}.html`, turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -436,7 +434,7 @@ describe('Width and Height of a turned group', () => {
         assert.equal(await fieldValue(page, 'height'), h, `a typed Height of ${h}`);
       }
       await checkEdit(page, `r14-5-height-${platform}.html`, last);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`a typed Height of 1 of a figure with a caption does not write a width of 0 (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -444,7 +442,7 @@ describe('Width and Height of a turned group', () => {
       await typeField(page, 'height', 1);
       const widths = await page.evaluate(`[...document.querySelector(${JSON.stringify(IMG)}).closest('figure').querySelectorAll('img')].map((i) => i.style.width)`);
       assert.ok(widths.length > 0 && widths.every((w) => parseFloat(w) >= 1), `the pictures are written ${JSON.stringify(widths)} wide`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -472,7 +470,6 @@ describe('Align of groups, and slides shown by undo', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   const shown = (page) => page.evaluate('Reveal.getIndices().h');
   const boxOf = (page, selector) => page.evaluate(`(() => {
@@ -557,7 +554,7 @@ describe('Align of groups, and slides shown by undo', () => {
       assert.ok(near(f.left - p.left, f0.left - p0.left) && near(f.top - p.top, f0.top - p0.top), `the members kept their places: ${js({ p0, f0, p, f })}`);
       assert.ok(near(Math.min(p.left, f.left), 0), `the group is at the left edge of the slide: ${js({ p, f })}`);
       await checkEdit(page, `r12-5-align-${platform}.html`, grouped);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Distribute moves a whole group as one object (${platform})`, async (t) => {
@@ -574,7 +571,7 @@ describe('Align of groups, and slides shown by undo', () => {
       const p = await boxOf(page, ':scope > p'), f = await boxOf(page, ':scope > figure');
       assert.ok(near(f.left - p.left, f0.left - p0.left) && near(f.top - p.top, f0.top - p0.top), `the members kept their places: ${js({ p0, f0, p, f })}`);
       await checkEdit(page, `r12-5-distribute-${platform}.html`, grouped);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed width keeps the upper left corner of the QR code of the closing slide (${platform})`, async (t) => {
@@ -588,7 +585,7 @@ describe('Align of groups, and slides shown by undo', () => {
       assert.ok(near(now.width, 240), `the width is 240: ${js(now)}`);
       assert.ok(near(now.left, was.left) && near(now.top, was.top), `the corner stays: ${js({ was, now })}`);
       await checkEdit(page, `r12-5-qr-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const [what, act] of [
@@ -618,7 +615,7 @@ describe('Align of groups, and slides shown by undo', () => {
         assert.equal(await render(page), edited);
         assert.equal(await shown(page), FIGURES, 'the redo shows the slide of the change');
         assert.ok(await selectionShown(page), 'the selection is on the shown slide');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
     test(`a held corner grip keeps its diagonal cursor through the resize (${platform})`, async (t) => {
@@ -641,7 +638,7 @@ describe('Align of groups, and slides shown by undo', () => {
       await frames(page);
       assert.notEqual(await cursor(grip.x - 120, grip.y - 32), 'nwse-resize');
       await checkEdit(page, `r12-5-grip-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`a multiple selection is turned by its rotate handle, each element about its own center (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
@@ -664,7 +661,7 @@ describe('Align of groups, and slides shown by undo', () => {
       assert.ok(near(p1.x, p0.x) && near(p1.y, p0.y), `the paragraph kept its center: ${js({ p0, p1 })}`);
       assert.ok([[i1, at(i0)], [q1, at(q0)]].every(([a, b]) => near(a.x, b.x) && near(a.y, b.y)), `the figure kept the center of its picture with its caption: ${js({ c, i0, i1, q0, q1 })}`);
       await checkEdit(page, `r12-5-rotor-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`the Height of a figure selected as one object gives its picture with its caption (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
@@ -686,7 +683,7 @@ describe('Align of groups, and slides shown by undo', () => {
       const h = await fieldValue(page, 'height');
       const pic = await figureBox(page, false);
       assert.ok(near(h, pic.height, 2) && h < 700 - 50, `the picture alone reads ${h} against its box ${js(pic)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -707,7 +704,7 @@ describe('Align of groups, and slides shown by undo', () => {
         assert.ok(near(f.width, f0.width, 3) && near(f.height, f0.height, 3) && f.rotate === `${deg}deg`, `at ${deg} degrees the frame is ${js(f)}, not ${js(f0)} turned`);
       }
       await checkEdit(page, `r12-5-turned-group-${platform}.html`, before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 

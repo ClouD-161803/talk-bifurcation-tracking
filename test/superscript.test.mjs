@@ -107,7 +107,7 @@ for (const platform of PLATFORMS) {
     const { text } = await saveAndReopen(page, `superscript-${platform}.html`);
     page.source = text;
     await byteExact(page);
-    assert.deepEqual(page.errors.filter((e) => !e.includes('/favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 }

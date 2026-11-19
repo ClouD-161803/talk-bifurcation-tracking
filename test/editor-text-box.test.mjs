@@ -99,7 +99,6 @@ describe('the first letter undone and a first Paste', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => press(page, 'Mod+Z').then(() => sleep(250));
@@ -188,7 +187,7 @@ describe('the first letter undone and a first Paste', () => {
         await sleep(300);
         assert.equal((await boxOf(page, 'k'))?.text, 'k', `the key after the undo on slide ${n + 1} is not typed into the box`);
         assert.match(await render(page), /<p[^>]*>k<\/p>/);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -212,7 +211,7 @@ describe('the first letter undone and a first Paste', () => {
       await redo(page);
       const again = await boxOf(page, 'H');
       assert.deepEqual(again && { text: again.text, caret: again.caret }, { text: 'Hello', caret: true }, 'a redo of the word');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -243,7 +242,7 @@ describe('the first letter undone and a first Paste', () => {
       assert.equal((await boxOf(page, 'Pasted'))?.pending, true, 'an undo of the paste does not leave the empty box');
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -263,7 +262,7 @@ describe('the first letter undone and a first Paste', () => {
         await byteExact(page);
         assert.equal(await page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('p')].filter((p) => !p.textContent.trim() && !p.closest('.foot, aside') && !p.hasAttribute('data-generated')).length`), 0, `an empty paragraph is left on slide ${n + 1}`);
         assert.equal((await labels(page)).undo, undoBefore, `the entries of the emptied box are left in the history on slide ${n + 1}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -283,7 +282,7 @@ describe('the first letter undone and a first Paste', () => {
       await sleep(300);
       assert.match(await render(page), /<p[^>]*>k<\/p>/);
       assert.doesNotMatch(await render(page), /<p( style="[^"]*")?>(<br>)?<\/p>/, 'the emptied box is kept in the file');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new text box emptied after another change is taken out of the file in one entry (${platform})`, async (t) => {
@@ -310,7 +309,7 @@ describe('the first letter undone and a first Paste', () => {
       assert.match(await render(page), /<p( style="[^"]*")?>(<br>)?<\/p>/, 'one undo does not give the emptied box back');
       await undo(page);
       assert.equal(await render(page), typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -348,7 +347,7 @@ describe('the first letter undone and a first Paste', () => {
       const written = await page.evaluate(INK);
       assert.ok(near(written.box.left, box.left, 1) && near(written.box.top, box.top, 1), `the first key moves the text box from ${js(box)} to ${js(written.box)}`);
       assert.match(await render(page), /<p style="translate: -?\d+px -?\d+px; width: \d+px">Note<\/p>|<p style="width: \d+px; translate: -?\d+px -?\d+px">Note<\/p>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -369,7 +368,6 @@ describe('an emptied new text box clicked away', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => press(page, 'Mod+Z').then(() => sleep(250));
@@ -423,7 +421,7 @@ describe('an emptied new text box clicked away', () => {
         const was = page.source.split(/<section/)[n + 1].match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`))[1];
         assert.ok(written.includes(`${was}Z</${tag}>`), `the letter is not typed at the end of the text ${at}`);
         assert.doesNotMatch(written, /<p( style="[^"]*")?>(<br>)?<\/p>/, `the emptied box is kept ${at}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -437,7 +435,7 @@ describe('an emptied new text box clicked away', () => {
         await sleep(700);
         assert.deepEqual(await page.evaluate(`({ slide: Reveal.getIndices().h, shown: window.__shown, row: document.activeElement.matches('.beeson-edit-nav .row') })`), { slide: row - 2, shown: [row - 2], row: true }, `the click on the row of slide ${row - 1} from slide ${n + 1}`);
         await byteExact(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -474,7 +472,7 @@ describe('an emptied new text box clicked away', () => {
         assert.equal(await render(page), older);
         await undo(page);
         await byteExact(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });

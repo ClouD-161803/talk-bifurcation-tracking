@@ -35,7 +35,6 @@ const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${JSON.string
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)})`);
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
@@ -69,7 +68,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'arrange.align.bottom');
     await frames(page);
     assert.deepEqual(await places(page), { ...SOURCE, A: '400px 880px', B: '900px 880px' });
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 
@@ -81,7 +80,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'arrange.align.center');
     await frames(page);
     assert.deepEqual(await places(page), { ...SOURCE, A: '650px 300px', B: '650px 300px' });
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 
@@ -92,7 +91,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'arrange.align.left');
     await frames(page);
     assert.deepEqual(await places(page), on ? { ...SOURCE, A: '0px 300px', B: '500px 300px' } : SOURCE);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 
@@ -108,7 +107,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'arrange.distribute.horizontal');
     await frames(page);
     assert.deepEqual(await places(page), { ...SOURCE, B: '950px 300px' });
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 }

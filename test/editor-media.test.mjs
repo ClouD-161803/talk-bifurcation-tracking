@@ -197,7 +197,6 @@ const SAVE_INTO = (folder) => `(async () => {
   return { text: await (await deck.getFile()).text(), files, picked: window.__picked };
 })()`;
 
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 const PNG = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -230,7 +229,7 @@ for (const platform of PLATFORMS) {
     assert.match((await status(page)).message, /1 new file written into media/);
     await reopen(page, saved.text);
     assert.equal((await page.evaluate(SAVE_INTO(`drop-${platform}`))).picked, 0);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: an undo before the save leaves nothing on the disk`, async () => {
@@ -245,7 +244,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(saved.files, {});
     assert.equal(saved.picked, 0);
     assert.equal(await page.evaluate(`(async () => { const root = await navigator.storage.getDirectory(); const dir = await root.getDirectoryHandle('undo-${platform}'); try { await dir.getDirectoryHandle('media'); return true; } catch { return false; } })()`), false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a video from the file chooser gets a poster of its first frame`, async () => {
@@ -283,7 +282,7 @@ for (const platform of PLATFORMS) {
     assert.equal(saved.files['clip-dark.mp4'].size, VIDEO_BYTES);
     assert.deepEqual(saved.files['clip-dark.png'].head, PNG);
     await reopen(page, saved.text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: Replace… and Capture Poster of the inspector change the file of a figure`, async () => {
@@ -327,7 +326,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(Object.keys(again.files).sort(), ['clip-dark.png', 'figure-light.png']);
     assert.deepEqual(again.files['clip-dark.png'].head, PNG);
     await reopen(page, again.text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a video dropped onto an image puts a video in its place`, async () => {
@@ -340,7 +339,7 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, page.source, after);
     await inScope(page);
     assert.match((await shownFrom(page, '.reveal section.present .plate > video', 'poster'))[0], /^blob:/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a save without a press of a key asks for the folder with a dialog`, async () => {
@@ -370,7 +369,7 @@ for (const platform of PLATFORMS) {
       return [(await (await media.getFileHandle('figure-light.png')).getFile()).size, window.__calls];
     })()`);
     assert.deepEqual(written, [IMAGE_BYTES, 2]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: without the pickers, the new files are downloaded with the deck`, async () => {
@@ -391,7 +390,7 @@ for (const platform of PLATFORMS) {
     assert.equal(downloads[0].size, IMAGE_BYTES);
     assert.match((await status(page)).message, /Put figure-light\.png into the folder media next to it/);
     assert.notEqual(await render(page), before);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: an image dropped before the kept files are read at the start is kept`, async () => {
@@ -402,7 +401,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.__release()');
     await page.waitFor('window.__writes.length === 2 && window.__writes.every((w) => w.done)');
     assert.deepEqual(await page.evaluate(ROWS), [['media/figure-light.png', IMAGE_BYTES]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a draft with an image is restored with the image`, async () => {
@@ -452,7 +451,7 @@ for (const platform of PLATFORMS) {
     assert.equal(result.size, IMAGE_BYTES);
     assert.equal(result.draft, 0);
     await page.waitFor(`${ROWS}.then((rows) => rows.length === 0)`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: Replace… on a picture hidden by the mode adds a twin with its step`, async () => {
@@ -478,7 +477,7 @@ for (const platform of PLATFORMS) {
       assert.ok(text.includes(`${hidden}\n`), 'the hidden picture was changed');
       await undoRedo(page, page.source, text);
       await inScope(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     }
   });
 }

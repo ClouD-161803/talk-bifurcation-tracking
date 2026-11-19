@@ -29,7 +29,6 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let last = null;
 
@@ -123,7 +122,7 @@ for (const platform of PLATFORMS) {
     assert.ok(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role="menuitem"]')].some((i) => i.textContent.includes('Use Current View'))`));
     await press(page, 'Escape');
     await saved(page, [scaled]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag from the edge of a surface moves it (${platform})`, async () => {
@@ -138,7 +137,7 @@ for (const platform of PLATFORMS) {
     assert.ok(moved && Number(moved[1]) > 20, 'the surface is not moved to the left');
     await roundTrip(page, [[tag, moved[0]]], 'Move');
     assert.equal(await page.evaluate(`Beeson.surfaces.find((s) => document.querySelector('.reveal section.present').contains(s.el)).view().azimuth`), before);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Use Current View writes the camera to the surface of the next slide that shares it (${platform})`, async () => {
@@ -161,7 +160,7 @@ for (const platform of PLATFORMS) {
     const next = await page.evaluate(`Beeson.surfaces.find((s) => document.querySelector('.reveal section.present').contains(s.el)).view()`);
     assert.deepEqual([Math.round(next.azimuth), Math.round(next.elevation)], [az, el]);
     await saved(page, edits);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag on a surface shows its azimuth and elevation at the pointer, and the fields follow it (${platform})`, async () => {
@@ -188,6 +187,6 @@ for (const platform of PLATFORMS) {
     const tag = '<div class="surface" data-function="effective-potential" data-mu="0.05">';
     await roundTrip(page, [[tag, tag.replace('>', ` data-azimuth="${m[1]}" data-elevation="${m[2]}">`)]], 'Use Current View');
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').closest('.ed-num').classList.contains('turned')`), false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

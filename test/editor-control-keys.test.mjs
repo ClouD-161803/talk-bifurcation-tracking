@@ -30,7 +30,6 @@ describe('the keys after a click on a control', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   let saves = 0;
 
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...el.classList].filter((c) => !c.startsWith('beeson-') && c !== 'visible' && c !== 'current-fragment').join('.'))`);
@@ -66,7 +65,7 @@ describe('the keys after a click on a control', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r7-10-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -297,7 +296,7 @@ describe('the keys after a click on a control', () => {
       const text = await render(page);
       assert.ok(text.includes('<img class="for-light" src="demo/figure-light.png" alt="Zero-velocity curves of the Earth–Moon system, light version" style="scale: -1 1">'), 'the alt or Paper of the dark image is written on the light image');
       assert.ok(text.includes('<img class="for-dark white-figure" src="demo/figure-dark.png" alt="Curves of the dark version" style="scale: -1 1">'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 

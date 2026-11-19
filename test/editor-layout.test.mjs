@@ -57,7 +57,6 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const shownFrames = (page) => page.evaluate(`(() => {
   const frames = [...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden && f.getBoundingClientRect().width).length;
   const group = [...document.querySelectorAll('.beeson-frame.union.group')].some((f) => !f.hidden);
@@ -160,7 +159,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'slide.layout.content');
     assert.equal(await render(page), readFileSync(LAYOUTS, 'utf8'));
     assert.equal((await state(page, 'slide.reset')).enabled, false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Send to Back and Bring to Front of a QR code in the flow write a z-index on ${platform}`, async () => {
@@ -193,7 +192,7 @@ for (const platform of PLATFORMS) {
     await byteExact(page, backward);
     assert.deepEqual(await drawnOver(page), { who: 'text', sub: 'qr', backdrop: 'qr' }, 'the QR code sent backward is not drawn between the last two texts of the block');
     await saved(page, backward);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a grouped pair is selected, moved, and deleted together, and a locked element is not dragged on ${platform}`, async () => {
@@ -238,7 +237,7 @@ for (const platform of PLATFORMS) {
     await byteExact(page, locked);
     await press(page, KEYS[platform].unlock);
     await byteExact(page, [locked[0], [locked[1][0], locked[1][0].replace(' data-group="g1"', '')]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a rotation by the rotate handle with Shift snaps to 15 degrees, and the angle is shown on ${platform}`, async () => {
@@ -261,7 +260,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, turned);
     await saved(page, turned);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Reset Slide takes the rotation off a QR code and gives back its layout on ${platform}`, async () => {
@@ -279,7 +278,7 @@ for (const platform of PLATFORMS) {
     await byteExact(page, turned);
     await redo(page);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -303,7 +302,6 @@ describe('the tiles of the layout chooser', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -349,7 +347,7 @@ describe('the tiles of the layout chooser', () => {
         assert.deepEqual(drawn.content, [['figure-box', 1200, 120, 600, 800]]);
         assert.deepEqual(drawn.narrow, [['backdrop', 920, 0, 1000, 1080]]);
         assert.deepEqual(drawn.wide, []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -360,7 +358,7 @@ describe('the tiles of the layout chooser', () => {
       await frames(page);
       const made = await render(page);
       assert.equal((made.match(/class="figure-box"/g) ?? []).length, (before.match(/class="figure-box"/g) ?? []).length);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the well Slide Layout draws the block of the figure for Content and Content, Narrow, and not for Content, Wide (${platform})`, async (t) => {
@@ -376,7 +374,7 @@ describe('the tiles of the layout chooser', () => {
         assert.equal(await name(), label);
         assert.equal(await blocks(), n, `the block of the figure in the well for ${label}`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -423,7 +421,6 @@ describe('a QR code kept across Closing', () => {
     await page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
     await settle(page);
   };
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 1) => Math.abs(a - b) <= by;
 
   async function load(t, platform, n, deck = DECK) {
@@ -496,14 +493,14 @@ describe('a QR code kept across Closing', () => {
       assert.equal(await render(page), before, 'the change back to Closing does not give the text again');
       const back = (await codes(page)).at(-1);
       assert.ok(near(back.x, was.x) && near(back.y, was.y) && back.width === was.width, js({ was, back }));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Title to Closing keeps the drawn place and size of a placed QR code, in one entry of the history (${platform})`, async (t) => {
       const page = await placed(t, platform, TITLE, { x: 1300, y: 200 });
       await keeps(page, 'slide.layout.closing', 320);
       assert.match(await layout(page), /\bclosing\b/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Closing to Title to Section keeps the place of a QR code on the title slide (${platform})`, async (t) => {
@@ -519,7 +516,7 @@ describe('a QR code kept across Closing', () => {
       assert.equal(now.width, was.width);
       await undo(page);
       assert.equal(await render(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a QR code without a place takes the place and the size of the new layout (${platform})`, async (t) => {
@@ -532,7 +529,7 @@ describe('a QR code kept across Closing', () => {
       assert.equal(first.width, 320, `the QR code does not take the width of the title slide: ${js(first)}`);
       assert.equal(first.position, 'relative');
       assert.ok((await render(page)).includes(tag), 'the tag of the QR code is changed');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const [name, n, insert] of [['title slide', LAYOUT_TITLE, false], ['content slide', LAYOUT_MATH, true]]) {
@@ -555,7 +552,7 @@ describe('a QR code kept across Closing', () => {
           await undo(page);
           assert.equal(await render(page), base, `one undo does not take the drag of the handle ${handle} off`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -573,7 +570,7 @@ describe('a QR code kept across Closing', () => {
       for (const r of texts) assert.ok(b.right <= r.left || b.left >= r.right || b.bottom <= r.top || b.top >= r.bottom, `the QR code lies over a text: ${js({ b, r })}`);
       assert.equal(q.position, 'relative');
       t.diagnostic(`the new QR code is at ${js(b)} in slide px`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Title to Section keeps the translate of a QR code in the flow as text (${platform})`, async (t) => {
@@ -582,7 +579,7 @@ describe('a QR code kept across Closing', () => {
       await exec(page, 'slide.layout.section');
       assert.match(await layout(page), /\bsection\b/);
       assert.equal((await render(page)).match(NEW)[0], tag);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -606,7 +603,7 @@ describe('a QR code kept across Closing', () => {
         assert.equal(await render(page), before, 'the undo does not give the text before the change byte for byte');
         await redo(page);
         assert.equal(await render(page), after, 'the redo does not give the text after the change byte for byte');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -639,7 +636,6 @@ describe('a QR code without a px translate', () => {
     await settle(page);
   };
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 1) => Math.abs(a - b) <= by;
 
   async function load(t, platform, translate) {
@@ -686,7 +682,7 @@ describe('a QR code without a px translate', () => {
           await settle(page);
           assert.equal(await render(page), after, 'the redo does not give the text after the change byte for byte');
           assert.deepEqual(await code(page), now);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         });
       }
     }

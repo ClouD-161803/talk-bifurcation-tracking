@@ -45,7 +45,6 @@ async function open(t, hash) {
   return page;
 }
 
-const errorsOf = (page) => page.errors.filter((error) => !error.includes('/favicon.ico'));
 
 const stateOf = (id) => `(() => {
   const video = document.getElementById('${id}'), style = getComputedStyle(video);
@@ -104,7 +103,7 @@ test('two videos of one step are started together, also when one of them is load
   assert.ok(Math.abs(left - right) < 100, `the clips started at ${left} ms and ${right} ms`);
   const [a, b] = await page.evaluate(`[left, right].map((video) => video.getBoundingClientRect().toJSON())`);
   assert.ok(a.right <= b.left && a.top === b.top && a.width === b.width && a.height === b.height, JSON.stringify([a, b]));
-  assert.deepEqual(errorsOf(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a video of the style play shows its poster until its step, and it is played from its step on without being dimmed', { timeout: 120000 }, async (t) => {
@@ -124,7 +123,7 @@ test('a video of the style play shows its poster until its step, and it is playe
   await page.evaluate('Reveal.prev()');
   await page.evaluate('Reveal.prev()');
   await until(page, 'play', poster);
-  assert.deepEqual(errorsOf(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a video shown in the place of another covers it, and the one under it is paused until the step is undone', { timeout: 120000 }, async (t) => {
@@ -145,7 +144,7 @@ test('a video shown in the place of another covers it, and the one under it is p
   assert.ok(again.time <= since + 0.5, `the first clip is at ${again.time} s, ${since} s after the step`);
   await page.evaluate('Reveal.prev()');
   await until(page, 'first', { playing: false, time: 0, opacity: '1', visibility: 'visible', covered: false });
-  assert.deepEqual(errorsOf(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a covered video is rewound once the fade set in the CSS for a covered video is over', { timeout: 120000 }, async (t) => {
@@ -168,7 +167,7 @@ test('a covered video is rewound once the fade set in the CSS for a covered vide
   const { after, visibility } = await page.evaluate('rewind');
   assert.ok(after >= 1500, `the covered clip is rewound ${Math.round(after)} ms after the step`);
   assert.equal(visibility, 'hidden');
-  assert.deepEqual(errorsOf(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a video in a fragment is played from its step on, and it does not call for the step that restores the dimmed fragments', { timeout: 120000 }, async (t) => {
@@ -184,7 +183,7 @@ test('a video in a fragment is played from its step on, and it does not call for
   await page.evaluate('Reveal.prev()');
   await page.evaluate('Reveal.prev()');
   await until(page, 'inside', { playing: false, time: 0 });
-  assert.deepEqual(errorsOf(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the print view shows each video of a step, with the video under a later one hidden', { timeout: 120000 }, async (t) => {

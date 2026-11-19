@@ -285,7 +285,6 @@ describe('grips of a group selected with others', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const names = (page) => page.evaluate('window.BeesonEditor.selection().map((el) => el.localName)');
 
@@ -352,7 +351,7 @@ describe('grips of a group selected with others', () => {
         assert.ok(Math.hypot(g.x - was.x, g.y - was.y) < 1.5, `the grip ${g.handle} is at ${js(g)}, and at ${js(was)} with the group alone`);
       }
       assert.ok(all.some((g) => !g.group), `the heading lost its grips: ${js(all)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a grip of a group selected with another object resizes the group as with the group alone (${platform})`, async (t) => {
@@ -382,7 +381,7 @@ describe('grips of a group selected with others', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r17-5-group-grip-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const modifiers of ['Shift', 'Mod']) {
@@ -396,7 +395,7 @@ describe('grips of a group selected with others', () => {
         assert.deepEqual((await names(page)).sort(), ['figure', 'h2'], 'the heading is not selected with the figure');
         assert.equal(await page.evaluate(`!!window.getSelection().rangeCount && Reveal.getCurrentSlide().querySelector(':scope > h2').contains(window.getSelection().anchorNode)`), false, 'the caret is left in the heading');
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -407,7 +406,7 @@ describe('grips of a group selected with others', () => {
       await click(page, at, { modifiers: 'Shift' });
       await frames(page);
       assert.deepEqual(await names(page), ['h2']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every grip of a figure turned by 30 degrees can be pressed at the Fit zoom (${platform})`, async (t) => {
@@ -452,7 +451,7 @@ describe('grips of a group selected with others', () => {
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection()'), []);
       assert.deepEqual(await slideBox(), rest, 'the slide is not drawn at Fit after the selection is cleared');
       assert.equal(await page.evaluate('(() => { const el = window.BeesonEditorShell.stage.el; return el.scrollWidth - el.clientWidth; })()'), 0);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -553,7 +552,7 @@ describe('the move cursor and the I-beam', () => {
     assert.equal(await cursorAt(page, shape), 'move', 'the words of a shape that is not selected');
     assert.equal(await clicked(page, shape), 'move', 'the words of the selected shape');
     assert.equal(await clicked(page, shape), 'text', 'the words of the shape with the caret');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const handle = (page) => page.evaluate(`(() => { const h = document.querySelector('.beeson-overlay .beeson-handle'); if (h.hidden) return null; const r = h.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
@@ -591,7 +590,7 @@ describe('the move cursor and the I-beam', () => {
     await settle(page);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('td')`), true, 'the cell does not take the caret');
     await toHandle(page);
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 });
 
@@ -616,7 +615,6 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -643,7 +641,7 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
     await frames(page);
     assert.equal(await undoLabel(page), label, 'the press is an entry of the history');
     assert.equal(await render(page), source, 'the figure is moved');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('an undo asked for while a dropped picture is added takes the picture, and not the entry before it', async (t) => {
@@ -671,7 +669,7 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
     await frames(page);
     const again = await render(page);
     assert.ok(again.includes('media/clip-dark.png') && again.includes('data-locked'), 'a redo does not add the picture again');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 });
 
@@ -758,7 +756,7 @@ describe('frames of the selection on dark and light', () => {
       const ends = await looks(page, '.beeson-line-end');
       assert.ok(ends.length > 0, 'the ends of the line are not shown');
       for (const e of ends) assert.equal(e.color, RING, 'the ring of an end of a line');
-      assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -792,7 +790,7 @@ describe('frames of the selection on dark and light', () => {
     await settle(page);
     const colors = await page.evaluate(`(() => { const h = document.querySelector('.beeson-overlay .beeson-handle:not([hidden])'); return { border: getComputedStyle(h).borderTopColor, text: getComputedStyle(h).color }; })()`);
     assert.equal(colors.border, colors.text, 'the border of the handle under the pointer');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const padlocks = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-lock')].filter((d) => !d.hidden).map((d) => {
@@ -861,7 +859,7 @@ describe('frames of the selection on dark and light', () => {
     await pick(page, 'p.plain');
     assert.equal(await page.evaluate(`document.activeElement.matches('p.plain')`), true, 'the paragraph does not have the caret');
     assert.equal((await padlocks(page)).length, 1, 'the text element of the caret does not have a padlock');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('a group has one padlock, and each frame of a multiple selection has its own', async (t) => {
@@ -900,7 +898,7 @@ describe('frames of the selection on dark and light', () => {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: end.x, y: end.y, button: 'left', clickCount: 1 });
     await settle(page);
     assert.equal((await padlocks(page)).length, 1, 'the padlock is not shown again after the drag');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('on a phone, a tap on the padlock locks the selected element', { timeout: 120000 }, async (t) => {
@@ -919,7 +917,7 @@ describe('frames of the selection on dark and light', () => {
     await tap((await padlocks(page))[0]);
     await page.waitFor(`document.querySelector('.reveal section.present .shape.loose').hasAttribute('data-locked')`);
     assert.deepEqual(await selection(page), ['shape rounded loose'], 'the selection is not kept');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const grouping = (page) => page.evaluate(`(() => {
@@ -977,7 +975,7 @@ describe('frames of the selection on dark and light', () => {
     await clear(page);
     await pick(page, 'p.plain');
     assert.equal(await grouping(page), null, 'one element has a group button');
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('the group button adds elements to a group, and takes members out of an entered group', async (t) => {
@@ -1023,7 +1021,7 @@ describe('frames of the selection on dark and light', () => {
     assert.deepEqual(await groupsOf(page, 'p.pair'), [null, null], 'a redo does not dissolve the group');
     await undo(page);
     await byteExact(page);
-    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
   });
 
   for (const id of ['element.delete', 'edit.cut']) {
@@ -1047,7 +1045,7 @@ describe('frames of the selection on dark and light', () => {
       assert.deepEqual(await groupsOf(page, '.shape[data-group], .shape.m2, .shape.m3'), ['g1', 'g1'], 'a group of two members is dissolved');
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1092,7 +1090,6 @@ describe('nested groups, Regroup, and the group tree', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + (el.querySelector('img') ? ':' + el.querySelector('img').alt : '')).sort()`);
   const boxOf = (page, selector) => page.evaluate(`(() => {
@@ -1221,7 +1218,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure', 'p']);
       await checkEdit(page, 'Regroup', SOURCE, `r20-7-regroup-${platform}.html`);
       assert.equal((await state(page, 'arrange.regroup')).enabled, false, 'Regroup is offered on a group that is whole');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a click enters a nested group one level at a time, and Esc goes up again (${platform})`, async (t) => {
@@ -1243,7 +1240,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       await press(page, 'Escape');
       assert.deepEqual(await selected(page), []);
       assert.equal(await render(page), NESTED);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a Shift-click inside an entered group selects two of its three members, which Align Left aligns to each other (${platform})`, async (t) => {
@@ -1264,7 +1261,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.ok(near(c.left, c0.left) && near(c.top, c0.top), 'the third member moved');
       assert.ok(near(a.top, a0.top) && near(b.top, b0.top));
       await checkEdit(page, 'Align Left', page.source, `r20-7-align-left-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag, Bring to Front, and Delete act on a member selected inside a nested group alone (${platform})`, async (t) => {
@@ -1305,7 +1302,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.match(deleted, /A third figure/);
       await undo(page);
       assert.equal(await render(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in a group of two, Align Top aligns the members selected inside it to each other (${platform})`, async (t) => {
@@ -1327,7 +1324,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       await clickText(page, A);
       assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure']);
       await checkEdit(page, 'Align Top', SOURCE, `r20-7-align-top-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Select All selects the lines of the slide, which Group, a drag, Delete, and Copy then take with the rest (${platform})`, async (t) => {
@@ -1368,7 +1365,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.doesNotMatch(await render(page), /<svg class="line"/, 'Delete leaves the line');
       await undo(page);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Duplicate, Paste, and a copy by a drag give a nested group fresh names at every level (${platform})`, async (t) => {
@@ -1401,7 +1398,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       await drag(page, A, { dx: -40, dy: 200, modifiers: platform === 'mac' ? 'Alt' : 'Ctrl' });
       await frames(page);
       check(await copiedLists(page), 'a copy by a drag');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Object List shows a group inside a group as a row under its row, which folds (${platform})`, async (t) => {
@@ -1429,7 +1426,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       const reordered = await render(page);
       assert.equal(reordered.match(/data-group="g2 g1"/g)?.length, 2, reordered);
       assert.ok(reordered.indexOf('A first figure') < reordered.indexOf('A second figure'), reordered);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Rotate Right 90° and Rotate Left 90° turn a figure by a quarter turn as one entry each (${platform})`, async (t) => {
@@ -1445,7 +1442,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       await frames(page);
       assert.match(await render(page), /<img style="width: 200px; rotate: 270deg" src="..\/..\/demo\/figure-dark.png" alt="A straight figure">/);
       await checkEdit(page, 'Rotate Left 90°', SOURCE, `r20-7-left-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the menu of an element holds the layer items, the turns, and the submenus Group, Align, and Distribute (${platform})`, async (t) => {
@@ -1482,7 +1479,7 @@ describe('nested groups, Regroup, and the group tree', () => {
       await hover(page, 'Distribute');
       assert.ok((await menuRows(page, 1)).includes('Distribute Horizontally'));
       await page.evaluate('window.BeesonEditorShell.closeMenus()');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1510,7 +1507,7 @@ describe('nested groups, Regroup, and the group tree', () => {
     await press(page, 'Ctrl+]');
     await frames(page);
     assert.equal((await state(page, 'edit.undo')).label, 'Undo Increase Indent Level', 'Ctrl+] in a list item does not indent it');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 });
 
@@ -1541,7 +1538,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg ? `, ${js(arg)}` : ''})).then(() => true)`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const sel = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + '[' + (e.getAttribute('data-group') ?? '') + ']')`);
   const classes = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => [...e.classList].filter((c) => !c.startsWith('beeson-')).join(' ')).join()`);
@@ -1623,7 +1619,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
       await turnsOnce(page, 'Rotate Left 90°', () => exec(page, 'arrange.rotateLeft'));
       await turnsOnce(page, 'the field Rotation', () => typeField(page, 'angle', 90));
       await turnsOnce(page, 'the rotate handle', () => dragRotor(page, 45));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V19: Select All, Group, and Rotate Right 90° turn a slide with a line as one entry (${platform})`, async (t) => {
@@ -1636,7 +1632,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
       assert.equal(listed.length, 4);
       assert.equal(new Set(listed.map((s) => s.replace(/^\w+\[(\w+).*$/, '$1'))).size, 1, 'Group did not make one group');
       await turnsOnce(page, 'Rotate Right 90°', () => exec(page, 'arrange.rotateRight'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     const lists = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('.shape')].map((e) => e.getAttribute('data-group'))`);
@@ -1661,7 +1657,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
         assert.equal(await render(page), ungrouped);
         await redo(page);
         assert.equal(await render(page), SOURCE);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -1690,7 +1686,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
       await undo(page);
       await undo(page);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V20: Send Backward and Send to Back do not pass the backdrop (${platform})`, async (t) => {
@@ -1726,7 +1722,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
         assert.ok(!['g1', 'g2'].includes(copies[0]));
         await exec(page, 'arrange.ungroup');
         assert.deepEqual((await copied(page)).filter((g) => g !== 'g2 g1'), [null, null]);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -1764,7 +1760,7 @@ describe('turns, Regroup, and layers of inner groups', () => {
       }
       for (let i = 0; i < 5; i++) await undo(page);
       assert.equal(await render(page), turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

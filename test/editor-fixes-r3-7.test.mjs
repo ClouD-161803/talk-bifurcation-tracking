@@ -22,7 +22,6 @@ after(async () => {
   server?.close();
 });
 
-const errorsOf = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 let saves = 0;
 const saved = () => saveAndReopen(last, `fixes-${++saves}.html`);
@@ -102,7 +101,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), after, 'a redo does not write the resize again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a figure without an image, a video, or a QR code is selected without grips`, async () => {
@@ -120,7 +119,7 @@ for (const platform of PLATFORMS) {
     assert.match(await page.evaluate('window.BeesonEditor.render()'), /<img class="white-figure"[^>]* style="width: \d+px"/, 'the paper image is not resized');
     await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -176,7 +175,7 @@ for (const platform of PLATFORMS) {
     await click(page, { x: word.left + 20, y: word.y }, { button: 'right' });
     await sleep(100);
     assert.equal((await selected(page)).text, 'matplotlib figure', 'a right-click inside a selection does not keep it');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a right-click on a word of a paragraph that is not edited puts the text into editing`, async () => {
@@ -192,7 +191,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await sleep(50);
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), true, 'the paragraph is not put into editing');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -241,7 +240,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), false, 'a second Select All does not leave the text');
     const count = await shownSelected(page);
     assert.ok(count >= 3, `a second Select All selects ${count} elements, not every element of the slide`);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -302,7 +301,7 @@ for (const platform of PLATFORMS) {
     const two = await survey(page);
     assert.deepEqual(two.wrong, [], 'with two elements selected, a submenu does not follow its items');
     assert.equal(two.subs['Arrange > Align'], true, 'two elements cannot be aligned');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -355,7 +354,7 @@ for (const platform of PLATFORMS) {
     for (const { path, keys } of sheet) assert.equal(new Set(keys.split(', ')).size, keys.split(', ').length, `${path} lists a key twice`);
     const zoomIn = sheet.find((r) => r.path === 'Zoom In');
     assert.ok(zoomIn?.keys.split(', ').includes(platform === 'mac' ? '⌘=' : 'Ctrl+='), 'Zoom In is listed without its key');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -397,7 +396,7 @@ for (const platform of PLATFORMS) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cut.x, y: cut.y });
     await sleep(700);
     assert.equal(await peekShown(page), true, 'a thumbnail cut by the edge of the list is not previewed');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -447,7 +446,7 @@ for (const platform of PLATFORMS) {
     await hover('Baseline', 1);
     assert.deepEqual(await page.evaluate(`[...[...document.querySelectorAll('.beeson-edit-menu')][2]?.querySelectorAll('.item .label') ?? []].map((l) => l.textContent)`), ['Superscript', 'Subscript']);
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -477,7 +476,7 @@ for (const platform of PLATFORMS) {
     await sleep(100);
     assert.ok(!(await menuRows(page)).some((r) => r.label === 'Edit Text'), 'Edit Text is offered on a figure without a text');
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -518,7 +517,7 @@ for (const platform of PLATFORMS) {
     await sleep(50);
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), true, 'the focus does not go back to the text');
     if (platform === 'mac') assert.equal((await selected(page)).text, 'matplotlib', 'the selected word is lost at the close of the menu');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -562,7 +561,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.match(await page.evaluate('window.BeesonEditor.render()'), /class="figure-box"[^>]* style="translate: -?\d+px -?\d+px"/, 'a redo does not write the move again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -610,7 +609,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), after, 'a redo does not write the resize again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -646,6 +645,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual([qr.checked, qr.disabled], [true, true], 'the switch of a QR code is not held on');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source, 'the switch writes into the file');
     await page.evaluate(`localStorage.removeItem('beeson-edit-constrain-qr')`);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

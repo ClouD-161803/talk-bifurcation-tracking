@@ -22,7 +22,6 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const run = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)}).then(() => true)`);
   let saves = 0;
@@ -54,7 +53,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r9-7-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -93,7 +92,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
         assert.ok((await menuLabels(page)).length > 0, `${width}: the menu » is empty`);
         for (const { id } of bar.buttons) if (id !== 'more') assert.ok(await page.evaluate(`!document.querySelector('.beeson-edit-menu .item[data-command="${id}"]')`), `${width}: ${id} is both in the toolbar and in »`);
         await press(page, 'Escape');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -109,7 +108,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       }
       const page = await load(t, platform, { width: 1600, height: 900, stored: { [TOOLBAR_KEY]: js({ items: null, show: 'icon' }) } });
       assert.ok((await page.evaluate(BAR)).buttons.every((b) => !b.label), 'a label is shown with Icon Only');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -188,7 +187,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       assert.ok(selected.length > 1, 'no word is selected');
       await press(page, key('useSelection'));
       assert.equal(await page.evaluate(`document.querySelector('.beeson-find input')?.value`), selected, 'the selection is not the query of Find');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -236,7 +235,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await run(page, 'help.keys');
       const heads = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-keys h3')].map((h) => h.textContent).filter((h) => !['Other', 'Mouse'].includes(h))`);
       assert.deepEqual(heads, titles.filter((h) => heads.includes(h)));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -259,7 +258,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       assert.equal(await open(page, 'dialog.beeson-edit-link'), false, 'the first Esc does not close the popover');
       assert.ok(await focusIn(page, '.reveal section.present > p'), 'the focus does not go back to the paragraph');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Tab stays inside the sheet of keyboard shortcuts, and Esc closes it at the first press (${platform})`, async (t) => {
@@ -275,7 +274,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await press(page, 'Escape');
       assert.equal(await open(page, 'dialog.beeson-edit-keys'), false, 'the first Esc does not close the sheet');
       assert.equal(await page.evaluate(`document.activeElement.outerHTML.slice(0, 80)`), before, 'the focus does not go back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Return in the field of Grid Settings presses OK, and the field has the focus ring of the editor (${platform})`, async (t) => {
@@ -296,7 +295,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await page.waitFor(`!!document.querySelector('dialog.beeson-grid-sheet[open] input[name="spacing"]')`);
       assert.equal(await page.evaluate(`document.activeElement.value`), '60', 'Return does not apply the spacing');
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -324,7 +323,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
         assert.equal(await shown(), true, 'the show is not opened');
         await page.waitFor('window.BeesonEditor.status().dirty === false').catch(() => assert.fail('the deck is not saved'));
       } else assert.equal(await shown(), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -362,7 +361,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await press(page, 'Escape');
       await frames(page);
       assert.equal(await percentText(page), '10%');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -378,7 +377,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await clickItem(page, '200%');
       await frames(page);
       assert.equal(await face(), '200%');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -404,7 +403,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await press(page, 'Enter');
       assert.equal((await item('file.open')).disabled, 'true', 'Open is not dimmed once added');
       await click(page, '.beeson-edit-customize .done');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -464,7 +463,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       assert.equal(keys.length, 2, `${label} is listed with ${sheet[label]}`);
       assert.ok(keys.some((k) => /[\]\[\\]$/.test(k)) && keys.some((k) => !/[\]\[\\]$/.test(k)), `${label} is listed with ${sheet[label]}`);
     }
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const SHELL = `(() => {
@@ -507,7 +506,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await resizeTo(page, 1440);
       assert.equal((await page.evaluate(SHELL)).nav, null, 'the navigator is shown though it was hidden');
       assert.equal((await stateOf(page, 'view.navigator')).checked, false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -562,7 +561,6 @@ describe('the cuts and the View button', () => {
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const has = (page, id) => page.evaluate(`(() => { try { window.BeesonEditor.state(${js(id)}); return true; } catch { return false; } })()`);
   const menuItems = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].map((m) => ({ label: m.querySelector('.label')?.textContent ?? m.textContent.trim(), checked: m.getAttribute('aria-checked') === 'true' }))`);
@@ -625,7 +623,7 @@ describe('the cuts and the View button', () => {
         visited.push(await page.evaluate(`(() => { const a = document.activeElement; return a && a !== document.body ? (a.closest('[class*="beeson-edit-"]')?.className.match(/beeson-edit-[a-z0-9]+/)?.[0] ?? a.localName) : 'canvas'; })()`));
       }
       assert.ok(!visited.some((v) => v.includes('a11y')), js(visited));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a toolbar customized with the Accessibility button is drawn without it (${platform})`, async (t) => {
@@ -633,7 +631,7 @@ describe('the cuts and the View button', () => {
       const page = await load(t, platform, { storage: { [key]: js({ items: ['toolbar.view', 'view.accessibility', 'separator', 'edit.undo', 'file.open'], show: 'both' }) } });
       const ids = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top .tb')].filter((b) => b.getClientRects().length).map((b) => b.dataset.command)`);
       assert.deepEqual(ids, ['toolbar.view', 'edit.undo', 'file.open']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an edit, a zoom, and a change of slide do not run a check of the deck (${platform})`, async (t) => {
@@ -648,7 +646,7 @@ describe('the cuts and the View button', () => {
       const bar = await page.evaluate(`document.querySelector('.beeson-edit-bottom').innerText`);
       assert.doesNotMatch(bar, /Good to go|Investigate|Accessibility/);
       assert.equal(await page.evaluate(`[...document.querySelectorAll('style')].some((s) => s.textContent.includes('.beeson-edit-a11y'))`), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the outline view is gone, and the thumbnails, the object list, and the Slide Sorter stay (${platform})`, async (t) => {
@@ -665,7 +663,7 @@ describe('the cuts and the View button', () => {
       await exec(page, 'edit.duplicate');
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), SECTIONS.length + 1);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a click on the View button shows and hides the navigator, and it is pressed while the navigator is shown (${platform})`, async (t) => {
@@ -691,7 +689,7 @@ describe('the cuts and the View button', () => {
       await frames(page);
       assert.equal((await state(page, 'view.navigator')).checked, false);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the arrow of the View button lists Slide Sorter, Rulers, and Gridlines with their checks (${platform})`, async (t) => {
@@ -718,7 +716,7 @@ describe('the cuts and the View button', () => {
       const view = await barMenu(page, 'View');
       for (const label of ['Navigator', 'Slide Sorter', 'Steps', 'Notes', 'Rulers', 'Gridlines']) assert.ok(view.includes(label), `the View menu has no ${label}: ${js(view)}`);
       for (const label of ['Outline', 'Light Table', 'Check Accessibility', 'Show Guides']) assert.ok(!view.includes(label), `the View menu has ${label}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Light Table is named Slide Sorter in its command, its table, the keys sheet, and the messages (${platform})`, async (t) => {
@@ -732,7 +730,7 @@ describe('the cuts and the View button', () => {
       await exec(page, 'help.keys');
       await frames(page);
       assert.doesNotMatch(await chromeText(page), /light table|Show Guides|Check Accessibility/i);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Show Guides is cut, and the guides are shown and snapped to while the rulers are shown (${platform})`, async (t) => {
@@ -776,7 +774,7 @@ describe('the cuts and the View button', () => {
       await frames(page);
       assert.deepEqual(await guides(page), [['x', 1013]]);
       await byteExact(page, [[MATH_TAG, MATH_TAG.replace('<section>', '<section data-guides="x1013">')]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the title bar sets the state of the file apart from its name by a gap and a muted color, without a dash (${platform})`, async (t) => {
@@ -795,7 +793,7 @@ describe('the cuts and the View button', () => {
       assert.ok(doc.state.length > 0, 'the state is empty after an edit');
       assert.ok(doc.gap >= 8, `the gap is ${doc.gap} px`);
       assert.notEqual(doc.colors[0], doc.colors[1]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

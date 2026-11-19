@@ -68,7 +68,6 @@ after(async () => {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(window.BeesonEditor.status()))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const js = (v) => JSON.stringify(v);
 
 async function open(platform, deck = 'test-deck.html') {
@@ -126,7 +125,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `table-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   return edited;
 }
 
@@ -194,7 +193,7 @@ test('Option and Right Arrow in the text of a cell move the caret by a word (mac
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present table').rows[0].cells.length`), 2, 'a column is added');
   assert.deepEqual(await focusCell(page), [0, 0]);
   assert.equal(await caretOffset(page), process.platform === 'win32' ? 'Family '.length : 'Family'.length);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 for (const platform of ['mac', 'other']) {
@@ -296,7 +295,7 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'ArrowDown');
     assert.deepEqual(await focusCell(page), [2, 0], 'Down in the last row stays in the table');
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`rows and columns are added and deleted at the cell of the caret, one entry each (${platform})`, async (t) => {
@@ -402,7 +401,7 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `table-keys-${platform}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Header Row and Numbers at the Right are switches of the table (${platform})`, async (t) => {
@@ -460,7 +459,7 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].map((m) => m.getAttribute('aria-label'))`), ['cell menu']);
     assert.deepEqual(await focusCell(page), [2, 1]);
     await press(page, 'Escape');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the Table pane of the inspector shows the cell of the caret and adds a row below it (${platform})`, async (t) => {
@@ -636,7 +635,7 @@ for (const platform of ['mac', 'other']) {
     await settle(page);
     assert.deepEqual(await focusCell(page), [2, 0]);
     assert.ok(!(await asRange(page)));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a range of cells grows over a merged cell, and Select Row and Select Column select its lines (${platform})`, async (t) => {
@@ -662,7 +661,7 @@ for (const platform of ['mac', 'other']) {
     const items = await page.evaluate(`[...document.querySelectorAll('[role=menu][aria-label="cell menu"] [role=menuitem]')].map((r) => r.textContent)`);
     assert.ok(items.some((s) => s.startsWith('Select Row')) && items.some((s) => s.startsWith('Select Column')), items.join());
     await press(page, 'Escape');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Delete clears the text of the cells selected as a block (${platform})`, async (t) => {
@@ -945,7 +944,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function open(platform, { deck = 'test-deck.html', size } = {}) {
     const page = await browser.newPage(size);
@@ -999,7 +997,7 @@ describe('the Table pane, merged cells, and locked controls', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r5-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -1191,7 +1189,7 @@ describe('the Table pane, merged cells, and locked controls', () => {
       await type(page, 'XYZ');
       await settle(page);
       assert.match(await render(page), /XYZ/, 'the unlocked block cannot be typed into');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1213,7 +1211,7 @@ describe('the Table pane, merged cells, and locked controls', () => {
     await settle(page);
     const typed = await render(page);
     assert.ok(typed === locked, `the line of the locked block was broken: ${typed.match(/<p data-locked>.*?<\/p>/s)?.[0]}`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const VIDEOS = 10;
@@ -1277,7 +1275,7 @@ describe('the Table pane, merged cells, and locked controls', () => {
       await tap(page, 'Capture Poster');
       await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}')`);
       assert.equal(await page.evaluate(`!!document.querySelector(${js(ASK)})`), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1299,7 +1297,6 @@ describe('a table selected as an object', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const middle = (r) => ({ x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 });
@@ -1332,7 +1329,7 @@ describe('a table selected as an object', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r9-5-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -1401,7 +1398,7 @@ describe('a table selected as an object', () => {
       await frames(page);
       s = await page.evaluate(TABLE);
       assert.ok(s.none, 'the third Esc does not clear the selection');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Select Table and the move handle select the table as an object, which the arrow keys move and Delete deletes (${platform})`, async (t) => {
@@ -1439,7 +1436,7 @@ describe('a table selected as an object', () => {
       s = await page.evaluate(TABLE);
       assert.ok(!s.table, 'Delete does not delete the table selected as an object');
       await roundTrip(page, 2);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the grips at the left and right edges of a table selected as an object set the widths of its columns (${platform})`, async (t) => {
@@ -1478,7 +1475,7 @@ describe('a table selected as an object', () => {
       assert.ok(Math.abs(wide.left - s.box.left - 60) < 4, `the left edge is moved by ${s.box.left - wide.left} px for a drag of -60 px`);
       assert.ok(Math.abs(s.box.right - wide.right) < 3, 'the right edge is moved by a drag of the left grip');
       await roundTrip(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1520,7 +1517,7 @@ describe('a table selected as an object', () => {
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelector('.reveal section.present table tr').cells.length`), 2, 'Delete Column of the menu of the letter C does not delete the column C');
       await roundTrip(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1582,7 +1579,7 @@ describe('a table selected as an object', () => {
       assert.deepEqual(await shape(page), [1, 1, 1, 1, 1], 'a count of 1 typed into Columns does not take out the last two columns');
       assert.equal((await state(page, 'edit.undo')).label, 'Undo Set Column Count');
       await roundTrip(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1622,7 +1619,7 @@ describe('a table selected as an object', () => {
       await type(page, 'Gap');
       await frames(page);
       assert.match(await render(page), />Gap</, 'a click on Text with the grid open does not insert a text box');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1633,7 +1630,7 @@ describe('a table selected as an object', () => {
       await frames(page);
       const label = await page.evaluate(`document.querySelector('#beeson-edit-panel-format input[data-command="table.header"]')?.parentElement.textContent ?? null`);
       assert.equal(label, 'Header Row', 'the header option of the Table pane is not labeled Header Row');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1669,7 +1666,7 @@ describe('a table selected as an object', () => {
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelector('.reveal section.present table tr:nth-child(2) > td').colSpan`), 2);
       await clearOf(page, 'of the merged cell A2:B3');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

@@ -637,7 +637,6 @@ describe('the slide kept in place at Fit', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
   const PANEL = '#beeson-edit-panel-format';
@@ -692,7 +691,7 @@ describe('the slide kept in place at Fit', () => {
       await frames(page);
       const now = await slideAt(page);
       assert.ok(near(now.x, rest.x, 0.5) && near(now.y, rest.y, 0.5), `after the undo the slide is at ${js(now)}, and at ${js(rest)} at Fit`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`at Fit the slide stays at its place when the picture of a figure past its edge is selected (${platform})`, async (t) => {
@@ -711,7 +710,7 @@ describe('the slide kept in place at Fit', () => {
       await frames(page);
       const then = await slideAt(page);
       assert.ok(near(then.x, rest.x, 0.5) && near(then.y, rest.y, 0.5), `after Esc the slide is at ${js(then)}, and at ${js(rest)} at Fit`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const [handle, dx] of [['e', -80], ['w', 80]]) {
@@ -750,7 +749,7 @@ describe('the slide kept in place at Fit', () => {
         assert.equal(await render(page), edited);
         const { text } = await saveAndReopen(page, `r19-4-group-follow-${handle}-${platform}.html`);
         assert.equal(text, edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

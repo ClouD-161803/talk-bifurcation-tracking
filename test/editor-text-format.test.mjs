@@ -21,7 +21,6 @@ after(async () => {
 const js = (v) => JSON.stringify(v);
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 let saves = 0;
 
 async function load(t, platform, n = 4) {
@@ -50,7 +49,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `r9-6-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
@@ -147,7 +146,7 @@ for (const platform of PLATFORMS) {
       for (const keys of ['F3', 'Shift+F3', 'Mod+Shift+F3']) assert.equal(await prevented(page, keys), true, `${keys} ${where} is left to the browser`);
     }
     assert.equal(await render(page), page.source);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -529,7 +528,7 @@ for (const platform of PLATFORMS) {
       assert.ok(!/hl-target|hl-accent/.test(text), `${name} writes ${line}`);
       const { text: saved } = await saveAndReopen(page, `r9-6-hl-${++saves}.html`);
       assert.equal(saved, text);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 }
@@ -560,6 +559,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await render(page), typed);
     const { text } = await saveAndReopen(page, `r9-6-${++saves}.html`);
     assert.equal(text, typed);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

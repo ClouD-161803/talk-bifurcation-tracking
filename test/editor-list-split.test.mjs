@@ -22,7 +22,6 @@ describe('Return on an empty item mid-list', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -56,7 +55,7 @@ describe('Return on an empty item mid-list', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r11-2-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -148,7 +147,7 @@ describe('Return on an empty item mid-list', () => {
         assert.equal(await render(page), typed);
         const { text } = await saveAndReopen(page, `r11-2-${++saves}.html`);
         assert.equal(text, typed);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -329,7 +328,7 @@ describe('Return on an empty item mid-list', () => {
       await press(page, 'ArrowDown');
       const x4 = await caretX(page);
       assert.ok(Math.abs(x4 - x3) < 20, `after ArrowLeft, ArrowDown puts the caret at x ${x4}, away from its new column at ${x3}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -390,7 +389,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   let saves = 0;
 
@@ -469,7 +467,7 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
         assert.ok(typed.includes(`<p class="fragment" data-fragment-index="1"${place}>W${needle}`), `the W is not the first character of the paragraph, the focus is in ${await page.evaluate('document.activeElement.localName')}`);
         const { text } = await saveAndReopen(page, `r13-6-${++saves}.html`);
         assert.equal(text, typed);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -483,7 +481,7 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r13-6-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   const listPart = (text) => {

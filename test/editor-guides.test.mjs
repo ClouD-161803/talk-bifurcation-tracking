@@ -55,7 +55,6 @@ const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.s
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)})`);
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const box = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect(); return r && !document.querySelector(${JSON.stringify(selector)}).hidden ? { left: r.left, top: r.top, width: r.width, height: r.height } : null; })()`);
 const scale = (page) => page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
 const screen = (page, x, y) => page.evaluate(`(() => {
@@ -153,7 +152,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.deepEqual(await guides(page), []);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`guides are copied, pasted, cleared, hidden, and kept over a reload, on ${platform}`, async () => {
@@ -191,7 +190,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`Reveal.slide(${MATH + 1})`);
     await frames(page);
     assert.deepEqual(await guides(page), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`View > Gridlines draws the grid, and Snap to Grid snaps a figure at the spacing of Grid Settings, on ${platform}`, async () => {
@@ -235,6 +234,6 @@ for (const platform of PLATFORMS) {
     await pressQuote(page, platform);
     await frames(page);
     assert.equal(await box(page, '.beeson-grid'), null);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

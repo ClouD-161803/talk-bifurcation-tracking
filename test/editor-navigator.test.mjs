@@ -21,7 +21,6 @@ after(async () => {
 const js = (v) => JSON.stringify(v);
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 let saves = 0;
 
@@ -74,7 +73,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `r9-2-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
@@ -116,7 +115,7 @@ for (const platform of PLATFORMS) {
     await sleep(800);
     await allDrawn(page, 'after the clicks settle');
     await noRawTex(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`every thumbnail in view shows its slide after the arrow keys in the navigator (${platform})`, async (t) => {
@@ -131,7 +130,7 @@ for (const platform of PLATFORMS) {
     await sleep(800);
     await allDrawn(page, 'after the arrow keys settle');
     await noRawTex(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the thumbnail of a slide with formulas shows the slide after an edit and an undo, never with raw TeX (${platform})`, async (t) => {
@@ -362,7 +361,7 @@ for (const platform of PLATFORMS) {
     docked(wide, 'at 1440 px after 760 px');
     assert.ok(wide.nav && Math.abs(wide.nav.width - 200) <= 1, 'the navigator is not shown again at its width when the window is wide again');
     assert.equal((await state(page, 'view.navigator'))?.checked ?? true, true);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -447,6 +446,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.match(await page.evaluate(PANE_NOTE), /cells A1:C5$/);
     await handlesAtCorners(page, 'after an autofill');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

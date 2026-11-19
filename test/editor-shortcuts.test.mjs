@@ -26,7 +26,6 @@ describe('keys listed in context menus and the sheet', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   let saves = 0;
 
@@ -59,7 +58,7 @@ describe('keys listed in context menus and the sheet', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r8-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -170,7 +169,7 @@ describe('keys listed in context menus and the sheet', () => {
       found.push(...differences(navBar, await page.evaluate(ROWS), 'the navigator'));
       await press(page, 'Escape');
       assert.deepEqual(found, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -187,7 +186,7 @@ describe('keys listed in context menus and the sheet', () => {
     const odd = [...menus, ...sheet].filter(([, keys]) => ODD_PARTS(keys).length || !/^[\x20-\x7E]+$/.test(keys)).map(([label, keys]) => `${label}: ${keys}`);
     assert.deepEqual([...new Set(odd)], []);
     assert.ok(sheet.some(([label, keys]) => label === 'Zoom Out' && keys.split(', ').includes('Ctrl+-')), 'Zoom Out is not listed as Ctrl+-');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   function formulaThenType(page, platform, text) {
@@ -285,7 +284,7 @@ describe('keys listed in context menus and the sheet', () => {
           await frames(page);
           assert.equal((await state(page, 'view.rulers')).checked, !shown, `${key} does not toggle the rulers`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -321,7 +320,7 @@ describe('keys listed in context menus and the sheet', () => {
       await byteExact(page);
       const { text } = await saveAndReopen(page, `r8-4-${++saves}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -453,7 +452,7 @@ describe('keys listed in context menus and the sheet', () => {
           await frames(page);
           assert.ok((await shellBoxes(page)).inspector, 'the Format button does not open the inspector');
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
       assert.deepEqual(narrow, []);
@@ -482,7 +481,6 @@ describe('the key of each menu item runs it', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, size = { width: 1600, height: 1000 }) {
     const page = await browser.newPage(size);
@@ -627,7 +625,7 @@ describe('the key of each menu item runs it', () => {
       await settle(page);
       assert.deepEqual((await state(page)).selected, ['p']);
       assert.equal(await render(page), copied);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Edit > Delete lists the key that deletes the words selected in a text (${platform})`, async (t) => {
@@ -645,7 +643,7 @@ describe('the key of each menu item runs it', () => {
       assert.equal(s.slides, 13);
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector(':scope > p').textContent.includes('matplotlib')`), false);
       await checkEdit(page, `r15-7-delete-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Mod+D duplicates a framed formula after Insert > Formula, and the Edit menu lists its keys (${platform})`, async (t) => {
@@ -666,7 +664,7 @@ describe('the key of each menu item runs it', () => {
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll(':scope > div.math').length`), 2);
       assert.equal(await prevented(page, 'd'), true);
       await checkEdit(page, `r15-7-formula-${platform}.html`, inserted);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Mod+Shift+A and the Delete key act on a framed formula after Insert > Formula (${platform})`, async (t) => {
@@ -688,7 +686,7 @@ describe('the key of each menu item runs it', () => {
       await undo(page);
       await settle(page);
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll(':scope > div.math').length`), 1);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -732,7 +730,7 @@ describe('the key of each menu item runs it', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the cell menu lists the keys of its Add items with the caret in a cell and with the cell selected (${platform})`, async (t) => {
@@ -769,7 +767,7 @@ describe('the key of each menu item runs it', () => {
       await clickText(page, await cell(page));
       await settle(page);
       assert.deepEqual(await itemsIn(page, 'Edit', ['Duplicate']), { Duplicate: { keys: K.duplicate, dimmed: true } });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -801,7 +799,7 @@ describe('the key of each menu item runs it', () => {
       assert.equal((await state(page)).slides, 14);
       assert.equal(await undoLabel(page), 'Undo Duplicate Slide');
       await checkEdit(page, `r15-7-duplicate-slide-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`View > Navigator is checked only while the navigator is drawn (${platform})`, async (t) => {
@@ -821,7 +819,7 @@ describe('the key of each menu item runs it', () => {
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await checks(), { navigator: 'true', slideOnly: 'false', drawn: true });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -862,7 +860,7 @@ describe('the key of each menu item runs it', () => {
       await settle(page);
       assert.equal(await card(page, 'pptx'), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Export To > PowerPoint… with unsaved changes asks to save first, as Present does (${platform})`, async (t) => {
@@ -889,7 +887,7 @@ describe('the key of each menu item runs it', () => {
       await press(page, 'Escape');
       await settle(page);
       assert.equal(await render(page), edited, 'the edits are not kept');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -912,7 +910,6 @@ describe('no Duplicate key printed in a cell', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const count = (page) => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -949,7 +946,7 @@ describe('no Duplicate key printed in a cell', () => {
       await click(page, 'section.present td');
       await frames(page);
       assert.equal(await keyIn(page, 'Slide', 'Duplicate Slide'), '', 'the Slide menu prints a key beside Duplicate Slide that does not run it');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

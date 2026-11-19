@@ -23,7 +23,6 @@ describe('clipboard commands and keys in the menus', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, { deck = 'test-deck.html', size = { width: 1600, height: 1000 }, scheme } = {}) {
     const page = await browser.newPage(size);
@@ -89,7 +88,7 @@ describe('clipboard commands and keys in the menus', () => {
       await sleep(50);
       assert.equal((await state(page, 'edit.cut')).enabled, true, 'Cut is disabled on a range');
       assert.equal((await state(page, 'edit.copy')).enabled, true, 'Copy is disabled on a range');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Paste is a command of the menu of a text, and pastes there as Edit > Paste does (${platform})`, async (t) => {
@@ -121,7 +120,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), fromContext);
       const { text } = await saveAndReopen(page, `r5-3-paste-${platform}.html`);
       assert.equal(text, fromContext);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every command shows the keys it runs on, in its menu and in the sheet of shortcuts, each key once (${platform})`, async (t) => {
@@ -148,7 +147,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.ok(keysOf('Move Slide Down').includes(mac ? '⌥↓' : 'Alt+Down Arrow'), JSON.stringify(keysOf('Move Slide Down')));
       assert.ok(keysOf('Add Row Above').includes(mac ? '⌥↑' : 'Alt+Up Arrow'), 'Add Row Above lost its key');
       for (const r of rows) assert.equal(new Set(r.keys).size, r.keys.length, `${r.label} lists a key twice: ${r.keys}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const scheme of ['light', 'dark']) {
@@ -173,7 +172,7 @@ describe('clipboard commands and keys in the menus', () => {
         assert.ok(colors.defined, 'the chrome does not define --ed-error');
         assert.equal(colors.error, colors.token);
         await press(page, 'Escape');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -206,7 +205,7 @@ describe('clipboard commands and keys in the menus', () => {
         const top = await page.evaluate(`(() => { const t = document.querySelector('.beeson-edit-top'); return { scroll: t.scrollWidth - t.clientWidth, h: t.getBoundingClientRect().height }; })()`);
         assert.ok(top.scroll <= 0, `${width}: the toolbar overflows by ${top.scroll} px`);
         assert.equal(top.h, 52);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -233,7 +232,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-qr-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Shape draws a rounded rectangle from its main part and an arrow from its list, and is pressed while one is drawn (${platform})`, async (t) => {
@@ -276,7 +275,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-arrow-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -336,7 +335,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-lock-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -364,7 +363,6 @@ describe('the Edit menu in the order of Keynote', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
@@ -438,7 +436,7 @@ describe('the Edit menu in the order of Keynote', () => {
     test(`the Edit menu reads Undo, the clipboard and Delete, Duplicate and Select All, then Find (${platform})`, async (t) => {
       const page = await load(t, platform);
       assert.deepEqual(await menuLabels(page, 'Edit'), EDIT);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Edit > Delete deletes the selected words of a text and is dimmed with a bare caret (${platform})`, async (t) => {
@@ -458,7 +456,7 @@ describe('the Edit menu in the order of Keynote', () => {
       assert.equal(await page.evaluate(`document.querySelector(${js(p)}).textContent.startsWith('A with ')`), true);
       assert.equal((await state(page, 'element.delete')).enabled, false);
       await roundTrip(page, [['<p>A paragraph with', '<p>A with']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the list buttons of the Text pane make a selected paragraph a list and a selected list paragraphs (${platform})`, async (t) => {
@@ -489,7 +487,7 @@ describe('the Edit menu in the order of Keynote', () => {
         '<ol>\n    <li class="fragment" data-fragment-index="3">A first step</li>\n    <li class="fragment" data-final>A final step</li>\n  </ol>',
         '<p class="fragment" data-fragment-index="3">A first step</p>\n  <p class="fragment" data-final>A final step</p>',
       ]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`no key of the keyboard sheet runs two commands in one state of the editor (${platform})`, async (t) => {
@@ -525,7 +523,7 @@ describe('the Edit menu in the order of Keynote', () => {
       await frames(page);
       found.push(...(await clashes('the navigator')));
       assert.deepEqual(found, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Find Previous and Change Case each have their key (${platform})`, async (t) => {
@@ -549,7 +547,7 @@ describe('the Edit menu in the order of Keynote', () => {
       await frames(page);
       const text = await page.evaluate(`document.querySelector(${js(p)}).textContent`);
       assert.notEqual(text, 'The lead-in of a display', 'Shift+F3 did not change the case of the words');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const [width, height] of [[1280, 800], [1366, 768], [1600, 1000], [1024, 700]]) {
@@ -583,7 +581,7 @@ describe('the Edit menu in the order of Keynote', () => {
           await frames(page);
           assert.equal((await sheet()).lastsShown, true, 'the last row of a column is not shown at the end of the scroll');
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -609,7 +607,7 @@ describe('the Edit menu in the order of Keynote', () => {
       await clickText(page, '.reveal section.present figure.figure-box figcaption');
       await frames(page);
       assert.equal(await page.evaluate(`document.activeElement?.closest('figcaption')?.textContent ?? null`), 'A caption under a zone.');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -651,7 +649,6 @@ describe('Paste and Match Style and Open Recent', () => {
     for (let i = 0; i < 100 && JSON.stringify(await storedRecents(page)) !== JSON.stringify(names); i++) await wait(page, 50);
     assert.deepEqual(await storedRecents(page), names);
   }
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
 
   async function load(t, platform, { deck = LAYOUTS, n = TEXT, open = true, drafts = false } = {}) {
@@ -778,7 +775,7 @@ describe('Paste and Match Style and Open Recent', () => {
       await roundTrip(page, [[PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline. and plain words</p>')]]);
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes(true)'), []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the menu of a text has Paste and Match Style after Paste, and it pastes the words of copied elements (${platform})`, async (t) => {
@@ -809,7 +806,7 @@ describe('Paste and Match Style and Open Recent', () => {
       await click(page, await itemAt(page, 'Paste'));
       await frames(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Paste and Match Style on the slide pastes the copied block${mac ? ', and ⌥⇧⌘V is left to the browser in a text' : ''} (${platform})`, async (t) => {
@@ -838,7 +835,7 @@ describe('Paste and Match Style and Open Recent', () => {
         [`${PARAGRAPH}\n  <ul>`, `${PARAGRAPH}\n  ${PARAGRAPH.replace('<p>', '<p style="translate: 20px -141px">')}\n  <ul style="translate: 0px -161px">`],
         [`${SMALL}>`, `${SMALL} style="translate: 0px -161px">`],
       ]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Revert to Saved asks first, then shows the file again on the same slide without the draft (${platform})`, async (t) => {
@@ -885,7 +882,7 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.equal(await paragraph(page), 'A paragraph with bold, italic, code, and  inline.');
       assert.equal(await render(page), page.source);
       assert.equal(await card(page, 'recover'), null);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Open Recent lists the decks opened here by name, opens one without the picker, and ends with Clear Menu (${platform})`, async (t) => {
@@ -955,7 +952,7 @@ describe('Paste and Match Style and Open Recent', () => {
       await page.waitFor(ready);
       await wait(page, 300);
       assert.deepEqual((await menuLabels(page, 'File')).slice(0, 2), ['Open…', 'Open Recent']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Clear Menu empties Open Recent at once, while its list is still being written to the database (${platform})`, async (t) => {
@@ -978,7 +975,7 @@ describe('Paste and Match Style and Open Recent', () => {
       return window.BeesonEditorShell.menuItems('File').slice(0, 2).map((i) => i.command ? E.state(i.command).label : '{' + i.label + '}');
     })()`);
       assert.deepEqual(labels, ['Open…', 'Open Recent']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Clear Menu at the start of the editor is kept when the read of Open Recent answers after it (${platform})`, async (t) => {
@@ -1048,7 +1045,7 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.deepEqual((await status(page)).problems, []);
       assert.equal(await page.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog')].some((c) => !c.hidden)`), false);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page).filter((e) => !e.includes('offline')), []);
+      assert.deepEqual(page.errors.filter((e) => !e.includes('offline')), []);
     });
 
     test(`File > Export To > PDF… prints the print view of the saved deck with a page per step (${platform})`, async (t) => {
@@ -1109,7 +1106,7 @@ describe('Paste and Match Style and Open Recent', () => {
       await page.send('Page.bringToFront');
       assert.equal((await status(page)).dirty, true);
       await roundTrip(page, [[step, edited]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Export To > HTML… writes a copy of the deck with its edits, and the deck keeps its file (${platform})`, async (t) => {
@@ -1130,7 +1127,7 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.equal((await status(page)).dirty, true);
       assert.equal(readFileSync(LAYOUTS, 'utf8'), page.source);
       await roundTrip(page, [[PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline.!</p>')]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1157,7 +1154,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
   const js = (v) => JSON.stringify(v);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
   const menus = (page) => page.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`);
   const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -1266,7 +1262,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const bytes = await page.evaluate(`fetch(${js(saved[0].href)}).then((r) => r.arrayBuffer()).then((b) => [...new Uint8Array(b)])`);
       assert.equal(sha(Buffer.from(bytes)), sha(readFileSync('demo/figure-light.png')));
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Save Media as… in the menu of a video downloads the video of the mode shown (${platform})`, async (t) => {
@@ -1282,7 +1278,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const shown = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getBoundingClientRect().width).getAttribute('src')`);
       assert.equal(saved[0].name, shown.split('/').pop());
       assert.ok(['clip-dark.mp4', 'clip-light.mp4'].includes(saved[0].name));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Size and Position… opens the Arrange tab with the focus on W, or on X when W is set by the layout (${platform})`, async (t) => {
@@ -1307,7 +1303,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const width = await figureBox.evaluate(`!document.querySelector('#beeson-edit-num-width').disabled`);
       assert.equal(id, width ? 'beeson-edit-num-width' : 'beeson-edit-num-x');
       await byteExact(figureBox);
-      assert.deepEqual([...errors(page), ...errors(figureBox)], []);
+      assert.deepEqual([...page.errors, ...figureBox.errors], []);
     });
 
     test(`the menu of a slide has Grid and Guides with Gridlines, Snap to Grid, and Grid Settings…, then Rulers (${platform})`, async (t) => {
@@ -1337,7 +1333,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await pick(page, 'Rulers');
       assert.equal((await state(page, 'view.rulers')).checked, !rulers);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Check Spelling While Typing is kept in the browser, set only in the page, and a save leaves the file as it was (${platform})`, async (t) => {
@@ -1366,7 +1362,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       assert.equal(await page.evaluate(`document.querySelector(${js(P)}).spellcheck`), true);
       assert.equal(await page.evaluate(`localStorage.getItem('beeson-spelling')`), null);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a second right-click in a text, or a right-click with ${mac ? '⌥' : 'Alt'} held, opens the menu of the browser (${platform})`, async (t) => {
@@ -1393,7 +1389,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await page.waitFor('window.__context.length === 5');
       assert.deepEqual(await page.evaluate('window.__context'), [true, false, true, false, true]);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the search field of the Help menu lists the commands with their path and keys, Return runs one, and Esc closes the menu (${platform})`, async (t) => {
@@ -1455,7 +1451,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await frames(page);
       assert.equal(await menus(page), 0);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

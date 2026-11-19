@@ -39,7 +39,6 @@ describe('the first click selects the figure', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = 1.5) => Math.abs(a - b) <= by;
   let saves = 0;
 
@@ -198,7 +197,7 @@ describe('the first click selects the figure', () => {
     const { text } = media ? await savedInto(page, media) : await saveAndReopen(page, `r8-1-${++saves}.html`);
     assert.equal(text, edited);
     inScope(text, SOURCE);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
   }
 
@@ -286,7 +285,7 @@ describe('the first click selects the figure', () => {
       await frames(page);
       assert.equal(await page.evaluate(`!!document.activeElement?.matches('figcaption')`), true, 'a click on the caption of a selected picture does not put the caret in it');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag, the arrow keys, and the X and Y fields move the figure from the figure and from its picture (${named(combo)})`, async (t) => {
@@ -586,7 +585,6 @@ describe('the caption moved with its image', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const inside = (a, b) => a.left >= b.left && a.top >= b.top && a.right <= b.right && a.bottom <= b.bottom;
@@ -636,7 +634,7 @@ describe('the caption moved with its image', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r7-9-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -836,7 +834,7 @@ describe('the caption moved with its image', () => {
       await frames(page);
       assert.deepEqual(await selected(page), []);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
   }
@@ -903,7 +901,7 @@ describe('the caption moved with its image', () => {
       await showTab(page, 'Arrange');
       const angle = await page.evaluate(`[...document.querySelectorAll('${PANEL} input')].some((i) => i.closest('label, .ed-field, .ed-row')?.textContent?.includes('Angle') && !i.disabled)`);
       assert.equal(angle, false, 'the Angle field of the Arrange pane is live for a table');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -922,7 +920,7 @@ describe('the caption moved with its image', () => {
       assert.deepEqual(looks.radii, [platform === 'mac' ? '0px' : '50%'], `the grips have the corners ${js(looks.radii)}`);
       assert.deepEqual(looks.sizes, ['11x11'], `the grips have the sizes ${js(looks.sizes)}`);
       assert.equal(looks.rotor, '50%', 'the rotate handle is not round');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

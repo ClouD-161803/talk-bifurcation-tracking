@@ -104,7 +104,6 @@ async function roundTrip(page, edits, label, before = []) {
   await byteExact(page, edits);
 }
 
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let saves = 0;
 
@@ -145,7 +144,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [split]);
     await saved(page, [split]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Return in a nested item splits it, and Backspace at its start takes it out of its list on ${platform}`, async () => {
@@ -159,7 +158,7 @@ for (const platform of PLATFORMS) {
     const out = ['<li>A nested item</li>\n      </ul>\n    </li>', '<li>A </li>\n      </ul>\n    </li>\n    <li>nested item</li>'];
     await roundTrip(page, [out], 'Decrease Indent Level', [nested]);
     await saved(page, [out]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Tab nests a list item in a ul of the item before, and Shift+Tab takes it out on ${platform}`, async () => {
@@ -182,7 +181,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [nested]);
     await saved(page, [nested]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a list is switched between chevrons, numbers, and paragraphs on ${platform}`, async () => {
@@ -203,7 +202,7 @@ for (const platform of PLATFORMS) {
     const ul = [PARAGRAPH, `<ul>\n    ${PARAGRAPH.replace(/^<p>/, '<li>').replace(/<\/p>$/, '</li>')}\n  </ul>`];
     await roundTrip(page, [ul], 'List Style');
     await saved(page, [ul]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a link to a slide is written as href="#/7", from the dialog of Mod+K and from exec on ${platform}`, async () => {
@@ -245,7 +244,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [link]);
     await saved(page, [link]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`superscript, subscript, code, the tones, and Clear Formatting on the words of a selection on ${platform}`, async () => {
@@ -286,7 +285,7 @@ for (const platform of PLATFORMS) {
     const clear = [PARAGRAPH, '<p>A paragraph with bold, italic, code, and \\(x^2\\) inline.</p>'];
     await roundTrip(page, [clear], 'Clear Formatting', [word('<strong><span class="tone-accent">paragraph</span></strong>')]);
     await saved(page, [clear]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the paragraph styles, and Bigger and Smaller along them on ${platform}`, async () => {
@@ -325,7 +324,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'text.style.subheading');
     await byteExact(page, [as('<h3>', '</h3>')]);
     await saved(page, [as('<h3>', '</h3>')]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -349,7 +348,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -455,7 +453,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
     assert.equal(to.turn, 90);
     for (const f of moving) assert.deepEqual([f.still, f.opacity], [from.still, '1'], 'the shape left in place moves or fades');
     assert.deepEqual(to.still, from.still);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   async function formulaKey(page, platform) {
@@ -515,7 +513,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
         assert.equal(await render(page), text, 'the redo does not give the formula back');
         const saved = await saveAndReopen(page, `r23-1-g2-${route}-${platform}.html`);
         assert.equal(saved.text, text);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -530,7 +528,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       await sleep(1300);
       const text = await render(page);
       assert.match(emptySlide(text), /<p( style="[^"]*")? class="small">The swing slows\.<\/p>/, `the space is lost: ${emptySlide(text)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -568,7 +566,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       await clickText(page, EFFECT);
       await pickItem(page, 'Dim');
       await roundTrip(page, edited([[ALPHA, '<p class="fragment semi-fade-out" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`G12: the effect entries of the menu of a row make an element shown with the slide the last step with the effect (${platform})`, async (t) => {
@@ -578,7 +576,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       await clickText(page, await chipOf(page, 'Alpha'));
       await pickItem(page, 'Fade Out');
       await roundTrip(page, edited([[ALPHA, '<p class="fragment fade-out" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -589,7 +587,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
     test(`G7: an empty list item is drawn without its mark in the show and in the print view, and with it in the editor (${platform})`, async (t) => {
       const page = await show(t, 4);
       assert.deepEqual(await page.evaluate(marks(`document.querySelector(${js(SLIDE)})`)), LISTS);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
       const print = await browser.newPage({ width: 1600, height: 900 });
       t.after(() => print.close().catch(() => {}));
       await printView(print, `${server.origin}/${DECK}?print-pdf`);
@@ -599,7 +597,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       const editor = await load(t, platform, 4);
       const drawn = await editor.evaluate(marks(`document.querySelector(${js(SLIDE)})`));
       assert.deepEqual(drawn.map((m) => m[2] !== 'none'), [true, true, true, true, true], `a mark is not drawn in the editor: ${js(drawn)}`);
-      assert.deepEqual(errors(editor), []);
+      assert.deepEqual(editor.errors, []);
     });
   }
 
@@ -628,7 +626,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
           '<figure class="figure-box" style="translate: 0px 40px">\n    <img class="for-dark oval" src="../../demo/figure-dark.png" alt="A pair" style="width: 600px">\n    <img class="for-light oval" src="../../demo/figure-light.png" alt="A pair" style="width: 600px">'],
       ]);
       await roundTrip(page, expected, 'Undo Oval');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -663,7 +661,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       await selectTextElement(page, 'p');
       await exec(page, 'text.tone.text');
       await roundTrip(page, edited([['<p>Body words <span class="tone-accent">in orange</span> here.</p>', '<p>Body words in orange here.</p>']]), 'Undo Text Color');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -698,7 +696,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 
   async function load(t, platform, n = 0, deck = LAYOUTS) {
@@ -839,7 +836,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       assert.deepEqual(items.find((i) => i[0] === 'Increase Indent Level')?.[1], shown.indent);
       assert.deepEqual(items.find((i) => i[0] === 'Decrease Indent Level')?.[1], shown.outdent);
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an insert is named Insert and its kind in Undo, while the menu keeps its label (${platform})`, async (t) => {
@@ -881,7 +878,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await frames(page);
       assert.equal(await undoLabel(page), 'Undo Insert Table');
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new formula is named Insert Formula in Undo, and one left empty is taken off again (${platform})`, async (t) => {
@@ -893,7 +890,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await sleep(400);
       await byteExact(page);
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'the empty formula is still in the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Copy Style and Paste Style carry white-figure, invert, and the mode of a figure to an image and a video (${platform})`, async (t) => {
@@ -934,7 +931,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await click(page, '.reveal section.present .figure-box > video');
       await frames(page);
       assert.equal((await state(page, 'text.pasteStyle')).enabled, false, 'the style of a text is pasted on a figure');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Format Painter carries the style of a figure to the next figure clicked (${platform})`, async (t) => {
@@ -952,7 +949,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const name = shown.includes('dark') ? 'dark' : 'light';
       const before = `<img class="for-${name}" src="../../demo/figure-${name}.png"`;
       await roundTrip(page, page.source.replace(before, `<img class="white-figure" src="../../demo/figure-${name}.png"`));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Change Case with ${KEY[platform].cycle} heads its submenu, and its item cycles the case (${platform})`, async (t) => {
@@ -970,7 +967,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const rows = await page.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-keys .row')].map((r) => [r.firstChild.textContent, r.lastChild.textContent])`);
       await press(page, 'Escape');
       assert.ok(rows.some(([label, keys]) => label === 'Change Case' && keys === KEY[platform].cycle), 'the sheet does not list Change Case');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Smart Web and Email Links writes an a with href at the space after an address, and one undo takes it away (${platform})`, async (t) => {
@@ -1003,7 +1000,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await frames(page);
       assert.equal(await render(page), page.source.replace(mail, mail.replace(' e.g. </p>', ' e.g. http://x.org </p>')));
       await exec(page, 'text.smart.links');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a line of the speaker notes becomes a dash list with a dash and a space, Return, and Backspace (${platform})`, async (t) => {
@@ -1032,7 +1029,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       assert.equal(await undoLabel(page), 'Undo Join Paragraphs');
       const joined = '<aside class="notes">Notes of a content slide.<ul><li>first</li></ul>second<br>after</aside>';
       await roundTrip(page, page.source.replace(listed, joined));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an insert of a script right after a dash item of the speaker notes is an undo of its own (${platform})`, async (t) => {
@@ -1050,7 +1047,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await undo(page);
       assert.equal(await render(page), notes('<br>'));
       assert.equal(await undoLabel(page), 'Undo Arrows');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Arrows and Paragraphs of Format > Text make a line of the notes an item and back (${platform})`, async (t) => {
@@ -1071,7 +1068,7 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await openPath(page, ['Format', 'Text']);
       await choose(page, 'Paragraphs');
       await roundTrip(page, page.source.replace(listed, notes));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1139,7 +1136,6 @@ describe('the keys and Bold in the speaker notes', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
@@ -1206,7 +1202,7 @@ describe('the keys and Bold in the speaker notes', () => {
       }
       assert.equal(await page.evaluate(`getComputedStyle(${NOTES}).fontSize`), font, 'a key resets the zoom of the notes');
       assert.match(await render(page), /typeface of the slides\.\)!@\?dg<\/aside>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1224,7 +1220,7 @@ describe('the keys and Bold in the speaker notes', () => {
       await wait(page);
       assert.equal(await undoLabel(page), 'Undo Bold');
       assert.match(await render(page), /<aside class="notes"><strong>The dis<\/strong>play is held/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1252,7 +1248,7 @@ describe('the keys and Bold in the speaker notes', () => {
       await wait(page);
       await open(page, urlOf(platform), FIGURES);
       assert.deepEqual(await panes(page), { nav: true, inspector: false, format: false }, 'Format closed by hand is opened again');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

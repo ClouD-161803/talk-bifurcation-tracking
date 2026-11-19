@@ -31,7 +31,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const selection = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.className ? '.' + [...e.classList].join('.') : ''))`);
 let saves = 0;
@@ -65,7 +64,7 @@ async function roundTrip(page, undos = 1) {
   await page.evaluate('window.showDirectoryPicker = async () => navigator.storage.getDirectory()');
   const { text } = await saveAndReopen(page, `r9-9-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
@@ -488,7 +487,7 @@ test('other: a poster is captured from the Poster Frame slider when each seek of
   await captured(page, `window.BeesonEditor.render() !== ${js(before)}`);
   assert.ok(await page.evaluate('window.__lateSeeks.length > 0'), 'no seek of the capture is delayed');
   assert.match(await render(page), /poster="media\/clip-light\.png"/);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 const OVER = `((el) => {
@@ -637,7 +636,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   assert.deepEqual(await selection(page), []);
   assert.equal(await page.evaluate('window.__played.paused'), true, 'the video plays on after a change of the selection');
   assert.equal(await render(page), edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 for (const platform of PLATFORMS) {

@@ -29,7 +29,6 @@ after(async () => {
 const js = (v) => JSON.stringify(v);
 const count = (page, selector) => page.evaluate(`Reveal.getCurrentSlide().querySelectorAll(${js(selector)}).length`);
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const active = (page) => page.evaluate(`document.activeElement?.localName`);
 const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + (el.classList.contains('math') ? '.math' : ''))`);
 const plain = (page) => page.evaluate('navigator.clipboard.readText()');
@@ -99,7 +98,7 @@ for (const platform of PLATFORMS) {
     await clipKey(page, 'cut');
     await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('figure').length === 1`);
     assert.equal(await undoLabel(page), 'Undo Cut');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the clipboard keys copy and paste a figure selected in the Object List (${platform})`, async (t) => {
@@ -179,7 +178,7 @@ for (const platform of PLATFORMS) {
     const saved = await page.evaluate('window.BeesonEditor.render()');
     assert.equal(times(saved, DISPLAY), 2, 'the deck does not have two displays with the TeX and its colored symbol');
     assert.equal(times(saved, STEP), 2, 'the copy of the display is not at its step');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the copy key in the TeX field copies only the selected TeX once the selection is changed (${platform})`, async (t) => {
@@ -216,7 +215,7 @@ for (const platform of PLATFORMS) {
     const saved = await page.evaluate('window.BeesonEditor.render()');
     assert.equal(times(saved, FORMULA), 2, 'the deck does not have the pasted formula as TeX');
     assert.ok(saved.includes(`slide.Gamma ${FORMULA} item.Z</p>`), 'the paragraph is not saved with the pasted words');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`TeX pasted into a text with Edit > Paste is typeset (${platform})`, async (t) => {
@@ -228,7 +227,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`Promise.resolve(window.BeesonEditor.exec('edit.paste', ${js(INLINE)})).then(() => true)`);
     await page.waitFor(`${p}.querySelectorAll('mjx-container[contenteditable="false"]').length === 1`);
     assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes(`${INLINE}</p>`), 'the paragraph is not saved with the pasted TeX');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a text keeps the copy and the paste of the browser (${platform})`, async (t) => {

@@ -23,7 +23,6 @@ after(async () => {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(window.BeesonEditor.status()))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(platform, deck = 'test-deck.html') {
   const page = await browser.newPage();
@@ -71,7 +70,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `elements-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 for (const platform of ['mac', 'other']) {
@@ -149,7 +148,7 @@ for (const platform of ['mac', 'other']) {
     await settle(page);
     const para = '<p>Export your matplotlib figure with the styles of the template. It will show frameless.</p>';
     assert.equal(await render(page), page.source.replace(para, `${para}\n  ${para.replace('<p>', '<p style="translate: 20px -138px">')}`).replace('<ul style="translate: 0px 20px">', '<ul style="translate: 0px -138px">'));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag with the copy modifier leaves the figure and writes a copy where it is dropped (${platform})`, async (t) => {
@@ -280,7 +279,7 @@ test('Alt+= opens the TeX field of a new formula with edit-platform=other', asyn
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 });
   await sleep(200);
   assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), true);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a code box and a footnote are written at the first input, and a QR code is selected in the column', async (t) => {
@@ -347,5 +346,5 @@ test('a press on the pasteboard around the slide clears the selection, and a dra
   await drag(page, from, { dx: ul.x - from.x, dy: ul.y - from.y });
   assert.equal(await framedCount(page), 2, 'the marquee from the pasteboard does not select the paragraph and the list');
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

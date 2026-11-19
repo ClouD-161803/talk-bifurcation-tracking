@@ -36,7 +36,6 @@ describe('rows of a new table, and Sort', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   const rect = (page, selector) => page.evaluate(`(() => { const e = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -68,7 +67,7 @@ describe('rows of a new table, and Sort', () => {
     assert.equal(await render(page), text);
     const saved = await saveAndReopen(page, `r7-8-${++saves}.html`);
     assert.equal(saved.text, text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = saved.text;
     return text;
   }
@@ -205,7 +204,7 @@ describe('rows of a new table, and Sort', () => {
       const { text } = await saveAndReopen(page, `r7-8-${++saves}.html`);
       assert.equal(text, page.source, 'the save of a deck with empty zones changed the file');
       assert.equal(await page.evaluate(`window.BeesonEditor.status().dirty`), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the QR Code icon of a placeholder inserts a QR code into its zone, and an undo draws the placeholder again (${platform})`, async (t) => {
@@ -261,7 +260,7 @@ describe('rows of a new table, and Sort', () => {
       await redo(page);
       assert.equal(await render(page), edited);
       assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(edited)})`)).problems, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Video icon of a placeholder inserts the file chosen into its zone, as the entry Insert Video (${platform})`, async (t) => {
@@ -285,7 +284,7 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await render(page), edited);
       assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.redo').enabled`), false);
       assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(edited)})`)).problems, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -423,7 +422,6 @@ describe('Alt or Option with an arrow adds rows', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -512,7 +510,7 @@ describe('Alt or Option with an arrow adds rows', () => {
     const added = await render(page);
     const { text } = await saveAndReopen(page, 'r17-10-1.html');
     assert.equal(text, added);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('Option with an arrow is left to the text with the caret in a cell, and the table stays as it is (mac)', async (t) => {
@@ -525,7 +523,7 @@ describe('Alt or Option with an arrow adds rows', () => {
       assert.equal(await render(page), page.source, `${key} changes the file`);
     }
     assert.equal(await undoLabel(page), 'Undo');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const watchKeys = (page) => page.evaluate(`(() => { window.__keys = []; addEventListener('keydown', (ev) => { if (ev.altKey) window.__keys.push(ev.key + ' ' + ev.defaultPrevented); }, true); return true; })()`);
@@ -561,7 +559,7 @@ describe('Alt or Option with an arrow adds rows', () => {
       assert.deepEqual(await watched(page), ['ArrowLeft true', 'ArrowRight true'], 'with the cell selected');
       assert.deepEqual(await size(page), [4, 5]);
       assert.deepEqual(await where(), url);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -588,7 +586,6 @@ describe('Start at, and rows moved by their bars', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -622,7 +619,7 @@ describe('Start at, and rows moved by their bars', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r13-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -951,7 +948,6 @@ describe('a row or column dragged by its bar', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -983,7 +979,7 @@ describe('a row or column dragged by its bar', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-5-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   const rowsOf = (page) => page.evaluate(`[...document.querySelector('.reveal section.present table').rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()).join(' '))`);
@@ -1093,7 +1089,7 @@ describe('a row or column dragged by its bar', () => {
       await frames(page);
       assert.equal(await render(page), page.source, 'a drag canceled by Esc changes the file');
       assert.equal(await undoLabel(page), before, 'a drag canceled by Esc is an entry of the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1118,7 +1114,6 @@ describe('the drop line, and body cells pasted', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -1151,7 +1146,7 @@ describe('the drop line, and body cells pasted', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r17-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -1216,7 +1211,7 @@ describe('the drop line, and body cells pasted', () => {
         await pointer(page, 'mouseReleased', m.x, m.y);
         await wait(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1330,7 +1325,7 @@ describe('the drop line, and body cells pasted', () => {
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.equal(await render(page), now);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1368,7 +1363,7 @@ describe('the drop line, and body cells pasted', () => {
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

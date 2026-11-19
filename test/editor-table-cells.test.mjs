@@ -31,7 +31,6 @@ describe('popovers, the fill handle, and cell frames', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(window.BeesonEditor.status()))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
   const inside = (a, b) => a.left >= b.left - 0.5 && a.top >= b.top - 0.5 && a.right <= b.right + 0.5 && a.bottom <= b.bottom + 0.5;
@@ -91,7 +90,7 @@ describe('popovers, the fill handle, and cell frames', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r8-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -133,7 +132,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-link[open]')`);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the formula sheets are put by the same rule, beside their target inside the canvas and off the text (${platform})`, async (t) => {
@@ -169,7 +168,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       await page.waitFor(`!document.querySelector('.beeson-math')`);
       if ((await render(page)) !== page.source) await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -208,7 +207,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       await frames(page);
       assert.equal(await page.evaluate('getSelection().toString()'), 'styles', `${previous} does not select the match before the caret in a text`);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -233,7 +232,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       s = await state(page, 'play.useTimings');
       assert.deepEqual([s.enabled, s.checked], [false, false], 'Use Rehearsed Timings is live after Clear Timings');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -275,7 +274,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       const corner = await rectOf(page, '.beeson-table-bars .cell');
       const back = middle(await rectOf(page, '.beeson-table-bars .fill'));
       assert.ok(Math.abs(back.x - corner.right) < 6 && Math.abs(back.y - corner.bottom) < 6, 'the fill handle is not back at the corner of the range after the drag');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -323,7 +322,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       return { left: r.left + p('Left'), top: r.top + p('Top'), right: r.right - p('Right'), bottom: r.bottom - p('Bottom') };
     })()`);
       assert.ok(inside(text, one), `the box of the text of the cell at ${js(text)} is drawn under its frame, whose inside is ${js(one)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -356,7 +355,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       await page.waitFor(`!!document.querySelector('dialog.beeson-table-size[open]')`);
       assert.deepEqual(await sizeFields(page), { columns: '4', rows: '9' });
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -386,7 +385,7 @@ describe('popovers, the fill handle, and cell frames', () => {
       await frames(page);
       const text = await roundTrip(page, 4);
       assert.match(text, /<ul>\s*<li class="small">(<span class="tone-accent"><strong>|<strong><span class="tone-accent">)Export your matplotlib figure with the styles of the template\. It will show frameless\.(<\/strong><\/span>|<\/span><\/strong>)<\/li>\s*<\/ul>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a control of the Text pane dimmed for a selected block says why in its tooltip (${platform})`, async (t) => {
@@ -400,7 +399,7 @@ describe('popovers, the fill handle, and cell frames', () => {
           assert.match(title, / (because|since|not|only) /, `the control ${id} is dimmed for ${sel} with the tooltip ${js(title)}, which does not give a reason`);
         }
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -423,7 +422,6 @@ describe('Cut, Copy, and Delete on a range', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -496,7 +494,7 @@ describe('Cut, Copy, and Delete on a range', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r12-7-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -669,7 +667,6 @@ describe('formulas kept in cut and pasted cells', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const plainTable = (s) => s.match(/<h2>A plain table[\s\S]*?<\/table>/)[0];
 
   async function load(t, platform) {
@@ -736,7 +733,7 @@ describe('formulas kept in cut and pasted cells', () => {
       await redo(page);
       assert.equal(await render(page), page.source);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a copy of a bold row pasted onto another row keeps the bold (${platform})`, async (t) => {
@@ -767,7 +764,7 @@ describe('formulas kept in cut and pasted cells', () => {
       assert.equal(await render(page), pasted);
       const { text } = await saveAndReopen(page);
       assert.equal(text, pasted);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a pasted table of the editor keeps only the inline elements of the theme (${platform})`, async (t) => {
@@ -871,7 +868,7 @@ describe('formulas kept in cut and pasted cells', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -896,7 +893,6 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -934,7 +930,7 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r19-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -1007,7 +1003,7 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
       assert.equal(await tables(page), 2, 'the plain text is not pasted as a table');
       const pasted = await render(page);
       assert.ok(pasted.includes(HEAD), `the plain text is not pasted as before:\n${lastTable(pasted)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1043,7 +1039,7 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
       assert.equal(await render(page), page.source);
       await undo(page);
       assert.equal(await render(page), moved);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Move Column Left and Right of a column next to a merged block are dimmed, as its drag is refused (${platform})`, async (t) => {
@@ -1055,7 +1051,7 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
       assert.equal(await enabled(page, 'table.moveColumnLeft'), false);
       assert.equal(await enabled(page, 'table.moveColumnRight'), false);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1112,7 +1108,7 @@ describe('pasted ranges, Move Row, and undo of adds', () => {
           assert.equal(await render(page), page.source);
         }
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

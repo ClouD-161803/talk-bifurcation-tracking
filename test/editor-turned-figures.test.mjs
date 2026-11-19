@@ -30,7 +30,6 @@ describe('Reset Rotation and readouts of turned figures', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const enabled = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`);
 
@@ -181,7 +180,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
       await frames(page);
       await assertUpright(page, rest);
       await undoes(page, thirty, 'Reset Rotation');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure whose images are turned in the file is turned by its rotate handle as one object (${platform})`, async (t) => {
@@ -195,7 +194,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
       for (const tag of s.tags.slice(1)) assert.doesNotMatch(tag, /rotate/, `an image keeps its angle: ${js(s.tags)}`);
       assert.deepEqual(s.turned.slice(1), ['none', 'none']);
       await undoes(page, LEGACY, 'a turn by the rotate handle');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure whose picture was turned alone by a second click is made upright by a typed 0 (${platform})`, async (t) => {
@@ -220,7 +219,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
       await undoes(page, fifty, 'a typed 0 of the figure');
       s = await figureState(page);
       assert.deepEqual(s.turned, ['none', 'none', 'none']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the readout of a nudge and of a drag of a turned figure and text gives the fields X and Y (${platform})`, async (t) => {
@@ -236,7 +235,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
       await frames(page);
       await typeField(page, 'angle', 30);
       await assertNudgeReadout(page, 'the heading at 30 degrees');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the readout of a nudge and of a drag of a turned group gives the fields X and Y of its frame (${platform})`, async (t) => {
@@ -247,7 +246,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
         await assertNudgeReadout(page, `the group at ${deg} degrees`);
         await assertDragReadout(page, await centerOf(page, IMG), `the group at ${deg} degrees`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Width or Height of a turned group keeps its X and Y (${platform})`, async (t) => {
@@ -267,7 +266,7 @@ describe('Reset Rotation and readouts of turned figures', () => {
         await typeField(page, 'width', rest.w);
         await typeField(page, 'height', rest.h);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -297,7 +296,6 @@ describe('sizes of turned figures, and Esc during turns', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const enabled = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`);
 
@@ -399,7 +397,7 @@ describe('sizes of turned figures, and Esc during turns', () => {
           await undo(page);
         }
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a group turned by the field Angle or by its rotate handle and then reset gives back the file before the turns (${platform})`, async (t) => {
@@ -420,7 +418,7 @@ describe('sizes of turned figures, and Esc during turns', () => {
       assert.notEqual(await fieldValue(page, 'angle'), 0);
       await typeField(page, 'angle', 0);
       assert.equal(await render(page), grouped, 'a typed 0 after three turns by the rotate handle');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const route of ['figure of a deck with turned images', 'picture selected alone']) {
@@ -442,7 +440,7 @@ describe('sizes of turned figures, and Esc during turns', () => {
         assert.deepEqual(now.turned, was.turned, `after Esc the figure and its images are drawn at ${js(now.turned)}, not ${js(was.turned)}`);
         assert.equal(await render(page), page.source, 'the text after Esc');
         assert.equal(await fieldValue(page, 'angle'), legacy ? 20 : 0);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -474,7 +472,6 @@ describe('undo of turns where one image is turned', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const enabled = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`);
 
@@ -571,7 +568,7 @@ describe('undo of turns where one image is turned', () => {
       await undo(page);
       assert.deepEqual(await styles(page), [null, 'rotate: 20deg'], 'the images after an undo of Reset Rotation');
       assert.equal(await fieldValue(page, 'angle'), 20);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo of a turn by the rotate handle of a figure with one turned image gives back the opened text (${platform})`, async (t) => {
@@ -582,7 +579,7 @@ describe('undo of turns where one image is turned', () => {
       await undoes(page, ONE, 'a turn by the rotate handle');
       await undo(page);
       assert.deepEqual(await styles(page), [null, 'rotate: 20deg'], 'the images after an undo of the turn');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

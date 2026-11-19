@@ -37,7 +37,6 @@ describe('commands on a figure or its picture', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
 
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...[...el.classList].filter((c) => /^(figure-box|plate|caption|for-dark|for-light)$/.test(c))].join('.'))`);
@@ -209,7 +208,7 @@ describe('commands on a figure or its picture', () => {
       await frames(page);
       assert.equal(await render(page), edited);
       await roundTrip(page, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     }
   }
 
@@ -267,7 +266,7 @@ describe('commands on a figure or its picture', () => {
           assert.ok(!near(turned.x, pic.x, 4) || !near(turned.y, pic.y, 4), `${where} leaves the picture in place`);
           assert.equal(await fieldValue(page, 'angle'), turned.angle, `the Angle field after ${where}`);
           await roundTrip(page, edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         }
       });
     }
@@ -310,7 +309,7 @@ describe('commands on a figure or its picture', () => {
           assert.equal(figureOf(edited, n), locked, `a file dropped onto the locked picture of ${NAMES[n]} changes its figure`);
           assert.match(slideOf(edited, n), /<figure class="figure-box"(?: style="[^"]*")?>\s*<img src="media\/clip-dark\.png"(?: style="[^"]*")?>/, 'the file is not added in a zone of its own');
           await roundTrip(page, edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         }
       });
 
@@ -332,7 +331,7 @@ describe('commands on a figure or its picture', () => {
           assert.equal(tagsOf(edited, STEPPED, ['img']).length, 1);
           assert.deepEqual(await selected(page), [from === 'figure' ? 'figure.figure-box' : `video.for-${mode}`], `the selection after a Replace from the ${from}`);
           await roundTrip(page, edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         }
       });
     }
@@ -370,7 +369,7 @@ describe('commands on a figure or its picture', () => {
             await frames(page);
             assert.equal(await render(page), edited);
             await roundTrip(page, edited);
-            assert.deepEqual(errors(page), []);
+            assert.deepEqual(page.errors, []);
           }
         }
       });
@@ -430,7 +429,7 @@ describe('commands on a figure or its picture', () => {
           await undo(page);
           await frames(page);
           await byteExact(page);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         }
       });
     }
@@ -480,7 +479,7 @@ describe('commands on a figure or its picture', () => {
             await frames(page);
             await byteExact(page);
           }
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         }
       });
     }
@@ -513,7 +512,7 @@ describe('commands on a figure or its picture', () => {
               assert.ok(near(frame.left, flipped.left - inset) && near(frame.top, flipped.top - inset), `the frame after ${where} is at ${Math.round(frame.left)}, ${Math.round(frame.top)}`);
               await roundTrip(page, edited);
             }
-            assert.deepEqual(errors(page), []);
+            assert.deepEqual(page.errors, []);
           }
         }
       });
@@ -574,7 +573,7 @@ describe('commands on a figure or its picture', () => {
             await undo(page);
             await frames(page);
             await byteExact(page);
-            assert.deepEqual(errors(page), []);
+            assert.deepEqual(page.errors, []);
           }
         }
       });
@@ -623,7 +622,7 @@ describe('commands on a figure or its picture', () => {
             await frames(page);
             assert.equal(await render(page), edited);
             await roundTrip(page, edited);
-            assert.deepEqual(errors(page), []);
+            assert.deepEqual(page.errors, []);
           }
         }
       });

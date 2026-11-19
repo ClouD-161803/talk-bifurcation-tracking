@@ -27,7 +27,7 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') && !/404/.test(e));
+const errors = (page) => page.errors.filter((e) => !/404/.test(e));
 const PARA = (words) => `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith(${js(words)}))`;
 const html = (page, words) => page.evaluate(`${PARA(words)}.innerHTML`);
 

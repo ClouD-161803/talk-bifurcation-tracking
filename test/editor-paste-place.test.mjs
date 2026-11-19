@@ -25,7 +25,6 @@ describe('a paste on a slide without its sources', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = async (page) => {
     await page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -123,7 +122,7 @@ describe('a paste on a slide without its sources', () => {
         assert.equal(await render(page), pasted, 'a paste after an undo is not put where the undone copy was');
         const { text } = await saveAndReopen(page);
         assert.equal(text, pasted, 'the save differs from the text');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
 
       test(`2: a ${what} pasted twice after the first copy was moved is put on two places (${platform})`, async (t) => {
@@ -153,7 +152,7 @@ describe('a paste on a slide without its sources', () => {
         const last = await render(page);
         const { text } = await saveAndReopen(page);
         assert.equal(text, last, 'the save differs from the text');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
 
       test(`3: a ${what} pasted twice after its sources were deleted is not put on the copy pasted before the delete (${platform})`, async (t) => {
@@ -182,7 +181,7 @@ describe('a paste on a slide without its sources', () => {
         assert.equal(await render(page), two);
         const { text } = await saveAndReopen(page);
         assert.equal(text, two, 'the save differs from the text');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
 
       test(`4: a ${what} pasted on its own slide after a paste on another slide, and after a copy was moved, is not put on an older copy (${platform})`, async (t) => {
@@ -206,7 +205,7 @@ describe('a paste on a slide without its sources', () => {
         const last = await render(page);
         const { text } = await saveAndReopen(page);
         assert.equal(text, last, 'the save differs from the text');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -232,7 +231,6 @@ describe('a paste on the slide of its sources', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = async (page) => {
     await page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -320,7 +318,7 @@ describe('a paste on the slide of its sources', () => {
     assert.equal(await render(page), done);
     const { text } = await saveAndReopen(page);
     assert.equal(text, done, 'the save differs from the text');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -505,7 +503,6 @@ describe('the Flip row following the picture shown', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)}).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate('window.BeesonEditor.state("edit.undo").label');
   const undo = async (page) => {
     await page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -587,7 +584,7 @@ describe('the Flip row following the picture shown', () => {
       await click(page, '#beeson-edit-panel-format button[data-command="arrange.flipHorizontal"]');
       await frames(page);
       assert.equal(await undoLabel(page), 'Undo Flip Horizontal');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`1: the row Flip of the Arrange pane follows an undo and a redo of Shown in Dark (${platform})`, async (t) => {
@@ -604,7 +601,7 @@ describe('the Flip row following the picture shown', () => {
       await press(page, 'Mod+Shift+Z');
       await sleep(200);
       await followed(page, false, 'after the redo of Shown in Dark');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`1: the row Flip of the Arrange pane is hidden once a flip of the mode hides the image (${platform})`, async (t) => {
@@ -616,7 +613,7 @@ describe('the Flip row following the picture shown', () => {
       await followed(page, true, 'in dark mode after Shown in Dark');
       await flipMode(page);
       await followed(page, false, 'after the flip to light mode');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -671,7 +668,7 @@ describe('the Flip row following the picture shown', () => {
     assert.equal(await render(page), done);
     const { text } = await saveAndReopen(page);
     assert.equal(text, done, 'the save differs from the text');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -756,7 +753,6 @@ describe('a duplicate of a block in the flow', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undoLabel = (page) => page.evaluate('window.BeesonEditor.state("edit.undo").label');
   const undo = async (page) => {
@@ -831,7 +827,7 @@ describe('a duplicate of a block in the flow', () => {
     assert.equal(await render(page), done);
     const { text } = await saveAndReopen(page);
     assert.equal(text, done, 'the save differs from the text');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   const P = ':scope > p';
@@ -992,7 +988,7 @@ describe('a duplicate of a block in the flow', () => {
         assert.equal(await undoLabel(page), `Undo ${how}`);
         await undo(page);
         assert.equal(await render(page), before, `one undo does not give the duplicate back after the ${how}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -1008,7 +1004,7 @@ describe('a duplicate of a block in the flow', () => {
       await cut();
       near(await boxes(ALL), start, 'the slide is not drawn as before the paste after the Cut');
       assert.equal(await render(page), text, 'the file is not given back by the Cut of the paste');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

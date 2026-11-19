@@ -47,7 +47,6 @@ describe('keys typed right after an insert', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const until = async (page, expr, ms = 15000) => {
     for (const end = Date.now() + ms; Date.now() < end; await wait(page, 50)) if (await page.evaluate(expr)) return true;
     return false;
@@ -110,7 +109,7 @@ describe('keys typed right after an insert', () => {
         assert.match(text, written, `a key is lost: ${JSON.stringify(text.split('\n').filter((l) => !source.includes(l)))}`);
         await undoAll(page, source);
         await saved(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -133,7 +132,7 @@ describe('keys typed right after an insert', () => {
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present pre code').length`), 1);
       await undoAll(page, page.source);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every key typed back to back after Insert > Formula reaches its TeX field on ${platform}`, async () => {
@@ -144,7 +143,7 @@ describe('keys typed right after an insert', () => {
       await until(page, `(() => { const f = document.querySelector('.beeson-math textarea'); return !!f && f.value === 'abc d' && f === document.activeElement; })()`);
       const field = await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); return f && { value: f.value, focused: f === document.activeElement }; })()`);
       assert.deepEqual(field, { value: 'abc d', focused: true });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every key typed while Insert > Formula writes its formula reaches its TeX field on ${platform}`, async () => {
@@ -165,7 +164,7 @@ describe('keys typed right after an insert', () => {
       assert.match(await render(page), /<div class="math">\\\[abc d\\\]<\/div>/);
       await undoAll(page, source);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -210,7 +209,7 @@ describe('keys typed right after an insert', () => {
       await page.evaluate(`document.querySelector('.reveal section.present pre code').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`);
       await wait(page, 100);
       assert.equal(await render(page), source, 'the painter wrote a style into a code box');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -235,7 +234,7 @@ describe('keys typed right after an insert', () => {
       const now = await mathItems(page);
       assert.equal(now.gone, 0, `MathJax keeps ${now.gone} typeset items of running heads that are off the page`);
       assert.equal(now.all, first.all);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -300,7 +299,7 @@ describe('keys typed right after an insert', () => {
       await redo(page);
       assert.equal(await render(page), split);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -331,7 +330,6 @@ describe('a new formula as one history entry', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
   async function load(t, platform, n = TEXT, deck = LAYOUTS) {
@@ -416,7 +414,7 @@ describe('a new formula as one history entry', () => {
         assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + '.' + e.classList[0])`), ['div.math'], 'the formula is not selected after the redo');
       });
       assert.match(edited, /<div class="math">\\\[x\^2 \+ y\^2\\\]<\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new display formula closed with a click away keeps its TeX as one entry Insert Formula (${platform})`, async (t) => {
@@ -430,7 +428,7 @@ describe('a new formula as one history entry', () => {
       await sleep(200);
       const edited = await oneEntry(page, 'Insert Formula');
       assert.match(edited, /<div class="math">\\\[\\alpha\\\]<\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new display formula closed with Esc or left empty is taken off without an entry (${platform})`, async (t) => {
@@ -454,7 +452,7 @@ describe('a new formula as one history entry', () => {
       await sheetClosed(page);
       await noEntry(page);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present div.math').length`), 0);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new inline formula of Insert > Formula in a text is one entry, and none after Esc (${platform})`, async (t) => {
@@ -477,7 +475,7 @@ describe('a new formula as one history entry', () => {
       await frames(page);
       const edited = await oneEntry(page, 'Insert Inline Formula');
       assert.match(edited, /<p>A paragraph with [^\n]*\\\(z\\\)[^\n]*<\/p>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -524,7 +522,7 @@ describe('a new formula as one history entry', () => {
         assert.deepEqual(await selected(page), block, 'the block selected after the redo does not take the next command');
         const { text } = await saveAndReopen(page, `r8-6-${++saves}.html`);
         assert.equal(text, page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -599,7 +597,7 @@ describe('a new formula as one history entry', () => {
           await page.evaluate(`Reveal.slide(0)`);
           await frames(page);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

@@ -24,7 +24,6 @@ describe('two lists of one kind joined', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const settle = (page) => page.evaluate('new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), 100))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -58,7 +57,7 @@ describe('two lists of one kind joined', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-11-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -244,7 +243,6 @@ describe('a hand-numbered start kept and Backspace undo', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -277,7 +275,7 @@ describe('a hand-numbered start kept and Backspace undo', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r16-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -398,7 +396,7 @@ describe('a hand-numbered start kept and Backspace undo', () => {
         await undo(page);
         assert.equal(await render(page), dropped);
         await undoAll(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -435,7 +433,7 @@ describe('a hand-numbered start kept and Backspace undo', () => {
         await undo(page);
         assert.equal(await render(page), ended);
         await undoAll(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -493,7 +491,6 @@ describe('Backspace by a locked list, and List None', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -526,7 +523,7 @@ describe('Backspace by a locked list, and List None', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r18-2-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -594,7 +591,7 @@ describe('Backspace by a locked list, and List None', () => {
       const text = await render(page);
       assert.match(text, /<\/ul>\n {2}<p>q(<br>)?<\/p>\n {2}<ul data-locked>/, `the key q is not typed into the paragraph: ${js(text.slice(text.indexOf('<h2>Locked'), text.indexOf('</section>', text.indexOf('<h2>Locked'))))}`);
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a forward Delete in an empty paragraph before a locked list leaves the paragraph and its caret in place (${platform})`, async (t) => {
@@ -606,7 +603,7 @@ describe('Backspace by a locked list, and List None', () => {
       await typedAt(page, page.source, '<p>|</p>', 'q');
       await undoAll(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`after an undo and a redo of Return on an empty nested item, a typed key is written in the empty item (${platform})`, async (t) => {
@@ -640,7 +637,7 @@ describe('Backspace by a locked list, and List None', () => {
       await undo(page);
       assert.equal(await render(page), two);
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`List None on a middle item of a list with an id leaves the id on the first list alone (${platform})`, async (t) => {
@@ -675,7 +672,6 @@ describe('blank-line pastes and Delete between lists', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -762,7 +758,7 @@ describe('blank-line pastes and Delete between lists', () => {
         assert.equal(await render(page), page.source, 'one undo does not give the file back byte for byte');
         await redo(page);
         assert.equal(await render(page), page.source.replace('<li>Bravo</li>', items));
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -777,7 +773,7 @@ describe('blank-line pastes and Delete between lists', () => {
       await redo1(page);
       assert.equal(await render(page), page.source.replace('<li>Bravo</li>', '<li>B</li>\n    <li>vo</li>'));
       await typedAt(page, await render(page), '<li>|vo</li>', 'w');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 

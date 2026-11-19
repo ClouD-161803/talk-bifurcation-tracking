@@ -32,7 +32,7 @@ const status = (page) => page.evaluate('window.BeesonEditor.status()');
 const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const value = (page) => page.evaluate(`document.querySelector('${SHEET} textarea').value`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') && !/404/.test(e));
+const errors = (page) => page.errors.filter((e) => !/404/.test(e));
 
 async function open(platform = 'mac', page = null) {
   page ??= await browser.newPage();

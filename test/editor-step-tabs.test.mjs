@@ -6,7 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { click, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/layers.html';
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let browser;
 let server;
@@ -97,7 +96,7 @@ test('a slide whose steps are cut into ranges has tabs beside it, which show the
   await page.evaluate('Reveal.slide(1)');
   await page.waitFor(`${read('.beeson-step-tabs')}?.length === 4`);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), readFileSync(DECK, 'utf8'));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the tabs fit beside the slide on a phone held across', { timeout: 120000 }, async (t) => {
@@ -108,7 +107,7 @@ test('the tabs fit beside the slide on a phone held across', { timeout: 120000 }
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitFor(`${tab('From step 3')}?.getAttribute('aria-pressed') === 'true'`);
   assert.deepEqual(await shown(page, SWAP), ['new-lead', 'new-step']);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.id || el.className)`);
@@ -128,7 +127,7 @@ test('a row of the Steps pane whose element is hidden at the steps shown shows t
   await click(page, await centerOf(page, `${row('The old lead')}.querySelector('.text')`));
   await page.waitFor(`window.BeesonEditor.selection()[0]?.matches('.fade-out')`);
   assert.deepEqual(await bar(page), ['*Up to step 2', 'From step 3']);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a row of the Object List whose element is hidden at the steps shown shows the steps at which it is seen', { timeout: 120000 }, async (t) => {
@@ -139,5 +138,5 @@ test('a row of the Object List whose element is hidden at the steps shown shows 
   await click(page, await centerOf(page, row('The new lead')));
   await page.waitFor(`${read('.beeson-shown-steps')}?.[1] === '*From step 3'`);
   assert.deepEqual(await selected(page), ['new-lead']);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

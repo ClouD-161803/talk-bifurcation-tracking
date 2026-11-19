@@ -49,7 +49,6 @@ describe('shapes drawn by Insert > Shape', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const free = (platform) => (platform === 'mac' ? 'Meta' : 'Alt');
 
@@ -123,7 +122,7 @@ describe('shapes drawn by Insert > Shape', () => {
       assert.equal((await inserted(page)).shape, shape);
       const { text: saved } = await saveAndReopen(page, `r20-2-insert-${platform}.html`);
       assert.ok(saved.includes(shape));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag in the mode of Insert Shape draws the box, with Shift a square, a click a shape of 240 px, and Esc leaves the mode, on ${platform}`, async () => {
@@ -162,7 +161,7 @@ describe('shapes drawn by Insert > Shape', () => {
       assert.equal((await state(page, 'insert.shape.rounded')).checked, null);
       await drag(page, await screen(page, 300, 700), { dx: 100, dy: 100 });
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the grips resize a shape with a free aspect, Shift on a corner keeps it, the fields W and H write each side, and a flip turns a drawn geometry, on ${platform}`, async () => {
@@ -233,7 +232,7 @@ describe('shapes drawn by Insert > Shape', () => {
       await redo(page);
       await frames(page);
       assert.ok((await shapes(page))[0].d.startsWith('M200 4L'), 'the redo of the outline does not draw the svg again');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Shape pane sets the tone, the fill, the outline, the corners, and the geometry of every selected shape, on ${platform}`, async () => {
@@ -294,7 +293,7 @@ describe('shapes drawn by Insert > Shape', () => {
       assert.deepEqual((await shapes(page)).map((s) => s.d), [null, null]);
       const { text } = await saveAndReopen(page, `r20-2-pane-${platform}.html`);
       assert.equal(text, source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed key starts the words of a selected shape, Return and a double click put the caret at their end, on ${platform}`, async () => {
@@ -364,7 +363,7 @@ describe('shapes drawn by Insert > Shape', () => {
       await frames(page);
       assert.equal(await page.evaluate(`!!document.activeElement.closest('.shape.rounded')`), true);
       await inScope(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a shape is named in the Object List, moved, copied, grouped, locked, and ordered byte for byte, on ${platform}`, async () => {
@@ -427,7 +426,7 @@ describe('shapes drawn by Insert > Shape', () => {
       assert.equal(text, page.source);
       await frames(page);
       assert.deepEqual(await shapes(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Change Layout keeps a shape at its place, and Reset Slide, Reset Position, and Reset Size leave its place and its size, on ${platform}`, async () => {
@@ -462,7 +461,7 @@ describe('shapes drawn by Insert > Shape', () => {
       await exec(page, 'arrange.resetRotation');
       await frames(page);
       assert.ok((await render(page)).includes('<div class="shape rounded" style="width: 500px; height: 300px; translate: 1100px 400px"><p>Card</p></div>'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a press inside a shape without a fill goes through it, and a press on its outline or its words selects it, on ${platform}`, async () => {
@@ -481,7 +480,7 @@ describe('shapes drawn by Insert > Shape', () => {
       await clickText(page, await screen(page, 800, 550));
       await frames(page);
       assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape') ?? false`), true);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -528,7 +527,6 @@ describe('the Text pane on the words of shapes', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
@@ -617,7 +615,7 @@ describe('the Text pane on the words of shapes', () => {
       await exec(page, 'text.bold');
       const { text } = await saveAndReopen(page, `r21-1-v1-${platform}.html`);
       assert.ok(text.includes(`${edits['text.bold']}</div>`));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V17 and V22: Center is checked for the words of a shape, and Align Left aligns them to the left with the class left, on ${platform}`, async () => {
@@ -662,7 +660,7 @@ describe('the Text pane on the words of shapes', () => {
       await byteExact(page, left);
       const { text } = await saveAndReopen(page, `r21-1-v17-${platform}.html`);
       assert.ok(text.includes('<p class="left">Goal</p></div>'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V2: the keys of Rulers and Insert Formula run their commands while a shape is selected, and a letter still starts its words, on ${platform}`, async () => {
@@ -685,7 +683,7 @@ describe('the Text pane on the words of shapes', () => {
       await press(page, 'q');
       await frames(page);
       assert.ok((await render(page)).includes('<div class="shape triangle" style="width: 200px; height: 160px; translate: 1360px 260px"><p>q</p></div>'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V16: Magic Move pairs a shape with its copy that has the step effect Dim, on ${platform}`, async () => {
@@ -697,7 +695,7 @@ describe('the Text pane on the words of shapes', () => {
       assert.equal(ids[0], ids[1]);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V5: Magic Move does not pair a curved arrow with a headless curve, on ${platform}`, async () => {
@@ -707,7 +705,7 @@ describe('the Text pane on the words of shapes', () => {
       assert.doesNotMatch(text, /<svg class="line[^"]*"[^>]*data-id=/, 'a curve is paired with a curve of other heads');
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V3: an outline of 6 or 8 px set on a veil is drawn, and the Outline control reads the drawn outline of a veil, on ${platform}`, async () => {
@@ -735,7 +733,7 @@ describe('the Text pane on the words of shapes', () => {
       assert.equal(await stroke(), '6px');
       const { text } = await saveAndReopen(page, `r21-1-v3-${platform}.html`);
       assert.ok(text.includes('<div class="shape equals fill-translucent weight-6"'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`V4: a press anywhere on the drawn outline of a shape without a fill, and within 6 px of it, hits the shape at each weight, on ${platform}`, async () => {
@@ -757,7 +755,7 @@ describe('the Text pane on the words of shapes', () => {
         const inside = await screen(page, 200 + w + 20, 500);
         assert.equal(await page.evaluate(`document.elementFromPoint(${inside.x}, ${inside.y})?.closest('.shape') ?? null`), null, `a press 20 px inside the outline of ${w} px hits the shape`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -778,7 +776,6 @@ describe('braces, double clicks, and lists in shapes', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   test('a brace of an empty box, e.g. of a shape taken off the slide, is drawn without a number that is not one', () => {
     for (const [w, h, s] of [[0, 0, 0], [0, 0, 3], [3, 3, 3]]) assert.ok(!shapePath('brace', w, h, s).includes('NaN'), `${w} by ${h} with ${s}: ${shapePath('brace', w, h, s)}`);
@@ -818,7 +815,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       assert.deepEqual([c.right, c.left], [0, 0], `${c.size}: the ink reaches ${c.right} px past the right edge and ${c.left} px past the left`);
       assert.ok(c.cusp, `${c.size}: the cusp does not reach the edge`);
     }
-    assert.deepEqual(errors(page), [], js(errors(page)));
+    assert.deepEqual(page.errors, [], js(page.errors));
   });
 
   const PAGE = 'test/pages/editor-r26-3.html';
@@ -874,7 +871,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       await frames(page);
       assert.equal((await words(page)).trim(), 'Build the bridge');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag over the words of a selected locked shape selects them and does not move the shape (${platform})`, async (t) => {
@@ -887,7 +884,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       await frames(page);
       assert.ok((await words(page)).length > 3, `the drag selects ${js(await words(page))}`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Text pane formats the words of a selected shape whose words are a list (${platform})`, async (t) => {
@@ -905,7 +902,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       await redo(page);
       assert.equal(await render(page), after);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Text pane formats a nested list item of a selected shape, after Tab in its words (${platform})`, async (t) => {
@@ -941,7 +938,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       assert.equal(await render(page), indented, 'Sentence case changes the nested Path');
       await exec(page, 'text.bold');
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`after Dashes on a selected shape, its words are formatted by the Text pane (${platform})`, async (t) => {
@@ -963,7 +960,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       await redo(page);
       assert.equal(await render(page), after);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1026,7 +1023,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       await frames(page);
       assert.equal(await page.evaluate(`(() => { const g = document.querySelector('.beeson-overlay .beeson-shape-ghost'); return !!g && !g.hasAttribute('hidden') && g.getBoundingClientRect().width > 0; })()`), false);
       assert.equal(await render(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1071,7 +1068,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       const listed = js(Object.entries(sheet).filter(([, k]) => k.includes('⇥') || k.includes('Tab')));
       assert.equal(sheet['Other > Select Next Object'], keys[0], listed);
       assert.equal(sheet['Other > Select Previous Object'], keys[1], listed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Tab keeps its meaning in a list item, in a table cell, and in a field of a pane (${platform})`, async (t) => {
@@ -1104,7 +1101,7 @@ describe('braces, double clicks, and lists in shapes', () => {
       assert.deepEqual(await selected(page), before, 'Tab in a field changes the selection');
       assert.notEqual(await page.evaluate('document.activeElement.outerHTML.slice(0, 80)'), field, 'Tab does not move the focus');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1244,7 +1241,6 @@ describe('copies of groups and lines, drags on shapes', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}, ${js(arg ?? null)} ?? undefined)).then(() => true)`);
@@ -1291,7 +1287,7 @@ describe('copies of groups and lines, drags on shapes', () => {
         assert.equal(await undoLabel(page), route === 'Copy and Paste' ? 'Undo Paste' : 'Undo Duplicate');
         await undo(page);
         assert.equal(await render(page), SOURCE, 'one undo does not give the file back');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1338,7 +1334,7 @@ describe('copies of groups and lines, drags on shapes', () => {
         await sleep(200);
         const pasted = await lined.evaluate(heads);
         assert.ok(pasted.lines.length === 4 && unique(pasted.ids) && pasted.lines.every((l) => l.own && l.fill === l.stroke), `the pasted lines share a marker: ${js(pasted)}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1393,7 +1389,7 @@ describe('copies of groups and lines, drags on shapes', () => {
       assert.equal(await page.evaluate('getSelection().toString()'), 'Build', 'a drag in the edited words does not select them');
       assert.deepEqual(await shapes(page), ['600px 400px']);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1421,7 +1417,7 @@ describe('copies of groups and lines, drags on shapes', () => {
         assert.equal(await undoLabel(page), 'Undo Title Only');
         await undo(page);
         assert.equal(await render(page), SOURCE, 'one undo does not give the file back');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1453,7 +1449,7 @@ describe('copies of groups and lines, drags on shapes', () => {
         assert.equal(await render(page), expected, 'the redo does not give the formula back');
         const saved = await saveAndReopen(page, `r23-2-h1-${route}-${platform}.html`);
         assert.equal(saved.text, expected);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1477,8 +1473,8 @@ describe('copies of groups and lines, drags on shapes', () => {
       const shown = await underBox(page);
       assert.ok(edited.p > 0 && edited.li > 0, `a placeholder is drawn without a height in the editor: ${js(edited)}`);
       assert.deepEqual(shown, edited, 'the text box under the placeholders is drawn at another place in the show');
-      assert.deepEqual(errors(page), []);
-      assert.deepEqual(errors(editor), []);
+      assert.deepEqual(page.errors, []);
+      assert.deepEqual(editor.errors, []);
     });
   }
 });

@@ -47,7 +47,6 @@ describe('a figure resized by each of its grips', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = TOL) => Math.abs(a - b) <= by;
   const show = (b) => (b ? `${Math.round(b.left)}, ${Math.round(b.top)}, ${Math.round(b.width)} × ${Math.round(b.height)}` : 'nothing');
   const right = (b) => b.left + b.width;
@@ -180,7 +179,7 @@ describe('a figure resized by each of its grips', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, name);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   function changedLines(source, edited) {

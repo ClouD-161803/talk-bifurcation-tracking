@@ -312,7 +312,6 @@ describe('the contrast of the rings around controls', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, { query, file = false, source = readFileSync('test-deck.html', 'utf8'), prepare = '' }) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -357,7 +356,7 @@ describe('the contrast of the rings around controls', () => {
         const bar = await page.evaluate(ON_BAR);
         assert.ok(contrast(bar.ring, bar.bg) >= 3, `Display Options: ${bar.ring} on ${bar.bg} is ${contrast(bar.ring, bar.bg).toFixed(2)}:1`);
         assert.ok(ring.width >= 2 && ring.style === 'solid', JSON.stringify(ring));
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -387,7 +386,7 @@ describe('the contrast of the rings around controls', () => {
         }
         assert.ok(seen.length >= 3, JSON.stringify(seen));
         for (const at of seen) assert.ok(contrast(at.ring, at.bg) >= 3, `${at.what}: ${at.ring} on ${at.bg} is ${contrast(at.ring, at.bg).toFixed(2)}:1`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -413,7 +412,6 @@ describe('the contrast of muted labels and placeholders', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, scheme, { width = 1600, height = 1000 } = {}) {
     const page = await browser.newPage({ width, height });
@@ -462,7 +460,7 @@ describe('the contrast of muted labels and placeholders', () => {
         for (const want of ['1', 'Slide Layout', '100%']) assert.ok(texts.includes(want), `${want} is not among ${js(texts)}`);
         assert.ok(texts.some((x) => /unsaved|saved/i.test(x)), `the save state is not among ${js(texts)}`);
         assert.deepEqual(below(rows, 4.5), []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -490,7 +488,7 @@ describe('the contrast of muted labels and placeholders', () => {
         assert.ok(names.includes('Find') && names.includes('Search'), js(names));
         assert.deepEqual(below(seen, 4.5), []);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -517,7 +515,7 @@ describe('the contrast of muted labels and placeholders', () => {
       })()`));
         assert.match(seen[0].what, /Click to add notes/);
         assert.deepEqual(below(seen, 4.5), []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -544,7 +542,7 @@ describe('the contrast of muted labels and placeholders', () => {
         }
         assert.ok(seen.length >= 6, js(seen));
         assert.deepEqual(below(seen, 3), []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -572,7 +570,7 @@ describe('the contrast of muted labels and placeholders', () => {
       assert.deepEqual(await page.evaluate(OUTSIDE), []);
       await exec(page, 'view.customizeToolbar');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

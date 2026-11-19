@@ -30,7 +30,6 @@ describe('Edit > Undo with a typed value', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const labels = async (page) => [(await state(page, 'edit.undo')).label, (await state(page, 'edit.redo')).label];
   const focused = (page) => page.evaluate(`(() => { const a = document.activeElement; return a ? a.localName + (a.id ? '#' + a.id : '') : null; })()`);
   const fieldValue = (page, id) => page.evaluate(`document.querySelector('#beeson-edit-num-${id}')?.value ?? null`);
@@ -107,7 +106,7 @@ describe('Edit > Undo with a typed value', () => {
         await choose(page, 'Edit', `Undo ${entry}`);
         await choose(page, 'Edit', 'Undo Move');
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -121,7 +120,7 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(await labels(page), ['Undo Move', 'Redo Position']);
       assert.equal(await focused(page), 'input#beeson-edit-num-x', 'the focus left the field');
       assert.equal(await fieldValue(page, 'x'), shown);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Undo of the toolbar after a step of Angle by the up arrow key keeps the focus in Angle (${platform})`, async (t) => {
@@ -138,7 +137,7 @@ describe('Edit > Undo with a typed value', () => {
       await press(page, 'Tab');
       await wait(page, 200);
       assert.equal(await page.evaluate(`!!document.activeElement?.closest('.beeson-edit-inspector')`), true, 'Tab left the inspector');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`after Wide, an undo of a drag of the list brings the report of its items back (${platform})`, async (t) => {
@@ -162,7 +161,7 @@ describe('Edit > Undo with a typed value', () => {
       await wait(page, 300);
       assert.equal(await render(page), wide);
       assert.equal(await title(page), said, 'the report after the undo of the drag');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the report names a picture, a table, and a QR code over texts by their kinds (${platform})`, async (t) => {
@@ -183,7 +182,7 @@ describe('Edit > Undo with a typed value', () => {
       const parts = m[2].split(/, and |, | and /);
       assert.deepEqual([...parts].sort(), ['a QR code', 'a picture', 'a table'], `the report reads ${js(said)}`);
       assert.match(m[2], /^a [^,]+, a [^,]+, and a [^,]+$/, 'three kinds are not named with a serial comma');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the report names two tables and a QR code over texts by their kinds and counts (${platform})`, async (t) => {
@@ -204,7 +203,7 @@ describe('Edit > Undo with a typed value', () => {
       assert.ok(parts.includes('2 tables'), `the report reads ${js(said)}`);
       assert.ok(parts.includes('a QR code'), `the report reads ${js(said)}`);
       assert.equal(new Set(parts).size, parts.length, `a kind is named twice in ${js(said)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the well Slide Layout draws the backdrop of Content, Narrow as its tile does (${platform})`, async (t) => {
@@ -226,7 +225,7 @@ describe('Edit > Undo with a typed value', () => {
       assert.ok(Math.abs(left - (920 * 64) / 1920) < 0.6, `the backdrop of the well starts at ${left}`);
       assert.ok(top <= 0.5 && bottom >= 35.5, `the backdrop of the well runs from ${top} to ${bottom}`);
       assert.ok(right >= 63.5, `the backdrop of the well ends at ${right}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the card of PowerPoint... names the attached file and leaves out the folder of an address (${platform})`, async (t) => {
@@ -246,7 +245,7 @@ describe('Edit > Undo with a typed value', () => {
       assert.match(shown.text, /saved talk-r17\.html/);
       assert.doesNotMatch(shown.text, /index\.html/);
       assert.doesNotMatch(shown.text, /i\.e\. \//, `the card names a folder from the address: ${js(shown.text)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -276,7 +275,6 @@ describe('Redo with a value typed into a field', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const labels = async (page) => [(await state(page, 'edit.undo')).label, (await state(page, 'edit.redo')).label];
   const focused = (page) => page.evaluate(`(() => { const a = document.activeElement; return a ? a.localName + (a.id ? '#' + a.id : '') : null; })()`);
   const fieldValue = (page, id) => page.evaluate(`document.querySelector('#beeson-edit-num-${id}')?.value ?? null`);
@@ -381,7 +379,7 @@ describe('Redo with a value typed into a field', () => {
         await press(page, 'Tab');
         await wait(page, 400);
         assert.equal(await render(page), text, 'Tab wrote the typed value after the redo');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
 
       test(`Undo of the ${how} with the focus in Start at keeps the focus there (${platform})`, async (t) => {
@@ -395,7 +393,7 @@ describe('Redo with a value typed into a field', () => {
         assert.deepEqual(await labels(page), ['Undo List Style', 'Redo Start At']);
         assert.equal(await startFocused(page), true, 'the focus left Start at');
         assert.equal(await startValue(page), '1');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
 
       test(`Undo of the ${how} refuses 2.5 typed into Start at and leaves the file unchanged (${platform})`, async (t) => {
@@ -408,7 +406,7 @@ describe('Redo with a value typed into a field', () => {
         assert.deepEqual(await labels(page), before, 'the undo entered the value or undid the entry before it');
         assert.equal(await startFocused(page), true, 'the focus left Start at');
         assert.equal(await startValue(page), '1');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -437,7 +435,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const labels = async (page) => [(await state(page, 'edit.undo')).label, (await state(page, 'edit.redo')).label];
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
@@ -490,7 +487,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
         await press(page, 'k');
         await wait(page, 600);
         assert.ok(nested(await render(page)).includes(want), nested(await render(page)));
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -538,7 +535,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
         await wait(page, 500);
         assert.equal(await render(page), page.source);
         assert.deepEqual(await labels(page), ['Undo', 'Redo Duplicate']);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -559,7 +556,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
         await undo(page);
         await wait(page);
         assert.ok((await render(page)) === page.source, 'the undo does not give the file back');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -584,7 +581,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
           await undo(page);
           await wait(page);
           assert.ok((await render(page)) === page.source, 'the undo does not give the file back');
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         });
       }
     }
@@ -608,7 +605,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
       await wait(page);
       assert.deepEqual(await keyed(page), { active: true, undo: 'Undo', dialogs: 0, find: false });
       assert.ok((await render(page)) === page.source, 'the file changed');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -618,7 +615,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
       await press(page, 'Mod+D');
       await wait(page, 500);
       assert.equal((await keyed(page)).undo, 'Undo Duplicate');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -658,7 +655,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
         await undo(page);
         await wait(page, 300);
         assert.ok((await render(page)) === page.source, 'the undo of Red does not give the file back');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

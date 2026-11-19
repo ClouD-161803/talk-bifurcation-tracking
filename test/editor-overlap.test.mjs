@@ -32,7 +32,6 @@ describe('a text over a figure after Change Layout', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present, .reveal .slides > section > section.present');
@@ -122,7 +121,7 @@ describe('a text over a figure after Change Layout', () => {
         assert.ok(!meets(table, b), `the table at ${js(table)} lies over a text at ${js(b)}`);
       }
       await checkEdit(page, before, `r12-4-table-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a text laid over the figure of its slide by a change of the layout is marked and named in the status (${platform})`, async (t) => {
@@ -182,7 +181,7 @@ describe('a text over a figure after Change Layout', () => {
         const saved = await saveInto(page, `r12-4-pair-${how}-${platform}`);
         assert.equal(saved.text, edited);
         assert.deepEqual(saved.files, ['figure-dark.png', 'figure-light.png']);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -217,7 +216,7 @@ describe('a text over a figure after Change Layout', () => {
       await frames(page);
       await exec(page, 'figure.caption');
       assert.equal(await render(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new Content slide holds the paragraph and the list of its tile (${platform})`, async (t) => {
@@ -245,7 +244,7 @@ describe('a text over a figure after Change Layout', () => {
       assert.match(edited, /<li>A first point<\/li>\s*<li>A second point<\/li>/);
       const { text } = await saveAndReopen(page, `r12-4-content-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new content slide changed to Figure holds the plate, the heading, and the caption of a new figure slide (${platform})`, async (t) => {
@@ -269,7 +268,7 @@ describe('a text over a figure after Change Layout', () => {
       assert.equal(await render(page), edited);
       await exec(page, 'slide.layout.content');
       assert.equal(await render(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`after Change Layout to Split on slide 3, a list over the footnote of the panel is reported (${platform})`, async (t) => {
@@ -285,7 +284,7 @@ describe('a text over a figure after Change Layout', () => {
         assert.ok(s.overflow >= over.length, `${over.length} texts lie over the footnote at ${js(foot)}, and the status reads ${s.message}`);
         assert.match(s.message, /past the slide or into its footnote/);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`the Steps pane names a new picture by the name of its file, not by its object URL (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
@@ -298,7 +297,7 @@ describe('a text over a figure after Change Layout', () => {
       const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side [aria-label]')].map((r) => r.getAttribute('aria-label')).filter((l) => /Figure/.test(l))`);
       assert.ok(rows.some((l) => l.includes('figure-dark.png')), `the rows read ${js(rows)}`);
       assert.ok(!rows.some((l) => /[0-9a-f]{8}-[0-9a-f]{4}-/.test(l)), `a row names the object URL: ${js(rows)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`a duplicate or a layout change of a slide with an unsaved new picture does not ask the server for its file (${platform})`, async (t) => {
       for (const how of ['edit.duplicate', 'slide.duplicate', 'slide.layout.split']) {
@@ -313,7 +312,7 @@ describe('a text over a figure after Change Layout', () => {
         await page.evaluate('new Promise((d) => setTimeout(d, 500))');
         const asked = await page.evaluate(`performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('media/figure-dark'))`);
         assert.deepEqual(asked, [], `after ${how}`);
-        assert.deepEqual(errors(page), [], `after ${how}`);
+        assert.deepEqual(page.errors, [], `after ${how}`);
         await page.close();
       }
     });
@@ -330,7 +329,7 @@ describe('a text over a figure after Change Layout', () => {
         assert.ok(m.table > m.inner * 0.95, `after ${how}, the table is ${m.table} px wide in a slot ${m.inner} px wide (${m.slot})`);
         assert.ok(m.widths.every((w) => /px$/.test(w)), `after ${how}, the first row has the widths ${js(m.widths)}`);
         await checkEdit(page, before, `a table in the slot after ${how}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -359,7 +358,6 @@ describe('empty captions and the report of a table', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const status = (page) => page.evaluate('window.BeesonEditor.status()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const box = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
@@ -421,7 +419,7 @@ describe('empty captions and the report of a table', () => {
       await frames(page);
       const typed = await box(page, 'figure > figcaption');
       assert.ok(Math.abs(typed.top - cap.top) < 2, `the caption moves at its first input: ${js({ cap, typed })}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new table drawn over a text is reported (${platform})`, async (t) => {
@@ -432,7 +430,7 @@ describe('empty captions and the report of a table', () => {
       assert.ok(s.overflow > 0 && /\d+ texts? (is|are) under a table/.test(s.message), `the table is not reported: ${js({ overflow: s.overflow, message: s.message })}`);
       const marked = await page.evaluate(`[...document.querySelectorAll('.reveal section.present .beeson-overflow')].map((e) => e.localName)`);
       assert.ok(marked.length > 0 && !marked.some((n) => n === 'th' || n === 'td'), `the cells of the table are marked: ${js(marked)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the button of the well names the choice of the twin of a picture hidden by its mode (${platform})`, async (t) => {
@@ -451,7 +449,7 @@ describe('empty captions and the report of a table', () => {
       const b = await label();
       assert.equal(b?.text, 'Choose for Light Mode…', `the button reads ${js(b)}`);
       assert.equal(b.title, state.label);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a display formula whose glyphs end left of the picture is not reported over it (${platform})`, async (t) => {
@@ -469,7 +467,7 @@ describe('empty captions and the report of a table', () => {
       })()`);
         assert.deepEqual([m.clear, m.wide], [true, true], `the slide does not show the case of D19 after ${id}: ${js(m)}`);
         assert.equal(m.marked, false, `after ${id}, the formula is reported over the figure`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -497,7 +495,7 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual(m, { boxMeets: true, textClear: true }, 'the slide does not show the case of D29');
       const s = await status(page);
       assert.equal(s.overflow, 0, `the caption is reported: ${s.message}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a footnote drawn over a code box is marked with the code box (${platform})`, async (t) => {
@@ -516,7 +514,7 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual([m.foot, m.pre], [true, true], `the marks are ${js(m)}`);
       const s = await status(page);
       assert.ok(s.overflow >= 2, `the status reads ${s.message}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
     test(`an empty new code box over a text is not reported before it has a text (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -525,7 +523,7 @@ describe('empty captions and the report of a table', () => {
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present pre.beeson-pending').length`), 1, 'a pending code box was not inserted');
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present .beeson-overflow').length`), 0, 'a text under the empty code box is marked');
       assert.equal((await status(page)).overflow, 0);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -553,7 +551,6 @@ describe('when and how an overlap is reported', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const settle = async (page) => {
     await frames(page);
     await frames(page);
@@ -654,7 +651,7 @@ describe('when and how an overlap is reported', () => {
       const u = await status(page);
       assert.equal(u.overflow, 0, `after an undo of the drag and of the insert the status reads ${js(u.message)}`);
       assert.deepEqual((await covered(page, ':scope > figure img')).marked, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the figure of slide 5 dragged over the text column is not reported (${platform})`, async (t) => {
@@ -673,7 +670,7 @@ describe('when and how an overlap is reported', () => {
       assert.equal(s.overflow, 0, `the status reads ${js(s.message)}`);
       assert.ok(!/ (under|over) a /.test(s.message), s.message);
       assert.deepEqual(c.marked, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a change of layout that leaves texts under a picture is reported, and a text or the picture moved leaves the report (${platform})`, async (t) => {
@@ -704,7 +701,7 @@ describe('when and how an overlap is reported', () => {
       assert.ok(f.under.length >= 2, `the nudged picture is not over the texts: ${js(f.under)}`);
       assert.deepEqual(f.marked, []);
       assert.ok(!/ (under|over) a /.test((await status(page)).message), (await status(page)).message);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a text drawn over a picture after a change of layout is named before the picture (${platform})`, async (t) => {
@@ -724,7 +721,7 @@ describe('when and how an overlap is reported', () => {
       const s = await status(page);
       assert.ok(s.message.includes(`${rest} text${rest === 1 ? ' is' : 's are'} under a picture. 1 text is over a picture`), s.message);
       assert.deepEqual(c.marked, c.under);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a picture and a QR code over texts after a change of layout are named in one sentence (${platform})`, async (t) => {
@@ -751,7 +748,7 @@ describe('when and how an overlap is reported', () => {
       const s = await status(page);
       assert.match(s.message, new RegExp(`${n} texts are under a (picture and a QR code|QR code and a picture)`), `the status reads ${js(s.message)} for ${js(both.under)}`);
       assert.deepEqual(both.marked, both.under);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -796,7 +793,7 @@ describe('when and how an overlap is reported', () => {
       const s = await status(page);
       assert.equal(s.overflow, 0, `the heading is reported: ${js(s.message)}`);
       assert.equal(b.marked, false, 'the heading is outlined');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a QR code that reaches 10 px into the box of a heading is reported after a change of layout (${platform})`, async (t) => {
@@ -808,7 +805,7 @@ describe('when and how an overlap is reported', () => {
       assert.equal(s.overflow, 1, `the heading is not reported: ${js(s.message)}`);
       assert.match(s.message, /1 text is (under|over) a QR code/);
       assert.equal(b.marked, true, 'the heading is not outlined');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

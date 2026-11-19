@@ -56,7 +56,6 @@ describe('pictures drawn at the size written', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
 
   async function inScope(page) {
@@ -149,7 +148,7 @@ describe('pictures drawn at the size written', () => {
       const edited = await render(page);
       assert.match(edited, /<img class="for-dark"[^>]* style="object-fit: contain; width: 1000px; height: 1333px"/, 'the box of the image is not written at the ratio of its zone');
       await roundTrip(page, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
 
       const plate = await editor(platform, WHITE_FIGURE);
       await clickText(plate, '.reveal section.present .plate > img');
@@ -158,7 +157,7 @@ describe('pictures drawn at the size written', () => {
       await setField(plate, 'width', 1800);
       const whiteFigure = await slideBox(plate, '.reveal section.present .plate > img');
       assert.ok(near(whiteFigure.width, 1800) && near(whiteFigure.height, 1752 * 1.2 + 48), `the paper image of width 1800 is drawn at ${Math.round(whiteFigure.width)} by ${Math.round(whiteFigure.height)}`);
-      assert.deepEqual(errors(plate), []);
+      assert.deepEqual(plate.errors, []);
 
       const show = await browser.newPage();
       await show.goto(`${server.origin}/${LAYOUTS}?still`);
@@ -182,7 +181,7 @@ describe('pictures drawn at the size written', () => {
       const band = await captionBand(page);
       assert.deepEqual([Number(fields.w), Number(fields.h)], [Math.round(pic.width), Math.round(pic.height + band)], `W and H are ${fields.w} and ${fields.h}, and the picture is ${Math.round(pic.width)} by ${Math.round(pic.height)} with a caption of ${Math.round(band)}`);
       assert.equal(await render(page), page.source, 'the pane writes into the file');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -210,7 +209,7 @@ describe('pictures drawn at the size written', () => {
       await drag(page, off, { dx: offTo.x - off.x, dy: offTo.y - off.y });
       await frames(page);
       assert.equal(await lineEnds(page), 0, 'a marquee beside the line selects it');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -247,7 +246,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: a dragged line snaps by its end to the middle of a figure and to the end of another line, with the guides drawn`, async () => {
@@ -294,7 +293,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -366,7 +365,7 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       assert.deepEqual(await handGuides(page), []);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -417,7 +416,7 @@ describe('pictures drawn at the size written', () => {
       edited = await render(page);
       assert.match(edited, IMG_STYLE('width: 600px; height: \\d+px(; translate: [^"]+)?'));
       await roundTrip(page, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: with Constrain Proportions on, a corner grip and W and H keep the aspect, and Shift on a corner frees it`, async () => {
@@ -466,7 +465,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: a video is stretched with its switch off, and a QR code keeps its square with its switch held on`, async () => {
@@ -496,7 +495,7 @@ describe('pictures drawn at the size written', () => {
       const qr = await slideBox(page, '.reveal section.present .qr');
       assert.ok(near(qr.width, 260) && near(qr.height, 260), `the QR code of height 260 is drawn at ${Math.round(qr.width)} by ${Math.round(qr.height)}`);
       assert.match(await render(page), /<div class="qr" [^>]*style="width: 260px[^"]*"/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -540,7 +539,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -562,7 +561,7 @@ describe('pictures drawn at the size written', () => {
         await frames(page);
         await byteExact(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -597,7 +596,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -641,7 +640,7 @@ describe('pictures drawn at the size written', () => {
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await selected(page), ['figure.figure-box'], 'Esc on the image does not select its figure');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -663,7 +662,7 @@ describe('pictures drawn at the size written', () => {
       await drag(page, FIGURE_BOX_IMG, { dx: 120 * k, dy: 40 * k });
       await frames(page);
       assert.equal(await render(page), locked, 'a drag of the image changes a locked figure');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -730,7 +729,7 @@ describe('pictures drawn at the size written', () => {
       assert.equal(await render(page), edited);
       await inScope(page);
       await saveAndReopen(page, `r5-2-${++saves}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -772,7 +771,7 @@ describe('pictures drawn at the size written', () => {
       const edited = await render(page);
       assert.match(edited, /<p class="fragment" data-fragment-index="2" data-highlight="coriolis" style="rotate: \d+deg">/, 'the grip does not turn the paragraph');
       await roundTrip(page, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -810,7 +809,7 @@ describe('pictures drawn at the size written', () => {
       await press(page, 'Escape');
       await frames(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -860,7 +859,6 @@ describe('the width written by a grip is drawn', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const gripsAt = (page) => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.beeson-grip[data-member="0"]')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return [g.dataset.handle, { x: r.left + r.width / 2, y: r.top + r.height / 2 }]; }))`);
 
@@ -912,7 +910,7 @@ describe('the width written by a grip is drawn', () => {
         await frames(page);
         assert.equal(await render(page), edited);
         await saveAndReopen(page, `r6-7-${++saves}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -982,7 +980,7 @@ describe('the width written by a grip is drawn', () => {
         tipped++;
       }
       assert.ok(tipped >= 2, `only ${tipped} tooltips have keys`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1008,7 +1006,7 @@ describe('the width written by a grip is drawn', () => {
       await drag(page, img, { dx: -200, dy: 40, modifiers: copy });
       await new Promise((done) => setTimeout(done, 300));
       assert.equal(await count(), before + 1, `${listed} does not drop a copy of the figure`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1036,7 +1034,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
@@ -1094,7 +1091,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === 'Unlock')?.click()`);
       await frames(page);
       assert.ok(await page.evaluate(`!document.querySelector('.reveal section.present [data-locked]')`), 'Unlock does not unlock the image');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the context menu of a figure locked as a whole offers Unlock (${platform})`, async (t) => {
@@ -1111,7 +1108,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const items = await menuItems(page);
       assert.equal(items.find((i) => /^(Un)?[Ll]ock$/.test(i.label))?.label, 'Unlock', js(items));
       assert.equal(items.find((i) => i.label === 'Delete')?.dimmed, true, js(items));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1164,7 +1161,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const joined = [[CODE, CODE.replace('1-3|4|5-7|8-9', '1-3|3|4-6|7-8')], [SEED + '    for', '    x0, vy0 = SEED    for'], GT];
       await roundTrip(page, joined);
       assert.notEqual(page.source, source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Return in a code box indents the new line as the line before (${platform})`, async (t) => {
@@ -1185,7 +1182,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await press(page, 'Enter');
       await frames(page);
       await roundTrip(page, [[CODE, CODE.replace('1-3|4|5-7|8-9', '1-3|5|6-8|9-10')], [FOR, `\n${FOR}`], GT]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1210,7 +1207,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
         if (f.cell.w < 400) assert.equal(f.scale, best(8), js(f));
         else assert.ok(f.scale >= best(32), js(f));
         assert.equal(f.zoom, `${Math.round(f.scale * 100)}%`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1261,7 +1258,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       assert.ok(near(f.w, held.w) && near(f.h, held.h), `during the resize the fields read ${js(f)} for a group of ${js(held)}, and the readout ${readout}`);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: se.x - 120, y: se.y - 90, button: 'left', clickCount: 1 });
       await frames(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1294,7 +1291,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       assert.ok(Math.abs(b.next.top - empty.top) < 1, `the box is moved from ${empty.top} to ${b.next.top} when it is written`);
       const tag = (await render(page)).match(/<p[^>]*>Typed<\/p>/)?.[0];
       assert.equal(tag, '<p style="translate: 0px 30px">Typed</p>');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new text box under a list in its place is written without an offset (${platform})`, async (t) => {
@@ -1304,7 +1301,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await type(page, 'Typed');
       await wait(page, 300);
       assert.match(await render(page), /\n {2}<p>Typed<\/p>\n/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1313,7 +1310,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const page = await load(t, platform, { n: MATH });
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes(true)'), []);
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1330,7 +1327,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
         await press(page, 'Escape');
         await frames(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1351,7 +1348,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       assert.equal(chooser.length, 8);
       assert.deepEqual(gallery.map((g) => g.name), [...chooser.map((c) => c.name), 'Title Only']);
       for (const [i, c] of chooser.entries()) assert.equal(gallery[i].slide, c.slide, `the tile of ${c.layout} differs`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1387,7 +1384,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
         await press(page, 'Escape');
         await frames(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1445,7 +1442,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const { text } = await saveAndReopen(page, `r6-8-${++saves}.html`);
       assert.equal(text, typed);
       await frames(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a line moved by a drag shows the same x and y in its readout and in the fields (${platform})`, async (t) => {
@@ -1466,7 +1463,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await frames(page);
       assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`), ['svg']);
       assert.deepEqual(await positionOf(page), held, 'the fields do not give the x and y of the readout of the line drag');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

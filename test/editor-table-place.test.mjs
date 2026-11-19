@@ -34,7 +34,6 @@ describe('a new element on a figure slide', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const measure = (page, selector, texts) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
@@ -89,7 +88,7 @@ describe('a new element on a figure slide', () => {
         assert.deepEqual(round(after), round(media), `the insert of a ${name} moved the image of the plate`);
         await undo(page);
         assert.equal(await render(page), before);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -130,7 +129,7 @@ describe('a new element on a figure slide', () => {
         assert.deepEqual(round(back), round(placed));
         await redo(page);
         assert.equal(await render(page), deleted);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -151,7 +150,7 @@ describe('a new element on a figure slide', () => {
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present .figure-box').length`), 0, 'the plate was not deleted');
       assert.equal(offset(await render(page)), written, 'the delete of the plate changed the offset of the QR code');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a second QR code on a figure slide with a plot is put off the first (${platform})`, async (t) => {
@@ -165,7 +164,7 @@ describe('a new element on a figure slide', () => {
       const { boxes } = await measure(page, ':scope > .qr', ':scope > h2');
       assert.equal(boxes.length, 2, 'two QR codes were not inserted');
       assert.ok(!meets(boxes[0], boxes[1]), `the QR codes at ${js(boxes[0])} and ${js(boxes[1])} lie over each other`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a second table on a new figure slide is put off the first with the room of its bars (${platform})`, async (t) => {
@@ -184,7 +183,7 @@ describe('a new element on a figure slide', () => {
       assert.equal(boxes.length, 2, 'two tables were not inserted');
       const [first, second] = boxes[0].top <= boxes[1].top ? boxes : [boxes[1], boxes[0]];
       assert.ok(!meets(grown(second, BARS / k), first), `the bars of the table at ${js(second)} lie over the table at ${js(first)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const [n, what, drawn] of SLIDES) {
@@ -213,7 +212,7 @@ describe('a new element on a figure slide', () => {
         assert.equal(await render(page), before);
         await redo(page);
         assert.equal(await render(page), edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -244,7 +243,6 @@ describe('a new table at a free place', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
@@ -311,7 +309,7 @@ describe('a new table at a free place', () => {
       assert.ok(inside(tables[1]), `the second table at ${js(round(tables[1]))} is not inside the margins`);
       assert.ok(!meets(tables[1], tables[0]), `the second table at ${js(round(tables[1]))} lies over the first at ${js(round(tables[0]))}`);
       assert.ok(!meets(tables[1], figure), `the second table at ${js(round(tables[1]))} lies over the figure`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new table on a slide with a free place is put there as before (${platform})`, async (t) => {
@@ -323,7 +321,7 @@ describe('a new table at a free place', () => {
         assert.ok(table, 'no table was inserted');
         assert.deepEqual(round(table), place, `the table on slide ${n + 1} moved from its free place`);
         await checkEdit(page, before, `r15-10-free-${n}-${platform}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -345,7 +343,7 @@ describe('a new table at a free place', () => {
     })()`);
       if (number) assert.ok(!meets(table, number), `the table at ${js(round(table))} lies over the slide number at ${js(round(number))}`);
       await checkEdit(page, before, `r15-10-video-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -378,7 +376,6 @@ describe('second and third new tables on a slide', () => {
   const status = (page) => page.evaluate('window.BeesonEditor.status()');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const show = async (page, n) => {
     await page.evaluate(`Reveal.slide(${n})`);
     await settle(page);
@@ -439,7 +436,7 @@ describe('second and third new tables on a slide', () => {
     }
     for (let i = 0; i < count; i++) await undo(page);
     assert.equal(await render(page), before);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -473,7 +470,7 @@ describe('second and third new tables on a slide', () => {
         const later = await status(page);
         assert.ok(later.message.includes(`${m[1]} texts are under a picture`), `the report of slide 5 is lost: ${js(later.message)}`);
         assert.equal(await outlined(page), marked);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -521,7 +518,7 @@ describe('second and third new tables on a slide', () => {
       assert.ok(b.line.top < b.h1.top - 2, `the line of the heading is inside its box: ${js(b)}`);
       assert.equal(s.overflow, 0, `the heading is reported: ${js(s.message)}`);
       assert.equal(b.marked, false, 'the heading is outlined');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a turned QR code whose corner reaches the words of a heading inside its box is reported (${platform})`, async (t) => {
@@ -530,7 +527,7 @@ describe('second and third new tables on a slide', () => {
       assert.equal(s.overflow, 1, `the heading is not reported: ${js(s.message)}`);
       assert.match(s.message, /1 text is (under|over) a QR code/);
       assert.equal(b.marked, true, 'the heading is not outlined');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -562,7 +559,6 @@ describe('a new table off the backdrop orbit', () => {
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, n, width = 1600, height = 1000) {
     const page = await browser.newPage({ width, height });
@@ -653,7 +649,7 @@ describe('a new table off the backdrop orbit', () => {
       assert.ok(d.all > 1000, `the backdrop is not drawn: ${js(d)}`);
       assert.equal(d.n, 0, `${where} lies over ${d.n} of ${d.all} sampled drawn pixels of the orbit`);
       await undone(page, before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -663,7 +659,7 @@ describe('a new table off the backdrop orbit', () => {
     await insertTable(page);
     const p = await pieces(page);
     const boxes = [p.tables[0], p.tables[1]].map(round);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
     return { boxes, ...p };
   }
@@ -701,7 +697,7 @@ describe('a new table off the backdrop orbit', () => {
         }
         await undo(page);
         await undone(page, before);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -730,7 +726,6 @@ describe('drawn backdrop cells read at any zoom', () => {
   };
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, n, width = 1600, height = 1000) {
     const page = await browser.newPage({ width, height });
@@ -828,7 +823,7 @@ describe('drawn backdrop cells read at any zoom', () => {
       const d = await drawnUnder(page, tables[0]);
       assert.ok(d.all > 1000, `the backdrop is not drawn: ${js(d)}`);
       assert.equal(d.n, 0, `${where} lies over ${d.n} of ${d.all} sampled drawn pixels of the orbit`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -857,7 +852,6 @@ describe('a new table without a free place', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -928,7 +922,7 @@ describe('a new table without a free place', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r26-6-tables-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -952,7 +946,7 @@ describe('a new table without a free place', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, name);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   test('the height of a row is in the scope rule in px', () => {

@@ -33,7 +33,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 const slideWith = (text) => readFileSync(LAYOUTS, 'utf8').split('<section').slice(1).findIndex((s) => s.includes(text));
 
 async function load() {
@@ -118,7 +117,7 @@ test('a PDF inserted into an empty figure box is a render for each mode, in the 
     assert.deepEqual(await pixel(page, bytes, 0.02, 0.05), { hex: TONES[mode].bg, a: 255 });
     assert.deepEqual(await pixel(page, bytes, 0.5, 0.5), { hex: TONES[mode].text, a: 255 });
   }
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });
 
@@ -164,7 +163,7 @@ test('the page of a PDF figure and Match the Mode render the PDF again', async (
   await waitText(page, 'class="for-light"');
   assert.match(await render(page), /<img class="for-dark" src="media\/figure-page-2-dark-2\.png" data-pdf="media\/figure\.pdf" data-page="2">\s*<img class="for-light" src="media\/figure-page-2-light-2\.png" data-pdf="media\/figure\.pdf" data-page="2">/);
   inScope(page, await render(page));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });
 
@@ -220,7 +219,7 @@ test('a picture with a step replaced with a PDF is a pair whose new image keeps 
       for (const part of [/\bfragment\b/, /\bfade-up\b/, /data-fragment-index="2"/, /width: 600px/, /rotate: 5deg/, /alt="A plot"/, /data-pdf="media\/figure\.pdf"/]) assert.match(tag, part, tag);
     }
     inScope(page, await render(page));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -240,7 +239,7 @@ test('a video of a pair replaced with a PDF is a pair of renders that keeps the 
     assert.equal(tags.length, 2, tags.join('\n'));
     assert.match(tags[0], /^<img class="for-dark fragment" src="media\/figure-dark\.png" data-pdf="media\/figure\.pdf">$/);
     assert.match(tags[1], /^<img class="for-light fragment" src="media\/figure-light\.png" data-pdf="media\/figure\.pdf">$/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -268,7 +267,7 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
     assert.equal(await page.evaluate(`!!document.querySelector(${JSON.stringify(ASK)})`), false);
     await first;
     assert.match(await render(page), /<img class="for-dark" src="media\/figure-dark\.png" data-pdf="figure\.pdf" alt="A plot">/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -380,6 +379,6 @@ test('an image of a pair replaced with a PDF is a PDF figure, with the alt of ea
   assert.equal(text, page.source.replace(PAIR, dark).replace('<img class="for-light" src="../../demo/figure-light.png" alt="A figure, light version">', light));
   await undoRedo(page, page.source, text);
   inScope(page, text);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });

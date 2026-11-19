@@ -157,7 +157,6 @@ async function roundTrip(page, edits, label, before = []) {
   await byteExact(page, edits);
 }
 
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let saves = 0;
 async function saved(page, edits) {
@@ -237,7 +236,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [word('<s>paragraph</s>')]);
     await saved(page, [word('<s>paragraph</s>')]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Underline is set by its key and by the U of the Text pane, drawn in the color of the text, and taken off again on ${platform}`, async () => {
@@ -269,7 +268,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [word('<u>paragraph</u>')]);
     await saved(page, [word('<u>paragraph</u>')]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Change Case sets each kind on the words of a selection, keeping their formats, and Shift+F3 cycles on ${platform}`, async () => {
@@ -307,7 +306,7 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`window.BeesonEditor.render().includes('PARAGRAPH')`);
     await byteExact(page, [word('PARAGRAPH')]);
     await saved(page, [word('PARAGRAPH')]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Copy Style and Paste Style carry the formats, the tone, and the paragraph style by their keys on ${platform}`, async () => {
@@ -350,7 +349,7 @@ for (const platform of PLATFORMS) {
     const small = `<p class="small">A paragraph with bold, italic, code, and \\(x^2\\) inline.</p>`;
     await roundTrip(page, [[PARAGRAPH, small]], 'Paste Style', [[PARAGRAPH, both]]);
     await saved(page, [[PARAGRAPH, small]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the Format Painter paints one selection after a click, and stays armed after a double click on ${platform}`, async () => {
@@ -381,7 +380,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [[PARAGRAPH, painted.replace('<em>inline</em>', 'inline')]]);
     await saved(page, [[PARAGRAPH, painted.replace('<em>inline</em>', 'inline')]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`smart quotes and dashes are typed, an undo takes back only the substitution, and the switches are kept on ${platform}`, async () => {
@@ -419,7 +418,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(again, 'text.smart.dashes')).checked, true);
     await exec(again, 'text.smart.quotes');
     assert.equal(await again.evaluate(`localStorage.getItem('beeson-edit-smart-quotes')`), 'on');
-    assert.deepEqual(errors(again), []);
+    assert.deepEqual(again.errors, []);
   });
 
   test(`an insert of a script right after a smart quote is an undo of its own on ${platform}`, async () => {
@@ -433,7 +432,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [at('“')]);
     assert.equal((await state(page, 'edit.undo')).label, 'Undo Smart Quote');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a link to an email with a subject and to a phone number is written from the popover on ${platform}`, async () => {
@@ -469,6 +468,6 @@ for (const platform of PLATFORMS) {
     const phone = [PARAGRAPH, mail[1].replace('<em>italic</em>', '<a href="tel:+1(609)258-3000"><em>italic</em></a>')];
     await roundTrip(page, [phone], 'Link', [mail]);
     await saved(page, [phone]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

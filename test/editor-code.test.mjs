@@ -13,7 +13,6 @@ const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const CODE = '<code class="language-python" data-line-numbers="1-3|4|5-7|8-9">def halo_family():';
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
 
 let browser;
@@ -130,7 +129,7 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, platform, source, julia);
     assert.equal(await page.evaluate(`document.querySelector('.reveal section.present pre').innerHTML`), dom.replace('language-python', 'language-julia'), 'the painter changed the DOM of the box');
     assert.deepEqual(newProblems(page, julia), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the line steps of a code box are typed, added from the selected lines, and removed on ${platform}`, async (t) => {
@@ -191,7 +190,7 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, platform, numbered, bare);
     assert.deepEqual(newProblems(page, bare), []);
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -209,5 +208,5 @@ test('a new code box gets a language, is colored, and is shown in the Code pane'
   assert.ok((await ranges(page, 'number')) >= 1, 'the number of a new code box is not colored');
   assert.equal(await pane(page), 'code');
   assert.equal(await language(page), 'Python');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

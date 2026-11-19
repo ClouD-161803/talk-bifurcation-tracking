@@ -1144,7 +1144,7 @@ describe('Broucke Families and the names of colormaps', () => {
       await popupItems(page, 'Drawing');
       await choose(page, 'Cislunar Manifolds', await render(page));
       assert.deepEqual(await sections(page), builtIn);
-      assert.deepEqual(page.errors.filter((e) => !e.includes('/favicon.ico')), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 

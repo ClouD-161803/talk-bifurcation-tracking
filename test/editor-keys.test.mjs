@@ -336,7 +336,6 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const slides = (page) => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
   const figures = (page) => page.evaluate(`Reveal.getCurrentSlide().querySelectorAll('figure').length`);
 
@@ -399,7 +398,7 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
       assert.equal(await undoLabel(page), 'Undo Duplicate Slide');
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`in the navigator, Mod+D duplicates the slide as Edit > Duplicate, and Duplicate Slide is listed with the key (${platform})`, async (t) => {
@@ -416,7 +415,7 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
       assert.equal(await undoLabel(page), 'Undo Duplicate Slide');
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`with nothing selected on the canvas, Mod+D duplicates the slide, and Duplicate Slide is listed with the key (${platform})`, async (t) => {
@@ -434,7 +433,7 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
       assert.equal(await undoLabel(page), 'Undo Duplicate Slide');
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the sheet of shortcuts lists Mod+D at Duplicate, and not at Duplicate Slide (${platform})`, async (t) => {
@@ -445,7 +444,7 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
       const keysOf = (label) => rows.find((r) => r.label === label)?.keys ?? [];
       assert.deepEqual(keysOf('Duplicate Slide'), []);
       assert.ok(keysOf('Duplicate').includes(DUPLICATE[platform]), js(keysOf('Duplicate')));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -469,7 +468,6 @@ describe('command keys that act in a text', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
@@ -576,7 +574,7 @@ describe('command keys that act in a text', () => {
       assert.equal(await undoLabel(page), 'Undo Typing');
       const { text } = await saveAndReopen(page, `r17-8-keys-${platform}.html`);
       assert.equal(text, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Move Slide Up and Move Slide Down are dimmed with the caret in a paragraph or in a cell (${platform})`, async (t) => {
@@ -597,7 +595,7 @@ describe('command keys that act in a text', () => {
       await click(page, `.beeson-edit-nav .row:nth-child(${FIGURES + 1})`);
       await wait(page);
       assert.deepEqual(await moves(), { up: true, down: true }, 'the two are dimmed in the navigator');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Mod+D with the caret in a cell of a table is kept from the browser and changes nothing (${platform})`, async (t) => {
@@ -614,7 +612,7 @@ describe('command keys that act in a text', () => {
       assert.equal(await prevented(page, 'd'), true, 'Mod+D in a cell reaches the browser');
       assert.equal(await render(page), inserted);
       assert.equal(await undoLabel(page), 'Undo Insert Table');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Mod+B and Mod+I on a framed formula change nothing (${platform})`, async (t) => {
@@ -648,7 +646,7 @@ describe('command keys that act in a text', () => {
       await wait(page);
       assert.equal(await page.evaluate(`document.activeElement.matches('div.math')`), true, 'the new formula does not have the focus');
       await check(await render(page), await undoLabel(page), 'a new formula');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -695,7 +693,7 @@ describe('command keys that act in a text', () => {
       await resize(page, 1600, 900);
       assert.deepEqual(await view(page), { navigator: 'true', format: 'false', nav: true, inspector: false }, 'Format closed by the user is opened again');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`View > Navigator after the window was narrowed with the navigator off shows it in one choice (${platform})`, async (t) => {
@@ -706,7 +704,7 @@ describe('command keys that act in a text', () => {
       await resize(page, 760, 900);
       await choose(page, 'View', 'Navigator');
       assert.deepEqual(await view(page), { navigator: 'true', format: 'false', nav: true, inspector: false }, 'one choice of View > Navigator does not show the navigator');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -729,7 +727,6 @@ describe('keys after an undo frames a block', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -847,7 +844,7 @@ describe('keys after an undo frames a block', () => {
       }
       const { text } = await saveAndReopen(page, `r16-3-keys-${platform}.html`);
       assert.equal(text, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -874,7 +871,7 @@ describe('keys after an undo frames a block', () => {
         await choose(page, 'View', item);
         assert.deepEqual(await view(page), ON, `one choice of ${item} does not show the navigator in place of the inspector`);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });

@@ -23,7 +23,6 @@ describe('a new text box kept in place', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)})`).then(() => frames(page));
@@ -81,7 +80,7 @@ describe('a new text box kept in place', () => {
       assert.equal(await showing(page), false, 'four clicks at the last slide do not end the show');
       assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
 
       const deck = await browser.newPage({ width: 1600, height: 1000 });
       t.after(() => deck.close().catch(() => {}));
@@ -93,7 +92,7 @@ describe('a new text box kept in place', () => {
       }
       assert.equal(await deck.evaluate('Reveal.getIndices().h'), LAST);
       assert.equal(await deck.evaluate('location.search'), '?still');
-      assert.deepEqual(errors(deck), []);
+      assert.deepEqual(deck.errors, []);
     });
   }
 
@@ -141,7 +140,7 @@ describe('a new text box kept in place', () => {
         await redo(page);
         assert.equal(await render(page), written);
         kept(empty, await boxOf(page), `a redo of the text box on slide ${n + 1}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -162,7 +161,7 @@ describe('a new text box kept in place', () => {
       assert.match(await render(page), /<p[^>]*>Hello<\/p>/);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -226,7 +225,7 @@ describe('a new text box kept in place', () => {
           await redo(page);
           assert.equal(await render(page), edited);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -264,7 +263,7 @@ describe('a new text box kept in place', () => {
       assert.ok(near(now.p.left, was.p.left) && near(now.f.left, was.f.left), 'Distribute Vertically moves the group along x');
       await undo(page);
       assert.equal(await render(page), grouped, 'an undo of Distribute does not give the file back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -285,7 +284,6 @@ describe('the lines of a title block kept', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => press(page, 'Mod+Z').then(() => sleep(250));
@@ -375,7 +373,7 @@ describe('the lines of a title block kept', () => {
         await redo(page);
         sameLines(start, await places(page), `a redo ${at}`);
         assert.equal(await render(page), written);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
 
         const shown = (await places(page, 'a')).box;
         const file = `.r17-11-${platform}-${n}.html`;
@@ -430,7 +428,7 @@ describe('the lines of a title block kept', () => {
       sameLines(empty, pasted, 'the paste of the menu');
       assert.ok(near(pasted.box[0].left, box.left) && near(pasted.box[0].top, box.top), 'the paste of the menu moves the box');
       assert.match(await render(page), /<p style="[^"]*">Pasted words<\/p>/, 'the paste of the menu is not written');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -457,7 +455,7 @@ describe('the lines of a title block kept', () => {
           await undo(page);
           assert.notEqual(await render(page), was, `the undo of an entry does not change the file on slide ${n + 1}`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -484,7 +482,6 @@ describe('further boxes and tables on a title slide', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
@@ -558,7 +555,7 @@ describe('further boxes and tables on a title slide', () => {
         await press(page, 'ArrowRight');
         await sleep(300);
         assert.ok((await render(page)).includes('<figure class="figure-box" style="translate: 1px 0px">'), `ArrowRight does not nudge the figure ${at}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -610,7 +607,7 @@ describe('further boxes and tables on a title slide', () => {
         assert.equal(await render(page), base, `the undo of ${route} does not give the file back`);
         await redo(page);
         assert.equal(await render(page), edited, `the redo of ${route} does not write the paste again`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -646,7 +643,7 @@ describe('further boxes and tables on a title slide', () => {
       await press(page, 'Escape');
       for (let i = 0; i < 20 && (await page.evaluate(`window.BeesonEditor.state('edit.undo').enabled`)); i++) await undo(page);
       assert.equal(await render(page), page.source, 'the undo of every insert does not give the file back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -670,7 +667,7 @@ describe('further boxes and tables on a title slide', () => {
       const [table] = await boxes(page, 'table');
       assert.equal(box.text, 'A box');
       assert.ok(!meets(box.frame, table.frame), `the table ${js(table.frame)} lies over the frame of the text box ${js(box.frame)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -707,7 +704,7 @@ describe('further boxes and tables on a title slide', () => {
       await undo(page);
       await undo(page);
       assert.equal(await render(page), base);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -739,7 +736,7 @@ describe('further boxes and tables on a title slide', () => {
       await frames(page);
       assert.equal(await page.evaluate('Reveal.getIndices().h'), 4, 'the redo of Delete Text Box does not show the slide of the box');
       assert.equal(await render(page), left);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -758,7 +755,7 @@ describe('further boxes and tables on a title slide', () => {
       const key = platform === 'mac' ? '⌘V' : 'Ctrl+V';
       assert.match(state, /browser/i, `the state does not say that the browser refused the read: ${state}`);
       assert.ok(state.includes(key), `the state does not name ${key}: ${state}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -781,7 +778,6 @@ describe('the first key in a new title box', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const near = (a, b, what, tol = 1) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
@@ -841,7 +837,7 @@ describe('the first key in a new title box', () => {
         assert.match(text, /<\/div>\s*(<div class="qr"[^>]*><\/div>\s*)?<p style="(width: \d+px; )?translate: \d+px \d+px;?">Hq<\/p>/, `the box of slide ${n + 1} is not written as a paragraph with its translate after the block`);
         const { text: saved } = await saveAndReopen(page, `r15-12-${++saves}.html`);
         assert.equal(saved, text);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -870,7 +866,7 @@ describe('the first key in a new title box', () => {
       await wait(page);
       assert.deepEqual(await page.evaluate(COLUMN), before, 'Distribute moves a text off the margin');
       assert.equal(await render(page), page.source, 'Distribute changes the file');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -927,7 +923,7 @@ describe('the first key in a new title box', () => {
       await pointer(page, 'mouseReleased', at.x, at.y + 20);
       await wait(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -951,7 +947,7 @@ describe('the first key in a new title box', () => {
         await page.evaluate('Reveal.slide(1)');
         await wait(page);
         assert.deepEqual(await rowsOf(page), rows);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

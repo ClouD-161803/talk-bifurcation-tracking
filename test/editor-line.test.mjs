@@ -48,7 +48,6 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function inScope(page) {
   const now = textProblems(await render(page), THEME);
@@ -124,7 +123,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await inserted(page), svg);
     const { text: saved } = await saveAndReopen(page, `line-${platform}.html`);
     assert.ok(saved.includes(svg));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag in the mode of Insert > Line draws a line, with Shift at 45 degrees, and Esc leaves the mode, on ${platform}`, async () => {
@@ -154,7 +153,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     assert.equal((await state(page, 'insert.arrow')).checked, null);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the Line pane sets the tone and the arrowheads, and the end handles and a drag move a line, on ${platform}`, async () => {
@@ -221,7 +220,7 @@ for (const platform of PLATFORMS) {
     await inScope(page);
     const { text } = await saveAndReopen(page, `line-pane-${platform}.html`);
     assert.equal((text.match(/<svg class="line/g) ?? []).length, 2);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -308,7 +307,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.getAttribute('class') ? '.' + e.getAttribute('class').split(' ')[0] : ''))`);
   const grips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-line-end')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return { end: g.dataset.end, x: r.left + r.width / 2, y: r.top + r.height / 2, locked: g.classList.contains('locked') }; })`);
   const free = (platform) => (platform === 'mac' ? 'Meta' : 'Alt');
@@ -350,7 +348,7 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r20-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -450,7 +448,7 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.match(l.d, /^M0 0 V\d+ H\d+ V\d+$/);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a press, a right-click, and a marquee find a curve by its stroke and not by its chord, on ${platform}`, async (t) => {
@@ -485,7 +483,7 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await drag(page, in1, { dx: in2.x - in1.x, dy: in2.y - in1.y });
       await frames(page);
       assert.deepEqual(await selected(page), [], 'a marquee on the chord selects the curve');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the grip of the bend moves the control point of a curve, Esc puts it back, and a moved end keeps the arc, on ${platform}`, async (t) => {
@@ -603,7 +601,7 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.equal((await lines(page))[0].tag, 'path');
       await undo(page);
       assert.equal(await render(page), page.source.replace(ORIGINAL, curved));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the segment Weight and the switch Dashed write a class on the svg, and the head grows with the weight, on ${platform}`, async (t) => {
@@ -737,7 +735,6 @@ describe('line ends attached to elements', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -877,7 +874,7 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(moved.ends.slice(2), [1186, 537], 'the head of the arrow is moved');
       await linesOf(page, 2);
       await undoRedo(page, before, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -941,7 +938,7 @@ describe('line ends attached to elements', () => {
       assert.match(onWords.to ?? '', /^a4 /, 'a text moved as a box does not take glue');
       assert.deepEqual(await anchors(page), ['a4 p', 'a1 div', 'a2 div', 'a3 div']);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -958,7 +955,7 @@ describe('line ends attached to elements', () => {
       await undo(bare);
       const saved = await saveAndReopen(bare, 'bare.html');
       assert.equal(saved.text, plain, 'a deck without glue is changed by an open and a save');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1022,7 +1019,7 @@ describe('line ends attached to elements', () => {
         for (let i = 0; i < steps; i++) await redo(page);
         assert.equal(await render(page), after, 'the redo does not move the box and the line again');
         await linesOf(page, count);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -1038,7 +1035,7 @@ describe('line ends attached to elements', () => {
       for (let i = 0; i < 3; i++) await press(page, 'ArrowDown');
       await sleep(100);
       await linesOf(page, 2);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1091,8 +1088,8 @@ describe('line ends attached to elements', () => {
       [l] = await lines(fresh);
       assert.deepEqual([l.from, l.to], [null, null], 'a line moved by a typed position is still glued');
       await undoRedo(fresh, SOURCE, await render(fresh));
-      assert.deepEqual(errors(page), []);
-      assert.deepEqual(errors(fresh), []);
+      assert.deepEqual(page.errors, []);
+      assert.deepEqual(fresh.errors, []);
     });
 
     test(`rule 4: a delete of a glued box leaves the line, and a copy glues only to copied boxes (${platform})`, async (t) => {
@@ -1155,7 +1152,7 @@ describe('line ends attached to elements', () => {
         await sleep(100);
         assert.equal(await render(page), SOURCE);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1183,7 +1180,7 @@ describe('line ends attached to elements', () => {
       await frames(page);
       const after = await page.evaluate(`document.querySelector(${js(PANEL)}).innerText`);
       assert.doesNotMatch(after, /End: Rounded Rectangle/, 'the pane names an end let go');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1210,8 +1207,8 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(await anchors(fresh), ['a1 div']);
       assert.equal(await fresh.evaluate(`document.querySelector(${js(SLIDE)}).querySelector('[data-anchor]').style.translate`), '300px 472px');
       await linesOf(fresh, 1);
-      assert.deepEqual(errors(page), []);
-      assert.deepEqual(errors(fresh), []);
+      assert.deepEqual(page.errors, []);
+      assert.deepEqual(fresh.errors, []);
     });
   }
 
@@ -1234,7 +1231,7 @@ describe('line ends attached to elements', () => {
       const moved = (await lines(page)).at(-1);
       assert.deepEqual(moved.ends.slice(2), [Math.round(right), Math.round(middle)], 'the end does not follow the box of the group');
       await undoRedo(page, before, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1252,7 +1249,7 @@ describe('line ends attached to elements', () => {
         await undo(page);
         assert.equal(await render(page), SOURCE, `one undo does not put back the line and the names after ${command}`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1278,7 +1275,7 @@ describe('line ends attached to elements', () => {
       await sleep(100);
       assert.equal((await page.evaluate('window.BeesonEditor.selection()')).length, 2);
       assert.deepEqual(await shownButtons(page), [], 'a button is shown for two selected lines');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -1308,7 +1305,6 @@ describe('attached lines are not turned until detached', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -1414,7 +1410,7 @@ describe('attached lines are not turned until detached', () => {
       await select(page, ON_ARROW);
       await showTab(page, 'Line');
       assert.match(await page.evaluate(`document.querySelector(${js(PANEL)}).innerText`), /Connections/, 'the section Connections is gone');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`item 2: Reset Rotation of a turned line glued at both ends is dimmed (${platform})`, async (t) => {
@@ -1429,7 +1425,7 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await lines(page))[0].rotate, '20deg');
       await refused(page, null);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`item 2: the turns of a line glued at one end are dimmed, and the line is turned after Detach (${platform})`, async (t) => {
@@ -1462,7 +1458,7 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await state(page, 'arrange.resetRotation')).enabled, true);
       const { text } = await saveAndReopen(page, `r36-3-${platform}.html`);
       assert.equal(text, turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1484,7 +1480,7 @@ describe('attached lines are not turned until detached', () => {
         assert.equal(await render(page), SOURCE, 'one undo does not take the turn back');
         await redo(page);
         assert.equal(await render(page), turned, 'a redo does not turn the selection again');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1500,7 +1496,7 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await angleField(page)).disabled, false);
       await typeAngle(page, 15);
       assert.equal((await lines(page))[0].rotate, '15deg');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

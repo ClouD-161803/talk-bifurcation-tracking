@@ -22,7 +22,6 @@ describe('the element changed by an undo is selected', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   let saves = 0;
 
@@ -108,7 +107,7 @@ describe('the element changed by an undo is selected', () => {
         assert.deepEqual(await selected(page), { els: ['figure.figure-box'], caret: null }, 'the figure is not selected after the redo');
         const { text } = await saveAndReopen(page, `r15-6-${++saves}.html`);
         assert.equal(text, changed);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -124,7 +123,7 @@ describe('the element changed by an undo is selected', () => {
       await press(page, 'Mod+Shift+Z');
       await wait(page);
       assert.deepEqual(await selected(page), { els: ['figure.figure-box'], caret: null });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo and a redo of typing keep the caret in the text where it was (${platform})`, async (t) => {
@@ -147,7 +146,7 @@ describe('the element changed by an undo is selected', () => {
       assert.equal(await caretOffset(page), end + 3);
       const { text } = await saveAndReopen(page, `r15-6-${++saves}.html`);
       assert.equal(text, typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo and a redo of typing in a paragraph left with Esc select the paragraph as a block (${platform})`, async (t) => {
@@ -168,7 +167,7 @@ describe('the element changed by an undo is selected', () => {
       await wait(page);
       assert.equal(await render(page), typed);
       assert.deepEqual(await selected(page), { els: ['p'], caret: null }, 'the paragraph is not selected as a block after the redo');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo of typing with a figure selected selects the paragraph that it changes (${platform})`, async (t) => {
@@ -184,7 +183,7 @@ describe('the element changed by an undo is selected', () => {
       await wait(page);
       await byteExact(page);
       assert.deepEqual(await selected(page), { els: ['p'], caret: null });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo and a redo of a color from the Format pane select the paragraph as a block (${platform})`, async (t) => {
@@ -213,7 +212,7 @@ describe('the element changed by an undo is selected', () => {
       assert.deepEqual(await selected(page), { els: ['p'], caret: null }, 'the paragraph is not selected as a block after the redo');
       const { text } = await saveAndReopen(page, `r15-6-${++saves}.html`);
       assert.equal(text, toned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -235,7 +234,7 @@ describe('the element changed by an undo is selected', () => {
       await button(page, 'edit.undo');
       await byteExact(page);
       assert.deepEqual(await selected(page), { els: [], caret: 'p' });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -259,7 +258,6 @@ describe('the selection after an undo frames another element', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
@@ -338,7 +336,7 @@ describe('the selection after an undo frames another element', () => {
         await press(page, 'Mod+Z');
         await wait(page);
         assert.equal(await render(page), text);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -361,7 +359,7 @@ describe('the selection after an undo frames another element', () => {
       assert.equal(await render(page), copied);
       const { text } = await saveAndReopen(page, `r18-4-objects-${platform}.html`);
       assert.equal(text, copied);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -393,7 +391,7 @@ describe('the selection after an undo frames another element', () => {
         await press(page, 'q');
         await wait(page);
         assert.equal(await render(page), text, `q after the ${how} is typed into the paragraph`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -414,7 +412,7 @@ describe('the selection after an undo frames another element', () => {
       await wait(page, 300);
       assert.equal(await count(page, ':scope > p'), 2, 'Mod+D does not duplicate the paragraph of the caret');
       assert.equal(await undoLabel(page), 'Undo Duplicate');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -467,7 +465,6 @@ describe('undo of a resize, move, or turn', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
 
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...el.classList].filter((c) => !c.startsWith('beeson-') && c !== 'visible' && c !== 'current-fragment').join('.'))`);
@@ -534,7 +531,7 @@ describe('undo of a resize, move, or turn', () => {
         assert.ok(!d.frames.some((f) => f.left <= 1 && f.top <= 1), `after the redo, a frame is drawn at the corner of the window`);
         assert.equal(await render(page), resized, 'the redo does not write the resize again');
         await saveAndReopen(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
@@ -590,7 +587,7 @@ describe('undo of a resize, move, or turn', () => {
       }
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: an undo and a redo of a resize of a group select the group`, async () => {
@@ -619,7 +616,7 @@ describe('undo of a resize, move, or turn', () => {
         if (what === 'undo') assert.equal(await render(page), grouped);
       }
       assert.equal(await render(page), resized, 'the redo does not write the resize again');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the readout of a move gives the upper left corner of the element in slide px, and the readout of a resize its size`, async () => {
@@ -655,7 +652,7 @@ describe('undo of a resize, move, or turn', () => {
         await frames(page);
         await undo(page);
         await byteExact(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -704,7 +701,7 @@ describe('undo of a resize, move, or turn', () => {
       await redo(page);
       assert.equal(await render(page), moved);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -745,7 +742,7 @@ describe('undo of a resize, move, or turn', () => {
         await redo(page);
         assert.equal(await render(page), resized);
         await saveAndReopen(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }

@@ -23,7 +23,6 @@ after(async () => {
 
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const typeset = (page) => page.evaluate('window.MathJax.startup.promise.then(() => true)');
 
 const heads = (page) => page.evaluate(`(() => {
@@ -81,6 +80,6 @@ for (const platform of PLATFORMS) {
     const { text } = await saveAndReopen(page);
     assert.equal(text, edited);
     assert.deepEqual(await heads(page), TYPESET);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

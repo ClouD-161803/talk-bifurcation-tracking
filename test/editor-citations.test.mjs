@@ -46,7 +46,7 @@ const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.ex
 const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
 const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') && !/404/.test(e));
+const errors = (page) => page.errors.filter((e) => !/404/.test(e));
 const expect = (...edits) => edits.reduce((text, [a, b]) => {
   assert.equal(text.split(a).length, 2, `${a} does not occur once in the deck`);
   return text.replace(a, () => b);

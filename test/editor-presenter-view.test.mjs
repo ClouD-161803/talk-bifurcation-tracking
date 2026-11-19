@@ -22,7 +22,6 @@ describe('ends of Present from the speaker view', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
@@ -74,7 +73,7 @@ describe('ends of Present from the speaker view', () => {
         await page.evaluate(keyIn(UPCOMING, key, keyCode));
         assert.ok(await within(page, stageGone, 5000), `${key} in the upcoming frame does not end the show`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), 4, `${key} in the upcoming frame leaves the editor on another slide than the one shown`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -102,7 +101,7 @@ describe('ends of Present from the speaker view', () => {
         assert.ok(await within(page, `!${DISPLAY} && ${TAB}.closed`, 5000), `${key} in the speaker view does not end Presenter View`);
         assert.ok(await within(page, speakerClosed, 3000), `${key} in the speaker view leaves the speaker view open`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -114,7 +113,7 @@ describe('ends of Present from the speaker view', () => {
         await page.evaluate(keyIn(TAB, key, keyCode));
         assert.ok(await within(page, `!${DISPLAY} && ${TAB}.closed`, 5000), `${key} in the tab does not end Presenter View`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), 3, `${key} in the tab leaves the editor on another slide`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -136,7 +135,6 @@ describe('the keys of PowerPoint in the show', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
   async function load(t, platform, n = 0) {
@@ -178,7 +176,7 @@ describe('the keys of PowerPoint in the show', () => {
         assert.equal(await page.evaluate(tabClosed), true, `${how} of the presenter display leaves the show tab open`);
         assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Show your steps one at a time', 'the editor is not at the slide shown last');
         await byteExact(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -219,7 +217,7 @@ describe('the keys of PowerPoint in the show', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -244,7 +242,7 @@ describe('the keys of PowerPoint in the show', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Embedding TyCHO scenes');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -258,7 +256,7 @@ describe('the keys of PowerPoint in the show', () => {
     for (const key of ['Enter', 'Backspace', '5', 'Enter']) await press(page, key);
     await sleep(300);
     assert.deepEqual(await here(), [2, -1]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const rectOf = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
@@ -285,7 +283,7 @@ describe('the keys of PowerPoint in the show', () => {
       await sleep(300);
       assert.equal(await page.evaluate(tabClosed), true, 'Esc leaves the show tab open');
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -308,7 +306,6 @@ describe('the parts of the presenter display', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}${arg !== undefined ? `, ${JSON.stringify(arg)}` : ''})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, { deck = OUTLINE, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
@@ -384,7 +381,7 @@ describe('the parts of the presenter display', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the button Display Options of the presenter display opens and closes the popover of its parts, which a click outside closes (${platform})`, async (t) => {
@@ -412,7 +409,7 @@ describe('the parts of the presenter display', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

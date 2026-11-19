@@ -31,7 +31,6 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${arg}`})`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(platform = 'mac') {
   const page = await browser.newPage();
@@ -111,7 +110,7 @@ async function roundTrip(page, what, { count = 1, save = false } = {}) {
     for (let i = 0; i < count; i++) await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
   }
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 for (const platform of ['mac', 'other']) {
@@ -275,7 +274,7 @@ test('a change of the tag of a slide with citations, and Reset Slide, write the 
   await settle(page);
   await byteExact(page);
   assertClean(await render(page), 'Reset Slide');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a copy of text with a citation puts the citation with its key only on the clipboard', async (t) => {
@@ -330,7 +329,7 @@ test('the references of a slide are not an object of the editor', async (t) => {
   assert.equal(rows.some((r) => /Koon|Gómez|Szebehely/.test(r)), false, `the object list names the references: ${rows.join(' | ')}`);
   assert.deepEqual((await page.evaluate('window.BeesonEditor.status()')).problems, []);
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('data-kind, data-name, and data-key are in the scope rule', () => {
@@ -419,5 +418,5 @@ test('after each change of the deck, the heads, the numbers, and the references 
   await sameAsFresh(page, 'a paragraph with a citation cut');
   await page.evaluate('window.BeesonEditor.undo()');
   await sameAsFresh(page, 'an undo of the cut');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

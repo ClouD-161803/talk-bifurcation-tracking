@@ -21,7 +21,6 @@ describe('the end of Present past its last slide', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)})`).then(() => frames(page));
@@ -68,7 +67,7 @@ describe('the end of Present past its last slide', () => {
       await page.evaluate('window.BeesonEditor.redo()');
       assert.equal(await render(page), done);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -88,7 +87,7 @@ describe('the end of Present past its last slide', () => {
       await page.evaluate('window.BeesonEditor.redo()');
       await byteExact(page);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Caption on a picture without a caption writes the caption only once it has text (${platform})`, async (t) => {
@@ -111,7 +110,7 @@ describe('the end of Present past its last slide', () => {
       await byteExact(page);
       await byteExact(page);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Caption switch of the Image pane shows an empty caption, which Caption takes off again (${platform})`, async (t) => {
@@ -133,7 +132,7 @@ describe('the end of Present past its last slide', () => {
       await page.send('Input.insertText', { text: 'A caption' });
       await frames(page);
       assert.match(await render(page), /<figcaption class="caption">A caption<\/figcaption>\s*<\/figure>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -157,7 +156,7 @@ describe('the end of Present past its last slide', () => {
         assert.equal(await page.evaluate(`!!document.querySelector('.beeson-edit-show')`), false, `${js(key)} at the last slide does not end the show`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), 12);
         await byteExact(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -176,7 +175,7 @@ describe('the end of Present past its last slide', () => {
       assert.equal(await page.evaluate(`!!document.querySelector('.beeson-edit-show')`), true, 'the show ends at the arrival on its last slide');
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -189,7 +188,7 @@ describe('the end of Present past its last slide', () => {
     await sleep(300);
     assert.equal(await page.evaluate('Reveal.getIndices().h'), 12);
     assert.equal(await page.evaluate('location.search'), '?still');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   const DISPLAY = 'dialog.beeson-edit-presenter[open]';
@@ -216,7 +215,7 @@ describe('the end of Present past its last slide', () => {
       for (const key of ['0', 'Enter']) await press(page, key);
       await sleep(200);
       assert.equal(await slideOf(page), 1, '0 and Return do not go to the first slide');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the show played by Present goes to the first or the last slide for a number out of range (${platform})`, async (t) => {
@@ -229,7 +228,7 @@ describe('the end of Present past its last slide', () => {
       assert.equal(await page.evaluate(`${SHOW}.Reveal.getIndices().h`), 0);
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -272,7 +271,7 @@ describe('the end of Present past its last slide', () => {
       await page.evaluate('window.BeesonEditor.redo()');
       assert.equal(await render(page), turned);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -319,7 +318,7 @@ describe('the end of Present past its last slide', () => {
       await frames(page);
       assert.equal(await render(page), text, 'Paste of the Edit menu does not make an item of each line');
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
@@ -341,7 +340,6 @@ describe('the slide shown after a show ends', () => {
 
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
@@ -416,7 +414,7 @@ describe('the slide shown after a show ends', () => {
         await page.evaluate(twice(TAB, how));
         assert.ok(await within(page, `!${DISPLAY}`, 5000), `two ${how}s in the tab do not end the show`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST, `two quick ${how}s leave the editor on another slide than the last`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
@@ -431,7 +429,7 @@ describe('the slide shown after a show ends', () => {
         await page.evaluate(twice(CURRENT, how));
         assert.ok(await within(page, stageGone, 5000), `two ${how}s in the speaker view do not end the show`);
         assert.equal(await page.evaluate('Reveal.getIndices().h'), LAST, `two quick ${how}s leave the editor on another slide than the last`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
   }
