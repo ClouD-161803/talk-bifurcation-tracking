@@ -1050,11 +1050,12 @@ test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt 
   assert.equal(a.oldest, 0);
   assert.equal(a.textAt(0), texts.get(0));
   assert.equal(a.textAt(990), texts.get(990));
-  // the time grows with the operations undone only by the cost of their patches, not by a copy of the text for each
-  const ratio = () => timeOf(() => a.textAt(0)) / timeOf(() => a.textAt(990));
+  // the time grows with the operations undone only by the cost of their patches, not by a copy of the
+  // text for each. each text is encoded, as the edit command sends it
+  const ratio = () => timeOf(() => Buffer.byteLength(a.textAt(0))) / timeOf(() => Buffer.byteLength(a.textAt(990)));
   let k = ratio();
-  if (k >= 20) k = ratio();
-  assert.ok(k < 20, `the oldest version took ${k.toFixed(1)} times as long as a version 10 operations back`);
+  for (let tries = 0; tries < 2 && k >= 10; tries++) k = ratio();
+  assert.ok(k < 10, `the oldest version took ${k.toFixed(1)} times as long as a version 10 operations back`);
 });
 
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
