@@ -437,9 +437,7 @@ describe('a split button folded into More', () => {
 
   // a trusted Return with its text, which presses the button of the focus as a keyboard does
   async function returnKey(page) {
-    const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+    await press(page, 'Enter');
     await frames(page);
   }
 

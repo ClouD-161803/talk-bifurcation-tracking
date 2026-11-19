@@ -1266,12 +1266,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     return false;
   })()`);
 
-  // a Return of a keyboard carries the text \r, which the browser types as a new line, as the press of
-  // test/helpers/editor.mjs does not
-  async function enter(page) {
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-  }
   // an edit of the code box writes its text again, with the > of line 5 as &gt;
   const GT = ['if len(members) >= 2:', 'if len(members) &gt;= 2:'];
 
@@ -1286,7 +1280,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       // Return at the end of line 3 starts line 4 with the indent of line 3, and the groups after it
       // are moved down by one line
       assert.ok(await caretAt(page, end3));
-      await enter(page);
+      await press(page, 'Enter');
       await frames(page);
       const shifted = CODE.replace('1-3|4|5-7|8-9', '1-3|5|6-8|9-10');
       const typed = [[CODE, shifted], [SEED, `${SEED}    \n`], GT];
@@ -1321,7 +1315,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       // the line of the for is indented by 4, and the line after it by 8
       const FOR = '    for z0 in np.linspace(Z_START, Z_END, STEPS + 1) / DU:\n';
       assert.ok(await caretAt(page, text.indexOf(FOR) + FOR.length - 1));
-      await enter(page);
+      await press(page, 'Enter');
       await type(page, 'pass');
       await frames(page);
       await byteExact(page, [[CODE, CODE.replace('1-3|4|5-7|8-9', '1-3|4|6-8|9-10')], [FOR, `${FOR}    pass\n`], GT]);
@@ -1330,7 +1324,7 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
       assert.ok(await caretAt(page, text.indexOf(FOR)));
-      await enter(page);
+      await press(page, 'Enter');
       await frames(page);
       await roundTrip(page, [[CODE, CODE.replace('1-3|4|5-7|8-9', '1-3|5|6-8|9-10')], [FOR, `\n${FOR}`], GT]);
       assert.deepEqual(errors(page), []);

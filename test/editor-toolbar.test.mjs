@@ -277,13 +277,6 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
     });
   }
 
-  // a trusted Return with its character, which presses a focused button as a key of a user does
-  async function enter(page) {
-    const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   // a trusted ?, typed with Shift on a US layout
   async function question(page) {
     const base = { key: '?', code: 'Slash', windowsVirtualKeyCode: 191, modifiers: 8 };
@@ -348,7 +341,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       assert.deepEqual(ring, { style: 'solid', color: focus }, 'the field does not have the ring of the editor');
       await page.evaluate(`document.activeElement.select()`);
       await type(page, '60');
-      await enter(page);
+      await press(page, 'Enter');
       assert.equal(await open(page, 'dialog.beeson-grid-sheet'), false, 'Return does not close the sheet');
       void run(page, 'view.grid.settings');
       await page.waitFor(`!!document.querySelector('dialog.beeson-grid-sheet[open] input[name="spacing"]')`);
@@ -376,7 +369,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       await press(page, 'Escape');
       void run(page, 'file.present');
       await page.waitFor(`!!document.querySelector('dialog.beeson-edit-dialog.ask[open]')`);
-      await enter(page);
+      await press(page, 'Enter');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-dialog.ask[open]')`);
       await sleep(300);
       // the show is played in place, in the frame of .beeson-edit-show over the editor
@@ -408,7 +401,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       assert.equal(await page.evaluate(`document.activeElement.name`), 'percent');
       await page.evaluate(`document.activeElement.select()`);
       await type(page, '140');
-      await enter(page);
+      await press(page, 'Enter');
       await frames(page);
       assert.equal(await percentText(page), '140%', 'the typed percentage is not the zoom');
       // a percentage out of range is clamped to the range of the slider, 10 to 400 percent
@@ -417,7 +410,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
         await page.waitFor(`!!document.querySelector('dialog.beeson-edit-dialog[open] input[name="percent"]')`);
         await page.evaluate(`document.activeElement.select()`);
         await type(page, typed);
-        await enter(page);
+        await press(page, 'Enter');
         await frames(page);
         assert.equal(await percentText(page), shown, `${typed} is not clamped`);
       }
