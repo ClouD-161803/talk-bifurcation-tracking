@@ -726,7 +726,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
-      const waiting = people.events(people.clientOf(query.get('token')) ?? '', query.get('since') ?? '');
+      const hold = Number(query.get('hold') ?? NaN);
+      const waiting = people.events(people.clientOf(query.get('token')) ?? '', query.get('since') ?? '', hold >= 0 ? hold : undefined);
       return waiting ? json(200, await waiting) : error(404, 'say hello first');
     }
     if (!['hello', 'name', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');

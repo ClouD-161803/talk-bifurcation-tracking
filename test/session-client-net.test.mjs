@@ -1301,6 +1301,28 @@ test('an idle page polls from the version of the last answer, hence the edit com
   clean(b);
 });
 
+// a browser opens at most 6 connections to one host, and an idle poll is held 40 s here, hence a
+// page that waits for a connection is not answered within 20 s while every connection holds a poll
+test('a seventh page of a session in one browser comes online, and an edit of the first page reaches all seven, while the polls of the others are held', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '40000' } });
+  const pages = [];
+  for (let i = 0; i < 6; i++) pages.push(await open(browser, sessionUrl(server.edit), { name: `P${i}` }));
+  await converge(server, pages);
+  // the load of the page waits for a connection as well, hence the wait is read from its start
+  const start = Date.now();
+  const seventh = await open(browser, sessionUrl(server.edit), { name: 'Seventh', ready: false });
+  await seventh.waitFor(ONLINE, Math.max(0, 20_000 - (Date.now() - start)));
+  pages.push(seventh);
+  await show(pages[0], 'One');
+  await caretAtEnd(pages[0], el(0, 'p'));
+  await type(pages[0], ' seven');
+  await converge(server, pages);
+  assert.match(paragraph(server.read()), / seven$/);
+  for (const page of pages) clean(page);
+});
+
 test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());

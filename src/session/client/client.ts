@@ -17,6 +17,7 @@ import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
 import { Sync, type Whole } from './sync.ts';
+import { SHORT, takeSlot } from './slot.ts';
 import { Failure, Transport } from './transport.ts';
 
 // joining: before the first answer of hello. online: the last request was answered. offline: a
@@ -197,6 +198,9 @@ export class Client {
   private presenceDue = false;
   private presenceBusy = false;
   private presenceTry = 0;
+  // whether this page polls long, and the release of its lock
+  private long = false;
+  private release = (): void => {};
 
   constructor(handover: Handover) {
     const { app, port, ...shell } = handover;
@@ -746,9 +750,11 @@ export class Client {
         continue;
       }
       const generation = this.generation;
+      this.long ||= await takeSlot((release) => (this.release = release));
+      const long = this.long;
       let answer: EventsAnswer;
       try {
-        answer = await this.transport.events(this.token, this.since);
+        answer = await this.transport.events(this.token, this.since, long ? undefined : 0);
       } catch (e) {
         if (this.ended || this.gone || generation !== this.generation) continue;
         this.lostAt ??= Date.now();
@@ -773,6 +779,7 @@ export class Client {
       this.lostAt = null;
       this.bounces = 0;
       await this.take(answer);
+      if (!long) await new Promise((done) => window.setTimeout(done, SHORT));
     }
   }
 
@@ -886,6 +893,7 @@ export class Client {
   private end(ended: Ended): void {
     if (this.ended) return;
     this.ended = ended;
+    this.release();
     this.retry?.finish();
     clearTimeout(this.savingTimer);
     this.saving = false;

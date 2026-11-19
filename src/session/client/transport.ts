@@ -68,8 +68,9 @@ export class Transport {
     return this.post('presence', { token, state });
   }
 
-  events(token: Token, since: Version): Promise<EventsAnswer> {
-    return this.send(this.url('events', { token, since }), { method: 'GET' }, POLL_WAIT);
+  // a poll with hold is held for at most hold ms, e.g. 0 for an answer at once
+  events(token: Token, since: Version, hold?: number): Promise<EventsAnswer> {
+    return this.send(this.url('events', { token, since, ...(hold === undefined ? {} : { hold: String(hold) }) }), { method: 'GET' }, POLL_WAIT);
   }
 
   comments(token: Token): Promise<CommentsAnswer> {

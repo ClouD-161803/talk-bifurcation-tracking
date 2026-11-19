@@ -255,8 +255,8 @@ export class People {
     this.wake();
   }
 
-  // a long poll of client for the news after the version since
-  events(client: string, since: string): Promise<EventsAnswer> | null {
+  // a long poll of client for the news after the version since, held for at most hold ms
+  events(client: string, since: string, hold = HOLD): Promise<EventsAnswer> | null {
     const end = this.ends.get(client);
     if (end) {
       this.told(client);
@@ -265,7 +265,7 @@ export class People {
     const member = this.revive(client);
     if (!member) return null;
     return new Promise((done) => {
-      const poll: Poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
+      const poll: Poll = { client, since, done, hold: setTimeout(() => this.answer(poll), Math.min(HOLD, hold)), gap: null };
       this.polls.add(poll);
       member.polls++;
       member.polled = true;
