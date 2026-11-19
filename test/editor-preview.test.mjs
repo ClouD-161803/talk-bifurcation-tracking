@@ -1,7 +1,3 @@
-// preview of the toolbar, i.e. Play Slide, Trace Backdrop, and Play Steps on the canvas, what stops
-// it, and the selection, the table bars, and the caret hidden while it plays and drawn again after
-// it
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -10,18 +6,11 @@ import { serve } from '../scripts/webdriver.mjs';
 import { click, clickText, press } from './helpers/editor.mjs';
 import { DRAWN, shapePath } from '../src/shapes.ts';
 
-// the Preview button of the toolbar and the icons of round 9, on both platforms. Preview is a split
-// button before Present whose main part plays the slide and whose menu traces the backdrop, plays
-// the steps, selects the backdrop, and adds one. a preview is drawn on the canvas, stops at a
-// click on Stop, Esc, a press on the canvas, a change of slide, and an edit, and leaves the file,
-// the history, and the selection as they were. Present is drawn as a screen on its stand, a new
-// slide as a rounded rectangle with a plus, and each entry of the Shape menu with its shape
 describe('the Preview button of the toolbar', () => {
   const DECK = 'test/pages/editor-r22-2.html';
   const PLATFORMS = ['mac', 'other'];
   const MAIN = '.beeson-edit-top [data-command="preview.slide"]';
   const LAYER = '.beeson-edit-play';
-  // the slides of the deck
   const BOTH = 0, BACKDROP = 1, STEPS = 2, NEITHER = 3, STEPPED = 4;
 
   let browser;
@@ -47,7 +36,6 @@ describe('the Preview button of the toolbar', () => {
   const rafs = (page) => page.evaluate('Beeson.backdrops.filter((b) => b.raf).length');
   const layer = (page) => page.evaluate(`!!document.querySelector('${LAYER}')`);
   const centerOf = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  // the label and the path data of the face of the main part of Preview, and whether it is pressed
   const face = (page) => page.evaluate(`(() => {
   const b = document.querySelector('${MAIN}');
   return { label: b.querySelector('.label').textContent, d: [...b.querySelectorAll('svg path')].map((p) => p.getAttribute('d')), pressed: b.getAttribute('aria-pressed') === 'true' };
@@ -56,8 +44,6 @@ describe('the Preview button of the toolbar', () => {
   const PAUSE = ['M5.5 4.5h3v11h-3z', 'M11.5 4.5h3v11h-3z'];
   const REHEARSE = ['M3 4.5h14v9H3z', 'M8.75 7v4l3.25-2z', 'M7 16.5h6'];
 
-  // the editor on the deck at slide n, with a step delay of step ms. with motion, the page does not
-  // ask for reduced motion and the URL is without still, so that a backdrop is traced
   async function previewPage(platform, n, { motion = false, step = 1000 } = {}) {
     await last?.close().catch(() => {});
     const page = await browser.newPage(motion ? { motion: true } : undefined);
@@ -74,15 +60,12 @@ describe('the Preview button of the toolbar', () => {
     return page;
   }
 
-  // the labels of the menu that the arrow beside the toolbar button of command opens, a rule as '-',
-  // each with whether it is dimmed
   async function splitMenu(page, command) {
     await click(page, await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-top [data-command="${command}"]').parentElement.querySelector('.more').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await frames(page);
     return page.evaluate(`[...document.querySelector('.beeson-edit-menu').children].map((i) => i.matches('.rule') ? '-' : i.querySelector('.label')?.textContent.trim() + (i.getAttribute('aria-disabled') === 'true' ? ' (dimmed)' : ''))`);
   }
 
-  // the labels of the menu of the menu bar title name
   async function menuOf(page, name) {
     await clickText(page, await page.evaluate(`(() => {
     const t = [...document.querySelectorAll('.beeson-edit-header [aria-haspopup="menu"]')].find((b) => b.textContent === ${JSON.stringify(name)});
@@ -95,7 +78,6 @@ describe('the Preview button of the toolbar', () => {
     return items;
   }
 
-  // the file, the history, the dirty mark, and the selection are as they were
   async function unchanged(page, selection = []) {
     assert.equal(await render(page), page.source, 'the preview changed the file');
     const s = await status(page);
@@ -104,9 +86,6 @@ describe('the Preview button of the toolbar', () => {
     assert.deepEqual(await selected(page), selection, 'the preview changed the selection');
   }
 
-  // the state of each paragraph and backdrop of the slide drawn by a preview, sampled at every frame
-  // from the start until the preview ends, with each run of one state once. a state is off, dim at
-  // the 0.45 of the earlier steps, or on, with + where the class key is colored
   const SAMPLE = `(() => {
   const out = [];
   const sample = () => {
@@ -185,7 +164,6 @@ describe('the Preview button of the toolbar', () => {
       await exec(page, 'preview.steps');
       await page.waitFor(`window.__samples.at(-1) === 'none' && window.__samples.length > 1`, 8000);
       const took = Date.now() - started;
-      // the restore step of src/steps.ts is the fourth step, after which the slide is complete
       assert.deepEqual(await page.evaluate('window.__samples'), ['none', 'off on off', 'on on off', 'dim off off', 'dim off on+', 'on off on+', 'none']);
       assert.ok(took >= 1400 && took < 4000, `the steps took ${took} ms`);
       await unchanged(page);
@@ -197,7 +175,6 @@ describe('the Preview button of the toolbar', () => {
       await page.evaluate(SAMPLE);
       await exec(page, 'preview.steps');
       await page.waitFor(`window.__samples.includes('on on')`, 4000);
-      // the pixels drawn on the base canvas of the backdrop in the layer grow while it is traced
       const ink = `(() => {
       const c = document.querySelector('${LAYER} .shot').shadowRoot.querySelector('.backdrop canvas.orbits-base');
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
@@ -352,30 +329,20 @@ describe('the Preview button of the toolbar', () => {
       assert.equal(new Set(icons.map((i) => i.html)).size, 13, 'two entries have the same icon');
       for (const kind of DRAWN) {
         const i = icons.find((x) => x.command === `insert.shape.${kind}`);
-        // the box of the shape is centered on the grid of 20 px by the origin of the view box
         const [x, y] = i.view.split(' ').map(Number);
         assert.deepEqual(i.d, [shapePath(kind, 20 + 2 * x, 20 + 2 * y, 1.5)], `the icon of ${kind}`);
       }
-      // the label of an entry is its text alone
       assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item .label')][3].textContent`), 'Triangle');
     });
   }
 });
 
-// Preview of R26.1 on both platforms. a preview runs until the last trajectory of a staggered backdrop
-// is traced, for Trace Backdrop, Play Slide, and a backdrop that is a step in Play Steps, and the
-// wait of a loop still ends. a backdrop hidden in the layer that the editor shows is not traced on
-// the canvas. Play Slide, Trace Backdrop, and Play Steps are dimmed in Slide Sorter, which stops a
-// preview that plays. the layer of Play Steps follows the slide through a zoom, a scroll, the View
-// button, and Rulers, and Esc that stops a preview keeps the selection, while Deselect and its other
-// key still work during a preview
 describe('a preview runs until the backdrop is traced', () => {
   const DECK = 'test/pages/editor-r26-1.html';
   const PLATFORMS = ['mac', 'other'];
   const MAIN = '.beeson-edit-top [data-command="preview.slide"]';
   const VIEW = '.beeson-edit-top [data-command="toolbar.view"]';
   const LAYER = '.beeson-edit-play';
-  // the slides of the deck
   const STAGGER = 0, STEPPED = 1, LOOP = 2, HIDDEN = 3, STEPS = 4;
 
   let browser;
@@ -401,8 +368,6 @@ describe('a preview runs until the backdrop is traced', () => {
   const centerOf = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
-  // the editor on the deck at slide n, with a step delay of step ms. with motion, the page does not
-  // ask for reduced motion and the URL is without still, so that a backdrop is traced
   async function previewPage(platform, n, { motion = false, step = 1000 } = {}) {
     await last?.close().catch(() => {});
     const page = await browser.newPage({ width: 1600, height: 1000, ...(motion ? { motion: true } : {}) });
@@ -419,11 +384,8 @@ describe('a preview runs until the backdrop is traced', () => {
     return page;
   }
 
-  // the drawing of the backdrop of slide n on the canvas
   const orbitOf = (n) => `Beeson.backdrops.find((b) => b.el === document.querySelectorAll('.reveal .slides > section')[${n}].querySelector('.backdrop'))`;
 
-  // the seconds from the start of the trace of the backdrop of slide n to the end of its last trajectory,
-  // with trajectory i started i times data-stagger seconds late
   async function spanOf(page, n) {
     await page.waitFor(`(${orbitOf(n)})?.trajectories.length > 1`);
     return page.evaluate(`(() => {
@@ -433,9 +395,6 @@ describe('a preview runs until the backdrop is traced', () => {
   })()`);
   }
 
-  // runs the command id and records in the page, in ms from the run, when the layer of the steps is
-  // added and taken down, when the trace of the backdrop of slide n on the canvas ends and whether
-  // each of its trajectories was traced to its end then, and when Preview is no longer pressed
   async function watch(page, id, n) {
     await page.evaluate(`(() => {
     const w = window.__w = { on: null, off: null, end: null, whole: null, released: null };
@@ -466,14 +425,11 @@ describe('a preview runs until the backdrop is traced', () => {
     return page.evaluate('window.__w');
   };
 
-  // the box of an element in the viewport, rounded to the px
   const box = (page, selector) => page.evaluate(`(() => {
   const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect();
   return r ? [r.left, r.top, r.width, r.height].map(Math.round) : null;
 })()`);
 
-  // the boxes of the layer, of the slide drawn in it, and of the slides of the canvas, and the clip of
-  // the layer with the clip that the viewport of the canvas gives
   const placed = (page) => page.evaluate(`(() => {
   const r = (el) => { const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round); };
   const l = document.querySelector('${LAYER}');
@@ -513,7 +469,6 @@ describe('a preview runs until the backdrop is traced', () => {
       const span = await spanOf(page, STEPPED);
       await watch(page, 'preview.steps', null);
       const w = await watched(page);
-      // the backdrop is traced from the first step on, one step delay after the start
       assert.ok(w.off !== null && w.off >= 300 + span * 1000 - 150, `the layer is taken down at ${Math.round(w.off)} ms, before the last trajectory at ${Math.round(300 + span * 1000)} ms`);
       assert.ok(w.off < 300 + span * 1000 + 2000, `the layer is taken down at ${Math.round(w.off)} ms`);
     });
@@ -523,7 +478,6 @@ describe('a preview runs until the backdrop is traced', () => {
       const span = await spanOf(page, LOOP);
       await watch(page, 'preview.backdrop', null);
       const w = await watched(page);
-      // a loop is drawn whole, with its head looped, and its wait ends after data-duration at least
       assert.ok(w.released >= 1000 - 150 && w.released < span * 1000 + 1500, `the loop is released at ${Math.round(w.released)} ms, with the last trajectory at ${Math.round(span * 1000)} ms`);
     });
 
@@ -550,7 +504,6 @@ describe('a preview runs until the backdrop is traced', () => {
       assert.equal((await state(page, 'view.lightTable')).checked, true);
       for (const id of ['preview.slide', 'preview.backdrop', 'preview.steps']) assert.equal((await state(page, id)).enabled, false, `${id} in Slide Sorter`);
       assert.equal(await page.evaluate(`document.querySelector('${MAIN}').disabled`), true, 'the main part of Preview is not dimmed');
-      // the entries of the Play menu
       await clickText(page, await page.evaluate(`(() => {
       const t = [...document.querySelectorAll('.beeson-edit-header [aria-haspopup="menu"]')].find((b) => b.textContent === 'Play');
       const r = t.getBoundingClientRect();
@@ -562,7 +515,6 @@ describe('a preview runs until the backdrop is traced', () => {
       await press(page, 'Escape');
       await exec(page, 'view.lightTable');
       await frames(page);
-      // a preview that plays is stopped when the table is opened
       for (const id of ['preview.steps', 'preview.backdrop', 'preview.slide']) {
         await exec(page, id);
         await frames(page);
@@ -647,7 +599,6 @@ describe('a preview runs until the backdrop is traced', () => {
       await frames(page);
       assert.equal(await layer(page), false);
       assert.deepEqual(await selected(page), ['backdrop'], 'Esc that stops a preview drops the selected backdrop');
-      // Esc without a preview still deselects
       await press(page, 'Escape');
       assert.deepEqual(await selected(page), []);
     });
@@ -672,14 +623,6 @@ describe('a preview runs until the backdrop is traced', () => {
   }
 });
 
-// the frame of the selection during a preview, R32.3, on both platforms. while Trace Backdrop, Play
-// Slide, Play Steps, Preview Steps of the Steps pane, or Preview Transition plays, none of the
-// frames, grips, rotate handle, handle of a block, ends of a line, outline under the pointer, guides,
-// band of the selection on the rulers, and caret of a text is drawn, as Keynote and PowerPoint hide
-// the handles of a selection during a preview. at the end of a preview, at Stop, and at Esc, the
-// selection, the caret, and the focus are those from before the preview and are drawn again. a
-// preview does not make an entry of the history or change the file, and a click on the slide during
-// a preview stops it and selects as it does without one
 describe('no selection frame drawn during a preview', () => {
   const DECK = 'test/pages/editor-r32-3.html';
   const PLATFORMS = ['mac', 'other'];
@@ -703,7 +646,6 @@ describe('no selection frame drawn during a preview', () => {
   const wait = (ms) => new Promise((d) => setTimeout(d, ms));
   const centerOf = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // the editor on the deck with the rulers shown, without reduced motion so that a backdrop is traced
   async function previewPage(platform) {
     await last?.close().catch(() => {});
     const page = await browser.newPage({ width: 1600, height: 1000, motion: true });
@@ -721,9 +663,6 @@ describe('no selection frame drawn during a preview', () => {
     return page;
   }
 
-  // what the editor draws over the slide, each part with the count of its shown elements, the band
-  // of the selection on the top ruler, whether a caret is drawn, the focus, the offset of the caret,
-  // and the selection
   const DRAWN = `(() => {
   const shown = (el) => {
     if (el.hidden) return false;
@@ -757,7 +696,6 @@ describe('no selection frame drawn during a preview', () => {
   if (top && !top.hidden && sel.length) {
     const r = sel[0].getBoundingClientRect(), t = top.getBoundingClientRect();
     const g = top.getContext('2d');
-    // the first row, since the labels are drawn from the third row on, and the ticks from the fourth
     const px = g.getImageData(Math.round((r.left + r.width / 2 - t.left) * devicePixelRatio), 0, 1, 1).data;
     const bg = g.getImageData(1, 0, 1, 1).data;
     if (px[0] !== bg[0] || px[1] !== bg[1] || px[2] !== bg[2]) drawn.band = 1;
@@ -765,7 +703,6 @@ describe('no selection frame drawn during a preview', () => {
   const a = document.activeElement;
   const s = getSelection();
   const editing = !!(a && a.isContentEditable && s.rangeCount && s.isCollapsed);
-  // a caret in a color with an alpha of 0 is not seen
   if (editing && !['transparent', 'rgba(0, 0, 0, 0)'].includes(getComputedStyle(a).caretColor)) drawn.caret = 1;
   return {
     drawn,
@@ -776,7 +713,6 @@ describe('no selection frame drawn during a preview', () => {
 })()`;
   const measure = (page) => page.evaluate(DRAWN);
 
-  // the kinds of selection, each made with trusted input as a user makes it
   const SELECTIONS = {
     block: async (page) => { await clickText(page, 'section.present h2'); await press(page, 'Escape'); },
     caret: async (page) => { await clickText(page, 'section.present > p:not(.fragment)'); },
@@ -792,23 +728,18 @@ describe('no selection frame drawn during a preview', () => {
     },
   };
 
-  // whether the preview started by id plays
   const playingOf = (id) => (id.startsWith('preview.')
     ? `document.querySelector('${MAIN}').getAttribute('aria-pressed') === 'true'`
     : id === 'steps.preview' ? `document.documentElement.classList.contains('beeson-previewing')` : `!!document.querySelector('.beeson-edit-preview')`);
 
-  // the preview id started as a user starts it, without a wait for its end
   async function start(page, id) {
     await page.evaluate(`(() => { void window.BeesonEditor.exec(${JSON.stringify(id)}); return true; })()`);
     await page.waitFor(playingOf(id), 3000);
     await frames(page);
   }
 
-  // #129: the preview of a magic move of 0.5 s ends about 1.2 s after its start, before the reads of a
-  // test on a slow runner. a test that stops the preview with Esc makes the move last 60 s
   const longMove = (page) => page.evaluate('(Reveal.configure({ autoAnimateDuration: 60 }), true)');
 
-  // the selection is made fresh on the first slide, with the pointer moved off the slide
   async function select(page, kind) {
     await page.evaluate('Reveal.slide(0)');
     await frames(page);
@@ -827,7 +758,6 @@ describe('no selection frame drawn during a preview', () => {
           const before = await select(page, kind);
           assert.ok(Object.keys(before.drawn).length, `the ${kind} selection draws nothing before the preview`);
           await start(page, id);
-          // the pointer over another element during the preview
           await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await centerOf(page, 'section.present .shape.tone-violet')) });
           await frames(page);
           const during = await measure(page);
@@ -925,8 +855,6 @@ describe('no selection frame drawn during a preview', () => {
     });
   }
 
-  // a key typed in a text while a preview plays stops the preview before the key is written, hence
-  // the key is not written into a text that the preview hides, under a caret that is not drawn
   for (const platform of PLATFORMS) {
     test(`a key typed in a text during a preview stops the preview before it is written (${platform})`, async () => {
       const page = await previewPage(platform);
@@ -937,15 +865,12 @@ describe('no selection frame drawn during a preview', () => {
         const t = ev.target instanceof Element ? ev.target : null;
         window.__inputs.push({ type, playing: document.documentElement.classList.contains('beeson-playing'), off: !!t?.closest('.beeson-pv-off') });
       }, true);
-      // a paragraph that the command of Enter adds to the slide
       new MutationObserver((records) => {
         if (records.some((r) => [...r.addedNodes].some((n) => n.localName === 'p'))) window.__inputs.push({ type: 'paragraph', playing: document.documentElement.classList.contains('beeson-playing'), off: false });
       }).observe(document.querySelector('.reveal .slides'), { childList: true, subtree: true });
       return true;
     })()`);
-      // Preview Steps started by the Play button of the Steps pane first, as the report reproduces it
       for (const id of ['steps.preview', ...PREVIEWS.filter((p) => p !== 'steps.preview')]) {
-        // Enter runs the command of a new paragraph rather than an input of the browser
         for (const key of ['q', 'Backspace', 'Enter']) {
           await page.evaluate('Reveal.slide(0)');
           await frames(page);
@@ -983,11 +908,6 @@ describe('no selection frame drawn during a preview', () => {
   }
 });
 
-// a table and a zoom key during a preview, R32.4, on both platforms. while a preview plays, the bars
-// of the rows and columns, the grips, the fill handle, and the corners of a table selection are not
-// drawn, as the frame of a selection is not (R32.3), and Esc stops the preview with a range of cells
-// selected and draws the same selection again. with the caret in a text, a zoom key plays the
-// preview on at the new zoom (R26.1), and a key that is written into the text still stops it
 describe('table bars and zoom keys during a preview', () => {
   const DECK = 'test/pages/editor-r32-4.html';
   const PLATFORMS = ['mac', 'other'];
@@ -1009,7 +929,6 @@ describe('table bars and zoom keys during a preview', () => {
 
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 
-  // the editor on the deck, without reduced motion so that a backdrop is traced
   async function previewPage(platform) {
     await last?.close().catch(() => {});
     const page = await browser.newPage({ width: 1600, height: 1000, motion: true });
@@ -1026,8 +945,6 @@ describe('table bars and zoom keys during a preview', () => {
     return page;
   }
 
-  // what the editor draws over the slide for a table selection, each part with the count of its shown
-  // elements, whether a caret is drawn, the focus, and the selection
   const DRAWN = `(() => {
   const shown = (el) => {
     if (el.hidden) return false;
@@ -1063,7 +980,6 @@ describe('table bars and zoom keys during a preview', () => {
 })()`;
   const measure = (page) => page.evaluate(DRAWN);
 
-  // the selections of a table, each made with trusted input as a user makes it
   const SELECTIONS = {
     cell: async (page) => { await clickText(page, 'section.present tr:nth-child(2) td'); },
     range: async (page) => {
@@ -1099,7 +1015,6 @@ describe('table bars and zoom keys during a preview', () => {
     return measure(page);
   }
 
-  // a zoom key, which press() of the helpers does not name
   async function zoomKey(page, platform, out) {
     const modifiers = platform === 'mac' ? 4 : 2;
     const key = out ? { key: '-', code: 'Minus', windowsVirtualKeyCode: 189 } : { key: '=', code: 'Equal', windowsVirtualKeyCode: 187 };
@@ -1162,11 +1077,6 @@ describe('table bars and zoom keys during a preview', () => {
   }
 });
 
-// Preview of the Backdrop pane, R32.5, on both platforms. while it traces the selected backdrop,
-// the frame, the grips, the marks of the window, the guides, and the band of the selection on the
-// rulers are not drawn, as during the previews of the toolbar (R32.3). they are drawn again at the
-// end of the trace, at Esc, which completes the trace and keeps the selection, and at a press on the
-// slide. the preview does not make an entry of the history or change the file
 describe('Preview of the Backdrop pane', () => {
   const DECK = 'test/pages/editor-r32-3.html';
   const PLATFORMS = ['mac', 'other'];
@@ -1187,7 +1097,6 @@ describe('Preview of the Backdrop pane', () => {
 
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 
-  // the editor on the deck with the rulers shown, without reduced motion so that a backdrop is traced
   async function previewPage(platform) {
     await last?.close().catch(() => {});
     const page = await browser.newPage({ width: 1600, height: 1000, motion: true });
@@ -1205,9 +1114,6 @@ describe('Preview of the Backdrop pane', () => {
     return page;
   }
 
-  // what the editor draws over the slide, each part with the count of its shown elements, the band
-  // of the selection on the top ruler, whether a caret is drawn, the focus, the offset of the caret,
-  // and the selection
   const DRAWN = `(() => {
   const shown = (el) => {
     if (el.hidden) return false;
@@ -1241,7 +1147,6 @@ describe('Preview of the Backdrop pane', () => {
   if (top && !top.hidden && sel.length) {
     const r = sel[0].getBoundingClientRect(), t = top.getBoundingClientRect();
     const g = top.getContext('2d');
-    // the first row, since the labels are drawn from the third row on, and the ticks from the fourth
     const px = g.getImageData(Math.round((r.left + r.width / 2 - t.left) * devicePixelRatio), 0, 1, 1).data;
     const bg = g.getImageData(1, 0, 1, 1).data;
     if (px[0] !== bg[0] || px[1] !== bg[1] || px[2] !== bg[2]) drawn.band = 1;
@@ -1249,7 +1154,6 @@ describe('Preview of the Backdrop pane', () => {
   const a = document.activeElement;
   const s = getSelection();
   const editing = !!(a && a.isContentEditable && s.rangeCount && s.isCollapsed);
-  // a caret in a color with an alpha of 0 is not seen
   if (editing && !['transparent', 'rgba(0, 0, 0, 0)'].includes(getComputedStyle(a).caretColor)) drawn.caret = 1;
   return {
     drawn,
@@ -1262,7 +1166,6 @@ describe('Preview of the Backdrop pane', () => {
 
   const tracing = (page) => page.evaluate('Beeson.backdrops.filter((b) => b.raf).length > 0');
 
-  // the backdrop of the first slide selected, with the pointer off the slide, and the Backdrop pane shown
   async function selectBackdrop(page) {
     await page.evaluate('Reveal.slide(0)');
     await frames(page);
@@ -1294,7 +1197,6 @@ describe('Preview of the Backdrop pane', () => {
       await frames(page);
       assert.equal(await tracing(page), false, 'Esc does not complete the trace');
       assert.deepEqual(await measure(page), before, 'the selection after Esc');
-      // the next Esc deselects, as without a preview
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual((await measure(page)).selection, []);
@@ -1320,7 +1222,6 @@ describe('Preview of the Backdrop pane', () => {
       const before = await selectBackdrop(page);
       await startPane(page);
       assert.deepEqual((await measure(page)).drawn, {}, 'drawn over the slide during Preview of the pane');
-      // a press on the backdrop, away from the other elements
       const box = await page.evaluate(`(() => { const r = document.querySelector('section.present .backdrop').getBoundingClientRect(); return { x: r.left + r.width * 0.9, y: r.top + r.height * 0.15 }; })()`);
       await click(page, box);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 995 });

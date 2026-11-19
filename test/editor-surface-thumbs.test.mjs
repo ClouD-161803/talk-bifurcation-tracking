@@ -1,7 +1,3 @@
-// the thumbnail of a slide with a surface in the navigator of the editor (issue #121). a surface drawn with
-// three.js is drawn in the thumbnail of a slide that reveal.js has not laid out yet, as it is drawn once the
-// slide was shown. the surfaces of test-deck.html and the strip bundle of test/pages/bundle-far.html are checked
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -18,7 +14,6 @@ after(async () => {
 
 const SLIDES = `[...document.querySelectorAll('.reveal:not(.beeson-peek) .slides > section')]`;
 
-// the share of the pixels of canvas that are drawn
 const INK = `((canvas) => {
   if (!canvas?.width || !canvas.height) return 0;
   const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
@@ -27,8 +22,6 @@ const INK = `((canvas) => {
   return drawn / (data.length / 4);
 })`;
 
-// the surface of slide i and its picture in the thumbnail: whether reveal.js lays the slide out, the ink of the
-// picture, and the labels placed in the thumbnail
 const state = (i) => `(() => {
   const slide = ${SLIDES}[${i}];
   const pic = document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.shadowRoot?.querySelector('.beeson-thumb .surface');
@@ -39,17 +32,13 @@ const state = (i) => `(() => {
   };
 })()`;
 
-// the times the thumbnail of slide i was drawn
 const draws = (i) => `Number(document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.dataset.drawn ?? 0)`;
 
-// the indices of the slides with a surface, and of the last slide
 const found = `(() => {
   const slides = ${SLIDES};
   return { surfaces: slides.flatMap((s, i) => (s.querySelector('.surface') ? [i] : [])), last: slides.length - 1 };
 })()`;
 
-// deck is opened at its last slide. the thumbnail of each slide with a surface is drawn with the surface and its
-// labels, and it holds at least half the ink that it holds once the slide was shown
 async function check(t, deck) {
   const last = readFileSync(deck, 'utf8').match(/<section[\s>]/g).length - 1;
   const page = await editorPage(browser, { deck, query: `edit&still&theme=dark#/${last}`, clear: true });
@@ -80,8 +69,6 @@ test('the thumbnail of a slide that was never shown draws its surface and its la
 
 test('the thumbnail of a slide that was never shown draws its strip bundle, as after the slide was shown', { timeout: 600000 }, (t) => check(t, 'test/pages/bundle-far.html'));
 
-// a flip of the mode draws every surface again, also one on a slide that is not laid out, whose labels then have
-// a size of 0. the label of an arrow of a strip bundle is placed by its size, and it keeps its place in this case
 test('after a flip of the mode, the labels of a strip bundle on a slide that was never shown keep their places', { timeout: 300000 }, async (t) => {
   const deck = 'test/pages/bundle-far.html';
   const page = await editorPage(browser, { deck, query: 'edit&still&theme=dark#/4', clear: true });

@@ -1,7 +1,3 @@
-// a text over a figure after a change of the layout or an insert, reported with a sentence that
-// names what covers what, the empty caption of a picture, and the report of a new table drawn over
-// a text
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -11,14 +7,8 @@ import { serve } from '../scripts/webdriver.mjs';
 import { arrange } from '../src/editor/commands/layout.ts';
 import { center, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
-// the work of R12.4 on both platforms: the place of a new table, a text laid over a figure by a
-// change of the layout, the pair of an image for the two modes, the caption of a picture, the
-// slide made from the Content tile, and the name and the path of an unsaved picture.
-// each edit of the file is checked byte for byte, after an undo and a redo, and after a save and
-// an open
 describe('a text over a figure after Change Layout', () => {
   const DECK = 'test-deck.html';
-  // the slides of index.html with a list beside a backdrop and with a figure in a figure box
   const STEPS = 2;
   const FIGURES = 4;
   const PLATFORMS = ['mac', 'other'];
@@ -44,7 +34,6 @@ describe('a text over a figure after Change Layout', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the box in slide px of each shown element of selector on the current slide
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present, .reveal .slides > section > section.present');
   const s = slide.getBoundingClientRect();
@@ -56,8 +45,6 @@ describe('a text over a figure after Change Layout', () => {
 })()`);
   const meets = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
 
-  // the editor on a deck served over HTTP, with the storage of the origin emptied first, and with
-  // slide n shown
   async function load(t, platform, { deck = DECK, n = 0, size = { width: 1600, height: 1000 }, query = '' } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -74,8 +61,6 @@ describe('a text over a figure after Change Layout', () => {
     return page;
   }
 
-  // the rendered text differs from before, an undo gives before and a redo the edited text byte for
-  // byte, and the saved text is opened again without problems
   async function checkEdit(page, before, name) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -88,15 +73,12 @@ describe('a text over a figure after Change Layout', () => {
     return edited;
   }
 
-  // the files at paths given to the open file chooser of the editor, as a person picks them
   async function choose(page, paths) {
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
     const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
     await page.send('DOM.setFileInputFiles', { files: paths, objectId: result.objectId });
   }
 
-  // a trusted drag of the files at paths from the Finder, dropped at the point at. it returns the
-  // tag of the drop outline before the drop
   async function dropFiles(page, at, paths) {
     const data = { items: [], files: paths, dragOperationsMask: 1 };
     await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: at.x, y: at.y, data });
@@ -109,9 +91,6 @@ describe('a text over a figure after Change Layout', () => {
   const waitText = (page, text) => page.waitFor(`window.BeesonEditor.render().includes(${js(text)})`, 30000);
   const tabs = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].map((t) => t.textContent.trim())`);
 
-  // a save into a folder of the private file system, which a stub of showDirectoryPicker gives as the
-  // folder that the person chooses, and an open of the saved text. it returns the saved text and the
-  // names of the files of its media/
   async function saveInto(page, folder) {
     const saved = await page.evaluate(`(async () => {
     const root = await navigator.storage.getDirectory();
@@ -132,7 +111,6 @@ describe('a text over a figure after Change Layout', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // tables-equations-insert-5
     test(`a new table beside the list of a slide with a backdrop is put in the free space over the backdrop (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       const before = await render(page);
@@ -147,10 +125,7 @@ describe('a text over a figure after Change Layout', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // navigator-slides-canvas-1
     test(`a text laid over the figure of its slide by a change of the layout is marked and named in the status (${platform})`, async (t) => {
-      // beeson.css draws the block of a closing slide in front of the figure, with a z-index of 2,
-      // hence the status names the texts first there
       for (const [id, said] of [['slide.layout.wide', /\d+ texts? (is|are) under a picture/], ['slide.layout.title', /\d+ texts? (is|are) under a picture/], ['slide.layout.closing', /\d+ texts? (is|are) over a picture/]]) {
         const page = await load(t, platform, { n: FIGURES });
         assert.equal((await page.evaluate('window.BeesonEditor.status()')).overflow, 0, 'the slide is reported before the change');
@@ -168,7 +143,6 @@ describe('a text over a figure after Change Layout', () => {
       }
     });
 
-    // media-arrange-2
     test(`a picture hidden by Dark in light mode keeps its Image pane, and a drop or Replace adds its twin for light mode (${platform})`, async (t) => {
       for (const how of ['drop', 'replace']) {
         const page = await load(t, platform, { n: STEPS, query: '&theme=light' });
@@ -212,8 +186,6 @@ describe('a text over a figure after Change Layout', () => {
       }
     });
 
-    // feel-3. a caption is switched on in the Image pane, as with Caption in the Style tab of Keynote
-    // (K34), and edited in place
     test(`a picture is given a caption by the Caption switch of the Image pane, and the caption is typed into (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       const insert = page.evaluate(`window.BeesonEditor.exec('insert.image').then(() => true)`);
@@ -233,15 +205,12 @@ describe('a text over a figure after Change Layout', () => {
       const edited = await render(page);
       assert.match(edited, /<img src="media\/figure-dark.png"[^>]*>\s*<figcaption class="caption">A new caption<\/figcaption>\s*<\/figure>/);
       assert.equal((await page.evaluate(`window.BeesonEditor.state('figure.caption')`)).checked, true);
-      // the caption is written into the file at its first input, which is one entry with the switch,
-      // as the first input into a new text box
       await undo(page);
       assert.equal(await render(page), before);
       await redo(page);
       assert.equal(await render(page), edited);
       const saved = await saveInto(page, `r12-4-caption-${platform}`);
       assert.equal(saved.text, edited);
-      // Caption off takes the caption off
       await page.evaluate(`Reveal.slide(${STEPS})`);
       await frames(page);
       await clickText(page, '.reveal section.present > figure img');
@@ -251,10 +220,6 @@ describe('a text over a figure after Change Layout', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // feel-4. a new Content slide holds the texts that its tile in Add Slide shows: a heading, a
-    // paragraph, and a dash list, as a new Title & Bullets slide of Keynote holds the placeholders of
-    // its thumbnail (K95). the tile is drawn from the same skeleton, with a gray box at the place of
-    // the figure box of the layout, which is not written into a new slide
     test(`a new Content slide holds the paragraph and the list of its tile (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       const before = await render(page);
@@ -271,7 +236,6 @@ describe('a text over a figure after Change Layout', () => {
       const { sampleText } = await import('../src/editor/model/templates.ts');
       assert.match(sampleText('content'), /<section>\s*<h2>[^<]+<\/h2>\s*<p>[^<]+<\/p>\s*<ul>(\s*<li>[^<]+<\/li>)+\s*<\/ul>\s*<div class="figure-box"[^>]*><\/div>\s*<\/section>/, 'the Content tile draws the texts of a new slide and the place of its zone');
       assert.equal(slide.items, 1);
-      // typing into the list item gives a dash item, and Return a second one
       await clickText(page, '.reveal section.present > ul > li');
       await page.send('Input.insertText', { text: 'A first point' });
       await press(page, 'Enter');
@@ -284,9 +248,6 @@ describe('a text over a figure after Change Layout', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // round 5, judge opus, finding 5 (state 303). an empty placeholder of the old layout without a
-    // place in the new one is dropped, and the placeholders of the new layout are shown as on a new
-    // slide of it, as Change Layout of PowerPoint does (P33)
     test(`a new content slide changed to Figure holds the plate, the heading, and the caption of a new figure slide (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       await exec(page, 'slide.new.content');
@@ -306,14 +267,11 @@ describe('a text over a figure after Change Layout', () => {
       assert.equal(await render(page), before);
       await redo(page);
       assert.equal(await render(page), edited);
-      // the change back gives the slide as it was
       await exec(page, 'slide.layout.content');
       assert.equal(await render(page), before);
       assert.deepEqual(errors(page), []);
     });
 
-    // round 5, judge opus, finding 6 (state 302). the list of slide 3 in the black text column of Split is
-    // kept off the footnote of the text column, or else it is marked and named in the status
     test(`after Change Layout to Split on slide 3, a list over the footnote of the panel is reported (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       await exec(page, 'slide.layout.split');
@@ -329,7 +287,6 @@ describe('a text over a figure after Change Layout', () => {
       }
       assert.deepEqual(errors(page), []);
     });
-    // feel-5
     test(`the Steps pane names a new picture by the name of its file, not by its object URL (${platform})`, async (t) => {
       const page = await load(t, platform, { n: STEPS });
       const insert = page.evaluate(`window.BeesonEditor.exec('insert.image').then(() => true)`);
@@ -343,7 +300,6 @@ describe('a text over a figure after Change Layout', () => {
       assert.ok(!rows.some((l) => /[0-9a-f]{8}-[0-9a-f]{4}-/.test(l)), `a row names the object URL: ${js(rows)}`);
       assert.deepEqual(errors(page), []);
     });
-    // feel-6
     test(`a duplicate or a layout change of a slide with an unsaved new picture does not ask the server for its file (${platform})`, async (t) => {
       for (const how of ['edit.duplicate', 'slide.duplicate', 'slide.layout.split']) {
         const page = await load(t, platform, { n: STEPS });
@@ -361,7 +317,6 @@ describe('a text over a figure after Change Layout', () => {
         await page.close();
       }
     });
-    // state 287 and 304
     test(`a new table in the empty slot of a new Figure slide takes the width of the slot (${platform})`, async (t) => {
       for (const how of ['new', 'change']) {
         const page = await load(t, platform, { n: STEPS });
@@ -381,11 +336,8 @@ describe('a text over a figure after Change Layout', () => {
   }
 });
 
-// the work of R14.1 on both platforms: the empty caption of a picture at the place of a caption,
-// and the report of a new table that is drawn over a text
 describe('empty captions and the report of a table', () => {
   const DECK = 'test-deck.html';
-  // the slides of index.html with a list beside a backdrop, and with a figure in a figure box
   const STEPS = 2;
   const FIGURES = 4;
   const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -409,7 +361,6 @@ describe('empty captions and the report of a table', () => {
   const status = (page) => page.evaluate('window.BeesonEditor.status()');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the box in slide px of an element of the current slide
   const box = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -442,9 +393,6 @@ describe('empty captions and the report of a table', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // juror item 6b and D27. the empty caption of the Caption switch is drawn where the theme puts
-    // the caption of a figure box, 16 px under the picture, with its prompt and the caret in it, and it is
-    // not reported as a text past the slide
     test(`the empty caption of the Caption switch is drawn under the picture with its prompt and the caret (${platform})`, async (t) => {
       const page = await load(t, platform, STEPS);
       const insert = page.evaluate(`window.BeesonEditor.exec('insert.image').then(() => true)`);
@@ -469,7 +417,6 @@ describe('empty captions and the report of a table', () => {
       const s = await status(page);
       assert.equal(s.overflow, 0, `the empty caption is reported: ${s.message}`);
       assert.ok(!/past the slide| (under|over) a /.test(s.message), s.message);
-      // the typed caption stays at the same place
       await page.send('Input.insertText', { text: 'A' });
       await frames(page);
       const typed = await box(page, 'figure > figcaption');
@@ -477,7 +424,6 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // D28. a new table on a slide without a free place is reported as a figure that hides a text
     test(`a new table drawn over a text is reported (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
@@ -489,8 +435,6 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // D30. after Dark on a picture in light mode, the button of the well of the Image pane adds the
-    // twin for light mode, and it is named as the command, as the context menu names it
     test(`the button of the well names the choice of the twin of a picture hidden by its mode (${platform})`, async (t) => {
       const page = await load(t, platform, STEPS, '&theme=light');
       const insert = page.evaluate(`window.BeesonEditor.exec('insert.image').then(() => true)`);
@@ -510,8 +454,6 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // D19. a display formula is drawn as a block as wide as the text column, while its glyphs end at
-    // the left of the picture. the formula is measured by the box of its glyphs
     test(`a display formula whose glyphs end left of the picture is not reported over it (${platform})`, async (t) => {
       for (const id of ['slide.layout.wide', 'slide.layout.title']) {
         const page = await load(t, platform, 'Math, an ordered list, and a zone', '', LAYOUTS);
@@ -531,8 +473,6 @@ describe('empty captions and the report of a table', () => {
       }
     });
 
-    // D29. a typed caption under a new picture meets the box of the footnote but not its text, which
-    // ends left of the caption, and it is not reported as running into the footnote
     test(`a caption beside the end of the footnote text is not reported as running into it (${platform})`, async (t) => {
       const page = await load(t, platform, STEPS);
       const insert = page.evaluate(`window.BeesonEditor.exec('insert.image').then(() => true)`);
@@ -560,8 +500,6 @@ describe('empty captions and the report of a table', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // D20. after Section on the slide of the code box, the footnote is drawn over the code box, and
-    // both are marked, as a text over a picture is
     test(`a footnote drawn over a code box is marked with the code box (${platform})`, async (t) => {
       const page = await load(t, platform, 'Code boxes, you guessed it...');
       await exec(page, 'slide.layout.section');
@@ -580,7 +518,6 @@ describe('empty captions and the report of a table', () => {
       assert.ok(s.overflow >= 2, `the status reads ${s.message}`);
       assert.deepEqual(errors(page), []);
     });
-    // a pending element is not written yet, hence the texts under an empty code box are not reported
     test(`an empty new code box over a text is not reported before it has a text (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
       await exec(page, 'insert.code');
@@ -593,15 +530,9 @@ describe('empty captions and the report of a table', () => {
   }
 });
 
-// regression tests of R15.9 on both platforms, by ruling 2 of the juror of round 6: a text over a
-// figure is reported only after a change of the layout of its slide and after an insert that the
-// editor placed, with a sentence that names what covers what. an overlap leaves the report once
-// the user moves the text or the figure, and a text is tested by the lines of its words inside its
-// box (gap 2 of the verdict, state 109)
 describe('when and how an overlap is reported', () => {
   const DECK = 'test-deck.html';
   const PLATFORMS = ['mac', 'other'];
-  // slide 5 of the demo deck, with a heading, a paragraph, a list of three items, and a figure
   const FIGURES = 4;
 
   let browser;
@@ -628,7 +559,6 @@ describe('when and how an overlap is reported', () => {
     await frames(page);
   };
 
-  // the editor on the demo deck with slide n shown
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -645,9 +575,6 @@ describe('when and how an overlap is reported', () => {
     return page;
   }
 
-  // the texts of the current slide outside the shown elements of selector whose lines, clipped to the
-  // box of their text, meet the box of one of them, by tag name and the start of their text, and the
-  // texts outlined by the editor
   const covered = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const figs = [...slide.querySelectorAll(${js(selector)})].filter((f) => f.getClientRects().length).map((f) => ({ f, r: f.getBoundingClientRect() }));
@@ -664,7 +591,6 @@ describe('when and how an overlap is reported', () => {
   return { under: under.map(name), marked: [...slide.querySelectorAll('.beeson-overflow')].map(name) };
 })()`);
 
-  // whether the first element of selector is drawn over the first text named in the list of covered
   const onTop = (page, selector, text) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const f = [...slide.querySelectorAll(${js(selector)})].find((e) => e.getClientRects().length);
@@ -682,10 +608,8 @@ describe('when and how an overlap is reported', () => {
   return null;
 })()`);
 
-  // the scale of the slide on the screen, and the center of the move handle of the selected block
   const scaleOf = (page) => page.evaluate(`document.querySelector('.reveal section.present').getBoundingClientRect().width / 1920`);
   const handle = (page) => page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  // a point inside the first line of the first element of selector, 12 px from its left end
   const lineStart = (page, selector) => page.evaluate(`(() => {
   const el = document.querySelector(${js(selector)});
   const range = document.createRange();
@@ -695,7 +619,6 @@ describe('when and how an overlap is reported', () => {
 })()`);
 
   for (const platform of PLATFORMS) {
-    // probe 13 of the verdict: the sentence named the wrong object and the wrong direction
     test(`a new table over a text is reported by name, and a drag of the table by 30 px takes the report away (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
@@ -708,14 +631,12 @@ describe('when and how an overlap is reported', () => {
       assert.ok(!/over a figure/.test(s.message), s.message);
       assert.deepEqual(c.marked, c.under, 'the outlined texts are not those under the table');
       assert.equal(await onTop(page, ':scope > table', c.under[0]), 'figure', 'the table is not drawn over the text');
-      // an undo of the insert takes the report away, and a redo brings it back
       await undo(page);
       await settle(page);
       assert.equal((await status(page)).overflow, 0, 'the report stays after an undo of the insert');
       await redo(page);
       await settle(page);
       assert.ok((await status(page)).message.includes('under a table'), 'the report is not back after a redo of the insert');
-      // the table is moved by 30 slide px by its handle and still covers a text
       const k = await scaleOf(page);
       await drag(page, await handle(page), { dx: 30 * k, dy: 0, steps: 8 });
       await settle(page);
@@ -736,7 +657,6 @@ describe('when and how an overlap is reported', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // probe 2 and gap 1 of the verdict
     test(`the figure of slide 5 dragged over the text column is not reported (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       const img = '.reveal section.present figure img';
@@ -756,8 +676,6 @@ describe('when and how an overlap is reported', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // the texts left under the picture of slide 5 by the layout Wide. a text that the user moves
-    // leaves the report, and the others stay until the picture is moved
     test(`a change of layout that leaves texts under a picture is reported, and a text or the picture moved leaves the report (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await exec(page, 'slide.layout.wide');
@@ -768,7 +686,6 @@ describe('when and how an overlap is reported', () => {
       const n = c.under.length;
       assert.ok((await status(page)).message.includes(`${n} texts are under a picture`), (await status(page)).message);
       assert.deepEqual(c.marked, c.under);
-      // the paragraph is nudged down by the keys
       await clickText(page, await lineStart(page, '.reveal section.present > p'));
       await press(page, 'Escape');
       await press(page, 'ArrowDown');
@@ -780,7 +697,6 @@ describe('when and how an overlap is reported', () => {
       assert.deepEqual(p.marked, p.under.filter((x) => x !== para), 'the other texts left the report');
       const rest = p.under.length - 1;
       assert.ok((await status(page)).message.includes(`${rest} text${rest === 1 ? ' is' : 's are'} under a picture`), (await status(page)).message);
-      // the picture is nudged left
       await clickText(page, '.reveal section.present figure img');
       await press(page, 'ArrowLeft');
       await settle(page);
@@ -811,8 +727,6 @@ describe('when and how an overlap is reported', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // item 3 of the brief: a picture and a QR code over texts after a change of layout are named in
-    // one sentence. the QR code is put over the paragraph by a typed position, which is not reported
     test(`a picture and a QR code over texts after a change of layout are named in one sentence (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await exec(page, 'insert.qr');
@@ -841,7 +755,6 @@ describe('when and how an overlap is reported', () => {
     });
   }
 
-  // the closing slide of the deck, with a second QR code that is selected
   async function closing(t, platform) {
     const page = await load(t, platform, 0);
     await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.matches('.closing')))`);
@@ -851,7 +764,6 @@ describe('when and how an overlap is reported', () => {
     return page;
   }
 
-  // the boxes in slide px of the heading, of its one line of text, and of the last QR code
   const boxes = (page) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -864,10 +776,6 @@ describe('when and how an overlap is reported', () => {
   return { h1: px(h1.getBoundingClientRect()), line: px(range.getClientRects()[0]), qr: px(codes[codes.length - 1].getBoundingClientRect()), marked: h1.classList.contains('beeson-overflow') };
 })()`);
 
-  // puts the new QR code over the first word of the heading by a typed position, with its lower edge
-  // dy px under the upper edge of the box of the heading. an overlap made by the user is not
-  // reported, hence the layout is then changed to Title, which keeps the place of the heading and
-  // asks for the report of the whole slide. typed is the count of the report after the typed position
   async function put(page, dy) {
     const b = await boxes(page);
     await exec(page, 'arrange.setPosition', { x: Math.round(b.h1.left + 40), y: Math.round(b.h1.top - (b.qr.bottom - b.qr.top) + dy) });
@@ -879,14 +787,11 @@ describe('when and how an overlap is reported', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // state 109 of round 6: a QR code snapped to the upper edge of the heading "Thank you" was
-    // reported as "1 text lies over a figure", since the rect of the line starts 18 px over the box
     test(`a QR code that ends at the upper edge of a heading is not reported as under its text (${platform})`, async (t) => {
       const page = await closing(t, platform);
       const b = await put(page, 0);
       assert.ok(Math.abs(b.qr.bottom - b.h1.top) < 1, `the QR code does not end at the heading: ${js(b)}`);
       assert.ok(b.qr.right > b.line.left + 2 && b.qr.left < b.line.right - 2, `the QR code is not over the text of the heading: ${js(b)}`);
-      // the content area of the font is taller than the box of the heading
       assert.ok(b.line.top < b.h1.top - 2, `the line of the heading is inside its box: ${js(b)}`);
       const s = await status(page);
       assert.equal(s.overflow, 0, `the heading is reported: ${js(s.message)}`);

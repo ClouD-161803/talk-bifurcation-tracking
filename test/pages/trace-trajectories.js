@@ -1,6 +1,3 @@
-// two straight trajectories traced by test/pages/trace.html for test/backdrops.test.mjs, one plain and
-// one with a glow, each of 241 points. at the 1080 px per unit of the page, each trajectory is centered
-// on a row of pixels
 const line = (y) => Array.from({ length: 241 }, (_, k) => [-0.8 + (1.6 * k) / 240, y]);
 Beeson.trajectories({
   families: [

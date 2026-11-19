@@ -1,7 +1,3 @@
-// presenter View in a tab of its own: its end from the tab, the presenter display, or the speaker
-// view, the keys of PowerPoint in the show, and the parts of the presenter display chosen and
-// customized
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,9 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, press } from './helpers/editor.mjs';
 
-// regression tests of R20.10 on both platforms: the end of Present from the frame of the upcoming
-// slide of the speaker view (F15), the speaker view of the tab of Presenter View at the end of the
-// show (F16), and E in this tab (F17)
 describe('ends of Present from the speaker view', () => {
   const PLATFORMS = ['mac', 'other'];
   const LAST = 11;
@@ -33,8 +26,6 @@ describe('ends of Present from the speaker view', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
-  // the editor on slide n of the demo deck, served over HTTP, with every window that it opens kept
-  // in window.__shows
   async function load(t, platform, n = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -58,7 +49,6 @@ describe('ends of Present from the speaker view', () => {
   const ready = (w) => `(() => { try { const w = ${w}; return !!w?.Reveal?.isReady() && (!w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false)); } catch { return false; } })()`;
   const stageGone = `!document.querySelector('.beeson-edit-show')`;
 
-  // the speaker view that the window w opens is kept in window.__speakerKept of the page
   const SPEAKER = 'window.__speakerKept';
   const CURRENT = `${SPEAKER}?.document.querySelector('#current-slide iframe')?.contentWindow`;
   const UPCOMING = `${SPEAKER}?.document.querySelector('#upcoming-slide iframe')?.contentWindow`;
@@ -67,8 +57,6 @@ describe('ends of Present from the speaker view', () => {
   const keyIn = (w, key, keyCode) => `(() => { const w = ${w}; w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: ${js(key)}, keyCode: ${keyCode}, bubbles: true, cancelable: true })); return true; })()`;
   const KEYS = [['Escape', 27], ['e', 69]];
 
-  // F15: the frame of the upcoming slide of the speaker view is one step ahead of the show, and a key
-  // that ended Present there gave the editor the state of this frame in place of the state of the show
   for (const platform of PLATFORMS) {
     test(`Esc or E in the frame of the upcoming slide of the speaker view ends Present on the slide shown (${platform})`, async (t) => {
       for (const [key, keyCode] of KEYS) {
@@ -91,7 +79,6 @@ describe('ends of Present from the speaker view', () => {
     });
   }
 
-  // presenterView opens the tab of Presenter View on slide n, with the presenter display open
   async function presenterView(t, platform, n) {
     const page = await load(t, platform, n);
     await press(page, 'Alt+Enter');
@@ -100,15 +87,11 @@ describe('ends of Present from the speaker view', () => {
     return page;
   }
 
-  // F16: the speaker view opened by the tab of Presenter View stayed open with dead frames once the
-  // show was ended from it
   for (const platform of PLATFORMS) {
     test(`Presenter View ended from the speaker view of its tab closes the speaker view too (${platform})`, async (t) => {
       for (const [key, keyCode] of KEYS) {
         const page = await presenterView(t, platform, LAST);
         await page.evaluate(keepSpeaker(TAB));
-        // the notes plugin of reveal.js opens the speaker view only at a user gesture, which
-        // page.evaluate does not give, hence the call is evaluated in the target of the tab
         const { targetInfos } = await page.send('Target.getTargets');
         const tab = targetInfos.find((x) => x.type === 'page' && x.url.includes('from-editor'));
         const { sessionId } = await page.send('Target.attachToTarget', { targetId: tab.targetId, flatten: false });
@@ -124,8 +107,6 @@ describe('ends of Present from the speaker view', () => {
     });
   }
 
-  // F17: E in the tab of Presenter View opened a second editor in the tab, and the presenter display
-  // stayed open. Esc is tested as the same end
   for (const platform of PLATFORMS) {
     test(`E or Esc in the tab of Presenter View ends it as the display does, before the tab opens the editor (${platform})`, async (t) => {
       for (const [key, keyCode] of [...KEYS].reverse()) {
@@ -139,9 +120,6 @@ describe('ends of Present from the speaker view', () => {
   }
 });
 
-// regression tests of R12.9 on both platforms with trusted input: the show tab of the presenter
-// display ended with the display, and the keys of PowerPoint in the show played by Present, i.e.
-// Return and Backspace, and a slide number typed before Return
 describe('the keys of PowerPoint in the show', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -161,8 +139,6 @@ describe('the keys of PowerPoint in the show', () => {
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-  // the editor on slide n of index.html, served over HTTP, with every window that the page opens kept
-  // in window.__shows
   async function load(t, platform, n = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -185,8 +161,6 @@ describe('the keys of PowerPoint in the show', () => {
   const TAB = 'window.__shows.at(-1)';
   const tabClosed = `(() => { try { return ${TAB}.closed; } catch { return true; } })()`;
 
-  // finding steps-transitions-present-1: Esc and End of the presenter display closed the display,
-  // and the show tab stayed open at the slide shown last
   for (const platform of PLATFORMS) {
     test(`Esc and End of the presenter display end the show in its tab too (${platform})`, async (t) => {
       for (const how of ['Escape', 'End']) {
@@ -210,7 +184,6 @@ describe('the keys of PowerPoint in the show', () => {
     });
   }
 
-  // the frame of the show played by Present
   const SHOW = `document.querySelector('.beeson-edit-show iframe')?.contentWindow`;
   const showReady = `(() => { try { const w = ${SHOW}; return !!w?.Reveal?.isReady() && (!w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false)); } catch { return false; } })()`;
   const at = (page) => page.evaluate(`(() => { const i = ${SHOW}.Reveal.getIndices(); return [i.h, i.f ?? -1]; })()`);
@@ -222,8 +195,6 @@ describe('the keys of PowerPoint in the show', () => {
     return page;
   }
 
-  // finding steps-transitions-present-2: Return and Backspace did not move the played show, whose
-  // keys differed from those of the presenter display
   for (const platform of PLATFORMS) {
     test(`in the show played by Present, Return goes forward and Backspace goes back, and p stays the pointer (${platform})`, async (t) => {
       const page = await present(t, platform, 2);
@@ -240,7 +211,6 @@ describe('the keys of PowerPoint in the show', () => {
       await press(page, 'p');
       await page.waitFor(`!${SHOW}.document.querySelector('.pointer-dot')`, 3000);
       assert.deepEqual(await at(page), [2, 0], 'p moves the show');
-      // Return closes the overview of reveal.js, without a move
       await press(page, 'o');
       await page.waitFor(`${SHOW}.Reveal.isOverview()`, 3000);
       await press(page, 'Enter');
@@ -253,7 +223,6 @@ describe('the keys of PowerPoint in the show', () => {
     });
   }
 
-  // finding steps-transitions-present-5: a slide number typed before Return did not go to its slide
   for (const platform of PLATFORMS) {
     test(`in the show played by Present, a slide number typed before Return goes to its slide (${platform})`, async (t) => {
       const page = await present(t, platform, 0);
@@ -267,7 +236,6 @@ describe('the keys of PowerPoint in the show', () => {
       await press(page, 'Enter');
       await sleep(300);
       assert.equal(await page.evaluate(`${SHOW}.Reveal.getIndices().h`), 9, '10 and Return do not go to slide 10');
-      // a number followed by another key is dropped, and Return then goes forward
       await press(page, '2');
       await press(page, 'ArrowLeft');
       await press(page, 'Enter');
@@ -280,7 +248,6 @@ describe('the keys of PowerPoint in the show', () => {
     });
   }
 
-  // a deck opened by itself keeps the keys of reveal.js: Return, Backspace, and a number do not move it
   test('a deck opened by itself does not take Return, Backspace, or a number', async (t) => {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -294,8 +261,6 @@ describe('the keys of PowerPoint in the show', () => {
     assert.deepEqual(errors(page), []);
   });
 
-  // the presenter display with a customized layout plays the show in its tab: Esc first ends the
-  // customizing with the show kept, and Esc then ends the display and the show tab
   const rectOf = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
   for (const platform of PLATFORMS) {
     test(`the presenter display keeps its customized layout with the show tab, and Esc ends the customizing before the show (${platform})`, async (t) => {
@@ -311,9 +276,8 @@ describe('the keys of PowerPoint in the show', () => {
       await page.waitFor(`!!document.querySelector('${DISPLAY} .layout:not([hidden])')`, 3000);
       await press(page, 'ArrowRight');
       await page.waitFor(`${TAB}.Reveal.getIndices().h === 2`, 5000);
-      // the timer of a tab behind the show tab is slowed, and its frames are not drawn
       await press(page, 'Escape');
-      await sleep(300);
+      await page.waitFor(`!document.querySelector('${DISPLAY} .layout:not([hidden])')`);
       assert.ok(await page.evaluate(`!!document.querySelector(${js(DISPLAY)})`), 'Esc while the display is customized ends the display');
       assert.equal(await page.evaluate(tabClosed), false, 'Esc while the display is customized ends the show');
       await press(page, 'Escape');
@@ -326,7 +290,6 @@ describe('the keys of PowerPoint in the show', () => {
   }
 });
 
-// the work of R10.3 on both platforms: the parts of the presenter display
 describe('the parts of the presenter display', () => {
   const OUTLINE = 'test/pages/editor-outline.html';
   const PLATFORMS = ['mac', 'other'];
@@ -347,8 +310,6 @@ describe('the parts of the presenter display', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the editor on a deck served over HTTP, with the storage of the origin emptied first, and with
-  // slide n shown
   async function load(t, platform, { deck = OUTLINE, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -365,9 +326,6 @@ describe('the parts of the presenter display', () => {
     return page;
   }
 
-  // states 172 and 276: the parts of the presenter display could not be chosen, and the Play menu
-  // did not have Customize Presenter Display… of Keynote (K52). PARTS reads the open display: the
-  // parts seen, whether the popover of the parts is open, and its checkboxes
   const PARTS = `(() => {
   const d = document.querySelector('dialog.beeson-edit-presenter[open]');
   if (!d) return null;
@@ -405,7 +363,6 @@ describe('the parts of the presenter display', () => {
       parts = await page.evaluate(PARTS);
       assert.deepEqual(parts.hidden, { current: false, next: true, notes: false, clock: true, timer: false });
       assert.deepEqual(JSON.parse(await page.evaluate(KEY)), ['next', 'clock']);
-      // the keys of the show stay live while the popover is open, and Esc closes the popover first
       assert.equal(await count(page), '2 / 3');
       await press(page, 'ArrowRight');
       assert.equal(await count(page), '3 / 3');
@@ -414,7 +371,6 @@ describe('the parts of the presenter display', () => {
       assert.equal(parts?.open, false, 'Esc did not close the popover, or it ended the display');
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
-      // the display is opened again with the parts chosen, and the file is not changed
       await exec(page, 'play.customizePresenter');
       await page.waitFor(`!!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       parts = await page.evaluate(PARTS);
@@ -443,7 +399,6 @@ describe('the parts of the presenter display', () => {
       for (const label of ['Current Slide', 'Presenter Notes', 'Timer']) await click(page, box(label));
       const parts = await page.evaluate(PARTS);
       assert.deepEqual(parts.hidden, { current: true, next: false, notes: true, clock: false, timer: true });
-      // the next slide is drawn into the room left by the current slide
       assert.ok(await page.evaluate(`document.querySelector('.beeson-edit-presenter .shot:not(.current)').getBoundingClientRect().width > innerWidth * 0.8`), 'the next slide does not take the width of the stage');
       assert.ok(await page.evaluate(`!!document.querySelector('.beeson-edit-presenter .shot:not(.current) .pic').shadowRoot?.querySelector('section')`));
       await click(page, '.beeson-edit-presenter .bar.foot .count');
@@ -453,7 +408,6 @@ describe('the parts of the presenter display', () => {
       await click(page, button);
       assert.equal((await page.evaluate(PARTS)).open, false, 'a second click on the button does not close the popover');
       assert.deepEqual(JSON.parse(await page.evaluate(KEY)), ['current', 'notes', 'timer']);
-      // the rehearsal asks at its end, and Esc leaves the timings as they were
       await press(page, 'Escape');
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);

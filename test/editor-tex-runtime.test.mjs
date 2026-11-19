@@ -1,11 +1,3 @@
-// the theorems and the citations of test/pages/tex/index.html in the editor. the heads and the
-// styles that src/theorems.ts writes on a theorem, the numbers that src/citations.ts writes on a
-// citation, and the generated div.refs and --refs of a slide are never written into the file: not
-// by a copy of an element or of a slide, Return, typing, a change of the tag of a slide, Reset
-// Slide, or a copy of text. the div.refs is not an object of the editor, the attributes of a
-// theorem and of a citation are in the scope rule, and after each change of the deck the heads,
-// the numbers, and the references are those of a fresh load of the text that the editor writes
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -17,7 +9,6 @@ import { byteExact, center, click, clickText, drag, press, saveAndReopen, type }
 const DECK = 'test/pages/tex/index.html';
 const SOURCE = readFileSync(DECK, 'utf8');
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
-// an attribute or an element written by the theme at run time
 const RUNTIME = /\sdata-(?:head|style|missing|n)(?=[\s=>])|class="refs"|--refs/;
 
 const NAMED = '<p class="theorem" data-kind="theorem" data-name="stable manifold">Let \\(\\gamma\\) be <em>hyperbolic</em>. Then \\(W^s(\\gamma)\\) is an immersed manifold.</p>';
@@ -54,15 +45,12 @@ async function open(platform = 'mac') {
   return page;
 }
 
-// the slide with the heading title shown
 const slideOf = (title) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${js(title)})`;
 async function show(page, title) {
   await page.evaluate(`Reveal.slide(Reveal.getIndices(${slideOf(title)}).h)`);
   await sleep(150);
 }
 
-// the element of selector on the current slide selected as an object by a click and Esc, or the
-// element of block around it, e.g. the list of an item
 async function select(page, selector, block = selector) {
   await clickText(page, `.reveal section.present ${selector}`);
   await press(page, 'Escape');
@@ -70,14 +58,11 @@ async function select(page, selector, block = selector) {
   assert.equal(await page.evaluate(`window.BeesonEditor.selection().length === 1 && window.BeesonEditor.selection()[0] === document.querySelector('.reveal section.present ${block}')`), true, `${block} is not selected`);
 }
 
-// a point in the band over the top edge of the element of selector on the current slide, where a
-// press takes a selected text block as a box, away from the grips of its width at its sides
 const edge = (page, selector) => page.evaluate(`(() => {
   const r = document.querySelector('.reveal section.present ${selector}').getBoundingClientRect();
   return { x: r.left + 40, y: r.top - 3 };
 })()`);
 
-// the caret at offset into the first text node of the element of selector on the current slide
 async function caret(page, selector, offset) {
   await clickText(page, `.reveal section.present ${selector}`);
   await page.evaluate(`(() => {
@@ -97,7 +82,6 @@ function assertClean(text, what) {
   assert.deepEqual(textProblems(text, THEME).filter((p) => !before.includes(p)), [], `${what} is out of the scope rule`);
 }
 
-// a copy or a cut event with a clipboard of the page, whose text and HTML are returned
 const clipEvent = (page, kind) =>
   page.evaluate(`(() => {
     const data = new DataTransfer();
@@ -112,8 +96,6 @@ const pasteText = (page, text) =>
     (document.activeElement ?? document.body).dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   })()`);
 
-// the edited text is clean, an undo of count entries gives the file, and a redo gives the edit
-// again. with save, the edit is saved and opened again, else it is undone for the next edit
 let saves = 0;
 async function roundTrip(page, what, { count = 1, save = false } = {}) {
   const edited = await render(page);
@@ -142,7 +124,6 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'Mod+D');
     await settle(page);
     const dy = /translate: 20px (-?\d+)px/.exec(await render(page))?.[1];
-    // the copy is drawn 20 px off the theorem, over the theorem after it, which keeps its place
     assert.ok((await render(page)).includes(`${NAMED}\n      ${NAMED.replace('">', `" style="translate: 20px ${dy}px">`)}`), 'the duplicate is not after the theorem');
     await roundTrip(page, 'Duplicate');
 
@@ -205,7 +186,6 @@ test('a slide with citations duplicated, and copied and pasted, is written witho
   await exec(page, 'slide.duplicate');
   await settle(page);
   await byteExact(page, [[section, `${section}\n    ${section}`]]);
-  // the copy is drawn with the references of its citations
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present > div.refs[data-generated]')?.children.length`), 3);
   await roundTrip(page, 'Duplicate Slide');
 
@@ -243,8 +223,6 @@ test('Return inside a paragraph and an item with a citation, and typing after it
   await roundTrip(page, 'Return in an item', { save: true });
 });
 
-// Return does not split a theorem, which is not a plain paragraph, and breaks its line as in a
-// caption. the theorem stays one theorem, and its head and number are not written into the file
 test('Return inside a theorem breaks its line and keeps one theorem', async (t) => {
   const page = await open();
   t.after(() => page.close?.());
@@ -256,7 +234,6 @@ test('Return inside a theorem breaks its line and keeps one theorem', async (t) 
   const HEAD = '<p class="theorem" data-kind="definition">A ';
   await byteExact(page, [[`${HEAD}periodic`, `${HEAD}<br>periodic`]]);
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).undo, true);
-  // the caret is kept in the theorem, where typing goes on
   await type(page, 'x');
   await settle(page);
   await byteExact(page, [[`${HEAD}periodic`, `${HEAD}<br>xperiodic`]]);
@@ -277,7 +254,6 @@ test('a change of the tag of a slide with citations, and Reset Slide, write the 
     await byteExact(page, [[open_, open_.replace('<section>', tag)]]);
     await roundTrip(page, id);
   }
-  // the transition out of a slide is written on the slide after it
   const next = '<section>\n      <h2>Under a footnote';
   await exec(page, 'slide.transition.none');
   await settle(page);
@@ -289,7 +265,6 @@ test('a change of the tag of a slide with citations, and Reset Slide, write the 
   await byteExact(page, [[open_, open_.replace('<section>', '<section data-guides="x480">')]]);
   await roundTrip(page, 'a guide');
 
-  // the paragraph of the slide with a footnote moved, and the slide reset
   await show(page, 'Under a footnote');
   await select(page, '> p');
   const scale = await page.evaluate('Reveal.getScale()');
@@ -319,7 +294,6 @@ test('a copy of text with a citation puts the citation with its key only on the 
   const clip = await clipEvent(page, 'copy');
   assert.deepEqual(clip, { plain: 'on each slide.', html: 'on each slide<cite data-key="gomez2004"></cite>.' });
   await byteExact(page);
-  // a cut takes the text off as one entry of the history
   const cut = await clipEvent(page, 'cut');
   assert.deepEqual(cut, clip);
   await settle(page);
@@ -336,13 +310,11 @@ test('the references of a slide are not an object of the editor', async (t) => {
   await clickText(page, refs);
   await settle(page);
   assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + '.' + el.className)`), [], 'a click on the references selects them');
-  // a drag on the references moves nothing
   const scale = await page.evaluate('Reveal.getScale()');
   await drag(page, refs, { dx: 100 * scale, dy: -100 * scale });
   await settle(page);
   await byteExact(page);
   assert.equal(await page.evaluate(`window.BeesonEditor.selection().some((el) => el.closest('.refs'))`), false, 'a drag on the references selects them');
-  // a marquee from the pasteboard below the slide over the references
   const at = await page.evaluate(`(() => {
     const r = document.querySelector(${js(refs)}).getBoundingClientRect();
     const slide = document.querySelector('.reveal').getBoundingClientRect();
@@ -351,7 +323,6 @@ test('the references of a slide are not an object of the editor', async (t) => {
   await drag(page, at, { dx: at.to.x - at.x, dy: at.to.y - at.y });
   await settle(page);
   assert.equal(await page.evaluate(`window.BeesonEditor.selection().some((el) => el.closest('.refs'))`), false, 'a marquee selects the references');
-  // the object list of the slide
   await exec(page, 'view.objects');
   await settle(page);
   const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row .name')].map((r) => r.textContent)`);
@@ -367,8 +338,6 @@ test('data-kind, data-name, and data-key are in the scope rule', () => {
   assert.deepEqual(textProblems('<p class="theorem" data-kind="lemma" data-name="a">x<cite data-key="a,b"></cite></p>', THEME), []);
 });
 
-// the heads of the theorems and the numbers and the references of the citations of the slides that
-// are shown, i.e. not hidden, of a document
 const DRAWN = (doc) => `(() => {
   const d = ${doc};
   return [...d.querySelectorAll('.reveal .slides > section')].filter((s) => s.getAttribute('data-visibility') !== 'hidden').map((s) => ({
@@ -378,8 +347,6 @@ const DRAWN = (doc) => `(() => {
   }));
 })()`;
 
-// the text of the editor loaded as a deck in a frame of the page, at the address of the deck. the
-// address of a frame of srcdoc cannot be written, so reveal.js is kept from writing it
 async function fresh(page) {
   const text = await render(page);
   await page.evaluate(`(() => {
@@ -387,7 +354,8 @@ async function fresh(page) {
     const frame = document.createElement('iframe');
     frame.className = 'fresh';
     frame.style.cssText = 'position: fixed; left: 0; top: 0; width: 960px; height: 540px; visibility: hidden';
-    frame.srcdoc = ${js(text)}.replace('<head>', '<head><base href="' + new URL('.', location.href).href + '"><script>history.replaceState = history.pushState = () => {};<\\/script>');
+    const srcdocAddressCannotBeWritten = '<script>history.replaceState = history.pushState = () => {};<\\/script>';
+    frame.srcdoc = ${js(text)}.replace('<head>', '<head><base href="' + new URL('.', location.href).href + '">' + srcdocAddressCannotBeWritten);
     document.body.append(frame);
   })()`);
   await page.waitFor(`(() => { const w = document.querySelector('iframe.fresh')?.contentWindow; return !!w?.Reveal?.isReady?.() && !!w.MathJax?.startup?.document; })()`);
@@ -416,7 +384,6 @@ test('after each change of the deck, the heads, the numbers, and the references 
   await sameAsFresh(page, 'a theorem deleted');
   await page.evaluate('window.BeesonEditor.undo()');
   await sameAsFresh(page, 'an undo of the delete');
-  // a theorem brought to the front is moved after the others in the file
   await select(page, 'p.theorem[data-kind="definition"]');
   await exec(page, 'arrange.order.front');
   await sameAsFresh(page, 'a theorem brought to the front');

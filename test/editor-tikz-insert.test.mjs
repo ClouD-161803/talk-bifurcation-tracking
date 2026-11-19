@@ -1,10 +1,3 @@
-// Insert > TikZ Figure of the editor: a submenu after Video… with From Data…, From File…, and
-// Blank, also listed by the Media button of the toolbar. a figure is compiled by the edit command,
-// hence each item tells how to start it on a page without a session, and that TeX is not found in
-// a session without it. in a session, each item writes a source into figures/ under a free name
-// and puts a div.tikz of 800 by 600 px on the slide, which the edit command compiles. a test that
-// runs TeX is skipped without latex and dvisvgm
-
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -29,9 +22,7 @@ after(() => browser?.close());
 
 const wait = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const message = (page) => page.evaluate(`${E}.status().message`);
-// the labels of the open menu that was opened last
 const labels = (page) => page.evaluate(`[...[...document.querySelectorAll('[role=menu]')].at(-1).querySelectorAll('[role^=menuitem]')].map((r) => r.textContent.trim())`);
-// a click on the row of the open menu that was opened last whose text starts with text
 async function row(page, text) {
   const at = await page.evaluate(`(() => {
     const r = [...[...document.querySelectorAll('[role=menu]')].at(-1).querySelectorAll('[role^=menuitem]')].find((r) => r.textContent.trim().startsWith(${JSON.stringify(text)}));
@@ -60,7 +51,6 @@ test('Insert > TikZ Figure is a submenu after Video… and in the list of the Me
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await wait(page);
 
-  // the arrow of the Media button lists the submenu once, after the variants of the button
   await click(page, await center(page, '[aria-label="Media options"]'));
   await wait(page);
   const media = await labels(page);
@@ -77,7 +67,6 @@ test('Insert > TikZ Figure is a submenu after Video… and in the list of the Me
     assert.equal(await page.evaluate(`${E}.render()`), text);
   }
 
-  // a figure without an output tells that it is being compiled while the edit command compiles it
   await page.evaluate('Reveal.slide(3)');
   await wait(page);
   const error = `document.querySelector('.reveal .slides > section.present .tikz[data-figure="missing"] .tikz-error')?.textContent`;
@@ -88,8 +77,6 @@ test('Insert > TikZ Figure is a submenu after Video… and in the list of the Me
   assert.equal(await page.evaluate(error), 'figure missing is not compiled: run npm run tex');
 });
 
-// an edit command on a talk folder of TALK with the theme, with TeX looked up as on the computer, or
-// not found with tex false, and a page of it
 async function session(t, { tex = true } = {}) {
   const folder = talkFolder(t, TALK);
   for (const dir of ['theme', 'brand', 'styles']) if (existsSync(dir)) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
@@ -117,9 +104,7 @@ test('Insert > TikZ Figure tells that TeX is not found on the computer of the ho
   assert.equal(read('figures/figure.tex'), null);
 });
 
-// a File in the page from text, named name, for the arg of a command
 const file = (text, name) => `{ files: [new File([${JSON.stringify(text)}], ${JSON.stringify(name)})] }`;
-// the tag of the figure name, with the translate that moves it into the free area of the slide
 const TAG = (name) => new RegExp(`<div class="tikz" data-figure="${name}" style="width: 800px; height: 600px(; translate: -?\\d+px -?\\d+px)?"></div>`);
 
 test('From File…, From Data…, and Blank write a source under a free name and put a figure of 800 by 600 px on the slide, which the edit command compiles', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
@@ -139,14 +124,11 @@ test('From File…, From Data…, and Blank write a source under a free name and
   assert.equal(read('figures/decay.csv'), csv);
   assert.equal(read('figures/decay.tex'), writeFigure(fromHeader('figures/decay.csv', ['t', 'x', 'y pos'])));
   await drawn('decay');
-  // each curve is a part, which is not a step
   assert.deepEqual(await page.evaluate('window.beesonFigures.decay.parts'), ['x', 'y-pos']);
   assert.ok(!read('index.html').includes('data-part'));
 
-  // a second figure of the same stem takes the next free name
   await page.evaluate(`${E}.exec('insert.tikzFile', ${file(orbit, 'orbit.tex')})`);
   await until(() => TAG('orbit-2').test(read('index.html')), 'index.html to hold the figure orbit-2');
-  // Blank opens Edit Source on a small drawing, and Insert writes it, hence it is the last
   await page.evaluate(`${E}.exec('insert.tikzBlank')`);
   await page.waitFor(`document.querySelector('dialog.beeson-edit-tikz')?.open && document.querySelector('dialog.beeson-edit-tikz textarea').value !== ''`);
   await press(page, 'Mod+Enter');

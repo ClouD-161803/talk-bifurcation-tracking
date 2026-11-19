@@ -1,9 +1,3 @@
-// find and replace: the pure search of find.ts, and the panel on the demo deck with trusted input
-// on either platform. a search gives the count of its matches, Next shows the slide of each match
-// and marks it, and Replace All writes each changed block as one entry of the history. after each
-// edit an undo gives the file byte for byte, a redo gives the edit, and a save is opened again
-// without problems
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -34,7 +28,6 @@ test('a query matches case, whole words, and white space as asked', () => {
 
 test('a replacement is spliced into the piece of a block where its match starts', () => {
   assert.equal(splice('an orbit and an orbit', 0, [{ start: 3, end: 8 }, { start: 16, end: 21 }], 'arc'), 'an arc and an arc');
-  // a match that starts in the piece before is only cut from this piece
   assert.equal(splice('bit of', 10, [{ start: 7, end: 13 }], 'arc'), ' of');
   assert.equal(splice('an orb', 0, [{ start: 3, end: 13 }], 'arc'), 'an arc');
   assert.equal(splice('$1 and $&', 0, [{ start: 0, end: 2 }], '$&'), '$& and $&');
@@ -51,8 +44,6 @@ after(async () => {
   server?.close();
 });
 
-// the editor on the demo deck served over HTTP, where a save is written into the origin private
-// file system, with every block paired with the file
 async function open(t, platform) {
   const page = await browser.newPage();
   t.after(() => page.close());
@@ -65,7 +56,6 @@ async function open(t, platform) {
   return page;
 }
 
-// what the panel shows, and the marks of the matches with the slide of the current one
 const panel = (page) => page.evaluate(`(() => {
   const p = document.querySelector('.beeson-find');
   const marks = CSS.highlights.get('beeson-find');
@@ -100,7 +90,6 @@ for (const platform of PLATFORMS) {
     assert.equal(p.focus, 'Find');
     await type(page, 'orbit');
     p = await panel(page);
-    // both matches are in the notes of the slide of the video, which is shown with its notes
     assert.equal(p.count, '1 of 2');
     assert.equal(p.current, 'orbit');
     assert.equal(p.onSlide, true);
@@ -118,14 +107,12 @@ for (const platform of PLATFORMS) {
     p = await panel(page);
     assert.equal(p.count, '1 of 2');
     assert.equal(p.focus, 'Find');
-    // Esc closes the panel and selects the match in its block, which takes the focus
     await press(page, 'Escape');
     p = await panel(page);
     assert.equal(p.shown, false);
     assert.equal(p.marks, 0);
     assert.equal(await page.evaluate('getSelection().toString()'), 'orbit');
     assert.equal(await page.evaluate(`document.activeElement.matches('aside.notes')`), true);
-    // Find Next with the panel closed selects the next match
     const first = await page.evaluate('getSelection().anchorOffset');
     await press(page, keys.next);
     assert.equal(await page.evaluate('getSelection().toString()'), 'orbit');
@@ -149,7 +136,6 @@ for (const platform of PLATFORMS) {
       seen.add(p.slide);
     }
     assert.ok(seen.size > 3, `the matches were shown on ${seen.size} slides`);
-    // Whole Words and Match Case are set in the gear menu, and each narrows the count
     await clickText(page, '.beeson-find .gear');
     await click(page, '.beeson-edit-menu.find-options [data-command="find.wholeWords"]');
     const words = Number((await panel(page)).count.split(' of ')[1]);
@@ -177,10 +163,8 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`window.BeesonEditor.render() !== ${JSON.stringify(page.source)}`);
     assert.equal(await rendered(page), changed);
     assert.equal((await panel(page)).count, '2 replaced');
-    // the slide shown before Replace All stays shown, although the last block written is on another
     assert.equal((await panel(page)).slide, shown);
     assert.equal(await undoLabel(page), 'Undo Replace All');
-    // the matches of the second search were written by the first, as one entry of the history
     await press(page, 'Mod+Z');
     await page.waitFor('!window.BeesonEditor.status().undo');
     assert.equal(await rendered(page), page.source);

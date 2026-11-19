@@ -1,10 +1,3 @@
-// the follow-ups of round 3 of the editor on both platforms: a QR code inserted on a full slide,
-// the pasteboard of a zoomed canvas and Zoom to Selection, an image pasted from the clipboard, files
-// dropped onto the navigator, the order of the keyboard sheet, the mark of a transition in the
-// navigator, Delete of a locked element, the group of a copy, the highlights of a duplicated
-// slide, and the Formula button in a text. each edit is checked byte for byte, after an undo and a
-// redo, and after a save and an open of the saved text
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -19,8 +12,6 @@ const IMAGE = resolve('demo/figure-light.png');
 const IMAGE_BYTES = readFileSync(IMAGE).length;
 const PNG = [137, 80, 78, 71, 13, 10, 26, 10];
 
-// five paragraphs on the clipboard of the editor, which fill the text column of a content slide down
-// to its foot
 const PARAGRAPHS = ['<!--beeson-->', ...Array.from({ length: 5 }, (_, i) => `<p>Paragraph ${i + 1} of a column that is filled to the foot of the slide.</p>`)].join('\n');
 
 let browser;
@@ -43,8 +34,6 @@ const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const status = (page) => page.evaluate('window.BeesonEditor.status()');
 const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-// CLEAR empties the storage of the origin: the drafts, their media files, and the private file
-// system
 const CLEAR = `(async () => {
   localStorage.clear();
   await new Promise((done) => { const r = indexedDB.deleteDatabase('beeson-media'); r.onsuccess = r.onerror = r.onblocked = () => done(); });
@@ -53,8 +42,6 @@ const CLEAR = `(async () => {
   return true;
 })()`;
 
-// the editor on a deck served over HTTP, opened with text, or with the file of the deck, and with
-// slide n shown
 async function load(t, platform, { deck = LAYOUTS, text, n = 0, size } = {}) {
   const page = await browser.newPage(size);
   t.after(() => page.close().catch(() => {}));
@@ -71,7 +58,6 @@ async function load(t, platform, { deck = LAYOUTS, text, n = 0, size } = {}) {
   return page;
 }
 
-// an undo gives the text before byte for byte, and a redo gives the edited text again
 async function undoRedo(page, before, edited) {
   await undo(page);
   await sleep(100);
@@ -87,7 +73,6 @@ async function savedAs(page, edited) {
   assert.equal(text, edited);
 }
 
-// the box in slide px of the first shown element that matches selector
 const slideBox = (page, selector) =>
   page.evaluate(`(() => {
     const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0);
@@ -100,7 +85,6 @@ const slideBox = (page, selector) =>
   })()`);
 
 for (const platform of PLATFORMS) {
-  // since R9.9, a QR code is put in the free space of the slide, as every new element
   test(`a QR code inserted on a full wide slide is put in its free space, inside its edges (${platform})`, async (t) => {
     const page = await load(t, platform);
     await exec(page, 'slide.new.wide');
@@ -138,7 +122,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the pasteboard around the slide, measured at the start and at the end of the scroll of the canvas
 const pasteboard = (page) =>
   page.evaluate(`(async () => {
     const s = window.BeesonEditorShell.stage;
@@ -175,12 +158,10 @@ for (const platform of PLATFORMS) {
     await clickText(page, fig);
     await exec(page, 'zoom.selection');
     await frames(page);
-    // the frame of the figure, i.e. its picture with its caption, is centered
     const r = await page.evaluate(`(() => { const v = window.BeesonEditorShell.stage.viewport; const i = document.querySelector('.beeson-overlay > .beeson-frame.selected:not([hidden])').getBoundingClientRect(); return { cx: i.left + i.width / 2 - (v.left + v.width / 2), cy: i.top + i.height / 2 - (v.top + v.height / 2) }; })()`);
     assert.ok(Math.abs(r.cx) < 2 && Math.abs(r.cy) < 2, `the figure is off the center of the canvas by ${JSON.stringify(r)}`);
     const p = await pasteboard(page);
     assert.ok(Math.abs(p.left - p.right) < 1 && Math.abs(p.top - p.bottom) < 1 && Math.abs(p.left - p.top) < 1 && p.left > 32, JSON.stringify(p));
-    // a later zoom gives the pasteboard its margin of 32 px again
     await page.evaluate('window.BeesonEditorShell.stage.setZoom(2)');
     await frames(page);
     const q = await pasteboard(page);
@@ -190,9 +171,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// PASTE_IMAGE sends a paste of an image file to the focused element, as a screenshot or an image
-// copied in another app is pasted, with a DataTransfer of its own, since the system clipboard is
-// shared with other tests
 const PASTE_IMAGE = `(async () => {
   const bytes = await (await fetch('/demo/figure-light.png')).arrayBuffer();
   const data = new DataTransfer();
@@ -202,8 +180,6 @@ const PASTE_IMAGE = `(async () => {
   return ev.defaultPrevented;
 })()`;
 
-// SAVE_INTO saves into a folder of the private file system, and returns the saved text and the
-// files of its media/
 const SAVE_INTO = (folder) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${JSON.stringify(folder)}, { create: true });
@@ -231,7 +207,6 @@ for (const platform of PLATFORMS) {
     await exec(page, 'slide.new.split');
     await frames(page);
     const before = await render(page);
-    // two presses of Esc take the caret out of the new slide, to the canvas
     await press(page, 'Escape');
     await press(page, 'Escape');
     assert.equal(await page.evaluate(PASTE_IMAGE), true, 'the paste is left to the browser');
@@ -264,7 +239,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the center of row i of the navigator, in the order of the slides
 const rowCenter = (page, i) =>
   page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-nav .row')][${i}].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 const sectionsOf = (text) => text.split('<section').length - 1;
@@ -284,7 +258,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const edited = await render(page);
     assert.equal(sectionsOf(edited), sectionsOf(page.source) + 1);
-    // the text before the first slide, then the slides
     const slides = edited.split(/\n(?=<section)/).slice(1);
     assert.match(slides[3], /^<section class="figure">\n {2}<div class="plate">\n {4}<img src="media\/figure-light.png">\n {2}<\/div>\n {2}<h2><\/h2>\n {2}<p class="caption"><\/p>\n<\/section>/);
     assert.equal(await page.evaluate('Reveal.getIndices().h'), 3);
@@ -315,7 +288,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the indices of the slides whose rows carry the mark of a transition
 const marked = (page) =>
   page.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r, i) => { const m = r.querySelector('.trans'); return m && !m.hidden && m.getBoundingClientRect().width > 0 ? i : -1; }).filter((i) => i >= 0)`);
 
@@ -325,8 +297,6 @@ for (const platform of PLATFORMS) {
     const magic = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.hasAttribute('data-auto-animate'))`);
     assert.deepEqual(await marked(page), [magic]);
     assert.match(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .row')[${magic}].getAttribute('aria-label')`), /, with the transition Magic Move/);
-    // None on the slide of Magic Move takes the mark off, and the default Fade of the theme is not
-    // marked
     await page.evaluate(`Reveal.slide(${magic})`);
     await frames(page);
     await exec(page, 'slide.transition.none');
@@ -341,8 +311,6 @@ for (const platform of PLATFORMS) {
 
 const DELETE = { mac: 'Backspace', other: 'Delete' };
 const TITLE_QR = '<div class="qr" data-qr="https://github.com/beeson-group/slides"></div>';
-// the shown elements of the selection: each framed by itself, or the members of a group in its
-// one frame
 const shownFrames = (page) => page.evaluate(`(() => {
   const frames = [...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden && f.getBoundingClientRect().width).length;
   const group = [...document.querySelectorAll('.beeson-frame.union.group')].some((f) => !f.hidden);
@@ -357,13 +325,11 @@ for (const platform of PLATFORMS) {
     const locked = page.source.replace(TITLE_QR, '<div class="qr" data-qr="https://github.com/beeson-group/slides" data-locked></div>');
     assert.equal(await render(page), locked);
     const label = (await status(page)).undoLabel ?? null;
-    // with the locked QR code alone selected, Delete does nothing and adds no entry
     await press(page, DELETE[platform]);
     await frames(page);
     assert.equal(await render(page), locked);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('element.delete').enabled`), false);
     assert.equal((await status(page)).undoLabel ?? null, label);
-    // with the heading added, only the heading is deleted, and the QR code stays selected
     await click(page, '.reveal section.present h1', { modifiers: 'Shift' });
     assert.equal(await shownFrames(page), 2);
     await press(page, DELETE[platform]);
@@ -394,10 +360,8 @@ for (const platform of PLATFORMS) {
     assert.equal(duplicated.split('data-group="g1"').length - 1, 2, 'the copies joined the group of their sources');
     assert.equal(duplicated.split('data-group="g2"').length - 1, 2, 'the copies are not one new group');
     await undoRedo(page, grouped, duplicated);
-    // a copy and a paste of the group g1 makes a new group as well
     await undo(page);
     await frames(page);
-    // a first click on a member selects the group, which a second click would leave for the member
     await exec(page, 'selection.clear');
     await clickText(page, '.reveal section.present > .qr');
     assert.equal(await shownFrames(page), 2);
@@ -413,7 +377,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// whether each element of the class coriolis on the current slide is colored orange
 const coriolis = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present .coriolis')].map((el) => el.classList.contains('hl-accent'))`);
 
 for (const platform of PLATFORMS) {
@@ -442,7 +405,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the slide of the equations of the demo deck, and the paragraph of its step 2
 const EQUATIONS = 3;
 const STEP2 = String.raw`<p class="fragment" data-fragment-index="2">where \(\tilde U\) is the effective potential.</p>`;
 const STEP2_LIVE = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith('where'))`;
@@ -466,7 +428,6 @@ for (const platform of PLATFORMS) {
     await byteExact(page, [[STEP2, STEP2.replace('potential.</p>', String.raw`potential.\(x\)</p>`)]]);
     const edited = await render(page);
     await undoRedo(page, page.source, edited);
-    // on the canvas, without a caret, the button inserts a display formula
     await press(page, 'Escape');
     await press(page, 'Escape');
     await click(page, await center(page, '.beeson-edit-top [data-command="insert.formula"]'));
@@ -476,12 +437,7 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the empty box of Text Box, Code Box, and Footnote, which is not written into the file until it is
-// left or typed into. a text box left empty is written as an empty paragraph, and the other boxes
-// are taken off
 const PENDING = `document.querySelector('.reveal section.present .beeson-pending')`;
-// a new box on a slide without room under its text is written with the offset, and the width,
-// that put it in free space
 const unmoved = (text) => text.replace(/ style="(width: \d+px; )?translate: -?\d+px -?\d+px"/g, '');
 const undoLabel = (page, id) => page.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).label`);
 const INSERTS = [
@@ -531,8 +487,6 @@ for (const platform of PLATFORMS) {
         await sleep(100);
       }
       await clean();
-      // the first input writes the box as an entry over its insert, as in Keynote: one undo leaves
-      // the empty box with the caret, and a second takes it off
       await exec(page, id);
       await frames(page);
       await type(page, 'x');

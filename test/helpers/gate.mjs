@@ -1,11 +1,3 @@
-// a gate on the typesetting of MathJax in a page, which stands for a slow typeset on a phone. each
-// call of MathJax.typesetPromise waits until the gate is opened, and window.__held counts the calls
-// held, hence a test waits for an operation to reach its typeset rather than for a time
-
-/**
- * Holds each call of MathJax.typesetPromise on page until openGate(page), from the first call for
- * which the expression when holds in the page, with the elements of the call as els.
- */
 export function closeGate(page, when = 'true') {
   return page.evaluate(`(() => {
     const mj = window.MathJax;
@@ -23,7 +15,6 @@ export function closeGate(page, when = 'true') {
   })()`);
 }
 
-/** Lets the calls held by closeGate(page) go on, and typesets at once from then on. */
 export function openGate(page) {
   return page.evaluate(`(() => {
     window.MathJax.typesetPromise = window.MathJax.__typeset;

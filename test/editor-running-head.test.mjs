@@ -1,7 +1,3 @@
-// the running head of a content slide after an edit of a tag in the editor, on both platforms. the
-// section slide of test/pages/editor-layouts.html names its slides with math in data-run, and the
-// running heads and the outline keep the typeset title after the edit, its undo, and its redo
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -27,12 +23,9 @@ after(async () => {
 
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-// a missing favicon of the test server is not an error of the deck
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const typeset = (page) => page.evaluate('window.MathJax.startup.promise.then(() => true)');
 
-// the running head of the current slide and the first item of the outline, with each typeset
-// formula read as [math], hence a formula left as TeX is read with its delimiters
 const heads = (page) => page.evaluate(`(() => {
   const read = (el) => {
     const copy = el.cloneNode(true);

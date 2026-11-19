@@ -1,9 +1,3 @@
-// the formulas of the editor on either platform: an inline formula put at the caret of a text, the
-// completion of the macros of the deck in the TeX field, the gray prompt of an empty TeX, and the
-// Formula pane of the inspector, with its TeX field, Hold, and the color of a symbol at a step.
-// after each edit an undo gives the file byte for byte, a redo gives the edit, and a save is opened
-// again without problems
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -62,15 +56,12 @@ async function roundTrip(page, undos = 1) {
   assert.deepEqual(errors(page), []);
 }
 
-// the key of an inline formula: ⌥⌘E on a Mac, and Alt+= elsewhere, sent as the browser sends it
 async function inlineKey(page, platform) {
   if (platform === 'mac') return press(page, 'Mod+Alt+E');
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 });
 }
 
-// the caret at the end of the paragraph of step 2, found by its text, since reveal.js counts the
-// fragments of the live page from 0
 const STEP2_LIVE = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith('where'))`;
 async function caretInStep2(page) {
   const at = await page.evaluate(`(() => { const r = ${STEP2_LIVE}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -79,7 +70,6 @@ async function caretInStep2(page) {
   await press(page, 'End');
 }
 
-// the display of the slide selected, with the Formula pane shown
 async function selectDisplay(page) {
   await page.evaluate(`Reveal.slide(${EQUATIONS})`);
   await page.evaluate(`(() => { window.BeesonEditor.state('view.steps').checked && window.BeesonEditor.exec('view.steps'); window.BeesonEditor.state('shell.format').checked || window.BeesonEditor.exec('shell.format'); })()`);
@@ -90,7 +80,6 @@ async function selectDisplay(page) {
   assert.equal(await page.evaluate(`document.querySelector('${FORMAT} .ed-panes')?.dataset.pane`), 'formula');
 }
 
-// the text from start to end of the TeX field of the pane selected
 const selectInField = (page, part) =>
   page.evaluate(`(() => {
     const f = document.querySelector('${FORMAT} textarea[name="tex"]');
@@ -148,7 +137,6 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'Enter');
     await type(page, '1');
     assert.equal(await page.evaluate(`document.querySelector('.beeson-math textarea').value`), String.raw`x + \LL{1}`);
-    // Escape closes the list, and a second Escape the sheet
     await type(page, String.raw` \fr`);
     await sleep(200);
     await press(page, 'Escape');
@@ -218,7 +206,6 @@ for (const platform of ['mac', 'other']) {
     const rows = await page.evaluate(`[...document.querySelectorAll('${FORMAT} .ed-colored li')].map((l) => l.querySelector('.sym').textContent + ' ' + l.querySelector('.at').textContent)`);
     assert.ok(rows.includes(String.raw`\ddot y Violet, Step 4`), `the pane does not list the symbol: ${rows}`);
     await roundTrip(page);
-    // its color removed in the pane gives the file back
     await selectDisplay(page);
     await clickText(page, await center(page, `${FORMAT} button[aria-label="Remove the color of y"]`));
     await sleep(600);

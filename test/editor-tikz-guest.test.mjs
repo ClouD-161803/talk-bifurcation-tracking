@@ -1,8 +1,3 @@
-// the TikZ figures of a session for a guest, i.e. a page that joined through the relay: only the
-// host changes a TikZ figure, hence Insert > TikZ Figure and Edit Source tell so, and the TikZ
-// Figure pane shows the state of a figure with its fields and Edit Source… turned off. the guest
-// still sees the figures. a test that runs TeX is skipped without latex and dvisvgm
-
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -36,7 +31,6 @@ after(() => browser?.close());
 
 const wait = (page) => page.evaluate('new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), 50))');
 const message = (page) => page.evaluate(`${E}.status().message`);
-// the message of the page taken off, hence the next one is told anew
 const clear = (page) => page.evaluate(`${C}.app.note = null, ${C}.app.report()`);
 
 test('a guest is told that only the host changes a TikZ figure, and sees the figures and their state', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
@@ -70,7 +64,6 @@ test('a guest is told that only the host changes a TikZ figure, and sees the fig
     assert.equal(await page.evaluate(`${E}.render()`), text);
   }
 
-  // Edit Source is refused from the Format menu and by a double click
   await click(page, await center(page, FIGURE('orbit')));
   await wait(page);
   await clear(page);
@@ -82,7 +75,6 @@ test('a guest is told that only the host changes a TikZ figure, and sees the fig
   await wait(page);
   assert.equal(await page.evaluate(`!!document.querySelector('dialog.beeson-edit-tikz')?.open`), false);
 
-  // the pane shows the state of the figure, with Edit Source… and the fields turned off
   await page.evaluate(`${E}.state('shell.format').checked || ${E}.exec('shell.format')`);
   await click(page, await center(page, FIGURE('decay')));
   await wait(page);

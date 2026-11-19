@@ -1,9 +1,3 @@
-// the session mode of the editor, see src/editor/session/port.ts. a page opened with edit and
-// session is in the mode from its start, and begin() and end() of the port turn it on and off
-// later. in the mode the editor does not save, keep a draft, autosave, or follow its file, it does
-// not ask about unsaved edits, since every edit is already shared, and Open, Open Recent, and Revert
-// to Saved are dimmed. the numbers are those of the findings of the review of the port
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -33,8 +27,6 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// 22: a draft of an earlier visit without a session is not offered on a page of a session, and an
-// edit in the session does not replace it
 test('22: a page opened with edit and session neither offers nor keeps a draft', async () => {
   const earlier = await editorPage(browser, { page: { drafts: true }, clear: true });
   const old = await keepOldDraft(earlier);
@@ -55,8 +47,6 @@ test('22: a page opened with edit and session neither offers nor keeps a draft',
   }
 });
 
-// 22: begin() after an edit, whose draft timer was set before it, and begin() while the dialog of a
-// draft is open
 test('22: begin() cancels a pending draft and closes the dialog of a draft', async () => {
   const page = await editorPage(browser, { page: { drafts: true }, clear: true });
   try {
@@ -83,8 +73,6 @@ test('22: begin() cancels a pending draft and closes the dialog of a draft', asy
   }
 });
 
-// a copy of the repository in a temporary folder, served with test-deck.html as index.html, which a
-// test changes as another person of the session does through the edit command
 async function served(t) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-mode-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -96,7 +84,6 @@ async function served(t) {
   const open = async (query) => {
     const page = await browser.newPage();
     t.after(() => page.close());
-    // the watch of follow.ts skips a page behind another, and window.__ticks counts its ticks
     await page.send('Page.addScriptToEvaluateOnNewDocument', { source: WATCHED });
     if (/(^|&)session(&|$)/.test(query)) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: CLIENT });
     await page.goto(`${server.origin}/index.html?${query}`);
@@ -113,8 +100,6 @@ async function served(t) {
   return { open, edit };
 }
 
-// a script run before the page, which shows the page as visible, and counts the calls of the
-// intervals of 1 s in window.__ticks, among them the watch of follow.ts
 const WATCHED = `{
   Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
   window.__ticks = 0;
@@ -122,11 +107,8 @@ const WATCHED = `{
   window.setInterval = (fn, ms, ...args) => every(typeof fn === 'function' && ms === 1000 ? (...a) => (window.__ticks++, fn(...a)) : fn, ms, ...args);
 }`;
 
-// a page reloaded by follow.ts no longer has window.__before
 const kept = (page) => page.evaluate('window.__before === true').catch(() => false);
 
-// 23: the page of a session is not loaded again when the file changes, which happens at each edit
-// of another person
 test('23: a page opened with edit and session does not follow its file', async (t) => {
   const { open, edit } = await served(t);
   const page = await open(SESSION);
@@ -139,7 +121,6 @@ test('23: a page opened with edit and session does not follow its file', async (
   assert.deepEqual(s.changed, []);
 });
 
-// 23: begin() after the watch marked a slide changed, and the watch after end()
 test('23: begin() clears the changes of the file from the state line, and end() follows the file again', async (t) => {
   const { open, edit } = await served(t);
   const page = await open('edit&still');
@@ -155,7 +136,6 @@ test('23: begin() clears the changes of the file from the state line, and end() 
   assert.equal(await kept(session), true, 'the page was loaded again over its edits');
 });
 
-// 24: the state line of a session does not speak of the autosave, and its switch is hidden
 test('24: a session hides the Autosave switch and its sentence until end()', async () => {
   const page = await editorPage(browser, { clear: true });
   try {
@@ -178,8 +158,6 @@ test('24: a session hides the Autosave switch and its sentence until end()', asy
   }
 });
 
-// 10 and 12: Present, the exports, and Print wait for the saver of the session and go on without a
-// question, and they keep the edit and its history
 test('10 and 12: Present, Export, and Print in a session wait for the saver and keep the edits', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: `${SESSION}&v=abc.1` });
   try {
@@ -222,7 +200,6 @@ test('10 and 12: Present, Export, and Print in a session wait for the saver and 
   }
 });
 
-// 10: the commands that would replace the deck of everyone are dimmed, with a note in the menu
 test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a session, with a note', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: SESSION });
   try {
@@ -238,7 +215,6 @@ test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a sessi
     assert.ok(recent && recent.disabled && recent.label.endsWith(NOTE), 'Open Recent is not dimmed with the note');
     await exec(page, 'file.open');
     assert.equal(await page.evaluate(askShown), false);
-    // the key of Open is kept from the browser, whose own Open would leave the page of the session
     const held = await page.evaluate(`(() => {
       const mac = /Mac|iPhone|iPad/.test(navigator.platform);
       const ev = new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', keyCode: 79, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true });
@@ -254,8 +230,6 @@ test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a sessi
   }
 });
 
-// end() puts the editor back as it was before: the deck counts as changed, Present and the exports
-// ask first, Open and Revert to Saved are enabled again, a draft is kept, and Save writes the file
 test('after end(), the editor saves, keeps drafts, and asks about unsaved changes again', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: SESSION, page: { drafts: true }, clear: true });
   try {
@@ -276,7 +250,6 @@ test('after end(), the editor saves, keeps drafts, and asks about unsaved change
     await page.evaluate(`document.querySelector('dialog.beeson-edit-dialog.ask [value="cancel"], dialog.beeson-edit-dialog.ask button:last-child').click(), true`);
     await page.waitFor(`!(${askShown})`);
     if (s.supported) {
-      // a file handle kept in memory, since a page on file: does not have the private file system
       await page.evaluate(`window.showSaveFilePicker = async () => ({
         name: 'mode-saved.html',
         getFile: async () => ({ lastModified: 0, text: async () => window.__written ?? '' }),
@@ -295,8 +268,6 @@ test('after end(), the editor saves, keeps drafts, and asks about unsaved change
   }
 });
 
-// begin() twice is one session, which one end() ends, and end() without begin() does not change
-// anything
 test('begin() is idempotent, and end() without begin() does nothing', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: SESSION });
   try {
@@ -323,8 +294,6 @@ test('begin() is idempotent, and end() without begin() does nothing', async () =
   }
 });
 
-// a command that fails is reported with a note of the editor. Present fails here, since the saver of
-// the session rejects, as the client does once the session has ended
 test('the state line of a session shows why a command failed, until the next edit', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: SESSION });
   try {
@@ -333,7 +302,6 @@ test('the state line of a session shows why a command failed, until the next edi
     await press(page, 'Mod+Enter');
     await page.waitFor('window.__saves === 1');
     await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
-    // the sentence after it is of the typed text, which runs past its slide
     assert.match((await status(page)).message, /^Saved\. The session has ended(\.|$)/, 'the state line does not show the failure');
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-titlebar .state').classList.contains('warn')`), true);
     await typeGo(page);
@@ -344,7 +312,6 @@ test('the state line of a session shows why a command failed, until the next edi
   }
 });
 
-// a page that is offline cannot send its edits, and the saver of the session then does not resolve
 test('Present and an export in a session give up with the reason when the edits are not sent in time', async () => {
   const page = await editorPage(browser, { client: CLIENT, query: SESSION });
   try {

@@ -1,13 +1,3 @@
-// the Edit Source sheet of a TikZ figure in a session: the source in a monospace field, opened from
-// the Format menu and by a double click on the figure. a pause in typing draws a preview on the
-// slide, or lists the errors at their lines, Cancel draws the output again, and Apply writes the
-// source over the text that the sheet opened with, which another person may have changed since.
-// after Apply, the slide shows the output of the source, or the last good output when its compile
-// fails, and a preview is compiled in the box of the style, as the output is. Blank opens the sheet
-// on a small drawing with Insert, which writes the source and puts the figure on the slide, and
-// whose Cancel leaves neither. the sheet fits the screen of a phone. a test that runs TeX is
-// skipped without latex and dvisvgm
-
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -26,7 +16,6 @@ const ORBIT = '\\begin{tikzpicture}\n\\draw[accent] (0,0) circle (1);\n\\end{tik
 const DECK = TALK.replace('<p>First slide</p>', '<p>First slide</p>\n  <div class="tikz" data-figure="orbit" style="width: 600px; height: 400px; translate: 0px 120px"></div>');
 const SHEET = 'dialog.beeson-edit-tikz';
 const FIGURE = '.reveal .slides > section.present .tikz[data-figure="orbit"]';
-// the SVG drawn on the slide, which a preview replaces
 const DRAWN = `document.querySelector('${FIGURE} > svg')?.outerHTML ?? ''`;
 
 let browser;
@@ -36,7 +25,6 @@ before(async () => {
 after(() => browser?.close());
 
 const wait = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-// the source typed into the field of the sheet
 const typeSource = (page, text) => page.evaluate(`(() => { const t = document.querySelector('${SHEET} textarea'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' })); })()`);
 const sheet = (page) => page.evaluate(`(() => {
   const d = document.querySelector('${SHEET}');
@@ -76,7 +64,6 @@ async function page(t, edit, options = {}) {
   const p = await open(browser, sessionUrl(edit), { name: 'Ann', ...options });
   t.after(() => p.close());
   await front(p);
-  // the edit command compiles the figure of the deck at its start
   await p.waitFor(`!!window.beesonFigures?.orbit && !!document.querySelector('${FIGURE} > svg')`, 60_000);
   return p;
 }
@@ -100,7 +87,6 @@ test('Edit Source shows the source, draws a preview on a pause in typing, lists 
   const failed = await sheet(p);
   assert.match(failed.errors[0], /^Line 2: Undefined control sequence/);
   assert.deepEqual(failed.marked, ['2']);
-  // the output on the slide is kept while the source does not compile
   assert.equal(await p.evaluate(DRAWN), output);
 
   await typeSource(p, '\\begin{tikzpicture}\n\\draw[blue] (0,0) rectangle (3,1);\n\\end{tikzpicture}\n');
@@ -118,7 +104,6 @@ test('Apply writes the source over the text that the sheet opened with, and offe
   const { edit, read, write } = await session(t);
   const p = await page(t, edit);
   const hash = await p.evaluate('window.beesonFigures.orbit.hash');
-  // a double click on the figure opens the sheet
   await click(p, await center(p, FIGURE), { count: 2 });
   await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
   const square = '\\begin{tikzpicture}\n\\draw[violet] (0,0) rectangle (2,2);\n\\end{tikzpicture}\n';
@@ -128,7 +113,6 @@ test('Apply writes the source over the text that the sheet opened with, and offe
   assert.equal(await sheet(p), null);
   await p.waitFor(`window.beesonFigures.orbit.hash !== ${JSON.stringify(hash)}`, 60_000);
 
-  // someone else writes the source while the sheet is open
   await p.evaluate(`${E}.exec('format.tikzSource')`);
   await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value === ${JSON.stringify(square)}`);
   const theirs = square.replace('violet', 'red');
@@ -155,7 +139,6 @@ test('after Apply the slide shows the last good output when the compile of the s
   write('figures/bare.tex', ORBIT);
   const p = await page(t, edit);
   const output = await p.evaluate(DRAWN);
-  // the box of each preview asked for
   await p.evaluate(`(() => {
     window.boxes = [];
     const send = window.fetch;
@@ -173,14 +156,12 @@ test('after Apply the slide shows the last good output when the compile of the s
   await p.waitFor(`(${DRAWN}) !== ${JSON.stringify(output)} && (${DRAWN}) !== ''`, 60_000);
   assert.deepEqual(await p.evaluate('window.boxes'), [{ width: 600, height: 400 }]);
 
-  // the file that the source reads is taken away before the source is applied
   remove('figures/part.tex');
   await button(p, 'Apply');
   await until(() => read('figures/orbit.tex') === input, 'the source to be written');
   await p.waitFor(`${C}.figures?.errors.orbit?.length > 0 && ${C}.figures.compiling === null`, 60_000);
   await p.waitFor(`(${DRAWN}) === ${JSON.stringify(output)}`, 10_000);
 
-  // a figure without a size in its style is compiled without a box
   await p.evaluate(`${C}.app.selection.set('elements', [document.querySelector('.reveal .slides > section.present .tikz[data-figure="bare"]')])`);
   await p.evaluate(`${E}.exec('format.tikzSource')`);
   await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
@@ -208,7 +189,6 @@ test('Blank opens the sheet with Insert, which writes the source and puts the fi
   assert.equal(await p.evaluate(`${E}.render()`), text);
   assert.deepEqual(written(), before);
 
-  // Insert writes the source under the name figure and puts the figure on the slide, selected
   await blank();
   const source = (await sheet(p)).source;
   await button(p, 'Insert');
@@ -217,7 +197,6 @@ test('Blank opens the sheet with Insert, which writes the source and puts the fi
   assert.equal(await sheet(p), null);
   assert.deepEqual(await p.evaluate(`${E}.selection().map((e) => e.dataset.figure)`), ['figure']);
 
-  // the new figure may cover the figure orbit on a phone, hence orbit is selected by the editor
   const phone = await page(t, edit, { name: 'Ben', width: 390, height: 844, mobile: true });
   await phone.evaluate(`${C}.app.selection.set('elements', [document.querySelector('${FIGURE}')])`);
   await wait(phone);

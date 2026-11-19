@@ -1,7 +1,3 @@
-// the keys of the editor, sent as trusted input on both platforms: one dispatch runs the command
-// of a key in the region of the focus, the keys of reveal.js are off, and the sheet of the keys
-// lists every command with a key
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -15,7 +11,6 @@ const HEADING = ['<h2>Text, a list, and a backdrop</h2>', '<h2>Text, a list, and
 
 const keysPage = async (browser, platform) => {
   const page = await editorPage(browser, { deck: LAYOUTS, query: `edit&still&edit-platform=${platform}` });
-  // the keys seen by a listener after the dispatch, with whether the default was prevented
   await page.evaluate(`(() => { window.__keys = []; window.addEventListener('keydown', (e) => window.__keys.push([e.key, e.defaultPrevented]), true); })()`);
   return page;
 };
@@ -24,8 +19,6 @@ const slide = (page) => page.evaluate('Reveal.getIndices().h');
 const prevented = (page) => page.evaluate('window.__keys.splice(0).map(([key, p]) => key + (p ? ":prevented" : ""))');
 const blur = (page) => page.evaluate('document.activeElement.blur()');
 
-// a trusted key with its key, code, and Windows key code given, for a key that press() does not
-// know, e.g. ? or a key code of the pause of reveal.js
 async function raw(page, key, code, keyCode, modifiers = 0) {
   const text = key.length === 1 && !(modifiers & 6) ? key : undefined;
   await page.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers, ...(text ? { text, unmodifiedText: text } : {}) });
@@ -85,7 +78,6 @@ for (const platform of PLATFORMS) {
     await press(page, redo);
     await page.waitFor('!window.BeesonEditor.status().redo');
     await byteExact(page, [HEADING]);
-    // the fallback modifier, Control on a Mac and Meta elsewhere, undoes too
     await press(page, fallback);
     await page.waitFor('!window.BeesonEditor.status().undo');
     await byteExact(page);
@@ -104,8 +96,6 @@ for (const platform of PLATFORMS) {
     await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     for (const key of ['Backspace', 'Mod+A', 'Mod+C', 'Mod+X', 'Mod+V', 'D', 'G', 'PageDown', 'Home']) await press(page, key);
-    // Select All is the command of the registry, which selects the text of the block as the browser
-    // does, and a second one selects every element of the slide
     assert.deepEqual(await prevented(page), ['End', 'Backspace', 'a:prevented', 'c', 'x', 'v', 'd', 'g', 'PageDown', 'Home']);
     assert.equal(await slide(page), 2);
     assert.equal(await page.evaluate('window.BeesonEditor.status().undo'), true);
@@ -118,7 +108,6 @@ for (const platform of PLATFORMS) {
     const page = await keysPage(browser, platform);
     await blur(page);
     for (const key of ['B', 'O', 'Escape', 'Space', 'N', 'P', 'F', 'V']) await press(page, key);
-    // the colon and the semicolon, whose key codes 58 and 59 pause reveal.js in Firefox
     await raw(page, ':', 'Semicolon', 58, 8);
     await raw(page, ';', 'Semicolon', 59);
     await raw(page, '.', 'Period', 190);
@@ -140,7 +129,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await slide(page), 0);
     await press(page, 'ArrowUp');
     assert.equal(await slide(page), 0);
-    // with a block selected, an arrow nudges it and the slide stays
     await page.evaluate('Reveal.slide(2)');
     await clickText(page, '.reveal section.present > h2');
     await press(page, 'Escape');
@@ -161,14 +149,12 @@ for (const platform of PLATFORMS) {
     await press(page, 'Enter');
     assert.equal(await slide(page), 4);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-goto').hidden`), true);
-    // Esc closes the field and gives the focus back
     const row = `document.querySelectorAll('.beeson-edit-nav .row')[4]`;
     await page.evaluate(`${row}.focus()`);
     await press(page, 'G');
     assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-goto input')`), true);
     await press(page, 'Escape');
     assert.equal(await page.evaluate(`document.activeElement === ${row}`), true);
-    // a plain key on a button of the bars is left to the button
     await page.evaluate(`document.querySelector('.beeson-edit-bottom button').focus()`);
     await press(page, 'G');
     assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-goto').hidden`), true);
@@ -217,7 +203,6 @@ for (const platform of PLATFORMS) {
       back.push(await where());
     }
     assert.deepEqual(back, ['navigator', 'toolbar', 'menubar', 'status', 'inspector', 'notes', 'canvas']);
-    // F6 is taken in a text too
     await clickText(page, '.reveal section.present h1');
     await press(page, 'F6');
     assert.equal(await where(), 'notes');
@@ -257,9 +242,7 @@ for (const platform of PLATFORMS) {
       'Keyboard Shortcuts': '?',
     };
     for (const [label, keys] of Object.entries(expected)) assert.equal(sheet.rows[label], keys, label);
-    // every key of Windows and Linux is free of Ctrl+Alt, which AltGr sends
     if (!mac) for (const keys of Object.values(sheet.rows)) assert.doesNotMatch(keys, /Ctrl\+Alt/);
-    // only the keys of the sheet are live while it is open, and Esc closes it
     await press(page, 'D');
     await press(page, 'PageDown');
     assert.equal(await slide(page), 0);
@@ -283,7 +266,6 @@ for (const platform of PLATFORMS) {
     await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     await type(page, ' now');
-    // Save is taken in a text
     await press(page, 'Mod+S');
     await page.waitFor('window.__written.length === 1 && !window.BeesonEditor.status().dirty');
     assert.ok((await page.evaluate('window.__written[0]')).includes(HEADING[1]));
@@ -292,8 +274,6 @@ for (const platform of PLATFORMS) {
     await blur(page);
     await press(page, 'Mod+O');
     await page.waitFor(`window.__picker === 'open'`);
-    // Present plays the deck in a frame over the editor, and Esc in the show returns to the editor.
-    // the frame is of another origin on file:, hence the show is ready at the event posted by reveal.js
     const SHOW = `document.querySelector('.beeson-edit-show iframe')`;
     await page.evaluate(`window.addEventListener('message', (e) => { try { if (JSON.parse(e.data).eventName === 'ready') window.__ready = true; } catch {} })`);
     const present = async (key, end) => {
@@ -307,7 +287,6 @@ for (const platform of PLATFORMS) {
     };
     await present('Mod+Enter', `?still&edit-platform=${platform}&from-editor#/2`);
     await present('Mod+Shift+Enter', `?still&edit-platform=${platform}&from-editor`);
-    // the editor is at the slide shown last, the first slide of the show from the start
     assert.equal(await slide(page), 0);
     assert.deepEqual(page.errors, []);
   });
@@ -317,7 +296,6 @@ test('press() of Enter runs the default action of the key on a focused button an
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  // a native button and summary without a keydown listener, as a keyboard meets them
   await page.evaluate(`(() => {
     window.__pressed = 0;
     const button = document.body.appendChild(document.createElement('button'));
@@ -330,20 +308,14 @@ test('press() of Enter runs the default action of the key on a focused button an
   await page.evaluate(`document.querySelector('summary').focus()`);
   await press(page, 'Enter');
   await page.waitFor(`document.querySelector('details').open`);
-  // with a command modifier, Enter is a command and does not press the button
   await page.evaluate(`document.querySelector('button').focus()`);
   await press(page, 'Mod+Enter');
   await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
   assert.equal(await page.evaluate('window.__pressed'), 1);
 });
 
-// the key of Duplicate Slide of R16.7 on both platforms, with trusted input. Mod+D is the key of
-// Edit > Duplicate, which duplicates the selected figure, and the slide in the navigator and with
-// nothing selected. the Slide menu thus lists Duplicate Slide with the key only where the key runs
-// it, as it lists Delete Slide, and the item stays live
 describe('Mod+D for Duplicate and Duplicate Slide', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const PLATFORMS = ['mac', 'other'];
   const DUPLICATE = { mac: '⌘D', other: 'Ctrl+D' };
@@ -392,8 +364,6 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
     await settle(page);
   }
 
-  // the key printed and the dimmed state of the item label of the menu bar, read from the open menu,
-  // which is then closed
   async function itemIn(page, bar, label) {
     await openBar(page, bar);
     const out = await page.evaluate(`(() => { const i = (${findItem})(${js(label)}); return i ? { keys: i.querySelector('.keys')?.textContent ?? '', dimmed: i.getAttribute('aria-disabled') === 'true' } : null; })()`);
@@ -401,7 +371,6 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
     return out;
   }
 
-  // a point of the canvas under the slide
   const below = (page) => page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return { x: Math.round(r.left + 6), y: Math.round(r.bottom + 12) }; })()`);
 
   for (const platform of PLATFORMS) {
@@ -421,7 +390,6 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
       assert.equal(await undoLabel(page), 'Undo Duplicate');
       await undo(page);
       assert.equal(await render(page), page.source);
-      // the item of the Slide menu duplicates the slide while the figure is selected
       await click(page, '.reveal .slides > section.present img');
       await settle(page);
       await openBar(page, 'Slide');
@@ -482,14 +450,9 @@ describe('Mod+D for Duplicate and Duplicate Slide', () => {
   }
 });
 
-// regression tests of R17.8 on both platforms, the requirements 8 and 8a and the defects N36 to
-// N41 of the check of round 7: the keys with a command modifier that act in a text, Move Slide Up
-// and Down dimmed in a text, Mod+D kept from the browser in a cell, Mod+B and Mod+I on a framed
-// formula, and the inspector given back once the window has room for it
 describe('command keys that act in a text', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
 
   let browser;
@@ -536,12 +499,9 @@ describe('command keys that act in a text', () => {
     await wait(page, 300);
   }
 
-  // whether the last keydown of a key reached the window with its default prevented, read after the
-  // handler of the editor, which is the first listener of the capture phase
   const watchKeys = (page) => page.evaluate(`(() => { window.__keys = {}; addEventListener('keydown', (ev) => { window.__keys[ev.key.toLowerCase()] = ev.defaultPrevented; }, true); return true; })()`);
   const prevented = (page, key) => page.evaluate(`window.__keys[${js(key)}] ?? null`);
 
-  // the caret put by a click into the word matplotlib of the first paragraph of the figures slide
   async function caret(page) {
     const at = await page.evaluate(`(() => {
     const el = Reveal.getCurrentSlide().querySelector(':scope > p');
@@ -567,8 +527,6 @@ describe('command keys that act in a text', () => {
   for (const platform of PLATFORMS) {
     const K = KEYS[platform];
 
-    // item 1: New Slide, Hide Slide, and on a Mac Zoom to Selection act by their keys in a text, as
-    // their items of the menu do, and a key that the text takes is typed
     test(`the keys of New Slide, Hide Slide, and Zoom to Selection act with the caret in a paragraph (${platform})`, async (t) => {
       const page = await load(t, platform);
       await watchKeys(page);
@@ -608,8 +566,6 @@ describe('command keys that act in a text', () => {
       await undo(page);
       await page.evaluate(`Reveal.slide(${FIGURES})`);
       await wait(page);
-      // the text takes Shift with a digit and a bare letter. press() sends Shift+2 with the text 2, and
-      // Shift+0, the key of Actual Size, with the text 0
       await caret(page);
       await press(page, 'Shift+2');
       await press(page, 'd');
@@ -623,8 +579,6 @@ describe('command keys that act in a text', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // item 2: Move Slide Up and Down are dimmed in a text, where Alt with an arrow moves the caret or
-    // adds a row, as on the canvas
     test(`Move Slide Up and Move Slide Down are dimmed with the caret in a paragraph or in a cell (${platform})`, async (t) => {
       const page = await load(t, platform);
       const moves = async () => ({ up: (await state(page, 'slide.moveUp')).enabled, down: (await state(page, 'slide.moveDown')).enabled });
@@ -640,14 +594,12 @@ describe('command keys that act in a text', () => {
       await press(page, 'Alt+ArrowUp');
       await wait(page);
       assert.equal(await page.evaluate('Reveal.getIndices().h'), FIGURES, 'Alt+ArrowUp in a cell moves the slide');
-      // the navigator still moves the slide
       await click(page, `.beeson-edit-nav .row:nth-child(${FIGURES + 1})`);
       await wait(page);
       assert.deepEqual(await moves(), { up: true, down: true }, 'the two are dimmed in the navigator');
       assert.deepEqual(errors(page), []);
     });
 
-    // item 3: Mod+D is kept from the browser, which bookmarks the page, also where Duplicate is dimmed
     test(`Mod+D with the caret in a cell of a table is kept from the browser and changes nothing (${platform})`, async (t) => {
       const page = await load(t, platform);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
@@ -665,7 +617,6 @@ describe('command keys that act in a text', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // item 4: a display of math is not set in bold or italic, neither a new one nor one of the deck
     test(`Mod+B and Mod+I on a framed formula change nothing (${platform})`, async (t) => {
       const page = await load(t, platform);
       await watchKeys(page);
@@ -678,7 +629,6 @@ describe('command keys that act in a text', () => {
           assert.equal(await page.evaluate(`!!Reveal.getCurrentSlide().querySelector('div.math :is(strong, em, b, i)')`), false, `${key} on ${what} sets the display in bold or italic`);
         }
       };
-      // the display of the slide, framed by a click and Esc
       const math = await rect(page, `Reveal.getCurrentSlide().querySelector('div.math mjx-container')`);
       if (math) {
         await clickText(page, math);
@@ -687,7 +637,6 @@ describe('command keys that act in a text', () => {
         assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.className)'), ['math']);
         await check(page.source, 'Undo', 'the display of the slide');
       }
-      // a new formula, closed by a click on the canvas under the slide
       await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === 'Insert')`));
       await wait(page);
       await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.querySelector('.label')?.firstChild?.textContent === 'Formula')`));
@@ -703,7 +652,6 @@ describe('command keys that act in a text', () => {
     });
   }
 
-  // item 5: whether the navigator and the inspector are drawn, and the check marks of the View menu
   const findItem = `(l) => [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.querySelector('.label')?.firstChild?.textContent === l)`;
   async function openBar(page, bar) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)})`));
@@ -733,18 +681,15 @@ describe('command keys that act in a text', () => {
       assert.deepEqual(await view(page), { navigator: 'false', format: 'true', nav: false, inspector: true });
       await choose(page, 'View', 'Navigator');
       assert.deepEqual(await view(page), { navigator: 'true', format: 'false', nav: true, inspector: false }, 'View > Navigator does not show the navigator in place of the inspector');
-      // the navigator hidden again leaves room for the inspector
       await choose(page, 'View', 'Navigator');
       assert.deepEqual(await view(page), { navigator: 'false', format: 'true', nav: false, inspector: true }, 'the inspector is not given back with the navigator hidden');
       await resize(page, 1600, 900);
       assert.deepEqual(await view(page), { navigator: 'false', format: 'true', nav: false, inspector: true });
-      // a wider window gives the inspector back beside the navigator
       await resize(page, 760, 900);
       await choose(page, 'View', 'Navigator');
       assert.deepEqual(await view(page), { navigator: 'true', format: 'false', nav: true, inspector: false });
       await resize(page, 1600, 900);
       assert.deepEqual(await view(page), BOTH, 'the inspector is not given back at 1600 px');
-      // Format closed by the user stays closed
       await choose(page, 'View', 'Format');
       await resize(page, 760, 900);
       await resize(page, 1600, 900);
@@ -753,7 +698,6 @@ describe('command keys that act in a text', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N36: View > Navigator after the window was narrowed shows the navigator in one choice
     test(`View > Navigator after the window was narrowed with the navigator off shows it in one choice (${platform})`, async (t) => {
       const page = await load(t, platform);
       assert.equal((await view(page)).nav, true);
@@ -767,12 +711,8 @@ describe('command keys that act in a text', () => {
   }
 });
 
-// regression tests of R16.3 on both platforms, the findings G7, G8, and G15 of the second review of
-// round 7: the keys after an undo that frames a block with the caret left in its text, and View >
-// Navigator in a narrow window with the inspector open
 describe('keys after an undo frames a block', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the index of the figures slide in index.html
   const FIGURES = 4;
 
   let browser;
@@ -794,7 +734,6 @@ describe('keys after an undo frames a block', () => {
   const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // the editor on slide n of deck in a window of size, served over HTTP, with the storage emptied
   async function load(t, platform, n, deck = 'test-deck.html', size = { width: 1600, height: 1000 }) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -809,8 +748,6 @@ describe('keys after an undo frames a block', () => {
     return page;
   }
 
-  // every entry of the history undone with the focus left on the page, and slide n shown with
-  // nothing selected
   async function reopen(page, n) {
     await page.evaluate('document.activeElement?.blur?.(); getSelection().removeAllRanges(); true');
     await wait(page);
@@ -837,7 +774,6 @@ describe('keys after an undo frames a block', () => {
     await wait(page);
   }
 
-  // G7: a point inside the word matplotlib of the first paragraph of the figures slide
   const word = (page) => page.evaluate(`(() => {
   const el = Reveal.getCurrentSlide().querySelector(':scope > p');
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -850,8 +786,6 @@ describe('keys after an undo frames a block', () => {
   return null;
 })()`);
 
-  // the state after a key: the file, the label of the last entry of the history, the number of
-  // children of the slide, the selection, and whether the caret is in the paragraph
   const outcome = async (page) => ({
     text: await render(page),
     undo: await undoLabel(page),
@@ -872,8 +806,6 @@ describe('keys after an undo frames a block', () => {
     assert.equal(await page.evaluate(`document.activeElement.matches('p') && document.activeElement.isContentEditable`), true, 'the click does not put the caret into the paragraph');
   };
 
-  // the three ways to undo: the key, the button Undo of the toolbar, whose mousedown keeps the focus
-  // in the text, and the item Undo of the Edit menu
   const ROUTES = {
     'Mod+Z': (page) => press(page, 'Mod+Z'),
     'the toolbar': (page) => click(page, '.beeson-edit-top [data-command="edit.undo"]'),
@@ -889,7 +821,6 @@ describe('keys after an undo frames a block', () => {
     test(`after an undo that frames a paragraph with the caret left in it, every key acts on the text as at a caret (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       for (const key of KEYS) {
-        // the key at a caret put by a click into the same place
         await reopen(page, FIGURES);
         await caret(page);
         await press(page, key);
@@ -920,7 +851,6 @@ describe('keys after an undo frames a block', () => {
     });
   }
 
-  // G8: whether the navigator and the inspector are drawn, and the check marks of the View menu
   const view = async (page) => {
     await openBar(page, 'View');
     const out = await page.evaluate(`(() => {
@@ -936,11 +866,8 @@ describe('keys after an undo frames a block', () => {
     test(`View > Navigator in a narrow window with the navigator off and the inspector open shows the navigator in one choice (${platform})`, async (t) => {
       const OFF = { navigator: 'false', slideOnly: 'true', nav: false, inspector: true };
       const ON = { navigator: 'true', slideOnly: 'false', nav: true, inspector: false };
-      // Slide Only is the reference, which shows the navigator from the same state
       for (const item of ['Slide Only', 'Navigator']) {
         const page = await load(t, platform, 1, 'test-deck.html', { width: 800, height: 900 });
-        // the navigator shown in place of the inspector and turned off again, which gives the
-        // inspector back
         await choose(page, 'View', 'Navigator');
         await choose(page, 'View', 'Navigator');
         assert.deepEqual(await view(page), OFF, 'the navigator is not off with the inspector open');

@@ -1,15 +1,9 @@
-// A long run of operations on a deck of about 200 kB, for the test of test/edit-history.test.mjs on
-// the time of an operation late in a run. Started as a worker, this file times the operations early
-// in a run of its own, with a fresh copy of the modules of the edit command and a fresh heap.
-
 import { performance } from 'node:perf_hooks';
 import { parentPort, workerData } from 'node:worker_threads';
 import { Authority, History } from '../../theme/edit.mjs';
 
 const PEOPLE = ['AnnAnnAnnAnnAnnAnnAnn1', 'BoBoBoBoBoBoBoBoBoBoBo', 'CyCyCyCyCyCyCyCyCyCyCy'];
 
-// a history in the folder dir on a new deck. run(n) gives the mean time in ms of n operations of one
-// character at random places, one second apart
 export function longRun(dir) {
   let seed = 12345;
   const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -36,8 +30,6 @@ export function longRun(dir) {
   return { run, stop: () => history.stopSync() };
 }
 
-// as a worker: a message 0 is posted after the first 1000 operations. a message n is then answered
-// with run(n), and a message 0 ends the run
 if (workerData?.longRun) {
   const { run, stop } = longRun(workerData.longRun);
   run(1000);
