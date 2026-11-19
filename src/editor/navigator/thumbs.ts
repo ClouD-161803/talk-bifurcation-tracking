@@ -483,7 +483,7 @@ export class Thumbs {
     for (const [slide, host] of next) {
       if (this.hosts.get(slide) === host) continue;
       this.hosts.set(slide, host);
-      this.dirty.add(slide);
+      this.markDue(slide);
       this.seenBy.observe(host);
     }
     this.drawDue();
@@ -493,7 +493,7 @@ export class Thumbs {
   setWidth(width: number): void {
     if (Math.abs(width - this.width) < 0.5) return;
     this.width = width;
-    for (const s of this.hosts.keys()) this.dirty.add(s);
+    for (const s of this.hosts.keys()) this.markDue(s);
     this.drawDue();
   }
 
@@ -504,7 +504,7 @@ export class Thumbs {
       slide,
       window.setTimeout(() => {
         this.timers.delete(slide);
-        this.dirty.add(slide);
+        this.markDue(slide);
         this.drawDue();
       }, delay),
     );
@@ -517,6 +517,11 @@ export class Thumbs {
     for (const s of this.hosts.keys()) this.soon(s, s.querySelector('.backdrop') && !s.classList.contains('present') ? REDRAWN + 100 : DELAY);
   }
 
+  private markDue(slide: Element): void {
+    this.dirty.add(slide);
+    this.hosts.get(slide)?.setAttribute('data-due', '');
+  }
+
   private deck(): Size {
     const s = this.app.slides() as HTMLElement;
     return { width: s.offsetWidth || 1920, height: s.offsetHeight || 1080 };
@@ -525,6 +530,7 @@ export class Thumbs {
   private draw(slide: Element): void {
     const host = this.hosts.get(slide);
     this.dirty.delete(slide);
+    host?.removeAttribute('data-due');
     if (!host || !this.width || !slide.isConnected) return;
     // the last picture is kept until the formulas of the slide are typeset. a thumbnail without a
     // picture is drawn at once with its raw TeX hidden, and drawn again once they are typeset

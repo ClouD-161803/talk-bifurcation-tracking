@@ -49,6 +49,8 @@ const found = `(() => {
 
 const draws = (i) => `Number(document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.dataset.drawn ?? 0)`;
 
+const due = (i) => `document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}].hasAttribute('data-due')`;
+
 const drawn = (page, i) => page.waitFor(`${state(i)}.drawn > 0`, 60000).then(() => true, () => false);
 
 test('the thumbnail of a slide that was never shown draws its backdrop and its labels, as after the slide was shown', { timeout: 600000 }, async (t) => {
@@ -111,7 +113,7 @@ test('a thumbnail that is due while the navigator is hidden draws its backdrop o
   await page.waitFor(`!(${shown})`, 60000);
   await page.evaluate(`(() => { window.BeesonEditor.exec('view.slideDark'); return true; })()`);
   await page.waitFor(`document.documentElement.dataset.theme === 'light'`, 60000);
-  await new Promise((done) => setTimeout(done, 3000));
+  await page.waitFor(due(at.last), 60000);
   await page.evaluate(`(() => { window.BeesonEditor.exec('view.navigator'); return true; })()`);
   await page.waitFor(shown, 60000);
   const flipped = await page.waitFor(`(() => { const s = ${state(at.last)}; return s.drawn > 0 && s.light < ${dark} - 0.05; })()`, 20000).then(() => true, () => false);
@@ -133,7 +135,7 @@ test('a thumbnail that is due while its slide is hidden in the show draws its ba
   await page.waitFor(`!(${shown})`, 60000);
   await run('view.slideDark');
   await page.waitFor(`document.documentElement.dataset.theme === 'light'`, 60000);
-  await new Promise((done) => setTimeout(done, 3000));
+  await page.waitFor(due(at.last), 60000);
   await run('slide.hide');
   await page.waitFor(shown, 60000);
   const flipped = await page.waitFor(`(() => { const s = ${state(at.last)}; return s.drawn > 0 && s.light < ${dark} - 0.05; })()`, 20000).then(() => true, () => false);
