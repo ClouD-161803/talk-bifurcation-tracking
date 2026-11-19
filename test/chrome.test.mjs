@@ -84,6 +84,9 @@ test('Chrome does not download a component or a model into its profile', { timeo
   // the path is filled in after the load of the page
   await page.waitFor(`!!document.getElementById('profile_path')?.textContent.trim()`);
   const profile = dirname(await page.evaluate(`document.getElementById('profile_path').textContent.trim()`));
+  // Chrome may write the file after the path is shown
+  const deadline = Date.now() + 20000;
+  while (!existsSync(join(profile, 'Local State')) && Date.now() < deadline) await sleep(100);
   assert.ok(existsSync(join(profile, 'Local State')), `${profile} is not the profile of the browser`);
   await sleep(25000);
   // the folders of the models, of the components, and of one component. Without a download, Chrome
