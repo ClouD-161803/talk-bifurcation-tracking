@@ -210,27 +210,12 @@ function syncLive(app: App, el: Element): void {
   if (!s.length && el.getAttribute('style') === '' && app.doc.tagState(el).attrs.style === undefined) el.removeAttribute('style');
 }
 
-type Orbit = { el: HTMLElement; view: { cx: number; cy: number; half: number }; fit(): void };
-// the fields of an Orbits of src/orbits.ts that a preview of a window sets. they are private in the
-// theme, which reads the window from the attributes only when it mounts a backdrop
-type OrbitFields = { cx: number; cy: number; half: number; fitted: boolean; fittedFor: string; trajectories: { pts: ArrayLike<number> }[] };
+type Extent = { x0: number; x1: number; y0: number; y1: number };
+type Orbit = { el: HTMLElement; view: { cx: number; cy: number; half: number }; fittedToTrajectories: boolean; extent: Extent | null; setWindow(view: { cx: number; cy: number; half: number } | null): void };
 
 const orbits = (): Orbit[] => (window as unknown as { Beeson?: { backdrops?: Orbit[] } }).Beeson?.backdrops ?? [];
 
 export const orbitOf = (el: Element): Orbit | null => orbits().find((o) => o.el === el) ?? null;
-
-// the window of the drawing of o set to view, or fitted again to its trajectories with null
-export function setView(o: Orbit, view: { cx: number; cy: number; half: number } | null): void {
-  const f = o as unknown as OrbitFields;
-  if (view) {
-    f.fitted = false;
-    ({ cx: f.cx, cy: f.cy, half: f.half } = view);
-  } else {
-    f.fitted = o.el.dataset.trajectories !== undefined;
-    f.fittedFor = '';
-  }
-  o.fit();
-}
 
 // the window of each backdrop drawn as its attributes give it, e.g. after an undo
 export function syncBackdrops(): void {
@@ -238,26 +223,11 @@ export function syncBackdrops(): void {
     if (!o.el.isConnected) continue;
     const d = o.el.dataset;
     const want = { cx: +(d.cx ?? 0), cy: +(d.cy ?? 0), half: +(d.half ?? 0.5) };
-    const v = o.view, fitted = (o as unknown as OrbitFields).fitted;
+    const v = o.view, fitted = o.fittedToTrajectories;
     if (d.half === undefined && d.trajectories !== undefined) {
-      if (!fitted) setView(o, null);
-    } else if (fitted || v.cx !== want.cx || v.cy !== want.cy || v.half !== want.half) setView(o, want);
+      if (!fitted) o.setWindow(null);
+    } else if (fitted || v.cx !== want.cx || v.cy !== want.cy || v.half !== want.half) o.setWindow(want);
   }
-}
-
-// the extent of the drawing of o in its units, or null before its trajectories are loaded
-export function extentOf(o: Orbit): { x0: number; x1: number; y0: number; y1: number } | null {
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const s of (o as unknown as OrbitFields).trajectories ?? []) {
-    const p = s.pts;
-    for (let i = 0; i + 1 < p.length; i += 2) {
-      if (p[i] < x0) x0 = p[i];
-      if (p[i] > x1) x1 = p[i];
-      if (p[i + 1] < y0) y0 = p[i + 1];
-      if (p[i + 1] > y1) y1 = p[i + 1];
-    }
-  }
-  return x0 <= x1 ? { x0, x1, y0, y1 } : null;
 }
 
 export type Edge = 'top' | 'right' | 'bottom' | 'left';
@@ -277,7 +247,7 @@ export function cutEdges(extent: { x0: number; x1: number; y0: number; y1: numbe
 
 // the marks in red of the edges of the box of the backdrop el at which its drawing of extent is
 // cut in view, drawn into layer in place of the marks old
-export function markCuts(app: App, el: HTMLElement, view: { cx: number; cy: number; half: number }, extent: ReturnType<typeof extentOf>, layer: HTMLElement, old: HTMLElement[]): HTMLElement[] {
+export function markCuts(app: App, el: HTMLElement, view: { cx: number; cy: number; half: number }, extent: Extent | null, layer: HTMLElement, old: HTMLElement[]): HTMLElement[] {
   const f = frameOf(app);
   const r = el.getBoundingClientRect();
   const section = el.closest('section') as HTMLElement | null;
@@ -621,11 +591,11 @@ function backdropSession(app: App, el: HTMLElement): Session | null {
   if (!o || !el.offsetHeight) return null;
   const start = { ...o.view };
   let view = { ...start };
-  const extent = extentOf(o);
+  const extent = o.extent;
   const lo = 1 / BACKDROP_ZOOM, hi = BACKDROP_ZOOM;
   const set = (next: typeof view) => {
     view = next;
-    setView(o, view);
+    o.setWindow(view);
     draw();
   };
   const draw = () => {
