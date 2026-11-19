@@ -4,7 +4,8 @@ import { setServed } from '../commands/origin.ts';
 import { refreshHeads } from '../history.ts';
 import { mathIn, mathLookup, setContentWithTex } from '../math.ts';
 import { media } from '../media/store.ts';
-import { apply, charEdits, edits, fine, mergeEdits, shared } from '../merge.ts';
+import { apply, charEdits, edits, shared } from '../merge.ts';
+import { mergeTexts } from '../../session/patch.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren } from '../render.ts';
 import { contentRange, decode, elementRange, parseSource, segmentsOf, VOID } from '../source.ts';
@@ -17,7 +18,7 @@ import type { Host } from './host.ts';
 
 const SEND_WAIT = 4000;
 
-const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
+const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, mergeTexts, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
 export type Applied = { reload: boolean; changed: Element[] };
 

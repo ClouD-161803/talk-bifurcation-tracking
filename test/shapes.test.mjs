@@ -222,6 +222,35 @@ test('a shape is drawn again at a change of its size and class, and a shape adde
   assert.deepEqual(page.errors, []);
 });
 
+test('a shape without words narrower or lower than the padding of a shape keeps its written box, and is drawn the same before and after it is shown', async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(PAGE, 'still'));
+  await page.waitFor(deckSettled);
+  const add = `(() => {
+    const slide = document.querySelectorAll('.reveal .slides > section')[2];
+    slide.style.display = 'none';
+    for (const [kind, w, h] of [['brace', 30, 300], ['arrow', 200, 16]]) {
+      const el = Object.assign(document.createElement('div'), { className: 'shape thin ' + kind });
+      el.style.cssText = 'width: ' + w + 'px; height: ' + h + 'px';
+      slide.append(el);
+    }
+    window.Beeson.mount(slide);
+    return [...slide.querySelectorAll('.thin')].map((el) => [el.offsetWidth, el.querySelector(':scope > svg path').getAttribute('d')]);
+  })()`;
+  const unshown = await page.evaluate(add);
+  assert.deepEqual(unshown.map(([w]) => w), [0, 0], 'the slide is not laid out');
+  await page.evaluate('Reveal.slide(2)');
+  await page.waitFor(deckSettled);
+  const frame = 'new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))';
+  await page.evaluate(frame);
+  const shown = await page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('.thin')].map((el) => [el.offsetWidth + ' by ' + el.offsetHeight, el.querySelector(':scope > svg path').getAttribute('d')])`);
+  assert.deepEqual(shown, [['30 by 300', shapePath('brace', 30, 300, 3)], ['200 by 16', shapePath('arrow', 200, 16, 3)]]);
+  assert.deepEqual(unshown.map(([, d]) => d), shown.map(([, d]) => d));
+  assert.deepEqual(page.errors, []);
+});
+
 test('every printed page carries the shapes of its slide, with the svg of each drawn geometry', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());

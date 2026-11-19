@@ -306,8 +306,9 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const r = move(v0, v1, items);
     assert.deepEqual(r.items[0].removed, { text: checkOf('<pre data-k="1">', long) });
     const v2 = v1.replace('  <p>A</p>', `  ${long}\n  <p>A</p>`).replace(`  ${other}\n  ${long}`, `  ${long.replace('<code>y', '<code>z')}`);
-    const patches = diff(v1, v2);
-    const twin = v1.indexOf('<pre data-k="1">');
+    const twin = v1.indexOf('<pre data-k="1">'), put = v1.indexOf('  <p>A</p>');
+    const patches = [{ start: put, end: put, text: `  ${long}\n` }, { start: v1.indexOf(other), end: twin + 16, text: '<pre data-k="1">' }, { start: twin + 22, end: twin + 23, text: 'z' }];
+    assert.equal(apply(v1, patches), v2);
     assert.ok(patches.some((p) => p.start <= twin && twin < p.end && p.end < twin + long.length && p.end - p.start >= long.length), 'a patch removes the start of the twin');
     assert.deepEqual(moveAnchors(v1, patches, v2, r.items).items, r.items);
     const at = v1.indexOf('  <p>A</p>');
@@ -377,7 +378,10 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const [fell] = move(v0, v1, [onElement(v0, '<div class="column">')]).items;
     reads(v1, fell.anchor, '<section>\n  <h2>A');
     const v2 = deck(['<h2>A</h2>', x, '<li>A</li>'], ['<h2>B</h2>', y, '<p>B</p>']);
-    const patches = diff(v1, v2);
+    const turn = `  <div class="column">\n${head.join('\n')}\n`.length, from = v1.indexOf('  <div');
+    const li = v1.indexOf('  <li>A</li>'), end = v1.indexOf(y) + y.length + 1, put = v1.lastIndexOf(x) + x.length - '  </div>'.length;
+    const patches = [{ start: li, end: from, text: '' }, { start: from + turn, end: end + turn, text: '' }, { start: put, end: put, text: v2.slice(put - (end - li), v2.length - (v1.length - put)) }];
+    assert.equal(apply(v1, patches), v2);
     const at = v1.lastIndexOf(x);
     assert.ok(patches.some((p) => !p.text && p.start > at - x.length && p.start < at && p.end > at && p.end < at + x.length), 'a removal holds the end of y and the start of x alone');
     assert.deepEqual(moveAnchors(v1, patches, v2, [fell]).items, [fell]);

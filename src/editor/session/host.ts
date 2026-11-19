@@ -3,6 +3,7 @@ import type * as fragments from '../model/fragments.ts';
 import type * as history from '../history.ts';
 import type * as math from '../math.ts';
 import type * as merge from '../merge.ts';
+import type * as patch from '../../session/patch.ts';
 import type * as render from '../render.ts';
 import type * as source from '../source.ts';
 import type * as store from '../media/store.ts';
@@ -13,7 +14,8 @@ export type Host = Pick<typeof caret, 'caretOf' | 'mapOffset' | 'markOf' | 'move
   Pick<typeof fragments, 'fragmentRoot' | 'parseFragment'> &
   Pick<typeof history, 'refreshHeads'> &
   Pick<typeof math, 'mathIn' | 'mathLookup' | 'setContentWithTex'> &
-  Pick<typeof merge, 'apply' | 'charEdits' | 'edits' | 'fine' | 'mergeEdits' | 'shared'> &
+  Pick<typeof merge, 'apply' | 'charEdits' | 'edits' | 'shared'> &
+  Pick<typeof patch, 'mergeTexts'> &
   Pick<typeof render, 'detached' | 'isTextElement' | 'pair' | 'pairElement' | 'renderDeck' | 'renderTextElement' | 'unitsWithin' | 'virtualChildren'> &
   Pick<typeof source, 'contentRange' | 'decode' | 'elementRange' | 'parseSource' | 'segmentsOf' | 'VOID'> &
   Pick<typeof store, 'media'> &
@@ -24,7 +26,7 @@ export let caretOf: Host['caretOf'], mapOffset: Host['mapOffset'], markOf: Host[
 export let fragmentRoot: Host['fragmentRoot'], parseFragment: Host['parseFragment'];
 export let refreshHeads: Host['refreshHeads'];
 export let mathIn: Host['mathIn'], mathLookup: Host['mathLookup'], setContentWithTex: Host['setContentWithTex'];
-export let apply: Host['apply'], charEdits: Host['charEdits'], edits: Host['edits'], fine: Host['fine'], mergeEdits: Host['mergeEdits'], shared: Host['shared'];
+export let apply: Host['apply'], charEdits: Host['charEdits'], edits: Host['edits'], mergeTexts: Host['mergeTexts'], shared: Host['shared'];
 export let detached: Host['detached'], isTextElement: Host['isTextElement'], pair: Host['pair'], pairElement: Host['pairElement'], renderDeck: Host['renderDeck'], renderTextElement: Host['renderTextElement'], unitsWithin: Host['unitsWithin'], virtualChildren: Host['virtualChildren'];
 export let contentRange: Host['contentRange'], decode: Host['decode'], elementRange: Host['elementRange'], parseSource: Host['parseSource'], segmentsOf: Host['segmentsOf'], VOID: Host['VOID'];
 export let media: Host['media'];
@@ -36,7 +38,7 @@ export function take(h: Host): void {
   ({ fragmentRoot, parseFragment } = h);
   ({ refreshHeads } = h);
   ({ mathIn, mathLookup, setContentWithTex } = h);
-  ({ apply, charEdits, edits, fine, mergeEdits, shared } = h);
+  ({ apply, charEdits, edits, mergeTexts, shared } = h);
   ({ detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren } = h);
   ({ contentRange, decode, elementRange, parseSource, segmentsOf, VOID } = h);
   ({ media } = h);

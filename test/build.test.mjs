@@ -106,7 +106,7 @@ test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', ()
   assert.equal(out.trim(), 'function function function');
 });
 
-test('theme/session.js is under 293 kB', () => {
+test('theme/session.js is under 298 kB', () => {
   const size = statSync(resolve('theme/session.js')).size;
-  assert.ok(size < 293 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 298 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
 });

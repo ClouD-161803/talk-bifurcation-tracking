@@ -142,7 +142,10 @@ export async function launch(browser, { env = process.env, timeout = 120000 } = 
     return {
       errors: [],
       evaluate,
-      goto: (url) => request('POST', `/session/${id}/url`, { url }),
+      async goto(url) {
+        await request('POST', `/session/${id}/url`, { url });
+        if ((await evaluate('document.visibilityState')) === 'hidden') throw new Error(`${browser}: the page is hidden, e.g. minimized or behind a locked screen, and it draws no frames`);
+      },
       async waitFor(expression, wait = 15000) {
         const start = Date.now();
         while (!(await evaluate(expression))) {

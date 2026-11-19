@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
-import { charEdits, edits, fine, mergeEdits } from '../src/editor/merge.ts';
-import { widen } from '../src/session/patch.ts';
+import { edits } from '../src/editor/merge.ts';
+import { mergeTexts, widen } from '../src/session/patch.ts';
 import { moveAnchors } from '../src/session/anchor.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
@@ -740,10 +740,8 @@ test('a move of a text element and a key in another element at once are both tak
 test('the merge of the editor moves a text element that a received text moves with an unread key in it, and a received key with an unread move', () => {
   for (const [name, [base, moved]] of Object.entries(MOVES)) {
     const typed = base.replace('Second slide', 'Second slide by Ana'), want = moved.replace('Second slide', 'Second slide by Ana');
-    for (const diff of [edits, fine]) {
-      assert.equal(mergeEdits(base, diff(base, typed), diff(base, moved), 'ours', true).text, want, `moved ${name}, the key unread, by ${diff.name}()`);
-      assert.equal(mergeEdits(base, diff(base, moved), diff(base, typed), 'ours', true).text, want, `moved ${name}, the move unread, by ${diff.name}()`);
-    }
+    assert.equal(mergeTexts(base, moved, typed, true), want, `moved ${name}, the key unread`);
+    assert.equal(mergeTexts(base, typed, moved, true), want, `moved ${name}, the move unread`);
   }
 });
 
@@ -751,11 +749,9 @@ test('the merge of the editor keeps each text of two slides that a received text
   const base = `${ONE}\n${SAME}`, swapped = `${SAME}\n${ONE}`;
   for (const into of ['First slide', 'Second slide']) {
     const typed = base.replace(into, `${into} by Ana`);
-    for (const diff of [edits, fine]) {
-      for (const [ours, all] of [[typed, swapped], [swapped, typed]]) {
-        const text = mergeEdits(base, diff(base, ours), diff(base, all), 'ours', true).text;
-        assert.ok(text === typed || text === swapped.replace(into, `${into} by Ana`), `a key in ${into}, ${ours === typed ? 'the key' : 'the swap'} unread, by ${diff.name}(): ${text}`);
-      }
+    for (const [ours, all] of [[typed, swapped], [swapped, typed]]) {
+      const text = mergeTexts(base, all, ours, true);
+      assert.ok(text === typed || text === swapped.replace(into, `${into} by Ana`), `a key in ${into}, ${ours === typed ? 'the key' : 'the swap'} unread: ${text}`);
     }
   }
 });
@@ -766,8 +762,8 @@ function merges(base, changed, typed) {
   return {
     'change first': race(base, changed, typed, true),
     'key first': race(base, changed, typed, false),
-    'the key unread': mergeEdits(base, edits(base, typed), edits(base, changed), 'ours', true).text,
-    'the change unread': mergeEdits(base, edits(base, changed), edits(base, typed), 'ours', true).text,
+    'the key unread': mergeTexts(base, changed, typed, true),
+    'the change unread': mergeTexts(base, typed, changed, true),
   };
 }
 
@@ -873,7 +869,7 @@ function everyMerge(base, texts) {
     const rest = texts.filter((_, q) => q !== p);
     for (const order of rest.length === 1 ? [[0]] : [[0, 1], [1, 0]]) {
       const others = rest.length === 1 ? rest[0] : arrive(base, rest, order);
-      for (const by of [edits, fine]) out[`${p} with the others unread${rest.length > 1 ? ` in order ${order.join('')}` : ''}, by ${by.name}()`] = others && mergeEdits(base, by(base, mine), by(base, others), 'ours', true, true).text;
+      out[`${p} with the others unread${rest.length > 1 ? ` in order ${order.join('')}` : ''}`] = others && mergeTexts(base, others, mine);
     }
   });
   return out;
@@ -1042,6 +1038,13 @@ test('two values of one attribute set at once conflict, and the last writer wins
   }
   assert.deepEqual(diff('a &lt; b', 'a &gt; b'), [{ start: 2, end: 6, text: '&gt;' }]);
   assert.deepEqual(diff('<p id=x>t</p>', '<p id=y>t</p>'), [{ start: 0, end: 8, text: '<p id=y>' }]);
+});
+
+test('a removal that ends on a character reference after a bare ampersand keeps the reference whole, hence a key typed after the ampersand does not break it', () => {
+  const base = '<section>\n  <p>R&D &amp; co</p>\n</section>\n';
+  const typed = base.replace('R&D', 'R&XD'), cut = base.replace('R&D &amp;', 'R&amp;');
+  assert.deepEqual(diff(base, cut), [{ start: 16, end: 24, text: '&amp;' }]);
+  for (const merged of [race(base, typed, cut, true), race(base, typed, cut, false), mergeTexts(base, typed, cut), mergeTexts(base, cut, typed)]) assert.match(merged, /&amp; co/);
 });
 
 const SNIPPETS = ['a', ' ', '\n', '<', '>', '"', "'", '&', '&amp;', ';', '/', '=', '<p>', '</p>', '<b class="x y">', '<i title=\'a>b\'>', '<!--', '-->', '<script>', '</script>', '</script ', '<title>', '</title>', '<style>', '</style>', '<textarea>', '</textarea>', '<!doctype html>', '<?x', '</ ', '😀', '\ud83d'];
@@ -1280,9 +1283,10 @@ function editOf(r, d, p, k, kind = r.pick(['key', 'letter', 'add', 'delete', 'mo
     if (!e || touch(e).has(i)) return null;
     return { ...e, kind: e.kind === 'slide' ? 'keyed slide' : 'keyed', mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [...e.want, mark] };
   }
-  if (kind === 'key' || kind === 'letter') {
+  if (kind === 'key' || kind === 'letter' || kind === 'entity' || kind === 'paste') {
     const i = r.pick(texts), m = lines[i].match(TEXT);
-    if (kind === 'key') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [mark] };
+    const typed = kind === 'entity' ? ` R&D &amp; ${mark}` : kind === 'paste' ? ` ${Array.from({ length: 300 }, () => r.pick(['orbit', 'R&amp;D', 'x &lt; y', 'halo'])).join(' ')} ${mark}` : ` ${mark}`;
+    if (kind !== 'letter') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]}${typed}${m[4]}` }, want: [mark] };
     const j = r.int(m[3].length);
     if (m[3].length < 2) return null;
     const line = `${m[1]}${m[3].slice(0, j)}${m[3].slice(j + 1)}${m[4]}`;
@@ -1336,12 +1340,12 @@ function textOf(d, list) {
   return out.map((l) => l + d.eol).join('');
 }
 
-function roundOf(seed) {
+function roundOf(seed, kinds) {
   const r = generator(seed), d = deckOf(r), all = [];
   for (let p = 2 + r.int(2); p > 0; p--) {
     const list = [];
     for (let k = 1 + r.int(3), tries = 0; list.length < k && tries < 20; tries++) {
-      const e = editOf(r, d, all.length, list.length);
+      const e = editOf(r, d, all.length, list.length, kinds && r.pick(kinds));
       if (e && list.every((f) => disjoint(touch(e), touch(f)))) list.push({ ...e, p: all.length });
     }
     all.push(list);
@@ -1380,7 +1384,7 @@ function broken({ d, all, base, texts }) {
   texts.forEach((mine, p) => {
     const rest = texts.filter((_, q) => q !== p);
     const others = rest.length === 1 ? rest[0] : arrive(base, rest, [0, 1]);
-    res[`${p} with the others unread`] = mergeEdits(base, edits(base, mine), edits(base, others), 'ours', true, true).text;
+    res[`${p} with the others unread`] = mergeTexts(base, others, mine);
   });
   const flat = all.flat(), bad = [], starts = [0];
   for (const l of d.lines) starts.push(starts.at(-1) + l.length + d.eol.length);
@@ -1413,14 +1417,13 @@ function broken({ d, all, base, texts }) {
     runs(e.cut).every((r) => list.some((x) => !x.text && x.start === starts[r[0]] && x.end === starts[r.at(-1) + 1]));
   const moved = flat.filter((e) => MOVING.has(e.kind));
   const clean = moved.every((e) => whole(diff(base, texts[e.p]), e) && whole(edits(base, texts[e.p]), e));
-  const once = (e) => runs(e.cut).every((r) => r.some((i) => /(^|>)[^<]*[^\s<]/.test(d.lines[i]))) &&
-    lines(e).every((w) => [base, texts[e.p]].every((t) => trimmed(t).filter((l) => l === w).length === 1)) && charEdits(base, texts[e.p], 500) !== null;
-  if (clean) for (const e of moved) if (once(e) && (e.kind.includes('slide') || all[e.p].every((f) => MOVING.has(f.kind) && f.kind !== 'keyed' && once(f))) && !whole(fine(base, texts[e.p]), e)) bad.push(`the ${e.kind} of person ${e.p} is not kept whole by fine()`);
   const inner = (i) => d.slides.filter((s) => s[0] < i && i < s[0] + s[1] - 1).flatMap((s) => range(s[0] + 1, s[1] - 2));
   const alone = flat.filter((e) => e.kind.startsWith('key') && flat.every((f) => f === e || disjoint(touch(f), new Set(Object.keys(e.mod).flatMap(inner)))));
   for (const [how, text] of Object.entries(res)) {
     if (text === null) bad.push(`${how}: the pages differ`);
-    if (text === null || (texts.length === 3 && how.startsWith('order'))) continue;
+    if (text === null) continue;
+    const torn = text.split(/\r?\n/).find((l) => !/^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l));
+    if (torn !== undefined) bad.push(`${how}: the line ${torn.trim().slice(0, 80)} is torn`);
     for (const e of alone) if (!text.includes(e.want.at(-1))) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${e.want.at(-1)}`);
     if (!clean) continue;
     const have = trimmed(text.replace(/ k\d\d/g, '')).reduce((m, l) => m.set(l, (m.get(l) ?? 0) + 1), new Map());
@@ -1431,10 +1434,18 @@ function broken({ d, all, base, texts }) {
 }
 
 test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command, keep each edit apart from the others and each line of the base that nobody removed, and the edits of the editor keep each move whole', () => {
-  const known = new Set([89, 291, 936]);
   const failed = [];
   for (const seed of [...Array(1500).keys()].map((i) => i + 1).concat(1850, 2932)) {
-    const bad = known.has(seed) ? [] : broken(roundOf(seed));
+    const bad = broken(roundOf(seed));
+    if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
+  }
+  assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
+});
+
+test('random edits of two or three people with character references, bare ampersands, and long pastes among them keep the same in every order of arrival and in the merge of the editor', () => {
+  const failed = [];
+  for (let seed = 1; seed <= 1000; seed++) {
+    const bad = broken(roundOf(seed, ['key', 'entity', 'paste', 'letter', 'add', 'delete', 'move', 'several', 'slide', 'slides', 'keyed']));
     if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
   }
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
@@ -1553,4 +1564,33 @@ test('a resync keeps one removal when the whole text lacks the element that the 
     assert.equal(r.resync(mine.text, 'F.0'), null, flight ? 'with the operation in flight' : 'with the edit unsent');
     assert.equal(starts(r.mine).length, 2);
   }
+});
+
+test('two people who remove the same blank line and put a slide each after it keep both slides on lines of their own, in both orders', () => {
+  const s = (h) => `<section>\n  <h2>${h}</h2>\n</section>\n`;
+  const base = s('One') + '\n' + s('Two'), at = s('One').length;
+  const put = (h) => [{ start: at, end: at + 1, text: '' }, { start: at + 1, end: at + 1, text: s(h) }];
+  for (const [x, y] of [['X', 'Y'], ['Y', 'X']]) {
+    assert.equal(apply(base, mergePatches(put(x), put(y), 'ours', base).patches), s('One') + s(x) + s(y) + s('Two'));
+    assert.equal(mergeTexts(base, s('One') + s(x) + s('Two'), s('One') + s(y) + s('Two')), s('One') + s(x) + s(y) + s('Two'));
+  }
+});
+
+test('a list that one person moves to another slide, below a paragraph that they type in and another person removes, is moved once and whole, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = ['<ul>', '  <li>Data 62</li>', '  <li>Same words 61</li>', '</ul>'];
+  const one = (extra = []) => s('Orbit 1', ['<p>Moon 11</p>', ...extra]), mid = s('Data 2', ['<p>Same words</p>']) + '\n';
+  const base = one() + mid + s('Halo 6', ['<p>Intro 62</p>', ...ul]);
+  const cut = one() + mid + s('Halo 6', ul), moved = one(ul) + mid + s('Halo 6', ['<p>Intro 62 k21</p>']);
+  assert.equal(mergeTexts(base, moved, cut), one(ul) + mid + s('Halo 6', []));
+  assert.equal(mergeTexts(base, cut, moved), moved);
+});
+
+test('a key typed in a slide that another person moves and copies goes with the first copy, in both orders', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n  <p>${p}</p>\n</section>\n`;
+  const [a, b, c, d, e] = [s('Orbit 1', 'Moon 11'), s('Intro 3', 'Moon 31'), s('Data 4', 'Halo 41'), s('Halo 5', 'Data 51'), s('Moon 6', 'Intro 61')];
+  const base = a + b + c + d + e, typed = a + s('Intro 3', 'Moon 31 k01') + c + d + e, moved = a + c + d + b + e + b;
+  const both = a + c + d + s('Intro 3', 'Moon 31 k01') + e + b;
+  assert.equal(mergeTexts(base, typed, moved), both);
+  assert.equal(mergeTexts(base, moved, typed), both);
 });

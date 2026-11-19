@@ -477,6 +477,7 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
 .reveal .slides section .shape.tone-blue { color: var(--blue); }
 .reveal .slides section .shape.tone-red { color: var(--red); }
 .reveal .slides section .shape.tone-muted { color: var(--muted); }
+.reveal .slides section .shape:not(:has(> :not(svg))) { padding: 0; }
 .reveal .slides section .shape > :not(svg) { margin: 0; position: relative; }
 .reveal :where(.shape) > :where(:not(svg)) { color: var(--text); }
 .reveal .slides section .shape a { pointer-events: auto; }

@@ -1,4 +1,5 @@
-import { carry, changes, fine, nest, stay } from '../editor/merge.ts';
+import { carry, changes, shared, stay } from '../editor/merge.ts';
+import { goesOn, mergeRun, spaced } from './run.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -94,10 +95,10 @@ export function conflict(a: Patch, b: Patch): boolean {
   return b.start === b.end && a.start < b.start && b.start < a.end;
 }
 
-function before(a: Patch, b: Patch, aFirst: boolean): boolean {
+function before(a: Patch, b: Patch, aFirst: boolean, base?: string): boolean {
   if (a.start !== b.start) return a.start < b.start;
   const ai = a.start === a.end, bi = b.start === b.end;
-  if (ai && bi) return aFirst;
+  if (ai && bi) return spaced(a.text) === spaced(b.text) || (base !== undefined && !goesOn(base[a.start - 1])) ? aFirst : spaced(b.text);
   return ai;
 }
 
@@ -138,51 +139,77 @@ export function invert(text: string, patches: Patch[]): Patch[] {
   });
 }
 
-export function combine(first: Patch[], second: Patch[]): Patch[] {
+export function combine(first: Patch[], second: Patch[], base?: string): Patch[] {
   const out: Patch[] = [];
   let i = 0, j = 0;
   while (i < first.length || j < second.length) {
-    if (j >= second.length || (i < first.length && before(first[i], second[j], true))) out.push(first[i++]);
+    if (j >= second.length || (i < first.length && before(first[i], second[j], true, base))) out.push(first[i++]);
     else out.push(second[j++]);
   }
   return out;
 }
 
-function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
-  return patches.flatMap((p) => {
-    if (!other.some((o) => conflict(p, o))) return [p];
-    const edits = fine(base, apply(base, [p]));
-    return edits.every((e) => p.start <= e.start && e.end <= p.end) ? edits : [p];
-  });
-}
-
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[] } {
   if (base !== undefined) {
     [theirs, ours] = carry(base, theirs, ours);
     [ours, theirs] = carry(base, ours, theirs);
   }
-  if (base !== undefined && nested) {
-    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
-    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
-  }
+  const twin = (o: Patch) => !o.text && base?.slice(o.start, o.end).trim() === '' && theirs.some((t) => t.start === o.start && t.end === o.end && !t.text);
+  if (ours.some(twin)) ours = ours.filter((o) => !twin(o));
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
-  let k = 0, any = false;
+  const pairs: [number, number][] = [];
+  let k = 0;
   for (let i = 0; i < ours.length; i++) {
     const o = ours[i];
     while (k < theirs.length && theirs[k].end <= o.start) k++;
     for (let j = k; j < theirs.length && theirs[j].start < o.end; j++) {
-      if (conflict(o, theirs[j])) hitOurs[i] = hitTheirs[j] = 1;
+      if (conflict(o, theirs[j])) {
+        hitOurs[i] = hitTheirs[j] = 1;
+        pairs.push([j, i]);
+      }
     }
-    any ||= hitOurs[i] === 1;
   }
-  const conflicts = ours.filter((_, i) => hitOurs[i]);
-  if (!any) return { patches: combine(theirs, ours), conflicts };
+  if (!pairs.length) return { patches: combine(theirs, ours, base), conflicts: [] };
   const [o, undone] = base === undefined || keep === 'ours' ? [ours, false] : stay(base, ours, theirs, conflict);
   const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
-  if (undone || gone) return { patches: mergePatches(t, o, wins, base, false, keep).patches, conflicts };
-  const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
-  const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
-  return { patches: combine(keptTheirs, keptOurs), conflicts };
+  if (undone || gone) return { patches: mergePatches(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
+  const runs: Patch[] = [];
+  if (base !== undefined && nested) {
+    const all = [...theirs, ...ours];
+    const into = (p: Patch, a: number, b: number) => (p.start === p.end ? a < p.start && p.start < b : p.start < b && a < p.end);
+    const lines: [number, number][] = [];
+    for (const [j] of pairs) {
+      let a = theirs[j].start, b = theirs[j].end;
+      if (lines.length && lines[lines.length - 1][1] >= a) continue;
+      for (let wider = true; wider; ) {
+        a = a && base.lastIndexOf('\n', a - 1) + 1;
+        if (base[b - 1] !== '\n' || b === a || [theirs, ours].some((l) => l.some((p) => p.end === b && l.some((q) => q.start === b && q.end === b && base.slice(p.start, b).split('\n').length === q.text.split('\n').length)))) b = base.indexOf('\n', b);
+        if (b < 0) b = base.length;
+        wider = false;
+        for (const p of all) if (into(p, a, b) && (p.start < a || p.end > b)) [a, b, wider] = [Math.min(a, p.start), Math.max(b, p.end), true];
+      }
+      while (lines.length && lines[lines.length - 1][1] >= a) a = Math.min(a, lines.pop()![0]);
+      lines.push([a, b]);
+    }
+    for (const [a, b] of lines) {
+      const tj = theirs.flatMap((p, j) => (into(p, a, b) ? [j] : [])), oi = ours.flatMap((p, i) => (into(p, a, b) ? [i] : []));
+      const at = (list: Patch[]) => apply(base.slice(a, b), list.map((p) => ({ start: p.start - a, end: p.end - a, text: p.text })));
+      const run = mergeRun(base.slice(a, b), at(tj.map((j) => theirs[j])), at(oi.map((i) => ours[i])), twice, wins);
+      runs.push({ start: a, end: b, text: run.text });
+      for (const j of tj) hitTheirs[j] = 2;
+      for (const i of oi) hitOurs[i] = run.conflicted && hitOurs[i] ? 3 : 2;
+    }
+  }
+  const conflicts = ours.filter((_, i) => hitOurs[i] === 1 || hitOurs[i] === 3);
+  const keptTheirs = theirs.filter((_, j) => hitTheirs[j] < 2 && (wins === 'theirs' || !hitTheirs[j]));
+  const keptOurs = ours.filter((_, i) => hitOurs[i] < 2 && (wins === 'ours' || !hitOurs[i]));
+  return { patches: combine(keptTheirs, combine(runs, keptOurs, base), base), conflicts };
+}
+
+export function mergeTexts(base: string, theirs: string, ours: string, once = false): string {
+  const o = diff(base, ours);
+  const t = diff(base, theirs).filter((p) => !once || !o.some((q) => q.start === p.start && q.end === p.end && q.text === p.text));
+  return apply(base, mergePatches(t, o, 'ours', base, true, undefined, !once).patches);
 }
 
 let cached: { text: string; tokens: Token[]; lowercaseLonger: boolean } | null = null;
@@ -195,20 +222,6 @@ function tokensOf(text: string): Token[] {
 
 const AHEAD = 12;
 
-function sharedStart(a: string, b: string, n: number): number {
-  let i = 0;
-  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(i, i + w) === b.slice(i, i + w)) i += w;
-  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
-  return i;
-}
-
-function sharedEnd(a: string, b: string, n: number): number {
-  let i = 0;
-  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(a.length - i - w, a.length - i) === b.slice(b.length - i - w, b.length - i)) i += w;
-  while (i < n && a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)) i++;
-  return i;
-}
-
 function moved(t: Token, d: number): Token {
   if (t.type !== 'start') return { ...t, start: t.start + d, end: t.end + d };
   return { ...t, start: t.start + d, end: t.end + d, attrs: t.attrs.map((a) => ({ ...a, start: a.start + d, end: a.end + d })) };
@@ -216,9 +229,7 @@ function moved(t: Token, d: number): Token {
 
 function retokenize(last: { text: string; tokens: Token[]; lowercaseLonger: boolean }, text: string): Token[] | null {
   const old = last.tokens, n = text.length, d = n - last.text.length;
-  const both = Math.min(n, last.text.length);
-  const p = sharedStart(last.text, text, both);
-  const tail = n - sharedEnd(last.text, text, both - p);
+  const [p, e] = shared(last.text, text), tail = n - e;
   if (last.lowercaseLonger || text.slice(p, tail).includes('\u0130')) return null;
   let lo = 0, hi = old.length;
   while (lo < hi) {
@@ -334,7 +345,7 @@ export function widen(base: string, patches: Patch[]): Patch[] {
     }
     groups.push(group);
   }
-  return groups.map((g) => {
+  return groups.map((g, i) => {
     const parts: string[] = [];
     let at = g.start;
     for (const p of g.patches) {
@@ -342,25 +353,23 @@ export function widen(base: string, patches: Patch[]): Patch[] {
       at = p.end;
     }
     parts.push(base.slice(at, g.end));
-    return { start: g.start, end: g.end, text: parts.join('') };
+    let { start, end } = g, text = parts.join('');
+    const head = base.slice(Math.max(groups[i - 1]?.end ?? 0, start - 34), start), r = referenceAt(head + text, head.length);
+    if (r) [start, text] = [start - head.length + r.start, head.slice(r.start) + text];
+    const tail = base.slice(end, Math.min(groups[i + 1]?.start ?? base.length, end + 34)), q = referenceAt(text + tail, text.length);
+    if (q) [end, text] = [end + q.end - text.length, text + tail.slice(0, q.end - text.length)];
+    return { start, end, text };
   });
 }
 
 function byLine(base: string, p: Patch): Patch[] {
-  const old = base.slice(p.start, p.end).split('\n');
-  const next = p.text.split('\n');
+  const old = base.slice(p.start, p.end).split('\n'), next = p.text.split('\n');
   if (old.length < 2 || old.length !== next.length) return [p];
   const out: Patch[] = [];
   let at = p.start;
-  for (let i = 0; i < old.length; i++) {
-    const a = old[i], b = next[i];
-    let pre = 0;
-    while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-    let suf = 0;
-    while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-    if (a !== b) out.push({ start: at + pre, end: at + a.length - suf, text: b.slice(pre, b.length - suf) });
-    at += a.length + 1;
-  }
+  old.forEach((a, i) => {
+    narrow(base, at, (at += a.length + 1) - 1, next[i], out);
+  });
   return out;
 }
 
@@ -451,7 +460,10 @@ export function diff(base: string, text: string): Patch[] {
   const found = changes(base, text);
   const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
   const patches = lines.flatMap((p) => (p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]));
-  return widen(base, cap(base, patches));
+  return widen(base, cap(base, patches)).map((p, i, all) => {
+    const c = base[p.start - 1] ?? '', at = p.start - 1;
+    return p.start < p.end || c !== ' ' || !p.text.endsWith(c) || spaced(p.text) || goesOn(base[p.start]) || all[i - 1]?.end === p.start ? p : { start: at, end: at, text: c + p.text.slice(0, -1) };
+  });
 }
 
 export const size = (patches: Patch[]) => patches.reduce((n, p) => n + p.end - p.start + p.text.length, 0);
@@ -496,34 +508,6 @@ export function coreOf(base: string, p: Patch): Patch | null {
   return pure(c) ? c : null;
 }
 
-const LINE = /(?<=\n)/;
-const sum = (patches: Patch[]) => patches.reduce((n, p) => n + p.text.length - (p.end - p.start), 0);
-
-type Way = { pure: Patch; before: Patch[]; after: Patch[] };
-
-function ways(base: string, p: Patch): Way[] {
-  const c = coreOf(base, p);
-  if (c) return [{ pure: c, before: [], after: [] }];
-  const s = base.lastIndexOf('\n', p.start - 1) + 1, e = base.indexOf('\n', p.end) + 1 || base.length;
-  p = { start: s, end: e, text: base.slice(s, p.start) + p.text + base.slice(p.end, e) };
-  const old = base.slice(p.start, p.end).split(LINE), next = p.text.split(LINE);
-  const d = old.length - next.length;
-  if (d === 0) return [];
-  const pairs = (start: number, end: number, text: string) => widen(base, byLine(base, { start, end, text }));
-  if (d > 0) {
-    const head = p.start + old.slice(0, d).join('').length, tail = p.end - old.slice(old.length - d).join('').length;
-    return [
-      { pure: { start: p.start, end: head, text: '' }, before: [], after: pairs(head, p.end, p.text) },
-      { pure: { start: tail, end: p.end, text: '' }, before: pairs(p.start, tail, p.text), after: [] },
-    ];
-  }
-  const head = next.slice(0, -d).join(''), tail = next.slice(next.length + d).join('');
-  return [
-    { pure: { start: p.start, end: p.start, text: head }, before: [], after: pairs(p.start, p.end, p.text.slice(head.length)) },
-    { pure: { start: p.end, end: p.end, text: tail }, before: pairs(p.start, p.end, p.text.slice(0, p.text.length - tail.length)), after: [] },
-  ];
-}
-
 export function placed(base: string, patches: Patch[], places: readonly number[], text: string): Patch[] {
   if (!places.length) return patches;
   const marks = places.flatMap((h) => [lineStart(text, h), h]);
@@ -531,19 +515,14 @@ export function placed(base: string, patches: Patch[], places: readonly number[]
   let delta = 0;
   patches.forEach((p, i) => {
     const lo = out.length ? out[out.length - 1].end : 0, hi = i + 1 < patches.length ? patches[i + 1].start : base.length;
-    const found = ways(base, p).some(({ pure, before, after }) => {
-      const at = pure.start + delta + sum(before);
-      if ((before[0] ?? after[0])?.start < lo || (after[after.length - 1] ?? before[before.length - 1])?.end > hi) return false;
-      const from = before.length ? before[before.length - 1].end : lo, to = after.length ? after[0].start : hi;
-      for (const h of marks) {
-        const k = h - at;
-        const moved = k === 0 ? pure : Math.abs(k) <= 4 * LONG && slid(base, pure, k);
-        const [w] = moved ? widen(base, [moved]) : [];
-        if (!w || w.start < from || w.end > to) continue;
-        out.push(...(k === 0 && !before.length && !after.length ? [p] : [...before, w, ...after]));
-        return true;
-      }
-      return false;
+    const pure = coreOf(base, p);
+    const found = !!pure && marks.some((h) => {
+      const k = h - pure.start - delta;
+      const moved = k === 0 ? pure : Math.abs(k) <= 4 * LONG && slid(base, pure, k);
+      const [w] = moved ? widen(base, [moved]) : [];
+      if (!w || w.start < lo || w.end > hi) return false;
+      out.push(k === 0 ? p : w);
+      return true;
     });
     if (!found) out.push(p);
     delta += p.text.length - (p.end - p.start);
@@ -553,8 +532,7 @@ export function placed(base: string, patches: Patch[], places: readonly number[]
 
 export function moveOffsets(offsets: readonly number[], a: string, b: string): number[] {
   if (!offsets.length || a === b) return [...offsets];
-  const n = Math.min(a.length, b.length);
-  const head = sharedStart(a, b, n), tail = a.length - sharedEnd(a, b, n - head);
+  const [head, e] = shared(a, b), tail = a.length - e;
   return offsets.flatMap((h) => (h <= head ? [h] : h >= tail ? [h + b.length - a.length] : []));
 }
 

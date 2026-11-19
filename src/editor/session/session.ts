@@ -5,7 +5,7 @@ import type { Pairing, Rendered } from '../render.ts';
 import type { Source } from '../source.ts';
 import type { Mark } from './caret.ts';
 import type { Applied, Engine, Tracked } from './port.ts';
-import { apply as applyEdits, caretOf, contentRange, edits, elementRange, fine, mapOffset, markOf, mathLookup, mergeEdits, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
+import { apply as applyEdits, caretOf, contentRange, edits, elementRange, mapOffset, markOf, mathLookup, mergeTexts, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
 import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
@@ -73,7 +73,7 @@ export function install(app: App, tracked: Tracked): Engine {
     rendered = r.places;
     return r.text;
   };
-  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, fine(behind.shown, deck), fine(behind.shown, behind.want), 'ours', true).text : deck);
+  const virtual = (deck: string): string => (behind ? mergeTexts(behind.shown, behind.want, deck, true) : deck);
 
   app.listen('open', () => {
     clean = ready();
@@ -341,9 +341,9 @@ export function install(app: App, tracked: Tracked): Engine {
     if (text === REREAD) text = handed ?? seen;
     const from = handed ?? seen;
     let target = text ?? seen;
-    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
+    if (text !== null && from !== seen) target = mergeTexts(from, text, seen);
     if (text !== null) handed = text;
-    const kept = (): string => (bare !== null ? mergeEdits(seen, fine(seen, virtual(deck)), fine(seen, target), 'ours', true).text : target);
+    const kept = (): string => (bare !== null ? mergeTexts(seen, target, virtual(deck), true) : target);
     if (rendered && !rebase(rendered, math)) partial(kept());
     let reading: Edit | null = null;
     if (bare !== null) {

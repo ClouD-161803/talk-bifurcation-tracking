@@ -58,14 +58,22 @@ export function runsOf(before: string, after: string): Edit[] {
     const [head, tail] = shared(before, after);
     runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
   }
+  runs = runs.map((r, i) => {
+    const c = before.charAt(r.start - 1);
+    if (r.start !== r.end || !/[ \u00a0]/.test(c) || !r.text.endsWith(c) || /^\s/.test(r.text) || WORD.test(before.charAt(r.start)) || runs![i - 1]?.end === r.start) return r;
+    return { start: r.start - 1, end: r.start - 1, text: c + r.text.slice(0, -1) };
+  });
   const letter = (i: number) => WORD.test(before.charAt(i));
   const out: Edit[] = [];
   runs.forEach((r, i) => {
     const p = out.at(-1);
-    if (r.end === r.start || !WORD.test(before.slice(r.start, r.end)) || (r.text && !WORD.test(r.text))) return void out.push(r);
-    let { start, end } = r;
-    while (start > (p?.end ?? 0) && letter(start - 1)) start--;
+    const gap = p ? before.slice(p.end, r.start) : '';
+    let end = r.end;
     while (end < (runs[i + 1]?.start ?? before.length) && letter(end)) end++;
+    if (r.end === r.start && p && p.end > p.start && letter(r.start - 1) && WORD.test(before.slice(p.start, p.end) + p.text + gap + r.text)) return void (out[out.length - 1] = { start: p.start, end, text: p.text + gap + r.text + before.slice(r.end, end) });
+    if (r.end === r.start || !WORD.test(before.slice(r.start, r.end)) || (r.text && !WORD.test(r.text))) return void out.push(r);
+    let { start } = r;
+    while (start > (p?.end ?? 0) && letter(start - 1)) start--;
     const grown = { start, end, text: before.slice(start, r.start) + r.text + before.slice(r.end, end) };
     if (p && p.end === start && p.end > p.start && letter(start - 1)) out[out.length - 1] = { start: p.start, end, text: p.text + grown.text };
     else out.push(grown);

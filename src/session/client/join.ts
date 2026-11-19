@@ -1,4 +1,5 @@
-import { changes, mergeEdits } from '../../editor/merge.ts';
+import { changes } from '../../editor/merge.ts';
+import { mergeTexts } from '../patch.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { accept, beforeJoin, joined, retiring, type Copy } from './copy.ts';
@@ -130,8 +131,7 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
     const own = changes(text, deck);
     if (own === null) return deck;
     if (!own.length) return copy.mine;
-    const all = changes(text, copy.mine);
-    return all ? mergeEdits(text, own, all, 'ours', true).text : deck;
+    return mergeTexts(text, copy.mine, deck, true);
   };
   let early: Copy | null | undefined;
   client.port.onChange(() => {

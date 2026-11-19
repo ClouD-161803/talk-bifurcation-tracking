@@ -363,8 +363,9 @@ test('a selection inside its text node keeps its characters through one apply th
 const WORDS = [
   ['in its text node', (text) => once(text, LINE, LINE.replace('complete', 'whole'))],
   ['with a tag put into its paragraph', (text) => once(text, LINE, LINE.replace('complete', 'whole').replace('attention.', '<strong>attention.</strong>'))],
+  ['with letters that both words share', (text) => once(text, LINE, LINE.replace('complete', 'entire').replace('attention.', '<strong>attention.</strong>')), 'entire'],
 ];
-for (const [label, change] of WORDS) {
+for (const [label, change, word = 'whole'] of WORDS) {
   test(`a caret inside a word that another person replaces ${label} goes to the end of the new word`, async (t) => {
     const b = await sessionPage(browser);
     t.after(() => b.close());
@@ -373,7 +374,7 @@ for (const [label, change] of WORDS) {
     assert.equal((await applyOn(b, change(b.source))).reload, false);
     await type(b, 'A');
     const line = (await b.evaluate(`${E}.render()`)).split('\n').find((l) => l.includes('slide first, then'));
-    assert.ok(line.includes('the wholeA slide'), `the key of the person is after the new word in ${line}`);
+    assert.ok(line.includes(`the ${word}A slide`), `the key of the person is after the new word in ${line}`);
     assert.deepEqual(b.errors, []);
   });
 }

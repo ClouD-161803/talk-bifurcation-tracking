@@ -150,6 +150,7 @@ const HELPER = `window.__animate ??= (() => {
       clock.install();
       let turn = 0, period = 0, once = false, offset = 0;
       if (surface) {
+        surface.fit(config.width / box.width, devicePixelRatio);
         turn = surface.view().written.turn;
         if (from !== null) {
           const before = fragments(all()[from]).map((f) => f.classList.contains('visible'));
@@ -232,7 +233,7 @@ const HELPER = `window.__animate ??= (() => {
     end() {
       const s = state;
       for (const v of [s?.video, s?.done]) if (v && v.encoder.state !== 'closed') v.encoder.close();
-      if (s?.surface) { s.surface.stop(); s.surface.sync(false); s.surface.configure(); }
+      if (s?.surface) { s.surface.fit(); s.surface.stop(); s.surface.sync(false); s.surface.configure(); }
       if (s?.plot) { s.plot.leave(); s.plot.still(); }
       clock.remove();
       state = null;
