@@ -322,7 +322,7 @@ test('the file is written anew past its size limit, without the old versions, an
   const last = again.history.close();
   texts.push([last.id, again.authority.text]);
   assert.ok(statSync(file).size < size, 'the file is smaller after the rewrite');
-  const kept = texts.slice(3);
+  const kept = [texts[3], ...texts.slice(6)];
   assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8').split('\n')[0]).text, texts[2][1]);
   again.history.stopSync();
@@ -685,6 +685,51 @@ test('the texts set aside are limited per person, and the text of another person
   assert.equal(history.asideText(mine.id), `${DECK}MY LOST WORK`);
   assert.deepEqual(history.list().aside.map((a) => a.id), [...theirs.slice(2).reverse(), mine.id]);
   assert.equal(readdirSync(join(dir, 'aside')).length, 4);
+});
+
+test('a version tagged long ago is kept when the file is written anew, and the old versions around it are not', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const day = 24 * 3600 * 1000;
+  let clock = Date.now() - 100 * day;
+  const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <p>start</p>\n</section>\n</body>'), { now: () => clock });
+  const texts = [];
+  const step = (i) => {
+    replace(authority, /<p>[^<]*<\/p>\n<\/section>\n<\/body>/, `<p>${String.fromCharCode(97 + (i % 26)).repeat(1000)}</p>\n</section>\n</body>`, ANN);
+    texts.push([history.close().id, authority.text]);
+    clock += 1000;
+  };
+  for (let i = 0; i < 6; i++) step(i);
+  history.name(texts[1][0], 'Early');
+  for (let i = 6; i < 40; i++) step(i);
+  clock = Date.now() - 2 * day;
+  for (let i = 40; i < 43; i++) step(i);
+  history.stopSync();
+  const file = join(dir, 'history.jsonl');
+  const size = statSync(file).size;
+  const again = open(dir, authority.text, { maxBytes: size + 100, now: () => clock });
+  replace(again.authority, 'First slide', 'First slide, later', BO);
+  const last = again.history.close();
+  texts.push([last.id, again.authority.text]);
+  assert.ok(statSync(file).size < size / 4, `the file of ${size} bytes is ${statSync(file).size} bytes after the rewrite`);
+  const kept = [texts[1], ...texts.slice(40)];
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
+  again.history.stopSync();
+  const third = open(dir, again.authority.text);
+  assert.equal(third.history.list().versions.at(-1).name, 'Early');
+  for (const [id, text] of kept) assert.equal(third.history.textOf(id), text);
+});
+
+test('the texts set aside take a bounded space in all, also from many people, the oldest removed first', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  let clock = 1_000_000;
+  const { history } = open(dir, DECK, { asideTotal: 1000, now: () => clock++ });
+  const people = Array.from({ length: 30 }, (_, i) => `person${String(i).padStart(16, '0')}xxxxxx`);
+  const ids = people.map((p) => history.setAside('x'.repeat(100), p).id);
+  assert.deepEqual(history.list().aside.map((a) => a.id), ids.slice(-10).reverse());
+  assert.equal(readdirSync(join(dir, 'aside')).length, 10);
+  const again = open(dir, DECK, { asideTotal: 500 });
+  assert.deepEqual(again.history.list().aside.map((a) => a.id), ids.slice(-5).reverse());
+  assert.equal(readdirSync(join(dir, 'aside')).length, 5);
 });
 
 test('names given again and again to one version do not grow history.jsonl without a bound', { timeout: 60_000 }, (t) => {

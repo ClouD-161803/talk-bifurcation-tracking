@@ -29,10 +29,11 @@ export type HistoryOptions = {
   // the named ones and those after them
   maxBytes?: number;
   keep?: number;
-  // the texts set aside: at most asideBytes each, and at most asideFiles per person, the oldest of
-  // the person removed first
+  // the texts set aside: at most asideBytes each, at most asideFiles per person, the oldest of the
+  // person removed first, and at most asideTotal bytes in all, the oldest removed first
   asideBytes?: number;
   asideFiles?: number;
+  asideTotal?: number;
   // the texts kept as starting points of a rebuild take at most checkpointBytes, at two bytes a
   // character, or four texts of the deck when they are larger
   checkpointBytes?: number;
@@ -321,6 +322,7 @@ export class History {
   private readonly keep: number;
   private readonly asideBytes: number;
   private readonly asideFiles: number;
+  private readonly asideTotal: number;
   private readonly checkpointBytes: number;
   private readonly now: () => number;
   private readonly clock: () => number;
@@ -345,6 +347,8 @@ export class History {
   private names = 0;
   private stopped = false;
   private asides: AsideInfo[] = [];
+  // the size in bytes of each text set aside, by id
+  private asideSizes = new Map<string, number>();
   // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
   // the marks of the closed versions of people of this run, in the text before an open one
@@ -363,6 +367,7 @@ export class History {
     this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
+    this.asideTotal = options.asideTotal ?? 256 * 1024 * 1024;
     this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
@@ -495,15 +500,30 @@ export class History {
     writeFileSync(tmp, bytes);
     renameRetriedSync(tmp, join(this.asideDir, asideName(aside)));
     this.asides.push(aside);
+    this.asideSizes.set(aside.id, bytes.length);
     const theirs = this.asides.filter((a) => a.author === author);
-    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
-      this.asides.splice(this.asides.indexOf(old), 1);
-      try {
-        unlinkSync(join(this.asideDir, asideName(old)));
-      } catch {}
-    }
+    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) this.dropAside(old);
+    this.trimAsides();
     this.changed();
     return aside;
+  }
+
+  private dropAside(a: AsideInfo): void {
+    this.asides.splice(this.asides.indexOf(a), 1);
+    this.asideSizes.delete(a.id);
+    try {
+      unlinkSync(join(this.asideDir, asideName(a)));
+    } catch {}
+  }
+
+  // the oldest texts set aside removed while all of them take more than asideTotal
+  private trimAsides(): void {
+    let total = 0;
+    for (const n of this.asideSizes.values()) total += n;
+    while (total > this.asideTotal && this.asides.length > 1) {
+      total -= this.asideSizes.get(this.asides[0].id) ?? 0;
+      this.dropAside(this.asides[0]);
+    }
   }
 
   // the text set aside as id, or null
@@ -698,19 +718,21 @@ export class History {
     }
   }
 
-  // the versions before the oldest of the last keep ms and before the oldest named one left out,
-  // the version before them becoming the base
+  // the versions before the oldest of the last keep ms left out but the tagged ones, the version
+  // before the first one kept becoming the base
   private compact(): void {
     const cutoff = this.now() - this.keep;
     let k = this.versions.findIndex((v) => v.time >= cutoff);
     if (k < 0) k = this.versions.length - 1;
-    const named = this.versions.findIndex((v) => v.name);
-    if (named >= 0) k = Math.min(k, named);
-    if (k <= 0) return;
-    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
-    this.versions = this.versions.slice(k);
+    // a tagged version before k is kept, with the changes of the versions left out before it
+    const keep = this.versions.flatMap((v, i) => (i >= k || v.name ? [i] : []));
+    if (keep[0] === 0 && keep.length === this.versions.length) return;
+    const first = keep[0];
+    const versions = keep.map((i, j) => (j === 0 || keep[j - 1] === i - 1 ? this.versions[i] : { ...this.versions[i], patches: copied(diff(this.textAt(keep[j - 1]), this.textAt(i))) }));
+    if (first > 0) this.base = { time: this.versions[first - 1].time, text: this.textAt(first - 1) };
     const kept = new Map<number, string>();
-    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
+    for (const [i, text] of this.checkpoints) if (keep.includes(i)) kept.set(keep.indexOf(i), text);
+    this.versions = versions;
     this.checkpoints = kept;
     this.step = STEP;
     this.writeAll();
@@ -811,9 +833,14 @@ export class History {
     } catch {}
     for (const name of names) {
       const m = ASIDE.exec(name);
-      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+      if (!m) continue;
+      this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+      try {
+        this.asideSizes.set(m[2], statSync(join(this.asideDir, name)).size);
+      } catch {}
     }
     this.asides.sort((a, b) => a.time - b.time);
+    this.trimAsides();
   }
 }
 
