@@ -1,9 +1,3 @@
-// the presence of the pages of a session in Chrome, on the edit command started on a temporary
-// talk folder: the frame and the name flag of the selection of another page and its caret, read
-// at the right element after the edits of others, the highlight of a selection, the hold of a text
-// element that another page types in, which never reaches the text, a tap on a chip and into a
-// text element in a phone window, and the reads of layout of a pointer move and a scroll over frames
-
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -16,10 +10,8 @@ import { ANSWERS, NET } from './helpers/net.mjs';
 import { post, until } from './helpers/session.mjs';
 
 const P = 'window.BeesonSession.presence()';
-// the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
-// the elements of expressions selected on page
 async function select(page, ...expressions) {
   await front(page);
   const ok = await page.evaluate(`(() => {
@@ -31,9 +23,6 @@ async function select(page, ...expressions) {
   assert.ok(ok, `${expressions.join(', ')} are on the page`);
 }
 
-// what the layer of page draws: each frame and caret bar by its box on the screen, and each flag
-// with its text, its long text, which a chip keeps without showing it, its client, and whether it
-// is a chip
 const DRAWN = `(() => {
   const box = (n) => { const r = n.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   const layer = document.querySelector('.beeson-presence');
@@ -50,10 +39,8 @@ const drawn = async (page) => {
   return page.evaluate(DRAWN);
 };
 
-// the box of the element of expression on the screen
 const boxOf = (page, expression) => page.evaluate(`(() => { const r = ${expression}.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
 
-// waits until the layer of page draws what holds for
 async function until_(page, holds, what) {
   return until(async () => {
     const d = await drawn(page);
@@ -61,7 +48,6 @@ async function until_(page, holds, what) {
   }, what);
 }
 
-// asserts that frame lies around box, outside it on every side
 function around(frameBox, box, label) {
   assert.ok(frameBox.x < box.x && frameBox.y < box.y && frameBox.x + frameBox.w > box.x + box.w && frameBox.y + frameBox.h > box.y + box.h, `${label}: the frame ${JSON.stringify(frameBox)} is around ${JSON.stringify(box)}`);
 }
@@ -89,17 +75,14 @@ test('the selection of another page is framed with a name flag, on its slide onl
   assert.deepEqual(resolved, [{ name: 'Ana', person, selected: ['ul'], slide: 'Two' }]);
   assert.deepEqual(await ana.evaluate(`${C}.resolved().length`), 1, 'the page of Ana resolves only Ben');
 
-  // after 3 s the flag collapses to a chip with the initials
   const chip = await until_(ben, (d) => d.flags[0]?.chip, 'the flag of Ana to collapse');
   assert.equal(chip.flags[0].text, 'AN');
 
-  // on another slide nothing is drawn
   await show(ben, 'One');
   assert.deepEqual(await drawn(ben), { frames: [], flags: [], carets: [] });
   await show(ben, 'Two');
   await until_(ben, (d) => d.frames.length === 1, 'the frame on the slide again');
 
-  // a selection that ends takes the frame and the flag away
   await front(ana);
   await ana.evaluate(`${C}.app.selection.clear()`);
   await until_(ben, (d) => !d.frames.length && !d.flags.length, 'the frame to go');
@@ -108,14 +91,12 @@ test('the selection of another page is framed with a name flag, on its slide onl
   around(two.frames[0], await boxOf(ben, el(1, 'h2')), 'the heading');
   around(two.frames[1], await boxOf(ben, el(1, 'p')), 'the paragraph');
 
-  // a page that leaves takes its frames and flags with it
   await ana.close();
   await until_(ben, (d) => !d.frames.length && !d.flags.length, 'the frames of Ana to go when the page closes');
   assert.equal(await ben.evaluate(`${C}.resolved().length`), 0);
   clean(ben);
 });
 
-// the states that page sends are held back until release(), which sends the first or the last
 const hold = (page) => page.evaluate(`(() => {
   const c = ${C};
   window.__send = c.sendPresence.bind(c);
@@ -133,14 +114,11 @@ const release = (page, which = 'last') => page.evaluate(`(() => {
 test('a selection is read at its element after another person inserts text and a third a slide before it', { timeout: 480_000 }, async (t) => {
   const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy']);
   for (const page of [ana, ben, cy]) await show(page, 'Two');
-  // the state of Ana is sent once Ben and Cy have changed the text before it, at the version
-  // before their changes, which both carry through the operations they received
   await hold(ana);
   await select(ana, el(1, 'li:nth-child(2)'));
   await until(() => ana.evaluate('window.__held.length > 0'), 'the state of Ana with the list item');
   await caretAtEnd(ben, el(1, 'p'));
   await typeKeys(ben, ' with more words');
-  // Ben leaves his text, whose frame the page of Cy would draw as well
   await ben.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await show(cy, 'One');
   await cy.evaluate(`${C}.app.commands.run('slide.new')`);
@@ -160,7 +138,6 @@ test('a selection is read at its element after another person inserts text and a
     const d = await until_(page, (d) => d.frames.length === 1, `the frame on the page of ${name}`);
     around(d.frames[0], await boxOf(page, el(2, 'li:nth-child(2)')), `the item Beta on the page of ${name}`);
   }
-  // the next state of Ana, of the newest version, reads the slide as well
   await show(ana, 'Two');
   await ana.evaluate(`${C}.app.selection.set('elements', [${el(2, 'li:nth-child(1)')}])`);
   for (const page of [ben, cy]) {
@@ -174,16 +151,12 @@ test('the flag of a person who types reads that the person is typing, and the ca
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
-  // the flag reads that Ana is typing only until 2 s after her last key, which may be over before
-  // a read from the test. the page of Ben, which is in front, hence records what its layer draws
   await ben.evaluate(`(() => {
     window.__drawn = [];
     new MutationObserver(() => window.__drawn.push(${DRAWN})).observe(document.querySelector('.beeson-presence'), { subtree: true, childList: true, attributes: true, characterData: true });
     return true;
   })()`);
   await caretAtEnd(ana, el(1, 'p'));
-  // a timer of 2 s on the page of Ana, started at each key after the typing timer of presence.ts,
-  // records whether the last state that her page sent by then says that she stopped typing
   await ana.evaluate(`(() => {
     const c = ${C};
     const send = c.sendPresence.bind(c);
@@ -195,8 +168,6 @@ test('the flag of a person who types reads that the person is typing, and the ca
   await typeKeys(ana, ' and more');
   await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
   const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
-  // the flag and the bar at the end of the text are read from separate records, since the page of
-  // Ben may read the state with the caret at the end after Ana stopped typing
   await ben.waitFor(`window.__drawn.some((d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1)`, 20_000);
   const atEnd = `window.__drawn.find((d) => d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - ${text.x + text.w}) < 4)`;
   await ben.waitFor(`!!${atEnd}`, 20_000);
@@ -204,17 +175,13 @@ test('the flag of a person who types reads that the person is typing, and the ca
   assert.ok(bar.y >= text.y - 2 && bar.y + bar.h <= text.y + text.h + 2 && bar.h > 10, 'the caret bar spans the line');
   assert.ok(bar.w >= 1.5 && bar.w <= 4, `the caret bar is 2 px wide, and it is ${bar.w}`);
   await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.caret?.el.textContent`))?.endsWith('and more'), 'the caret element of Ana');
-  // the caret moved to the start rests, and its offset is sent
   await ana.evaluate(`(() => { const r = document.createRange(); r.setStart(${el(1, 'p')}.firstChild, 0); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
   const start = await until_(ben, (d) => d.carets.length === 1 && Math.abs(d.carets[0].x - text.x) < 4, 'the caret bar at the start of the text');
   assert.ok(start.carets[0].x < bar.x);
-  // 2 s after the last key the flag reads the name again, and the caret stays. the flag is a chip
-  // by then when the keys took over a second, hence its long text is read
   const still = await until_(ben, (d) => d.flags[0]?.long === 'Ana', 'the flag of Ana after she stops typing');
   assert.equal(still.carets.length, 1);
   await until(() => ana.evaluate(`window.__stopped !== undefined`), 'the timer of 2 s after the last key of Ana');
   assert.equal(await ana.evaluate(`window.__stopped`), true, 'the page of Ana sends that she stopped typing 2 s after her last key');
-  // the caret that leaves the text takes the bar away
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await until_(ben, (d) => !d.carets.length, 'the caret bar to go');
   clean(ana);
@@ -223,9 +190,7 @@ test('the flag of a person who types reads that the person is typing, and the ca
 
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
 const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
-// the name of the person who holds the element of expression, or null
 const HOLDER = (expression) => `${P}.holderOf(${expression})?.name ?? null`;
-// the bubble of page cleared, so that the next one can be told from it
 const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 
 test('a text element that another page types in takes a caret, a selection, and the typing of a second page, and refuses the commands of its slide', { timeout: 420_000 }, async (t) => {
@@ -238,7 +203,6 @@ test('a text element that another page types in takes a caret, a selection, and 
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana types in to be held on the page of Ben');
   assert.equal(await ana.evaluate(HOLDER(p)), null, 'the paragraph is not held on the page that types in it');
 
-  // a click into the text puts the caret there, and a selection in it is kept
   await front(ben);
   await clickText(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 4, y: b.y + b.h / 2 }; })());
   assert.equal(await ben.evaluate(BUBBLE), null);
@@ -247,7 +211,6 @@ test('a text element that another page types in takes a caret, a selection, and 
   await frame(ben);
   assert.equal(await ben.evaluate(`getSelection().toString()`), 'Second');
   assert.equal(await ben.evaluate(`${C}.app.selection.kind`), 'text');
-  // Ben types over the selection, and Ana at the end
   await typeKeys(ben, 'Ben');
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' and more');
@@ -255,8 +218,6 @@ test('a text element that another page types in takes a caret, a selection, and 
   assert.ok(text.includes('<p>Ben slide typed and more</p>'), `both texts reach index.html: ${text.match(/<p>.*slide.*<\/p>/g)}`);
   assert.equal(await ben.evaluate(HOLDER(p)), 'Ana');
 
-  // the commands that change its slide, on the shown slide or on the slide selected as in the
-  // navigator
   const moveTo = `{ slides: [Reveal.getCurrentSlide()], gap: 0 }`;
   await front(ben);
   for (const [id, slides, arg] of [['slide.delete', false], ['slide.hide', false], ['slide.cut', true], ['slide.moveTo', false, moveTo]]) {
@@ -269,35 +230,28 @@ test('a text element that another page types in takes a caret, a selection, and 
   await ben.evaluate(`${C}.app.selection.clear()`);
   assert.equal(await ben.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2);
   assert.equal(await ben.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Two');
-  // a command of another slide is not refused
   await show(ben, 'One');
   await ben.evaluate(`${C}.app.commands.run('slide.hide')`);
   await until(() => ben.evaluate(`document.querySelectorAll('.reveal .slides > section')[0].hasAttribute('data-visibility')`), 'slide One to be hidden');
 
-  // a copy of the slide with the held paragraph in it
   await show(ben, 'Two');
   await ben.evaluate(`${C}.app.commands.run('slide.duplicate')`);
   text = await converge(server, [ana, ben]);
   assert.equal(text.split('<p>Ben slide typed and more</p>').length, 3, 'the copy of the slide is in index.html');
-  // Ana moves the caret into the copy, and of the two paragraphs only the copy is held on the page
-  // of Ben
   const at = 2;
   await ana.evaluate(`Reveal.slide(${at})`);
   await caretAtEnd(ana, el(at, 'p'));
   const held = el(at, 'p');
   const heldAt = `[...document.querySelectorAll('.reveal .slides > section')].flatMap((s, i) => [...s.querySelectorAll('p')].some((e) => ${P}.holderOf(e)) ? [i] : [])`;
   await until(async () => JSON.stringify(await ben.evaluate(heldAt)) === `[${at}]`, 'only the copy that Ana is in to be held on the page of Ben');
-  // the hold is not written into the page, the text of the port, a render, or index.html
   for (const page of [ana, ben]) assert.equal(await page.evaluate(`document.querySelector('.beeson-held')`), null);
   for (const read of [TEXT, 'window.BeesonEditor.render()', `${C}.app.files.render()`]) assert.ok(!(await ben.evaluate(read)).includes('beeson-held'), read);
   assert.ok(!server.read().includes('beeson-held'));
 
-  // a change of index.html from outside still reaches the held element
   let k = 0;
   writeFileSync(server.file, server.read().replace(/<p>Ben slide typed and more<\/p>/g, (m) => (++k === at ? '<p>Second slide, from outside</p>' : m)));
   for (const page of [ana, ben]) await until(() => page.evaluate(`${held}.textContent === 'Second slide, from outside'`), 'the change from outside on each page');
 
-  // the caret that leaves takes the hold away
   await front(ana);
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await until(async () => (await ben.evaluate(HOLDER(held))) === null, 'the hold to go when Ana leaves the paragraph');
@@ -305,7 +259,6 @@ test('a text element that another page types in takes a caret, a selection, and 
   clean(ben);
 });
 
-// the x in px of the point after n characters of the text of the element of expression
 const xAt = (page, expression, n) => page.evaluate(`(() => {
   const w = document.createTreeWalker(${expression}, NodeFilter.SHOW_TEXT);
   let left = ${n};
@@ -321,7 +274,6 @@ test('a caret sent before the typing of another person reaches the page of this 
   await show(ana, 'Two');
   await show(ben, 'Two');
   const p = el(1, 'p');
-  // the state of Ana with her caret after Second is held back while Ben types before it
   await hold(ana);
   await front(ana);
   await ana.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 'Second'.length); })()`);
@@ -339,8 +291,6 @@ test('a caret sent before the typing of another person reaches the page of this 
   clean(ben);
 });
 
-// Chrome writes the space before an element as U+00A0 into the text of the person who types
-// there, and the other pages hold U+0020 at this place
 test('the caret of a person whose browser holds a space as a no-break space is drawn at its characters while the next state is on its way', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -359,12 +309,10 @@ test('the caret of a person whose browser holds a space as a no-break space is d
   await until(async () => (await text(ana)) === 'Second here slide', 'the typing of Ben on the page of Ana');
   assert.equal(await text(ben), 'Second here\u00a0slide', 'Chrome wrote U+00A0 into the text of Ben');
   await until(() => ana.evaluate(`${C}.resolved().find((r) => r.name === 'Ben')?.caret?.at === 'Second here'.length`), 'the caret of Ben after here on the page of Ana');
-  // the states of Ben with his caret after too are held back, as on a slow network
   await hold(ben);
   await typeKeys(ben, ' too');
   await until(async () => (await text(ana)) === 'Second here too slide', 'the second typing of Ben on the page of Ana');
   const x = await xAt(ana, p, 'Second here too'.length);
-  // the center of the bar of Ben on the page of Ana
   const bar = async () => {
     const d = await drawn(ana);
     return d.carets.length === 1 ? d.carets[0].x + d.carets[0].w / 2 : null;
@@ -397,7 +345,6 @@ test('the caret and the selection of another person in a paragraph with a formul
     d.getMathItemsWithin = (nodes) => (nodes.includes(document.body) && window.__whole++, items(nodes));
     return true;
   })()`);
-  // Ana selects the words after the formula, and then puts the caret at their end
   await front(ana);
   await ana.evaluate(`(() => { const p = ${math}; p.focus(); const t = p.lastChild; getSelection().setBaseAndExtent(t, 1, t, t.length); })()`);
   await until_(ben, (d) => d.carets.length === 1, 'the caret of Ana on the page of Ben');
@@ -410,8 +357,6 @@ test('the caret and the selection of another person in a paragraph with a formul
   clean(ben);
 });
 
-// a copy of a slide that holds the element of a state makes its offset doubtful on another page, and
-// a copy of a slide reloads the other pages today. the decision of send() is hence checked on its log
 test('a page sends its state again at a new version when another page could not carry its last state', { timeout: 180_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
@@ -419,7 +364,6 @@ test('a page sends its state again at a new version when another page could not 
   await until(async () => (await ben.evaluate(HOLDER(el(1, 'p')))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
   const sendsWhen = (carry) => ana.evaluate(`(() => {
     const p = ${P}, c = ${C}, send = c.sendPresence;
-    // a change of the state that waits for its throttle is sent first
     p.send();
     let sent = 0;
     c.sendPresence = (s) => { sent++; send.call(c, s); };
@@ -447,20 +391,17 @@ test('the speaker notes that another page types in are held, and not framed', { 
     await page.evaluate(`${C}.app.commands.run('view.notes')`);
     await page.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
   }
-  // the Notes pane opens with the caret in the notes, which Ben leaves before Ana enters them
   await ben.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);
   await until(() => ana.evaluate(`${P}.holds.size === 0`), 'the notes to be free on the page of Ana');
   await caretAtEnd(ana, notes);
   await until(async () => (await ben.evaluate(HOLDER(notes))) === 'Ana', 'the notes that Ana is in to be held on the page of Ben');
   assert.deepEqual((await drawn(ben)).frames, [], 'the notes are not framed');
-  // Ben puts a caret into them as well
   await caretAtEnd(ben, notes);
   assert.equal(await ben.evaluate(BUBBLE), null);
   clean(ana);
   clean(ben);
 });
 
-// the clock of the holds of page moved by ms
 const later = (page, ms) => page.evaluate(`(() => { ${P}.skew += ${ms}; return true; })()`);
 
 test('a text element is held while the caret of another person is in it and this person was active in the last 30 s', { timeout: 300_000 }, async (t) => {
@@ -471,36 +412,30 @@ test('a text element is held while the caret of another person is in it and this
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana on the page of Ben');
-  // the end of the typing of Ana is her last activity, in a state sent after her last key
   await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`), 'Ana to stop typing');
   await later(ben, 29_000);
   assert.equal(await ben.evaluate(HOLDER(p)), 'Ana', 'still held at 29 s');
   await later(ben, 1000);
   assert.equal(await ben.evaluate(HOLDER(p)), null, 'not held after 30 s without typing');
   assert.equal(await ben.evaluate(`${P}.holds.size`), 0);
-  // Ana holds it again when she types. bringing her page to the front can take its caret out
   await front(ana);
   await caretAtEnd(ana, p);
   await typeKeys(ana, '!');
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana after she types again');
-  // a caret moved to another element is an activity, and the hold goes with it
   await later(ben, 30_000);
   await caretAtEnd(ana, el(1, 'h2'));
   await until(async () => (await ben.evaluate(`(${HOLDER(el(1, 'h2'))}) === 'Ana' && (${HOLDER(p)}) === null`)), 'the hold to move with the caret of Ana');
-  // a caret that leaves takes the hold away
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the heading');
   clean(ana);
   clean(ben);
 });
 
-// the texts of the ranges of each highlight of page by its name, after a frame of the page in front
 const highlights = async (page) => {
   await front(page);
   await frame(page);
   return JSON.stringify(await page.evaluate(`Object.fromEntries([...CSS.highlights].map(([name, h]) => [name, [...h].map((r) => r.toString())]))`));
 };
-// the background of the highlight of name in the element of expression
 const tintOf = (page, expression, name) => page.evaluate(`getComputedStyle(${expression}, '::highlight(${name})').backgroundColor`);
 
 test('the selected text of another person is a highlight in the tone of the person, hidden in a preview, until the selection or the session ends', { timeout: 300_000 }, async (t) => {
@@ -517,13 +452,10 @@ test('the selected text of another person is a highlight in the tone of the pers
   await ben.evaluate(`document.documentElement.classList.add('beeson-previewing')`);
   assert.equal(await tintOf(ben, p, name), 'rgba(0, 0, 0, 0)', 'the highlight is transparent in a preview');
   await ben.evaluate(`document.documentElement.classList.remove('beeson-previewing')`);
-  // the highlight is not written into the text
   assert.ok(!(await ben.evaluate(TEXT)).includes('highlight') && !server.read().includes('highlight'));
-  // a collapsed selection takes the highlight away
   await front(ana);
   await ana.evaluate(`getSelection().collapseToEnd()`);
   await until(async () => (await highlights(ben)) === '{}', 'the highlight to go when Ana collapses the selection');
-  // and Leave Session deletes it
   await front(ana);
   await ana.evaluate(`(() => { const t = ${p}.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
   await until(async () => (await highlights(ben)) === JSON.stringify({ [name]: ['Second'] }), 'the highlight of the new selection of Ana');
@@ -559,14 +491,12 @@ test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 3
   assert.deepEqual(chip.flags.map((f) => f.text), ['AN']);
   const at = await ben.evaluate(`(() => { const r = document.querySelector('.beeson-presence .flag.chip').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; })()`);
   assert.equal(at.w, 16, 'the chip is 16 px wide');
-  // a tap 6 px off the chip, inside its hit area of 32 px
   const point = { x: at.x + 6, y: at.y + 6 };
   await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
   await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   const shown = await until_(ben, (d) => d.flags[0] && !d.flags[0].chip, 'the chip to show the name after the tap');
   assert.equal(shown.flags[0].text, 'Ana');
   assert.equal(await ben.evaluate(`${C}.app.selection.kind`), 'none', 'the tap does not reach the canvas');
-  // and it collapses again
   await until_(ben, (d) => d.flags[0]?.chip, 'the flag to collapse again');
   clean(ana);
   clean(ben);
@@ -589,12 +519,10 @@ test('in a touch window of 390 px, a second tap puts the caret into a text eleme
     await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
     await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
-  // the first tap selects the paragraph as a box
   await tap();
   await until(() => ben.evaluate(`window.BeesonEditor.selection().includes(${p})`), 'the paragraph to be selected on the page of Ben');
   assert.equal(await ben.evaluate(BUBBLE), null);
-  // a second tap within the time of a double tap would be a double tap
-  await ben.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
+  await ben.evaluate('new Promise((notDoubleTap) => setTimeout(() => notDoubleTap(true), 600))');
   await tap();
   await until(() => ben.evaluate(`document.activeElement === ${p} && ${p}.contains(getSelection().focusNode)`), 'the caret of Ben in the paragraph');
   assert.equal(await ben.evaluate(BUBBLE), null);
@@ -608,7 +536,6 @@ test('in a touch window of 390 px, a second tap puts the caret into a text eleme
   clean(ben);
 });
 
-// counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
   window.__reads = { all: 0, session: 0 };
@@ -656,7 +583,6 @@ test('a pointer move and a scroll over three frames read no layout for presence'
   await until_(ben, (d) => d.frames.length === 3, 'the three frames of Ana on the page of Ben');
   const framed = await run();
   assert.equal((await drawn(ben)).frames.length, 3);
-  // the reads of the editor itself are counted as well, which shows that the count is taken
   assert.ok(framed.all > 0, 'the reads of the page are counted');
   assert.equal(framed.session, 0, 'theme/session.js reads no layout in a pointer move or a scroll over three frames');
   clean(ana);
@@ -667,8 +593,6 @@ test('a page that reads its source again keeps a remote edit that waits for its 
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'One');
-  // the typeset of a slow machine keeps the transaction of Insert Formula open, and the formula is
-  // selected without an offset once it ends
   await ana.evaluate(`(window.MathJax ??= { typesetPromise: async () => {} }, true)`);
   await closeGate(ana);
   await front(ana);
@@ -687,7 +611,6 @@ test('a page that reads its source again keeps a remote edit that waits for its 
   clean(ben);
 });
 
-// the elements that page reads as selected by the first other page, by their text
 const theirs = (page) => page.evaluate(`(${C}.resolved()[0]?.selected ?? []).map((e) => e.textContent.trim())`);
 
 test('after a page deletes an element and selects the next one, the other page reads the selection', { timeout: 240_000 }, async (t) => {
@@ -704,7 +627,6 @@ test('after a page deletes an element and selects the next one, the other page r
   clean(ben);
 });
 
-// each element of list on page by its slide, its place among its siblings, and its text
 const where = (page, list) => page.evaluate(`(${list}).map((e) => [[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.contains(e)), [...e.parentElement.children].indexOf(e), e.textContent.trim()])`);
 
 test('an element that a page makes itself is read by the other page once its operation is acknowledged', { timeout: 300_000 }, async (t) => {
@@ -713,13 +635,11 @@ test('an element that a page makes itself is read by the other page once its ope
   await show(ben, 'Two');
   await select(ana, el(1, 'li:nth-child(2)'));
   await until(async () => (await theirs(ben)).join() === 'Beta', 'the selection of Beta on the page of Ben');
-  // the copy of Duplicate is selected
   await ana.evaluate(`${C}.app.commands.run('edit.duplicate')`);
   await converge(server, [ana, ben]);
   const copy = await where(ana, `${C}.app.selection.items`);
   assert.deepEqual(copy, [[1, 2, 'Beta']], 'the copy is selected on the page of Ana');
   await until(async () => JSON.stringify(await where(ben, `${C}.resolved()[0]?.selected ?? []`)) === JSON.stringify(copy), 'the copy selected on the page of Ben', 5000);
-  // a new text box holds the caret, which is read on the other page once the box has text
   await ana.evaluate(`${C}.app.commands.run('insert.text')`);
   await until(() => ana.evaluate(`!!${P}.caretHost`), 'the caret of Ana in the new text box');
   await typeKeys(ana, 'Hi');
@@ -731,8 +651,6 @@ test('an element that a page makes itself is read by the other page once its ope
   clean(ben);
 });
 
-// the polls of events of page wait while a gate is closed, and window.__waiting counts the polls
-// that wait
 const gatePolls = (page) => page.evaluate(`(() => {
   const f = window.fetch;
   window.__gate = null;
@@ -747,7 +665,6 @@ const gatePolls = (page) => page.evaluate(`(() => {
 })()`);
 const closePolls = (page) => page.evaluate(`(window.__gate = new Promise((done) => (window.__open = done)), true)`);
 const openPolls = (page) => page.evaluate(`(window.__gate = null, window.__open(), true)`);
-// the last state that page sent, once the edit command has it
 const posted = (page) => until(() => page.evaluate(`(() => { const c = ${C}; return !c.presenceBusy && !c.presenceDue && ${P}.sent; })()`), 'the state of the page at the edit command');
 
 test('a state of a version ahead of the page is read once an acknowledgment of the page reaches it', { timeout: 300_000 }, async (t) => {
@@ -757,8 +674,6 @@ test('a state of a version ahead of the page is read once an acknowledgment of t
   await gatePolls(ben);
   await select(ana, el(1, 'li:nth-child(2)'));
   await until(async () => (await theirs(ben)).join() === 'Beta', 'the selection of Beta on the page of Ben');
-  // the poll of Ben at the edit command is answered at a change of his presence, and the next one
-  // waits, hence the broadcast of his operation waits with the next state of Ana
   await closePolls(ben);
   await caretAtEnd(ben, el(0, 'p'));
   await until(() => ben.evaluate('window.__waiting > 0'), 'a poll of Ben to wait');
@@ -782,7 +697,6 @@ test('a page that joins while another person types reads the selection of a page
   await gatePolls(ana);
   await select(ana, el(1, 'h2'));
   await until(async () => (await ben.evaluate(`(${C}.resolved()[0]?.selected ?? []).map((e) => e.localName).join()`)) === 'h2', 'the selection of Ana on the page of Ben');
-  // the next answer to Ana holds the join of Cy and the operations of Ben that came before it
   await closePolls(ana);
   await caretAtEnd(ben, el(1, 'li:nth-child(2)'));
   await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
@@ -798,13 +712,10 @@ test('a page that joins while another person types reads the selection of a page
   clean(cy);
 });
 
-// a writer that is not a page, which joins the session of server and sends operations itself
 async function writer(server) {
   const { port, base } = server.edit;
   const hello = (await post(port, `${base}.session/hello`, { name: 'Writer', person: 'writer-1' })).json();
   const w = { v: hello.v, seq: 0 };
-  // count operations of one character b each, at the end of the text of Beta, which do not move the
-  // offsets of the elements of the deck
   w.write = async (count) => {
     for (let i = 0; i < count; i++) {
       const at = server.read().indexOf('</li>\n  </ul>');
@@ -817,13 +728,11 @@ async function writer(server) {
   return w;
 }
 
-// the texts of the elements that the person of name selects on page, without the b of the writer
 const selectedOf = (page, name) => page.evaluate(`(${C}.resolved().find((r) => r.name === ${JSON.stringify(name)})?.selected ?? []).map((e) => e.textContent.trim().replace(/b+$/, ''))`);
 
 test('a state older than a resync with the whole text keeps its elements, and a state of the resync is read after later operations', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence a poll of a page waits at its gate soon
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
@@ -836,7 +745,6 @@ test('a state older than a resync with the whole text keeps its elements, and a 
   await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Beta', 'the selection of Beta on the page of Ben');
   await closePolls(ben);
   await until(() => ben.evaluate('window.__waiting > 0'), 'a poll of Ben to wait');
-  // the log of the edit command keeps 1000 operations, hence it does not reach back to Ben
   const w = await writer(server);
   const first = await w.write(1010);
   await until(async () => (await ana.evaluate(`${C}.base.v`)) === first, 'the operations on the page of Ana');
@@ -849,7 +757,6 @@ test('a state older than a resync with the whole text keeps its elements, and a 
   await openPolls(ben);
   await until(() => ben.evaluate(`(() => { const o = [...${P}.others.values()].find((o) => o.state.v === ${JSON.stringify(first)}); return ${C}.base.v === ${JSON.stringify(resync)} && !!o && !o.ahead; })()`), 'the state of Ana read again after the resync of Ben');
   assert.deepEqual(await selectedOf(ben, 'Ana'), ['Beta']);
-  // a state of Ana at the version of the resync, read by Ben after one more operation
   await closePolls(ana);
   await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
   const after = await w.write(1);
@@ -865,7 +772,6 @@ test('a state older than a resync with the whole text keeps its elements, and a 
 test('a page that the edit command drops for silence and takes back sends its state again', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a page without a poll for 3 s is dropped, and a poll is answered within a second
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_GONE_MS: '3000' } });
   const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
@@ -875,7 +781,6 @@ test('a page that the edit command drops for silence and takes back sends its st
   await gatePolls(ana);
   await select(ana, el(1, 'li:nth-child(2)'));
   await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Beta', 'the selection of Beta on the page of Ben');
-  // a frozen tab, whose poll waits without an error
   await closePolls(ana);
   await until(() => ben.evaluate(`!${C}.people.some((p) => p.name === 'Ana')`), 'the edit command to drop Ana');
   await openPolls(ana);
@@ -888,7 +793,6 @@ test('a page that the edit command drops for silence and takes back sends its st
 test('a selected element whose start tag another change renames is not read as the new element', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence a poll of a page waits at its gate soon
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
@@ -899,7 +803,6 @@ test('a selected element whose start tag another change renames is not read as t
   await select(ana, el(1, 'p'));
   const read = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName)`;
   await until(async () => (await ben.evaluate(read)).join() === 'p', 'the selection of the paragraph on the page of Ben');
-  // Ana does not hear of the change, hence Ben reads her last state again after it
   await closePolls(ana);
   await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
   writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<h3>Second slide</h3>'));
@@ -947,8 +850,6 @@ test('a person idle for 30 s does not hold the element of the caret on a page wh
   const p = el(1, 'p');
   await caretAtEnd(ana, p);
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph held on the page of Ben');
-  // the clock of Ben goes back 9 min, e.g. at a correction of the time of the machine, and 30 s pass
-  // without typing
   await ben.evaluate(`(() => { const real = Date.now; Date.now = () => real.call(Date) - 540_000; return true; })()`);
   await later(ben, 30_000);
   assert.equal(await ben.evaluate(HOLDER(p)), null);
@@ -971,14 +872,11 @@ test('a listener of the client that throws is reported, and the page goes on pol
   clean(ben, [/a part failed/]);
 });
 
-// the timers of presence on page that are set: the throttle of a state, the rest of the caret, and
-// the end of typing
 const TIMERS = `(() => { const p = ${P}; return [p.timer, p.restTimer, p.typingTimer].filter((id) => id !== 0).length; })()`;
 
 test('after Leave Session and after the end of the session, no element stays held, and no timer of presence runs', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
@@ -991,7 +889,6 @@ test('after Leave Session and after the end of the session, no element stays hel
   await until(() => server.read().includes('<p>Second slidex</p>'), 'the letter of Ana in index.html');
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana' && (await cy.evaluate(HOLDER(p))) === 'Ana', 'the paragraph held on the pages of Ben and Cy');
   await front(ben);
-  // Ben leaves while a poll of his is in flight, and its answer, which his client drops, arrives after
   await ben.waitFor(`(() => {
     if (__net.log.findLast((l) => l.url.includes('/.session/events'))?.status !== null) return false;
     window.__before = window.__answers;
@@ -1002,12 +899,10 @@ test('after Leave Session and after the end of the session, no element stays hel
   await until(() => ben.evaluate(`${C}.connection === 'ended'`), 'Ben to leave');
   await ben.waitFor(`window.__answers > window.__before`);
   assert.deepEqual(await ben.evaluate(`({ held: ${HOLDER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { held: null, resolved: 0, timers: 0 });
-  // a caret and keys after the end set no timer
   await ben.evaluate(`document.querySelectorAll('dialog[open]').forEach((d) => d.close())`);
   await caretAtEnd(ben, el(1, 'h2'));
   await typeKeys(ben, 'y');
   assert.equal(await ben.evaluate(TIMERS), 0);
-  // a signal ends a process at once on Windows, where a page is thus not told the end of the session
   if (process.platform !== 'win32') {
     server.edit.child.kill('SIGTERM');
     for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
@@ -1017,8 +912,6 @@ test('after Leave Session and after the end of the session, no element stays hel
     assert.equal(await ana.evaluate(TIMERS), 0);
   }
   clean(ana);
-  // a poll that Ben sent just before his bye may reach the edit command after it, and is then
-  // answered 404, but no poll is sent after it
   assert.equal(await ben.evaluate(`__net.count('/.session/events') - window.__polls`), 0, 'Ben polled after he left');
   clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
@@ -1026,7 +919,6 @@ test('after Leave Session and after the end of the session, no element stays hel
 
 test('unsent edits of the sender are taken out of its offsets', { timeout: 300_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
-  // the operations of Ana wait until window.__go
   await ana.evaluate(`(() => {
     const f = window.fetch;
     const gate = new Promise((done) => (window.__go = done));
@@ -1040,7 +932,6 @@ test('unsent edits of the sender are taken out of its offsets', { timeout: 300_0
   await show(ana, 'One');
   await caretAtEnd(ana, el(0, 'p'));
   await typeKeys(ana, ' with many more words');
-  // Ben changes slide One, which Ana applies over her unsent words
   await show(ben, 'One');
   await caretAtEnd(ben, el(0, 'h2'));
   await type(ben, ' x');
@@ -1086,7 +977,6 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben');
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
-  // Ana also retries by her own timer. her hello is held, hence she rejoins after Ben is read alone
   await ana.evaluate(`__net.rule('/.session/hello', 'hold')`);
   await until(() => ana.evaluate(`${C}.connection !== 'online'`), 'Ana offline');
   await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
@@ -1097,8 +987,6 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await ana.evaluate(`(__net.clear(), __net.release('/.session/hello'), ${C}.tryNow(), true)`);
   await ana.waitFor(ONLINE, 20_000);
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
-  // the requests to the edit command that stopped, the polls with the tokens of before, and the
-  // hello without a name, which the edit command refuses after a kill that lost the person
   const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
@@ -1109,8 +997,6 @@ test('after a restart, a state that waited while the edit command was down is se
   const { port } = server.edit;
   await show(ana, 'Two');
   await show(ben, 'Two');
-  // the presence requests of Ana wait while window.__hold is set, and the statuses of their answers
-  // are kept
   await ana.evaluate(`(() => {
     const f = window.fetch;
     window.__hold = null;
@@ -1131,7 +1017,6 @@ test('after a restart, a state that waited while the edit command was down is se
   await until(() => ana.evaluate('window.__holding === 1'), 'the state of Ana to wait');
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
-  // the state fails against the edit command that stopped, and it waits for the next one
   await ana.evaluate('(window.__release(), true)');
   await until(() => ana.evaluate(`window.__holding === 0 && !${C}.presenceBusy && ${C}.connection !== 'online'`), 'the state of Ana to fail, and Ana offline');
   await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
@@ -1156,7 +1041,6 @@ test('a page back online sends its state before the answer of its next poll', { 
   await until(async () => (await selectedOf(ben, 'Ana')).join() === 'One', 'the selection of Ana on the page of Ben');
   await ana.evaluate(`(__net.rule('/.session/', 'cut'), __net.drop('/.session/'), true)`);
   await ana.waitFor(`${C}.connection === 'offline'`);
-  // the first poll after the reconnect is held, as the edit command holds a poll without news
   await ana.evaluate(`(__net.clear(), __net.rule('/.session/events', 'hold', { times: 1 }), ${C}.tryNow(), true)`);
   await ana.waitFor(`${ONLINE} && __net.held.length === 1`);
   await select(ana, el(0, 'p'));
@@ -1166,8 +1050,6 @@ test('a page back online sends its state before the answer of its next poll', { 
   clean(ben);
 });
 
-// issue 123: one POST of the state of Ben fails with a 500 at the start of a show. Ben stays online
-// and does not change the state again, hence the client itself has to send the state again
 test('a state whose POST failed is sent again while the page stays online', { timeout: 300_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { script: NET });
   await ben.evaluate(`__net.rule('/.session/presence', 'answer', { status: 500, body: '{"error":"busy"}', times: 1 })`);
@@ -1187,7 +1069,6 @@ test('a person with two pages sees neither the caret nor the hold of the other p
   const { browser, server, pages: [ana, ben] } = await session(t);
   const person = await ana.evaluate(`${C}.person`);
   assert.ok(person, 'the page of Ana has a person id');
-  // a second tab of Ana reads the person id of the first tab from the localStorage of the browser
   const again = await open(browser, sessionUrl(server.edit), { name: 'Ana', script: `try { localStorage.setItem('beeson-session-person', ${JSON.stringify(person)}); } catch {}` });
   await converge(server, [ana, ben, again]);
   assert.equal(await again.evaluate(`${C}.person`), person, 'the second tab is the same person');

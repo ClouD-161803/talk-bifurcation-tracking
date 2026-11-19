@@ -1,6 +1,3 @@
-// the tokenizer of the editor: every byte of a file is in one token, raw text runs to the end tag
-// of its element, and the attributes and the classes of a start tag are read
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { classesOf, tokenize } from '../src/editor/tokens.ts';
@@ -48,7 +45,6 @@ test('a < that does not open markup is text', () => {
 test('an attribute value is decoded as the parser reads it, without the DOM', async () => {
   const { decodeAttr } = await import('../src/editor/tokens.ts');
   assert.equal(decodeAttr('a &amp; b &lt;c&gt; &quot;d&quot; &#39;e&#x27; &nbsp;'), 'a & b <c> "d" \'e\'  ');
-  // a legacy reference without a semicolon is decoded unless a letter, a digit, or = follows
   assert.equal(decodeAttr('a&amp b'), 'a& b');
   assert.equal(decodeAttr('?x=1&ampy=2'), '?x=1&ampy=2');
   assert.equal(decodeAttr('&unknown; &#0; &#x110000;'), '&unknown; � �');

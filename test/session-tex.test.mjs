@@ -1,8 +1,3 @@
-// tests of TeX in a session of the edit command, each on a copy of test/pages/tex-sheets with two
-// pages. the edit command writes tex.js for a citation added or deleted on a page and for a change
-// of preamble.tex on disk, and every page draws the deck with the new tex.js, a guest of the relay
-// among them. a start, a join, and a talk folder without the sources leave every file as it is
-
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -24,17 +19,10 @@ const DECK = readFileSync(`${DIR}/index.html`, 'utf8').replaceAll('../../../them
 const SOURCES = ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty'];
 const SECRET = 'a secret of the relay of the tests';
 const LIST = '.beeson-cite';
-// each citation of the deck as key=number, with ! after a paper that tex.js does not have
 const NUMBERS = `[...document.querySelectorAll('.reveal .slides cite[data-key]')].map((c) => c.dataset.key + '=' + (c.dataset.n ?? '') + (c.hasAttribute('data-missing') ? '!' : '')).join(' ')`;
-// the formula of \Q drawn in red, as MathJax draws a macro that it does not know
 const RED = `!!document.querySelector('tr[data-case="a macro that is not defined yet"]').querySelector('[fill="red"], [data-mjx-error]')`;
 const HEAD = `document.querySelector('.reveal .slides p.theorem[data-kind="conjecture"]').dataset.head`;
-// the edit command answers 404 for a package of the preamble that is not in the talk folder, e.g.
-// physics.sty
 const MISSING = [/404/];
-// a load of tex.js fails when the file is made shorter between the read of its size and the read of
-// its bytes. the edit command then closes the connection, and the page draws tex.js at its next
-// answer
 const CUT = /^Failed to load resource: net::ERR_(CONTENT_LENGTH_MISMATCH|EMPTY_RESPONSE) \S+\/tex\.js$/;
 
 let browser;
@@ -43,10 +31,6 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// a talk folder with the deck of test/pages/tex-sheets, the files of names next to it as change
-// returns them, and copies of theme/ and brand/, with the edit command started on it with the
-// variables of env. snapshot() returns the text and the modification time of index.html and of
-// each file of names
 async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {}, deck = DECK } = {}) {
   const folder = talkFolder(t, deck);
   for (const name of names) writeFileSync(join(folder.talk, name), change(name, readFileSync(join(DIR, name), 'utf8')));
@@ -68,7 +52,6 @@ async function texTalk(t, { names = SOURCES, change = (name, text) => text, env 
   return server;
 }
 
-// a page of the editor for each of urls, returned once every page reads as index.html
 async function pages(t, server, urls = [sessionUrl(server.edit), sessionUrl(server.edit)]) {
   const list = [];
   for (const [i, url] of urls.entries()) list.push(await open(browser, url, { name: ['Ann', 'Ben'][i] }));
@@ -77,8 +60,6 @@ async function pages(t, server, urls = [sessionUrl(server.edit), sessionUrl(serv
   return list;
 }
 
-// waits until each page of list reads expression as true. each page is brought to the front in
-// turn, since a page behind does not draw frames. a timeout names the page and what it reads
 async function onEvery(list, expression, timeout = 30_000) {
   for (const [i, page] of list.entries()) {
     await front(page);
@@ -88,8 +69,6 @@ async function onEvery(list, expression, timeout = 30_000) {
   }
 }
 
-// the paper of key cited at the end of the text element of expression, with \cite{ typed and the
-// paper chosen in the list by query
 async function cite(page, expression, query, key) {
   await front(page);
   await caretAtEnd(page, expression);
@@ -148,7 +127,6 @@ test('a citation of a paper of tex.js put into a text element by one page is num
   await show(ben, 'Citations');
   await cite(ann, `document.querySelector('.reveal section.present h2')`, 'gomez', 'gomez2004');
   await converge(server, [ann, ben]);
-  // the heading cites first, hence gomez2004 is numbered 1 and koon2000 2
   await onEvery([ann, ben], `${NUMBERS} === 'gomez2004=1 koon2000=2 gomez2004=1'`);
   assert.equal(server.read('tex.js'), tex, 'tex.js is written for a paper that it has');
   clean(ann, MISSING);
@@ -169,8 +147,6 @@ test('a citation typed with its closing brace in a session is taken back by two 
   await ann.waitFor(`!document.querySelector('${LIST}')`);
   await converge(server, [ann, ben]);
   assert.match(server.read(), /transfer<cite data-key="gomez2004"><\/cite><\/p>/);
-  // the first undo takes back the citation, and the second one the typed text without its brace,
-  // which the list took out
   await ann.evaluate('window.BeesonEditor.undo().then(() => true)');
   await ann.evaluate('window.BeesonEditor.undo().then(() => true)');
   await converge(server, [ann, ben]);
@@ -230,8 +206,6 @@ const CHANGED = 'Another person changed the formulas of this text. Copy your TeX
 const FIELD = `JSON.stringify({ open: !!document.querySelector('.beeson-math'), tex: document.querySelector('.beeson-math textarea')?.value ?? null, message: document.querySelector('.beeson-math .error')?.textContent ?? null })`;
 const cellOf = (server) => server.read().match(/<tr data-case="a macro that is not defined yet"><td>(.*?)<\/td><\/tr>/)[1];
 
-// a session of two pages on a deck whose cell of \Q holds cell, with the Edit Formula field of the
-// formula at index of the cell open on the first page, and ^n typed into it
 async function fieldOpen(t, cell, index) {
   const server = await texTalk(t, { deck: DECK.replace('<td>\\(\\Q\\)</td>', `<td>${cell}</td>`) });
   const [ann, ben] = await pages(t, server);
@@ -251,7 +225,6 @@ async function fieldOpen(t, cell, index) {
   return { server, ann, ben };
 }
 
-// an operation of a third person, who replaces from with to in the text of index.html
 async function other(server, from, to) {
   const { port, base } = server.edit;
   const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
@@ -261,7 +234,6 @@ async function other(server, from, to) {
   assert.equal(op.ok, true, JSON.stringify(op));
 }
 
-// Apply of the field of ann, refused with the message of a formula that another person changed
 async function refused(server, ann, ben, cell, tex) {
   await front(ann);
   await ann.evaluate(`document.querySelector('.beeson-math textarea').focus(), true`);
@@ -354,8 +326,6 @@ test('a tex.js replaced from outside, as npm run tex writes it, draws its macros
   clean(ben, MISSING);
 });
 
-// npm run tex writes tex.js in place, hence a page may read it cut off between two writes. the cut
-// tex.js is held on disk here until the page has read it
 test('a tex.js read cut off while a program writes it is not run, and the page draws the whole tex.js once it is written', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
@@ -379,14 +349,12 @@ test('a page that stays open across a kill and a start of the edit command draws
   const add = (name) => server.write('tex.js', server.read('tex.js').replace('  "macros": {\n', `  "macros": {\n    "${name}": "\\\\mathbb{${name}}",\n`));
   add('Qa');
   await page.waitFor(`window.beesonTex.macros.Qa === '\\\\mathbb{Qa}'`);
-  // a mark that a load of the page would take away
   await page.evaluate('(window.__kept = true)');
   await goOffline(page);
   const { port } = server.edit;
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   server.edit = await startEdit(server.talk, { port, env: { XDG_CONFIG_HOME: server.config, APPDATA: server.config } });
-  // the count of the new edit command, read by a person that the test adds, before and after a change
   const hello = (await post(port, `${server.edit.base}.session/hello`, { name: 'Probe' })).json();
   add('Qb');
   await until(async () => (await raw(port, 'GET', `${server.edit.base}.session/events?token=${hello.token}&since=${hello.v}`)).json().tex !== hello.tex, 'the change of tex.js counted by the new edit command', 60_000);
@@ -400,12 +368,10 @@ test('a page that stays open across a kill and a start of the edit command draws
 
 test('a page shows that tex.js cannot be written on the host machine, until a write succeeds', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
-  // a folder in place of tex.js, which a rename does not replace on any system
   rmSync(join(server.talk, 'tex.js'));
   mkdirSync(join(server.talk, 'tex.js'));
   const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
   const { port, base } = server.edit;
-  // a citation of a paper that tex.js does not have, sent by another page
   const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
   const at = bo.text.indexOf('low-energy transfer</p>') + 'low-energy transfer'.length;
   const op = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: '<cite data-key="szebehely1967"></cite>' }] })).json();
@@ -419,9 +385,7 @@ test('a page shows that tex.js cannot be written on the host machine, until a wr
 });
 
 test('a page whose fetch of a changed tex.js fails fetches it again, and draws it', { timeout: 300_000 }, async (t) => {
-  // the polls are answered every second, as they are when something changes
   const server = await texTalk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
-  // window.__texFail of the fetches of tex.js fail, as they do when the page is offline
   const script = `{
     window.__texFetches = 0;
     window.__texFail = 0;
@@ -442,7 +406,6 @@ test('a page whose fetch of a changed tex.js fails fetches it again, and draws i
   t.after(() => Promise.all([ann.close(), ben.close()]));
   await converge(server, [ann, ben]);
   await onEvery([ann, ben], RED);
-  // the fetch of a page that joins, which draws tex.js once
   await ben.waitFor('window.__texFetches === 1');
   await ben.evaluate('(window.__texFail = 1)');
   server.write('tex.js', server.read('tex.js').replace('  "macros": {\n', '  "macros": {\n    "Q": "\\\\mathbb{Q}",\n'));
@@ -454,7 +417,6 @@ test('a page whose fetch of a changed tex.js fails fetches it again, and draws i
 });
 
 test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {
-  // a tex.js that the sources would not give, which a derivation at the start would write again
   const server = await texTalk(t, { change: (name, text) => (name === 'tex.js' ? text.replace('    "half": "\\\\frac{1}{2}",\n', '') : text) });
   assert.notEqual(server.read('tex.js'), deckTex(server.file).text);
   const [ann, ben] = await pages(t, server);
@@ -468,7 +430,6 @@ test('a start of the edit command and a join of two pages do not write any file 
 test('tex.js is not written in a talk folder without preamble.tex and references.bib', { timeout: 180_000 }, async (t) => {
   const server = await texTalk(t, { names: ['tex.js'] });
   const [ann, ben] = await pages(t, server);
-  // an agent cites a paper that tex.js does not have
   server.write('index.html', server.read().replace('low-energy transfer</p>', 'low-energy transfer<cite data-key="szebehely1967"></cite></p>'));
   await converge(server, [ann, ben]);
   await show(ann, 'Citations');
@@ -481,12 +442,8 @@ test('tex.js is not written in a talk folder without preamble.tex and references
   clean(ben, MISSING);
 });
 
-// the list of Insert > Citation… opened at the end of the paragraph n of the slide Citations, with
-// query typed into it
 async function search(page, n, query) {
   await show(page, 'Citations');
-  // the caret is put again until the paragraph takes it, since a page that held it a moment ago may
-  // still hold it on this page
   await page.waitFor(`(() => {
     const host = document.querySelector('.reveal section.present p:nth-of-type(${n})');
     host?.focus();
@@ -518,8 +475,6 @@ test('a paper added to references.bib on disk is found by a new search on a page
   assert.equal(shared.status, 200, shared.text);
   const list = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
   const tex = server.read('tex.js');
-  // each page searches in a paragraph of its own, since the caret of a page in a paragraph holds it,
-  // which takes the caret away from the other page
   for (const [i, page] of list.entries()) {
     await search(page, 3 - i, 'conley');
     await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify('No entry of references.bib matches conley. Paste the BibTeX of the paper to add it.')}`);
@@ -529,7 +484,6 @@ test('a paper added to references.bib on disk is found by a new search on a page
   server.write('references.bib', `${server.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits in the restricted three-body problem},\n  year = {1968},\n}\n`);
   for (const [i, page] of list.entries()) {
     await search(page, 3 - i, 'conley');
-    // the search is typed again until the list finds the paper, as a person would
     await page.waitFor(`(() => {
       document.querySelector('${LIST} input').dispatchEvent(new Event('input', { bubbles: true }));
       return !!document.querySelector('${LIST} li[data-key="conley1968"]');
@@ -544,14 +498,12 @@ test('a paper added to references.bib on disk is found by a new search on a page
 
 const SHEET = 'dialog.beeson-edit-tex[open]';
 
-// the sheet of the File menu with id opened on page, once its sources are read
 async function sheet(page, id) {
   await front(page);
   await page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${JSON.stringify(id)})).then(() => true)`);
   await page.waitFor(`!!document.querySelector('${SHEET}:not([aria-busy])')`);
 }
 
-// text typed into the source of the open Preamble sheet of page, at its end or in place of find
 async function typeInto(page, text, find = null) {
   await front(page);
   await page.evaluate(`(() => {
@@ -564,7 +516,6 @@ async function typeInto(page, text, find = null) {
   await type(page, text);
 }
 
-// the saves of the sheets of page held until release() is called, as on a slow link
 async function holdSaves(page) {
   await page.evaluate(`(() => {
     const fetch = (window.__fetch ??= window.fetch);
@@ -602,7 +553,6 @@ test('File > Preamble… of a guest of the relay and of the host saves preamble.
   await press(host, 'Escape');
   await until(() => server.read('tex.js').includes('"conjecture"'), 'the kind conjecture in tex.js', 30_000);
   await onEvery([host, guest], `${HEAD} === 'Conjecture 2.'`);
-  // the sheet of the guest, which did not have edits, reads the text of the host
   await guest.waitFor(`document.querySelector('${SHEET} textarea').value.includes('{Conjecture}')`, 30_000);
   assert.equal(await guest.evaluate(`document.querySelector('${SHEET} .note').textContent`), '');
   clean(host, MISSING);
@@ -615,7 +565,6 @@ test('a save of a sheet on a text that another person saved since is refused, me
   const preamble = server.read('preamble.tex');
   await sheet(ann, 'file.preamble');
   await sheet(ben, 'file.preamble');
-  // the edits of Ben apart from those of Ann are merged into her text
   const held = await holdSaves(ben);
   await typeInto(ben, '\\boldsymbol{#1}\\,', '\\boldsymbol{#1}');
   await until(() => held.count(), 'the held save of Ben', 30_000);
@@ -625,7 +574,6 @@ test('a save of a sheet on a text that another person saved since is refused, me
   await until(() => server.read('preamble.tex').includes('\\boldsymbol{#1}\\,'), 'the merged save of Ben', 30_000);
   assert.equal(server.read('preamble.tex'), `${preamble.replace('\\boldsymbol{#1}', '\\boldsymbol{#1}\\,')}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
   await ben.waitFor(`document.querySelector('${SHEET} .note').textContent === 'Someone else saved preamble.tex since you read it, and your edits are merged into their text.'`, 30_000);
-  // the edits of Ben that clash with those of Ann are kept in his sheet, and are not saved until he chooses
   await ann.waitFor(`document.querySelector('${SHEET} textarea').value.includes('\\\\,')`, 30_000);
   const again = await holdSaves(ben);
   await typeInto(ben, '\\newcommand{\\R}{\\mathbb{R}}\n');
@@ -642,7 +590,6 @@ test('a save of a sheet on a text that another person saved since is refused, me
   await until(() => server.read('preamble.tex').includes('\\R'), 'the text of Ben saved over the text of Ann', 30_000);
   assert.ok(!server.read('preamble.tex').includes('\\C'));
   await ben.waitFor(`document.querySelector('${SHEET} .note').textContent === ''`, 30_000);
-  // the refused saves of Ben are answered with 409
   clean(ann, MISSING);
   clean(ben, [...MISSING, /409 \(Conflict\)/]);
 });
@@ -696,7 +643,6 @@ test('a BibTeX entry pasted into the list of Insert > Citation… in a session i
 
 test('the rows of the File menu in a session fit the menu on a phone of 390 px and on a screen of 1440 px, also with wider letters', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
-  // the system font of Linux and of Android is wider than the one of a Mac
   const wide = '.beeson-edit-menu { letter-spacing: 1px; }';
   for (const [name, width, height, mobile, style] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false], ['Cy', 390, 844, true, wide], ['Dee', 320, 700, true, wide]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
@@ -707,7 +653,6 @@ test('the rows of the File menu in a session fit the menu on a phone of 390 px a
     for (const id of ['file.preamble', 'file.bibliography']) assert.deepEqual({ label: items[id]?.label, disabled: items[id]?.disabled }, { label: id === 'file.preamble' ? 'Preamble…' : 'Bibliography…', disabled: false });
     for (const [id, item] of Object.entries(items)) {
       assert.ok(item.scroll <= item.client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
-      // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
       assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     }
     clean(page, MISSING);
@@ -729,7 +674,6 @@ test('a slide pasted in a session with macros that preamble.tex does not have op
     Promise.resolve(window.BeesonEditor.exec('slide.paste', ${JSON.stringify(copied)})).then(() => { window.__pasted = true; }, (e) => { window.__pasted = String(e); });
     return true;
   })()`);
-  // the slide is pasted without its files, since only its macros are tested here
   await ann.waitFor(`!!document.querySelector('dialog.deck-folder[open]')`, 30_000);
   await ann.evaluate(`[...document.querySelectorAll('dialog.deck-folder[open] button')].find((b) => b.textContent === 'Paste Without Files').click(), true`);
   await ann.waitFor(`!!document.querySelector('dialog.paste-macros:not([hidden])') || window.__pasted !== false`, 30_000);

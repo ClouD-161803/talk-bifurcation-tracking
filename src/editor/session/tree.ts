@@ -1,14 +1,8 @@
-// the tree of source.ts kept in step with an apply of the session, so that a change inside one
-// element is read again without a parse of the whole file. every range of the tree is an offset
-// into source.text, hence the ranges after a change are moved by the change of its length
-
 import type { Pairing } from '../render.ts';
 import type { Source, SrcEl, SrcNode, SrcText } from '../source.ts';
 import type { Range, Token } from '../tokens.ts';
 import { contentRange, decode, elementRange, fragmentRoot, isTextElement, parseFragment, RAW_TEXT, segmentsOf, shared, tokenize, VOID } from './host.ts';
 
-// the part in which two texts differ: a and b are equal before start, and a after endA is equal
-// to b after endB
 export type Window = { start: number; endA: number; endB: number };
 
 export function windowOf(a: string, b: string): Window | null {
@@ -23,8 +17,6 @@ const move = (r: Range | null, d: number): void => {
   r.end += d;
 };
 
-// every range of node and of the nodes inside it moved by d. the attributes of a start tag are
-// those of its token, hence they are moved once, through attrs
 function shiftNode(node: SrcNode, d: number): void {
   if (node.kind === 'element') {
     move(node.open, d);
@@ -37,8 +29,6 @@ function shiftNode(node: SrcNode, d: number): void {
   if (node.kind === 'text') for (const s of node.segments) move(s.raw, d);
 }
 
-// the ranges after the child at index of parent moved by d: those of the children after it, of
-// the end tag of parent, and so on up to div.slides
 function shiftAfter(parent: SrcEl, index: number, d: number): void {
   if (!d) return;
   let p: SrcEl | null = parent;
@@ -59,14 +49,8 @@ function adopt(el: SrcEl, source: Source): void {
 
 const FOREIGN = new Set(['svg', 'math']);
 
-// how the elements in bytes, the bytes of el, are closed. 'closed' when each is closed by its end
-// tag inside them, apart from el when its end tag is left out. 'open' when one is left open, or is
-// closed by the end tag of an element around it, since the parser of the whole file may carry it
-// over the elements after el, where a parse of bytes alone closes it at their end. 'out' when an end
-// tag closes an element around el, i.e. the change reaches past el and is read at its parent
 export function closing(bytes: string, el: SrcEl): 'closed' | 'open' | 'out' {
   const open: string[] = [];
-  // the parser closes a self-closing tag only in SVG and MathML, and ignores its slash elsewhere
   let outer = false;
   for (let e = el.parent; e && !outer; e = e.parent) outer = FOREIGN.has(e.tag.toLowerCase());
   for (const t of tokenize(bytes)) {
@@ -81,9 +65,6 @@ export function closing(bytes: string, el: SrcEl): 'closed' | 'open' | 'out' {
   return open.length === 0 || (open.length === 1 && !el.close) ? 'closed' : 'open';
 }
 
-// el read again from text, a text that differs from source.text only inside el, as a new node in
-// its place, with the ranges after it moved and source.text set to text. null, with nothing
-// changed, when the new bytes are not one element of the tag of el, or when keep refuses it
 export function graft(source: Source, el: SrcEl, text: string, keep: (root: SrcEl) => boolean = () => true): SrcEl | null {
   const r = elementRange(el);
   const parent = el.parent;
@@ -114,9 +95,6 @@ export function graft(source: Source, el: SrcEl, text: string, keep: (root: SrcE
 
 type StartTag = Extract<Token, { type: 'start' }>;
 
-// the start tag of el read from text, a text that differs from source.text only inside this tag,
-// at offsets from the start of the tag. null when the new bytes are not one start tag of the same
-// name
 export function startTag(source: Source, el: SrcEl, text: string): StartTag | null {
   const open = el.open;
   if (!open || !el.parent) return null;
@@ -126,8 +104,6 @@ export function startTag(source: Source, el: SrcEl, text: string): StartTag | nu
   return tokens.length === 1 && t.type === 'start' && t.name === el.tag.toLowerCase() && t.end === bytes.length ? t : null;
 }
 
-// the start tag of el read again from text as startTag() reads it, with the ranges after it moved.
-// false, with nothing changed, when startTag() is null. t is this tag when the caller has read it
 export function retag(source: Source, el: SrcEl, text: string, t = startTag(source, el, text)): boolean {
   const open = el.open;
   if (!t || !open || !el.parent) return false;
@@ -143,26 +119,20 @@ export function retag(source: Source, el: SrcEl, text: string, t = startTag(sour
   return true;
 }
 
-// a newline right after the start tag of these elements is dropped by the parser
-const PRE_LIKE = new Set(['pre', 'textarea', 'listing']);
+const NEWLINE_DROPPED_AFTER_START = new Set(['pre', 'textarea', 'listing']);
 
-// the text node at index of parent as the parser reads it from text, a text that differs from
-// source.text only inside the bytes of this node: its decoded text, with each character reference
-// decoded as at the parse of the file, or null when the change is a tag or a node made empty
 export function decodedIn(parent: SrcEl, index: number, text: string, d: number): string | null {
   const k = parent.children[index];
   if (k?.kind !== 'text' || RAW_TEXT.has(parent.tag)) return null;
   const raw = text.slice(k.range.start, k.range.end + d);
   if (raw.includes('<')) return null;
-  const lead = index === 0 && PRE_LIKE.has(parent.tag) ? (/^\r?\n/.exec(raw)?.[0].length ?? 0) : 0;
+  const lead = index === 0 && NEWLINE_DROPPED_AFTER_START.has(parent.tag) ? (/^\r?\n/.exec(raw)?.[0].length ?? 0) : 0;
   if (lead !== k.lead) return null;
   const plain = raw.slice(lead).replace(/\r\n?/g, '\n');
   const decoded = plain.includes('&') ? decode(plain) : plain;
   return decoded ? decoded : null;
 }
 
-// the text node at index of parent set to its bytes in text, whose decoded text decodedIn gave,
-// with the ranges after it moved and source.text set to text
 export function retext(source: Source, parent: SrcEl, index: number, text: string, decoded: string): void {
   const k = parent.children[index] as SrcText;
   const d = text.length - source.text.length;
@@ -174,8 +144,6 @@ export function retext(source: Source, parent: SrcEl, index: number, text: strin
   source.text = text;
 }
 
-// the text node of el, or of an element inside it, whose bytes hold [start, end), with its parent
-// and its index there
 export function textAt(el: SrcEl, start: number, end: number): { parent: SrcEl; index: number } | null {
   for (let i = 0; i < el.children.length; i++) {
     const c = el.children[i];
@@ -190,23 +158,17 @@ export function textAt(el: SrcEl, start: number, end: number): { parent: SrcEl; 
   return null;
 }
 
-// where a change of [start, end) of source.text falls: inside the content of a text element of the
-// pairing, inside a start tag, or among the children of an element, each with its element on the
-// page. a change outside the content of div.slides, or inside a script, is reloaded
 export type Spot =
   | { kind: 'text'; el: SrcEl; live: Element }
   | { kind: 'tag'; el: SrcEl; live: Element }
   | { kind: 'within'; el: SrcEl; live: Element }
   | { kind: 'reload' };
 
-// the element of the page paired with s among the children of live
 export function liveChild(pairing: Pairing, live: Element, s: SrcEl): Element | null {
   for (const c of live.children) if (pairing.elements.get(c) === s) return c;
   return null;
 }
 
-// whether [start, end) changes the text of a script or of another element whose text is raw, rather
-// than putting or taking the whole element
 function inRaw(el: SrcEl, start: number, end: number): boolean {
   for (const k of el.children) {
     if (k.kind !== 'element') continue;
@@ -236,7 +198,6 @@ export function locate(source: Source, pairing: Pairing, start: number, end: num
       if (!c || start < c.start || end > c.end) return { kind: 'within', el, live };
       const textEl = pairing.byLive.get(lk);
       if (textEl) return textEl.src === k ? { kind: 'text', el: k, live: lk } : { kind: 'within', el, live };
-      // a text element that could not be paired is replaced as a whole
       if (isTextElement(k)) return { kind: 'within', el, live };
       inner = { el: k, live: lk };
       break;
@@ -246,7 +207,6 @@ export function locate(source: Source, pairing: Pairing, start: number, end: num
   }
 }
 
-// the indexes from div.slides down to el, through the children of each element
 export function pathOf(el: SrcEl): number[] {
   const out: number[] = [];
   for (let e = el; e.parent; e = e.parent) out.unshift(e.parent.children.indexOf(e));

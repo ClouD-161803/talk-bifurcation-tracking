@@ -1,9 +1,3 @@
-// the values of theme/editor.js that the engine of session.ts, apply.ts, and tree.ts uses. the
-// engine is bundled into theme/editor-session.js, which may not hold a second copy of a module of
-// editor.js, with its own state, see build.mjs. hence port.ts passes these values to the engine,
-// whose entry.ts hands them over with take before the engine is installed, and the engine imports
-// them from here
-
 import type * as caret from './caret.ts';
 import type * as fragments from '../model/fragments.ts';
 import type * as history from '../history.ts';

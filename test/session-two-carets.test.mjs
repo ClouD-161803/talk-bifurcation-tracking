@@ -1,17 +1,3 @@
-// two and three people who type in one paragraph of a session in Chrome, on the edit command
-// started on a temporary talk folder: a word that an input method composes reaches the others only
-// once it is committed, and the keys, deletions, and pastes of the others during the composition,
-// at its caret or around it, are kept with the word at its point. the keys of two people that come
-// in one answer on both sides of an unread key of the person are kept with it, also after a long
-// paste, the same letter typed by both is kept twice, and the same replacement made by both is kept
-// once. an unread key stays whole beside a key of another person, and goes before an element that
-// another person puts around the word after it. a key inside a word stays inside the element that
-// another person puts around this word, whichever of the two the edit command hears first. two
-// people who take turns at one point each keep a run of their own. an undo next to a space that the
-// browser writes as &nbsp; removes only the typing of the person, and an undo of a word whose
-// trailing space another browser took away is refused. the keys of the person before a composition
-// that starts while the history is busy are kept
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
@@ -27,9 +13,7 @@ const para = (text) => text.match(/<p>[^\n]*<\/p>/g)[1];
 const loose = (text) => text.replaceAll('&nbsp;', ' ');
 const STEPS = ['n', 'ni', 'nih', 'niha', 'nihao'];
 
-// the caret of a page put into the paragraph, at offset of its first text node
 const caretAt = (page, offset) => page.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().collapse(q.firstChild, ${offset}); return document.activeElement === q; })()`);
-// every text that the paragraph of a page shows from now on, in window.__shown
 const record = (page) => page.evaluate(`(() => {
   const q = ${p};
   window.__shown = [q.textContent];
@@ -38,16 +22,8 @@ const record = (page) => page.evaluate(`(() => {
 })()`);
 const shown = (page) => page.evaluate('window.__shown');
 
-// the paragraph read without the keys of others, which must be the paragraph before the composition
 const without = (text, keys) => [...text].filter((c) => !keys.includes(c)).join('');
 
-/**
- * Ana composes nihao at the offset 6 of the paragraph and commits 你好, while each other page types
- * its key at each step. index.html and the text that Ana reads take every key before the next step,
- * and the state line of Ana says that her deck is saved, since nothing waits for the composition.
- * The paragraph of index.html at each step is returned in files, and each text that the page of
- * another person showed before the commit in views.
- */
 async function compose(server, ana, others) {
   const typed = others.map(() => '');
   const files = [];
@@ -71,7 +47,6 @@ async function compose(server, ana, others) {
   return { typed, files, views };
 }
 
-// index.html and the pages of the others did not hold the composing word before its commit
 function unseen({ files, views }) {
   for (const file of files) assert.equal(without(file, 'yz'), '<p>Second slide</p>', 'index.html does not hold the composing word');
   for (const text of views) assert.equal(without(text, 'yz'), 'Second slide', 'the page of another person does not show the composing word');
@@ -118,7 +93,6 @@ test('the letters of two people who take turns at one point each stay in a run o
   for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   assert.ok(await caretAt(ana, 6));
   assert.ok(await caretAt(ben, 6));
-  // each turn is read by both pages before the next one, hence no key meets an unread key
   for (const [page, keys] of [[ben, 'ab'], [ana, 'yz'], [ben, 'c'], [ana, 'w']]) {
     await typeKeys(page, keys);
     await converge(server, pages);
@@ -133,7 +107,6 @@ test('the keys of two other people that come in one answer on both sides of an u
   for (const page of pages) await show(page, 'Two');
   for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   assert.ok(await caretAt(ana, 6));
-  // a key of Ana typed after the client read the deck and before the apply of both keys reads it
   await ana.evaluate(`(() => {
     const port = window.BeesonEditor.session;
     const apply = port.apply;
@@ -147,7 +120,6 @@ test('the keys of two other people that come in one answer on both sides of an u
     };
     return true;
   })()`);
-  // the poll of Ana is held, hence both keys come in its next answer
   await ana.evaluate(`__net.rule('/.session/events', 'hold') && __net.drop('/.session/events')`);
   await until(() => ana.evaluate('__net.held.length > 0'), 'a held poll of Ana');
   assert.ok(await caretAt(ben, 0));
@@ -162,15 +134,8 @@ test('the keys of two other people that come in one answer on both sides of an u
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
 });
 
-// the selection of a page put on the offsets a to b of the first text node of the paragraph
 const selectIn = (page, a, b) => page.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().setBaseAndExtent(q.firstChild, ${a}, q.firstChild, ${b}); return document.activeElement === q; })()`);
 
-/**
- * Ana types key at her selection a to b inside the apply whose text holds marker, i.e. after her
- * client read the deck, while her poll is held until the change of the others is in index.html, so
- * that all of it comes in one answer. Ana then types more at her caret. Returns the paragraph that
- * the pages and index.html agree on.
- */
 async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], marker, ben, more = '' }) {
   const { server, pages } = await session(t, names, { edits, pages: [{ script: NET }] });
   const [ana, ...others] = pages;
@@ -206,7 +171,6 @@ async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], m
   return text;
 }
 
-// the history of page settled after a command of it
 const run = async (page, id) => {
   await front(page);
   await page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
@@ -218,7 +182,6 @@ test('an undo of typing next to a space that the browser rewrote as &nbsp; remov
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
   for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
-  // both carets after the space that follows the code element
   const after = (page) => page.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().collapse(q.lastChild, 1); return document.activeElement === q; })()`);
   assert.ok(await after(ana));
   await typeKeys(ana, 'ab cd');
@@ -259,8 +222,6 @@ test('an undo of a word whose trailing space the browser of another person took 
 
 const NOT_UNDONE = 'Your typing cannot be undone without changing the letters of another person.';
 const NOT_REDONE = 'Your typing cannot be redone without changing the letters of another person.';
-// the bubble of a page with its text and its box, and whether it is under or over the paragraph,
-// at its left
 const BUBBLE_AT = `(() => {
   const b = document.querySelector('.beeson-bubble');
   if (!b) return null;
@@ -312,8 +273,6 @@ test('a redo of typing that cannot be redone says why at the top of the window, 
   assert.equal(await ana.evaluate(BUBBLE), null, 'an undo that is made shows no bubble');
   let text = await converge(server, pages);
   assert.equal(para(text), '<p>Second slide</p>');
-  // the letters of Ben right after the point of the typing, which the redo cannot tell apart from
-  // the e of slide
   await caretAtEnd(ben, p);
   await typeKeys(ben, 'XY');
   await converge(server, pages);
@@ -328,7 +287,6 @@ test('a redo of typing that cannot be redone says why at the top of the window, 
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-// Mod+Z pressed on page until its history is empty, with the label of each undo
 async function undoAll(page) {
   const labels = [];
   for (let label = await page.evaluate(`${C}.app.history.undoLabel`); label !== null && labels.length < 12; label = await page.evaluate(`${C}.app.history.undoLabel`)) {
@@ -365,7 +323,6 @@ for (const [what, keys, made] of [
   });
 }
 
-// ' one' ends with the letter that ends "slide", and ' two' does not
 for (const word of [' two', ' one']) {
   test(`a redo of "${word}" right after its undo puts it back before the keys that another person typed right after it once the typing had ended`, { timeout: 270_000 }, async (t) => {
     const { server, pages } = await session(t, ['Ana', 'Ben']);
@@ -374,7 +331,6 @@ for (const word of [' two', ' one']) {
     for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await caretAtEnd(ana, p);
     await typeKeys(ana, word);
-    // Ana types in the heading, hence her typing in the paragraph ends
     await caretAtEnd(ana, el(1, 'h2'));
     await typeKeys(ana, ' x');
     await converge(server, pages);
@@ -415,7 +371,6 @@ test('an undo of typing followed by typing in another text element keeps a word 
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-// a session of two pages, 140 s, two shows, 30 s, and five converges, 100 s, at most
 test('an undo of an earlier entry of typing in a paragraph keeps a letter that another person removed and typed again after it', { timeout: 300_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>the dog runs</p>']] });
   const [ana, ben] = pages;
@@ -423,14 +378,12 @@ test('an undo of an earlier entry of typing in a paragraph keeps a letter that a
   for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   assert.ok(await caretAt(ana, 7));
   await typeKeys(ana, 's');
-  // Ana types in the heading and clicks at the end of the paragraph, which starts a new entry there
   await caretAtEnd(ana, el(1, 'h2'));
   await typeKeys(ana, ' x');
   await converge(server, pages);
   await clickText(ana, await ana.evaluate(`(() => { const r = ${p}.getBoundingClientRect(); return { x: r.right - 4, y: r.top + r.height / 2 }; })()`));
   await typeKeys(ana, ' fast');
   assert.equal(para(await converge(server, pages)), '<p>the dogs runs fast</p>');
-  // Ben types cats over dogs, and his c reaches Ana before the rest
   assert.ok(await selectIn(ben, 4, 8));
   await typeKeys(ben, 'c');
   await converge(server, pages);
@@ -492,7 +445,6 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
     await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     if (!(await page.evaluate(`${C}.app.notes.shown()`))) await page.evaluate(`${C}.app.commands.run('view.notes')`);
   }
-  // the trailing space of Ana, which Chrome of Ben takes away, as in the test of the paragraph above
   await caretAtEnd(ana, NOTES);
   await typeKeys(ana, ' foo ');
   await converge(server, pages);
@@ -510,14 +462,12 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-// the boxes of the bubble, of More, and of the title bar of a page
 const BOXES = `(() => {
   const box = (n) => { const r = n?.getBoundingClientRect(); return r && { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   return { bubble: box(document.querySelector('.beeson-bubble')), more: box([...document.querySelectorAll('.more-groups')].find((b) => b.getClientRects().length)), title: box(document.querySelector('.beeson-edit-titlebar')) };
 })()`;
 const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-// a session of two pages, 140 s, three converges, 60 s, and five waits, 75 s, at most
 for (const [width, height] of [[390, 844], [320, 568]]) {
   test(`on a phone ${width} px wide, the bubble of an undo of typing in hidden speaker notes that is refused leaves More and the title bar free`, { timeout: 330_000 }, async (t) => {
     const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', `  <p>Second slide</p>\n  ${ASIDE}`]], pages: [{ width, height, mobile: true }] });
@@ -537,7 +487,6 @@ for (const [width, height] of [[390, 844], [320, 568]]) {
     await front(ana);
     await ana.evaluate(`${C}.app.commands.run('view.notes')`);
     await ana.waitFor(`${NOTES}.getClientRects().length === 0`);
-    // the toolbar folds Undo into More at this width
     await tap(ana, '.more-groups');
     const undo = `([...document.querySelectorAll('[data-command="edit.undo"]')].find((b) => b.getClientRects().length))`;
     await ana.waitFor(`!!${undo}`);
@@ -551,11 +500,9 @@ for (const [width, height] of [[390, 844], [320, 568]]) {
   });
 }
 
-// One, a hidden slide Hid, and Two, on whose rows the navigator draws 1, no number, and 2
 const HIDDEN = [['<section>\n  <h2>Two</h2>', '<section data-visibility="hidden">\n  <h2>Hid</h2>\n  <p>Hidden words</p>\n</section>\n\n<section>\n  <h2>Two</h2>']];
 const inSlide = (heading, selector) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)}).querySelector(${JSON.stringify(selector)})`;
 
-// a session of two pages, 140 s, three shows, 45 s, and two converges, 40 s, at most
 for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
   test(`a refused undo of typing on ${heading}, in a deck with a hidden slide, names the slide by the number that the navigator draws, and a hidden slide by none, at the top of the window`, { timeout: 300_000 }, async (t) => {
     const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: HIDDEN });
@@ -582,7 +529,6 @@ for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
   });
 }
 
-// Ben makes the word slide bold or italic with a command
 const format = (id) => async (page) => {
   assert.ok(await selectIn(page, 7, 12));
   await run(page, id);
@@ -618,7 +564,6 @@ test('an unread key at the start of a word that another person makes italic goes
   assert.equal(text, '<p>Second Z<em>slide</em></p>');
 });
 
-// a link is put around the selected characters as one inline element, as bold and italic are
 const LINK = '<a href="https://example.org">';
 const link = async (page) => {
   assert.ok(await selectIn(page, 7, 12));
@@ -627,7 +572,6 @@ const link = async (page) => {
   await page.evaluate(`${C}.app.history.idle().then(() => true)`);
 };
 
-// the formats that Ben puts around the word slide, each with its start tag and its end tag
 const FORMATS = [
   ['italic', format('text.italic'), '<em>', '</em>'],
   ['a link', link, LINK, '</a>'],
@@ -647,12 +591,6 @@ test('an unread key inside a word that another person makes italic or links stay
   }
 });
 
-/**
- * Ben makes a change that reaches index.html while the poll of Ana is held, and Ana makes hers
- * before her page hears of it. The authority thus refuses the operation of Ana, and her page merges
- * the two. Ana then types more at her caret. Returns the paragraph that the pages and index.html
- * agree on.
- */
 async function unheard(t, { ben, file, ana, mine, more = '' }) {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { pages: [{ script: NET }] });
   const [first] = pages;
@@ -675,7 +613,6 @@ async function unheard(t, { ben, file, ana, mine, more = '' }) {
   return text;
 }
 
-// a key typed inside the word slide
 const inside = async (page) => {
   assert.ok(await selectIn(page, 9, 9));
   await typeKeys(page, 'Z');
@@ -751,8 +688,6 @@ test('the same letter typed at one point by another person and as an unread key 
   assert.equal(text, '<p>Secondee slide</p>');
 });
 
-// the diff of each page gives the change as a removal and an insertion, e.g. of sli and ck for
-// slide into deck, which are one change of each person
 for (const [words, a, b, word, want] of [
   ['Second slide', 7, 12, 'deck', 'Second deck'],
   ['Second teh slide', 7, 10, 'the', 'Second the slide'],
@@ -771,7 +706,6 @@ for (const [words, a, b, word, want] of [
   });
 }
 
-// two pages in the paragraph, with the focus of each emulated, so that both hold a caret at once
 async function pair(t) {
   const s = await session(t, ['Ana', 'Ben']);
   for (const page of s.pages) await show(page, 'Two');
@@ -779,8 +713,6 @@ async function pair(t) {
   return s;
 }
 
-// Ana composes each step, and act(i) runs on the page of Ben after step i. when act returns true,
-// the step waits until index.html changes and Ana reads it
 async function stepped(server, ana, steps, act) {
   for (const [i, s] of steps.entries()) {
     await ana.send('Input.imeSetComposition', { text: s, selectionStart: s.length, selectionEnd: s.length });
@@ -840,7 +772,6 @@ test('a key typed right before a composition that starts while an apply waits re
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
   assert.ok(await caretAt(ben, 0));
-  // the key x of Ana and the start of her composition come while the apply of the key of Ben waits
   await ana.evaluate(`(() => {
     const port = window.BeesonEditor.session;
     const apply = port.apply;
@@ -864,10 +795,6 @@ test('a key typed right before a composition that starts while an apply waits re
 
 const first = (text) => text.match(/<p>[^\n]*<\/p>/g)[0];
 
-// Ana types MN in the paragraph of slide One, which her client reads, and starts a composition in
-// the paragraph of slide Two while a transaction of her history is open, as an undo with a TeX
-// restore, a paste of a picture, or an inline formula keeps one open. the test ends the transaction
-// during the composition
 for (const between of [false, true]) {
   test(`the keys of the person before a composition that starts while the history is busy stay in index.html${between ? ', also with a key of another person during the composition' : ''}`, { timeout: 300_000 }, async (t) => {
     const { server, pages } = await pair(t);
@@ -896,17 +823,11 @@ for (const between of [false, true]) {
   });
 }
 
-// a transaction of the history of a page, open until the test calls window.__end, as an undo with a
-// TeX restore, a paste of a picture, or an inline formula keeps one open
 const HOLD = `${C}.app.history.transact('Wait', () => new Promise((end) => (window.__end = end)))`;
 const RELEASE = `(window.__end(), ${C}.app.history.settle().then(() => true))`;
 const slideOf = (text, i) => text.match(/<section>[^]*?<\/section>/g)[i];
 const REMOVE_LIST = `${C}.app.doc.remove(${el(1, 'ul')})`;
 
-// Ana composes ni at the caret of Ben, who types y, which her page holds back. her history is busy
-// from the end of this composition until the next one has started, and Ben types Z at the start or
-// at the end of the paragraph during the next one. with removal, the transaction also removes the
-// list of the slide
 for (const [z, removal] of [[null], ['start'], ['end'], ['start', true]]) {
   test(`a key of another person that a composition held back is kept when the next composition starts while the history is busy${z ? `, also with a key at the ${z} of the paragraph during it` : ''}${removal ? ' and a removal of another element of the slide in the transaction' : ''}`, { timeout: 300_000 }, async (t) => {
     const { server, pages } = await pair(t);
@@ -938,13 +859,9 @@ for (const [z, removal] of [[null], ['start'], ['end'], ['start', true]]) {
 
 const title = (text) => text.match(/<h2>[^\n]*<\/h2>/g)[1];
 const h2 = el(1, 'h2');
-// scripts that type MN at the end of the text element of an expression, or delete the letters MN
-// at the end of the heading of slide Two, which the client reads at its next turn
 const INSERT = (host) => `{ const h = ${host}; h.focus(); const r = document.createRange(); r.selectNodeContents(h); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); document.execCommand('insertText', false, 'MN'); }`;
 const DELETE = `{ const h = ${h2}; h.focus(); getSelection().setBaseAndExtent(h.firstChild, 3, h.firstChild, 5); document.execCommand('delete'); }`;
 
-// MN typed by Ana at the end of the heading of slide Two, read by her client and in index.html,
-// and in typedMNapplied also a key of Ben at the end of the paragraph, which her page applies
 async function typedMN(server, [ana]) {
   await front(ana);
   await caretAtEnd(ana, h2);
@@ -960,13 +877,6 @@ async function typedMNapplied(server, pages) {
   await converge(server, pages);
 }
 
-/**
- * Ana runs the script edit inside the transaction when inside is set, and right before it
- * otherwise, and starts a composition at the offset 6 of the paragraph, or of the text element of
- * the expression into, while the transaction is open. The test ends the transaction during the
- * composition. With at, Ben types Z at this offset of the paragraph during the composition.
- * Returns the text of index.html during the composition, and once Ana has committed 你好.
- */
 async function busy(t, { prepare, edit, inside = true, at = null, into = p }) {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
@@ -981,8 +891,6 @@ async function busy(t, { prepare, edit, inside = true, at = null, into = p }) {
   await ana.evaluate(RELEASE);
   await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
   if (at !== null) {
-    // Ben is not brought to the front, since the page of Ana would then be hidden, which ends her
-    // composition
     assert.ok(await caretAt(ben, at));
     await typeKeys(ben, 'Z');
     await until(async () => para(await ana.evaluate(TEXT)).includes('Z'), 'the key of Ben in the text that Ana reads');
@@ -1010,9 +918,6 @@ for (const [what, options, want] of [
   });
 }
 
-// the edits of the person that the client has not read are read at its first turn once the history
-// is quiet, and are not held back with the composing word. in a slide with a removal, the edits of
-// its texts are inside the edit of the slide
 for (const [what, edit, slide, want] of [
   ['an insertion in another text element', INSERT(h2), 1, '<section>\n  <h2>TwoMN</h2>\n  <p>Second slide</p>\n  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n</section>'],
   ['an insertion in the composing paragraph', INSERT(p), 1, '<section>\n  <h2>TwoMN</h2>\n  <p>Second slideMN</p>\n  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n</section>'.replace('TwoMN', 'Two')],
@@ -1024,8 +929,6 @@ for (const [what, edit, slide, want] of [
   });
 }
 
-// the element is not in the source when the client reads rest, hence the client reads the deck
-// through during the composition
 test('a composition in a text element that the document model inserted while the history is busy keeps the element, the composing word, and a key of another person', { timeout: 300_000 }, async (t) => {
   const ul = el(1, 'ul');
   const { during, end } = await busy(t, { edit: `window.__new = (await ${C}.app.doc.insert('<p>New</p>', ${ul}.parentElement, ${ul}))[0]`, into: 'window.__new', at: 0 });
@@ -1033,14 +936,11 @@ test('a composition in a text element that the document model inserted while the
   assert.deepEqual([para(end), slideOf(end, 1).match(/<p>New[^<]*<\/p>/)?.[0]], ['<p>ZSecond slide</p>', '<p>New你好</p>']);
 });
 
-// the content of the paragraph, with the reading K or KJ, is also in the heading after the removal,
-// hence twice in the text of the slide, and the client reads the deck through during the composition
 test('a composition in a text element whose content is twice in its slide after a removal while the history is busy keeps both edits and the composing word', { timeout: 300_000 }, async (t) => {
   const { end } = await busy(t, { edit: `${h2}.textContent = 'SecondKJ slide SecondK slide'; await ${REMOVE_LIST}` });
   assert.deepEqual([title(end), para(end), slideOf(end, 1).includes('<ul>')], ['<h2>SecondKJ slide SecondK slide</h2>', '<p>Second你好 slide</p>', false]);
 });
 
-// the content of an empty paragraph is written by an insertion at its start, which rest takes once
 test('a composition in an empty paragraph that starts while the history is busy keeps the paragraph whole in index.html', { timeout: 300_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Second slide</p>\n  <p></p>']] });
   for (const page of pages) await show(page, 'Two');
@@ -1065,8 +965,6 @@ test('a composition in an empty paragraph that starts while the history is busy 
 
 const heading = (text) => text.match(/<h2>[^\n]*<\/h2>/g)[0];
 
-// the transaction writes OneX into the heading of slide One, waits until the test ends it, and
-// writes OneXY. the page of Ben records each text of this heading
 test('a composition that starts during a transaction that changed the deck in part does not hand the half transaction to the others', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;

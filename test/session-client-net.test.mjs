@@ -1,14 +1,10 @@
-// the client of a session in Chrome against a network that holds, cuts, or refuses its requests:
-// the reload after a change of the head, the end of a session, the reconnect, the rejoin, the
-// acknowledgment of Save, and the bookkeeping of a poll, with the requests ruled by NET of net.mjs
-
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, SIGTERM_TELLS_THE_PAGES, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { ANSWERS, NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
@@ -17,13 +13,9 @@ import { raw, until } from './helpers/session.mjs';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const INERT = `document.querySelector('.reveal .slides').inert`;
 const DIALOG = `document.querySelector('dialog.beeson-edit-dialog[open]')`;
-// a request to an edit command that is not running fails in the console of the page
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
-// every request of the page under .session/ fails, also a request held and the long poll in flight
 const OFFLINE = `__net.clear() && __net.rule('/.session/', 'cut') && __net.cut('/.session/') && __net.drop('/.session/')`;
-// the paragraph of slide One in index.html
 const paragraph = (text) => /<h2>One<\/h2>\n  <p>([^<]*)<\/p>/.exec(text)?.[1];
-// the records of copy.ts in IndexedDB for the address of the page
 const COPIES = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
@@ -33,8 +25,6 @@ const COPIES = `new Promise((done) => {
   };
 })`;
 
-// a page whose operation is held in flight with an edit of slide One, and then a change of the head
-// of index.html, which the page must load again for
 async function waiting(t, edit = ' slow', script = '') {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -52,7 +42,6 @@ async function waiting(t, edit = ' slow', script = '') {
 }
 
 test('converge fails with the text of each page when a page agrees with the file and another does not', { timeout: 30_000 }, () => {
-  // a loop that does not end blocks the event loop of node, hence the call runs in a child process
   const script = `
     import { converge } from './test/helpers/client.mjs';
     const page = (text) => ({ send: async () => ({}), evaluate: async () => text });
@@ -74,7 +63,6 @@ test('letters typed while a page waits to load again after a change of the head 
   await converge(server, [page]);
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
-  // a letter every 20 ms, and the paragraph as the deck reads at the unload of the page
   await page.evaluate(`(() => {
     const p = ${el(0, 'p')};
     let n = 0;
@@ -88,7 +76,6 @@ test('letters typed while a page waits to load again after a change of the head 
   await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
   const shown = await page.evaluate(`sessionStorage.getItem('__shown')`);
   assert.ok(shown.length > 'First slide'.length + 10, shown);
-  // the edit command writes index.html up to 1 s after an operation
   await until(() => paragraph(server.read()) === shown, 'index.html to hold the letters shown at the unload', 10_000).catch((e) => {
     throw new Error(`${e.message}: ${paragraph(server.read())} where the page showed ${shown}`);
   });
@@ -98,7 +85,6 @@ test('letters typed while a page waits to load again after a change of the head 
   clean(page);
 });
 
-// a delete in IndexedDB on the first load of the page commits 300 ms late, as on a slow disk
 const SLOW_DELETE = `if (!sessionStorage.getItem('__slow')) {
   sessionStorage.setItem('__slow', '1');
   const d = IDBObjectStore.prototype.delete;
@@ -110,10 +96,8 @@ const SLOW_DELETE = `if (!sessionStorage.getItem('__slow')) {
 }`;
 
 test('a page that must load again while offline reconnects first, and loads again once its edit is acknowledged', { timeout: 120_000 }, async (t) => {
-  // the record of the edit is deleted before the page loads again, also on a slow disk
   const { server, page } = await waiting(t, ' slow', SLOW_DELETE);
   await page.evaluate(OFFLINE);
-  // the reconnects after 1 and 2 s fail, and the next one waits 4 s
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt - Date.now() > 3000`, 20_000);
   assert.equal(await loads(page), 1);
   assert.equal(await page.evaluate(INERT), true);
@@ -171,7 +155,6 @@ test('a page that is blocked while it waits to load again offers the copy and Lo
   clean(page, [/status of 400/]);
 });
 
-// the fetch of start() is the one request of the page for its own address with session
 const VERSION = 'index.html?edit&session';
 const NOT_RUNNING = "The host's edit command is not running";
 const button = (label) => `[...${DIALOG}.querySelectorAll('.row button')].find((b) => b.textContent === ${JSON.stringify(label)})`;
@@ -187,10 +170,8 @@ test('a page whose fetch of its version fails or is answered 502 says that the h
     text: 'This link works again once the host starts it.',
     buttons: ['Try now'],
   });
-  // the fetch is sent again after 1 s, and the deck is not opened without the session meanwhile
   await page.waitFor(`__net.count(${JSON.stringify(VERSION)}) === 2`);
   assert.deepEqual(await page.evaluate(`({ client: window.BeesonSession.client(), dialog: ${DIALOG}?.querySelector('h3').textContent })`), { client: null, dialog: NOT_RUNNING });
-  // a fetch that throws keeps the dialog, and the next answer closes it
   await page.evaluate(`__net.clear() && __net.rule(${JSON.stringify(VERSION)}, 'cut', { times: 1 }) && (${button('Try now')}.click(), true)`);
   await page.waitFor(`__net.count(${JSON.stringify(VERSION)}) === 3`);
   assert.equal(await page.evaluate(`${DIALOG}?.querySelector('h3').textContent`), NOT_RUNNING);
@@ -208,7 +189,6 @@ test('a page whose fetch of its version is answered 404 offers Load again, and o
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // the rule holds for the first load only
   const first = `sessionStorage.getItem('__loads') === '1' && __net.rule(${JSON.stringify(VERSION)}, 'answer', { status: 404, body: 'not found', type: 'text/plain' })`;
   const refused = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${first};`, ready: false });
   await refused.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'This page cannot join the session'`);
@@ -254,8 +234,6 @@ test('a page whose theme/session.js does not load says so, and Load again joins'
   clean(page, [/ERR_BLOCKED_BY_CLIENT/]);
 });
 
-// the engine of the port, theme/editor-session.js, is loaded beside theme/session.js, and either
-// failure shows the one dialog, which names each file that failed
 const blocking = (urls) => async (page) => {
   await page.send('Network.enable', {});
   await page.send('Network.setBlockedURLs', { urls });
@@ -287,12 +265,10 @@ test('a page whose theme/session.js does not load either, or whose theme/editor-
   await both.waitFor(STARTED);
   assert.deepEqual(await failure(both), { dialogs: 1, text: 'theme/session.js and theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
   clean(both, [/ERR_BLOCKED_BY_CLIENT/]);
-  // the assignment of theme/editor-session.js is dropped, and the function that the page reads throws
   const throwing = `Object.defineProperty(window, 'BeesonEditorSession', { configurable: true, get: () => () => { throw new Error('a broken engine'); }, set() {} });`;
   const broken = await open(browser, sessionUrl(server.edit), { ready: false, script: throwing });
   await broken.waitFor(STARTED);
   assert.deepEqual(await failure(broken), { dialogs: 1, text: 'theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
-  // the error of the engine is reported, since the dialog does not tell a file that threw from one that is missing
   assert.ok(broken.errors.some((e) => /a broken engine/.test(e)), `the error of the engine is not reported: ${JSON.stringify(broken.errors)}`);
   clean(broken, [/a broken engine/]);
 });
@@ -306,7 +282,6 @@ test('a page is online as soon as a request after an outage succeeds, while the 
   await page.evaluate(OFFLINE);
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
   await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
-  // the edit command holds a poll without news for 25 s
   await page.waitFor(`${ONLINE} && ${STATE} === 'Saved to index.html'`, 10_000);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-session-action').hidden`), true);
   await show(page, 'One');
@@ -320,11 +295,9 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // a listener of beforeunload keeps a page out of the back-forward cache of Firefox
   const listenersOf = async (p) => (await p.send('Runtime.evaluate', { expression: `getEventListeners(window).beforeunload?.length ?? 0`, includeCommandLineAPI: true, returnByValue: true })).result.value;
   const asksOf = (p) => p.evaluate(`(() => { const ev = new Event('beforeunload', { cancelable: true }); dispatchEvent(ev); return ev.defaultPrevented; })()`);
 
-  // with IndexedDB the copy of the page keeps the edit for the next visit, hence the page does not ask
   const keeping = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [keeping]);
   const before = await listenersOf(keeping);
@@ -339,7 +312,6 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   await converge(server, [keeping]);
   await keeping.close();
 
-  // without IndexedDB the edit is only on the page
   const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\nIDBFactory.prototype.open = function () { throw new DOMException('The operation is insecure.', 'SecurityError'); };` });
   await converge(server, [page]);
   const listeners = () => listenersOf(page);
@@ -360,12 +332,9 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   await page.waitFor(`/^Offline/.test(${STATE})`);
   assert.equal(await asks(), true);
   await page.evaluate(`__net.clear() && __net.rule('/.session/op', 'hold') && (${C}.tryNow(), true)`);
-  // the page is online again only with the answer of the operation or of a poll
   await page.waitFor(`__net.held.length === 1`);
   assert.equal(await asks(), true);
-  // after the end, the check of files.ts asks for the changes of the deck. a signal ends a process
-  // at once on Windows, where a page is thus not told the end of the session
-  if (process.platform !== 'win32') {
+  if (SIGTERM_TELLS_THE_PAGES) {
     server.edit.child.kill('SIGTERM');
     await server.edit.exited;
     server.edit = null;
@@ -375,10 +344,8 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   clean(page, REFUSED);
 });
 
-// whether the page asks before it unloads, and whether its copy in IndexedDB holds part
 const ASKED = (part) => `(${ROWS}).then((rows) => ({ asking: ${C}.asking, copied: rows.some((r) => r.mine.includes(${JSON.stringify(part)})) }))`;
 
-// page loaded again with each dialog of beforeunload accepted, and whether one was accepted
 async function reload(page) {
   let accepted = false;
   const accept = setInterval(() => page.send('Page.handleJavaScriptDialog', { accept: true }).then(() => (accepted = true), () => {}), 100);
@@ -404,11 +371,9 @@ test('a page asks before it unloads until the copy in this browser holds its new
   await press(page, 'Enter');
   await typeKeys(page, 'Inserted');
   await page.waitFor(`__net.held.length > 0 && ${TEXT}.includes('Inserted')`);
-  // copy.ts writes the copy once the edits waited 2 s. a write at pagehide is aborted with the page
   const before = await page.evaluate(ASKED('Inserted'));
   assert.ok(before.asking || before.copied, `the page asks while its copy does not hold the edit: ${JSON.stringify(before)}`);
   const accepted = await reload(page);
-  // an edit left at the prompt is lost
   const kept = accepted || (await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000).catch(() => false));
   assert.ok(kept,`the edit is in index.html after the reload, or the page asked before it left: ${JSON.stringify(before)}`);
 });
@@ -429,7 +394,6 @@ test('a page whose copy holds its edit does not ask before a reload, and its edi
   await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000);
 });
 
-// whether copy.ts wrote a record and none of its records holds part
 const LACKS = (part) => `(${ROWS}).then((rows) => rows.length > 0 && !rows.some((r) => r.mine.includes(${JSON.stringify(part)})))`;
 
 test('a page asks before it unloads after an Undo of an edit that the edit command may hold, also once its copy holds the Undo', { timeout: 300_000 }, async (t) => {
@@ -438,7 +402,6 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { script: NET });
   await converge(server, [page]);
-  // the edit reaches the edit command, and neither its answer nor its broadcast reaches the page
   await page.evaluate(`__net.rule('/.session/op', 'late') && __net.rule('/.session/events', 'cut') && __net.drop('/.session/events')`);
   await page.waitFor(`/^Offline/.test(${STATE})`);
   await show(page, 'One');
@@ -450,19 +413,14 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
   await page.waitFor(`!${TEXT}.includes('Zed')`);
   const undone = await page.evaluate(ASKED(' Zed'));
   assert.ok(undone.asking || !undone.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(undone)}`);
-  // a copy without edits cannot undo an edit that the edit command holds
   await page.waitFor(LACKS(' Zed'));
   assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks once its copy holds the Undo');
   assert.equal(await reload(page), true, 'the page asked before it left');
 });
 
 const REDO = process.platform === 'darwin' ? 'Mod+Shift+Z' : 'Mod+Y';
-// the question of the page once it read the Redo of ' Zed', before a tick of copy.ts writes again,
-// in window.__asking
 const AT_REDO = `(${C}.on('settled', () => ${C}.snapshot().mine.includes(' Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))), true)`;
 
-// the first open of the database of the copies answers after 4 s, after the wait of copy.ts for
-// it, OPEN_WAIT, as on a slow runner
 const SLOW_OPEN = `{
   const opened = IDBFactory.prototype.open;
   let first = true;
@@ -477,7 +435,6 @@ const SLOW_OPEN = `{
   };
 }`;
 
-// a page offline whose copy held ' Zed' on slide One, and then holds its Undo
 async function undone(t) {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -506,17 +463,12 @@ test('a page asks before it unloads after a Redo that follows an offline Undo, u
 
 test('a page asks before it unloads after a Redo that follows an offline Undo, once IndexedDB fails', { timeout: 240_000 }, async (t) => {
   const page = await undone(t);
-  // every later write of the copy fails, as on a full disk
   await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
   await press(page, REDO);
   await page.waitFor(`${C}.snapshot().mine.includes(' Zed') && /cannot be kept/.test(${STATE})`);
   assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
 });
 
-// the handler of the next write of the copy waits after window.__hold until window.__release(), and
-// the handler of every write while window.__holdAll. after window.__fail every write fails at once,
-// after the handlers that wait. a handler that waits is a write that ends late, e.g. on a slow disk.
-// window.__ended counts the handlers that ran without a wait
 const LATE_WRITES = `{
   const put = IDBObjectStore.prototype.put;
   const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
@@ -556,7 +508,6 @@ test('a page asks before it unloads after an Undo while its copy holds the undon
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
   await page.evaluate('window.__hold = true');
-  // the typing in another text element is another entry of the history
   await caretAtEnd(page, el(0, 'h2'));
   await type(page, ' Two');
   await page.waitFor(`(${ASKED(' Two')}).then((x) => x.copied)`);
@@ -583,7 +534,6 @@ test('a page asks before it unloads after a Redo that follows an offline Undo, a
   const ended = await page.evaluate('window.__ended');
   await press(page, 'Mod+Z');
   await page.waitFor(`window.__ended > ${ended} && (${LACKS(' Zed')})`);
-  // the record of the edit, at the same version as the Undo, is no longer the copy of the page
   await page.evaluate('window.__release()');
   await page.evaluate(AT_REDO);
   await press(page, REDO);
@@ -602,10 +552,8 @@ test('a page asks before it unloads after an Undo and a Redo of an acknowledged 
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
-  // the acknowledgment deletes the copy before the write of the copy ends
   await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
   await page.waitFor(`${C}.acked() && (${ROWS}).then((rows) => rows.length === 0)`);
-  // a write of the Undo that ends late, as on a slow runner, is never named by kept
   await page.evaluate(`__net.rule('/.session/op', 'hold') && window.__release() && (window.__hold = true)`);
   await press(page, 'Mod+Z');
   await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
@@ -626,11 +574,9 @@ test('an edit of another person does not make a page ask before it unloads while
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Mine');
   await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
-  // the times at which the page asks are recorded with a clock in the page
   await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
   writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
   await page.waitFor(`${TEXT}.includes('Remote')`);
-  // the next copy holds the edit of the other person
   await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
   assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
 });
@@ -646,7 +592,6 @@ test('an edit of another person does not stop a page from asking before it unloa
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Mine');
   await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
-  // the answer of a poll with the second edit of the other person is held until window.__again()
   await page.evaluate(`(() => {
     const fetched = window.fetch;
     const released = new Promise((done) => (window.__again = () => (done(), true)));
@@ -667,10 +612,8 @@ test('an edit of another person does not stop a page from asking before it unloa
   await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
   writeFileSync(server.file, server.read().replace('<p>Second slide Remote</p>', '<p>Second slide Remote Again</p>'));
   await page.waitFor('window.__held === true');
-  // the copy keeps the first edit of the other person, and never holds the newest edit of the page
   await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
   await type(page, ' More');
-  // asking is read once the client checked the deck after the merge of the second edit
   await page.evaluate(`(${C}.on('settled', () => ${C}.snapshot().mine.includes('Again') && setTimeout(() => (window.__asking ??= ${C}.asking))), window.__again())`);
   await page.waitFor(`window.__asking !== undefined && ${TEXT}.includes('Again')`);
   assert.deepEqual(await page.evaluate(`(${ASKED(' More')}).then((x) => ({ ...x, asking: window.__asking }))`), { asking: true, copied: false });
@@ -681,7 +624,6 @@ test('an edit of another person does not make a page that waits to load again as
   await page.waitFor(`(${ASKED(' slow')}).then((x) => x.copied && !x.asking)`);
   await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
   writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
-  // the deck of a page that waits to load again is not changed, hence the replica is read
   await page.waitFor(`${C}.snapshot().mine.includes('Remote')`);
   await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
   assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
@@ -698,7 +640,6 @@ test('a page asks before it unloads from the moment that it is told of an edit, 
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Mine');
   await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
-  // a listener of the port added after the one of the client runs before the client reads the deck
   await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, read: ${C}.snapshot().mine.includes('Q0q') }); }); }); true`);
   await type(page, ' Q0q');
   assert.deepEqual(await page.evaluate('window.__told'), { asking: true, read: false });
@@ -720,8 +661,6 @@ test('a page that waits for the answer of its hello asks before it unloads from 
   await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
 });
 
-// on the first load, the handler of the first transaction on the copies, i.e. of restore() of
-// copy.ts, waits until window.__restored(), as on a slow disk
 const SLOW_RESTORE = `{
   window.__holdRestore = sessionStorage.getItem('__loads') === '1';
   const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
@@ -737,8 +676,6 @@ const SLOW_RESTORE = `{
     },
   });
 }`;
-// the asking of the client once the port has told it of the next change, and the number of hellos
-// that the page has sent by then, i.e. 0 before join.ts has given its copy, in window.__told
 const TOLD = `window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, hellos: __net.count('/.session/hello') }); }); }); true`;
 
 test('a page asks before it unloads for an edit typed while it reads its copies, until its copy holds the edit', { timeout: 180_000 }, async (t) => {
@@ -760,9 +697,6 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // the open of the database of the copies never answers, as for a database blocked by another tab,
-  // and the wait of copy.ts for it, OPEN_WAIT, ends only at window.__openWait(). the locks are read
-  // before the open, and their query is answered after 2 s here, as on a slow runner
   const silent = `{
     const query = LockManager.prototype.query;
     LockManager.prototype.query = function () { return new Promise((done) => window.setTimeout(done, 2000)).then(() => query.call(this)); };
@@ -787,9 +721,6 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
 });
 
-// window.__holdText holds the answer of events whose text includes it until window.__again(), and
-// while window.__holdOp each answer of an operation waits until window.__opGo(), counted in
-// window.__opsHeld
 const HELD = `{
   const fetched = window.fetch;
   let again = () => {};
@@ -827,11 +758,9 @@ test('a page asks before it unloads after a Redo of an Undo that the edit comman
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Zed');
   await page.waitFor(`window.__opsHeld === 1 && window.__eventsHeld === true && (${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
-  // the record of ' Zed' at the version before the edit stays the one that the page keeps
   await page.evaluate('window.__holdAll = true');
   await press(page, 'Mod+Z');
   await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
-  // the operation of the edit and its broadcast arrive, and the Undo is sent and applied
   await page.evaluate('window.__again(), window.__opGo()');
   await page.waitFor(`window.__opsHeld === 2 && ${C}.snapshot().v.endsWith('.${n + 2}')`);
   await page.evaluate(AT_REDO);
@@ -854,8 +783,6 @@ test('a page asks before it unloads once its copy is deleted under it and cannot
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
-  // as Clear site data does, with each later write refused, e.g. on a full disk. the next
-  // heartbeat, BEAT of copy.ts (10 s) later, fails
   await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
   await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
   await page.waitFor(`/cannot be kept/.test(${STATE})`, 30_000);
@@ -877,15 +804,11 @@ test('a page whose copy is deleted with the data of the site writes its copy aga
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
-  // as Clear site data does
   await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
   await type(page, ' More');
-  // an open of the database may fail while Chrome still deletes the data, and the copies are then read again
   await page.waitFor(`(${ROWS}).then((rows) => !!rows && rows.some((r) => r.mine.includes(' More')) && !${C}.asking)`, 30_000);
 });
 
-// a script for open() that counts the puts into IndexedDB in window.__puts and the calls of timers
-// of setInterval at 1 s in window.__ticks, as the timer of the copy, and moves Date.now() of the page on by window.__skew ms
 const PUTS = `{
   const put = IDBObjectStore.prototype.put;
   const now = Date.now;
@@ -914,7 +837,6 @@ test('a page offline whose copy does not change does not write it again at the h
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
   const puts = await page.evaluate('window.__puts');
-  // three times BEAT of copy.ts, each passed by a tick of the timer of the copy, once a second
   for (let i = 0; i < 3; i++) {
     const ticks = await page.evaluate('(window.__skew += 11_000, window.__ticks)');
     await page.waitFor(`window.__ticks >= ${ticks + 2}`);
@@ -923,8 +845,6 @@ test('a page offline whose copy does not change does not write it again at the h
   assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: false, copied: true });
 });
 
-// a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
-// then stops 5 s after this failure, i.e. before the heartbeat of copy.ts (BEAT, 10 s) is due
 const FAIL_ONCE = `{
   const put = IDBObjectStore.prototype.put;
   const now = Date.now;
@@ -954,8 +874,6 @@ test('a page whose write of its copy failed once writes it again before the hear
   await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
 });
 
-// the time in ms that each listener of beforeunload was on window before its removal, in
-// window.__unload
 const UNLOAD = `{
   const add = window.addEventListener;
   const remove = window.removeEventListener;
@@ -998,7 +916,6 @@ test('the operations of the answer that ends the session are taken before its di
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [ann, ben]);
-  // the poll of Ben in flight is answered by an edit of Ann, and his next one is held in the page
   await ben.evaluate(`__net.rule('/.session/events', 'hold')`);
   await show(ann, 'Two');
   await caretAtEnd(ann, el(1, 'p'));
@@ -1012,7 +929,6 @@ test('the operations of the answer that ends the session are taken before its di
   await front(ann);
   await type(ann, ' by Ann');
   await until(() => server.read().includes('<p>Second slide first by Ann</p>'), 'the edit of Ann to reach index.html');
-  // the poll of Ben is released once Ann is told of the end, and the edit command waits for it
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`);
   await ben.evaluate(`__net.clear() && __net.release('/.session/events')`);
@@ -1035,11 +951,9 @@ test('a page whose poll is refused again right after each hello waits longer bef
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { script: NET });
   await converge(server, [page]);
-  // as for a page evicted by the ninth page of its person: every poll is answered 404
   const from = await page.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}' }), Date.now())`);
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
-  // the edit answers the poll in flight, and the next one is refused
   await type(page, ' x');
   const hellos = `__net.log.filter((l) => l.url.includes('/.session/hello') && l.at >= ${from}).map((l) => l.at)`;
   await page.waitFor(`${hellos}.length >= 3`, 15_000);
@@ -1054,7 +968,6 @@ test('a rejoin of a second page of a person keeps the name that another page of 
   t.after(() => browser.close());
   const server = await talk(t);
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
-  // b is another browser, which takes over the person of Ann
   const b = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET, wait: false });
   await b.waitFor(`${DIALOG}?.querySelector('h3')?.textContent.includes('has joined this deck before')`);
   await b.evaluate(`${button('Yes, continue')}.click()`);
@@ -1063,13 +976,9 @@ test('a rejoin of a second page of a person keeps the name that another page of 
   await converge(server, [a, b]);
   const own = (page) => page.evaluate(`({ name: ${C}.name, known: ${C}.known.find((p) => p.person === ${C}.person).name, stored: localStorage.getItem('beeson-session-name') })`);
   const named = (name) => `${C}.name === '${name}' && localStorage.getItem('beeson-session-name') === '${name}'`;
-  // b hears a first change of the name in the answer of its poll
   assert.equal(await a.evaluate(`window.BeesonSession.rename(${C}, 'Ann Smith')`), 'renamed');
   await b.waitFor(named('Ann Smith'));
-  // the next poll of b is refused, as after a sleep of its tab, and its hello is held, hence b does
-  // not hear the second change of the name before the answer of the hello
   const hellos = await b.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}', times: 1 }), __net.rule('/.session/hello', 'hold', { times: 1 }), __net.count('/.session/hello'))`);
-  // an edit of a answers the poll of b in flight
   await front(a);
   await show(a, 'One');
   await caretAtEnd(a, el(0, 'p'));
@@ -1085,7 +994,6 @@ test('a rejoin of a second page of a person keeps the name that another page of 
   clean(b);
 });
 
-// whether the center of each element of selector is in the window and reaches the element
 const REACHED = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((e) => e.offsetParent).map((e) => {
   const r = e.getBoundingClientRect();
   const x = r.left + r.width / 2, y = r.top + r.height / 2;
@@ -1106,7 +1014,6 @@ test('on a phone, the menus and the controls of the session are reached while of
   await click(page, '.beeson-session-state');
   await page.waitFor(`${ONLINE} && ${STATE} === 'Saved to index.html'`, 10_000);
   assert.deepEqual(await page.evaluate(REACHED(controls)), []);
-  // the blocked state, with Load again
   await page.evaluate('window.__corrupt = true');
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
@@ -1122,7 +1029,6 @@ test('on a phone, the save state shows its text, so that Saving… and Saved dif
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, script: NET });
   await converge(server, [page]);
-  // the text of the save state, when all of it is in view
   const shown = `(() => {
     const n = document.querySelector('.beeson-session-state .name');
     const r = n.getBoundingClientRect();
@@ -1148,7 +1054,6 @@ test('two pages resync after a restart of the edit command, one with an operatio
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const b = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [a, b]);
-  // the operation of b is held in the page until the edit command is started again
   await b.evaluate(`__net.rule('/.session/op', 'hold')`);
   await show(b, 'One');
   await caretAtEnd(b, el(0, 'p'));
@@ -1166,10 +1071,7 @@ test('two pages resync after a restart of the edit command, one with an operatio
   for (const page of [a, b]) await page.evaluate(`(${C}.tryNow(), true)`);
   const text = await converge(server, [a, b], 'the pages and index.html to agree after the restart', 40_000);
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide held</p>').replace('<p>Second slide</p>', '<p>Second slide by Ann</p>'));
-  // the decks themselves, and not only their texts, read as the merged text
   for (const page of [a, b]) assert.deepEqual(await page.evaluate(`[${el(0, 'p')}.textContent, ${el(1, 'p')}.textContent]`), ['First slide held', 'Second slide by Ann']);
-  // a presence with the token of the edit command before is refused, and so is a hello without a
-  // name from a person whom the edit command lost with the kill, which the page sends again with it
   const restarted = [...REFUSED, /status of 404 .*\/\.session\/presence/, /status of 400 .*\/\.session\/hello/];
   clean(a, restarted);
   clean(b, restarted);
@@ -1186,17 +1088,13 @@ test('a reconnect while an operation is unanswered waits for its answer, and a h
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' held');
   await page.waitFor(`__net.held.length === 1`);
-  // the hello of the reconnect gets the whole text, as when the log no longer reaches since. every
-  // poll fails until the rules are cleared, hence a reconnect is ahead whenever the test looks
   await page.evaluate(`__net.rule('/.session/hello', 'edit', { edit: ({ v, ...rest }) => rest, times: 1 }) && __net.rule('/.session/events', 'cut') && __net.drop('/.session/events')`);
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
   const HELLOS = `[__net.count('/.session/hello'), __net.count('/.session/hello', 'POST', 200)]`;
   const [sent, answered] = await page.evaluate(HELLOS);
   await page.evaluate(`${C}.tryNow(), new Promise((done) => setTimeout(done))`);
-  // a hello sent before the answer of the operation is answered before the edit command applies it
   assert.equal((await page.evaluate(HELLOS))[0], sent, 'a hello is sent while the operation is unanswered');
   await page.evaluate(`__net.release('/.session/op')`);
-  // the next reconnect says hello, and reads the whole text with the edit in it
   await page.waitFor(`__net.count('/.session/hello', 'POST', 200) > ${answered}`);
   await page.evaluate(`__net.clear()`);
   assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide held</p>'));
@@ -1212,7 +1110,6 @@ test('the answer of a poll that the edit command gave before its restart is drop
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const b = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [a, b]);
-  // the answer of the next poll of b is held, which a change of a, or of its caret, answers
   await b.evaluate(`__net.rule('/.session/events', 'late', { times: 1 })`);
   await show(a, 'Two');
   await caretAtEnd(a, el(1, 'p'));
@@ -1224,7 +1121,6 @@ test('the answer of a poll that the edit command gave before its restart is drop
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await server.start(['--port', String(port)]);
-  // the presence of b is refused for its token from before the restart, and b says hello again
   await show(b, 'One');
   await caretAtEnd(b, el(0, 'p'));
   await b.waitFor(`__net.count('/.session/hello', 'POST', 200) === ${hellos + 1} && __net.count('/.session/presence', 'POST', 200) > ${presences} && ${ONLINE} && !${C}.joining`, 20_000);
@@ -1233,7 +1129,6 @@ test('the answer of a poll that the edit command gave before its restart is drop
   await a.evaluate(`(${C}.tryNow(), true)`);
   await a.waitFor(ONLINE, 20_000);
   await type(a, ' now');
-  // b takes the change of a only by a poll after its hello, or by another hello
   await b.waitFor(`${TEXT}.includes('<p>Second slide by Ann again now</p>')`, 20_000);
   assert.equal(await b.evaluate(`__net.count('/.session/hello', 'POST', 200)`), hellos + 1);
   assert.equal(await converge(server, [a, b]), TALK.replace('<p>Second slide</p>', '<p>Second slide by Ann again now</p>'));
@@ -1262,8 +1157,6 @@ test('Save and Saving… wait for the answer and the broadcast of every operatio
   await page.waitFor(`window.__saved && ${STATE} === 'Saved to index.html'`);
   const saved = TALK.replace('<p>First slide</p>', '<p>First slide saved</p>');
   assert.equal(await converge(server, [page]), saved);
-  // the deck reads as the text of the edit command while the operation of the edit is in flight,
-  // hence the operation that undoes it waits for its broadcast, and so does Save
   await type(page, ' undone');
   await page.waitFor(`__net.held.length === 1`);
   for (let i = 0; i < ' undone'.length; i++) await press(page, 'Backspace');
@@ -1301,8 +1194,6 @@ test('an idle page polls from the version of the last answer, hence the edit com
   clean(b);
 });
 
-// a browser opens at most 6 connections to one host, and an idle poll is held 40 s here, hence a
-// page that waits for a connection is not answered within 20 s while every connection holds a poll
 test('a seventh page of a session in one browser comes online, and an edit of the first page reaches all seven, while the polls of the others are held', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -1310,7 +1201,6 @@ test('a seventh page of a session in one browser comes online, and an edit of th
   const pages = [];
   for (let i = 0; i < 6; i++) pages.push(await open(browser, sessionUrl(server.edit), { name: `P${i}` }));
   await converge(server, pages);
-  // the load of the page waits for a connection as well, hence the wait is read from its start
   const start = Date.now();
   const seventh = await open(browser, sessionUrl(server.edit), { name: 'Seventh', ready: false });
   await seventh.waitFor(ONLINE, Math.max(0, 20_000 - (Date.now() - start)));
@@ -1331,14 +1221,12 @@ test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, 
   await converge(server, [page]);
   await page.evaluate(OFFLINE);
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
-  // each Try now that fails doubles the wait
   for (const delay of [2, 4, 8]) {
     await page.evaluate(`(${C}.tryNow(), true)`);
     await page.waitFor(`${C}.retryAt !== null && ${C}.retryAt - Date.now() > ${(delay - 1) * 1000}`);
   }
   await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
   await page.waitFor(ONLINE, 10_000);
-  // read in the page at the change of the state, since the first wait is over after 1 s
   await page.evaluate(`window.__first = null, ${C}.on('state', () => (window.__first ??= ${C}.retryAt === null ? null : [${C}.retryAt - Date.now(), ${STATE}])), ${OFFLINE}`);
   await page.waitFor(`!!window.__first`);
   const [delay, state] = await page.evaluate(`window.__first`);
@@ -1393,12 +1281,10 @@ test('a page that does not read as its text after an apply loads again, and send
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
   await converge(server, [a, b]);
-  // a text node changed behind the back of the editor stands for a defect of an apply
   await b.evaluate(`(${el(1, 'p')}.firstChild.data = 'Broken', true)`);
   await show(a, 'One');
   await caretAtEnd(a, el(0, 'p'));
   await type(a, ' by Ann');
-  // a read in flight at the reload fails, and is read again
   await until(async () => (await loads(b).catch(() => 0)) === 2, 'page b to load again');
   await b.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
   const text = await converge(server, [a, b]);
@@ -1416,7 +1302,6 @@ test('the answer of a poll that arrives after Leave Session is not taken', { tim
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: `${NET}\n${ANSWERS}` });
   await converge(server, [ann, ben]);
-  // the poll of Ben in flight is answered by an edit of Ann, and the answer of a later one is kept in the page
   await ben.evaluate(`__net.rule('/.session/events', 'late')`);
   await show(ann, 'Two');
   await caretAtEnd(ann, el(1, 'p'));
@@ -1424,7 +1309,6 @@ test('the answer of a poll that arrives after Leave Session is not taken', { tim
   await until(() => server.read().includes('<p>Second slide first</p>'), 'the edit of Ann to reach index.html');
   await type(ann, ' second');
   await ben.waitFor(`__net.held.length === 1`);
-  // Ben leaves, and the kept answer reaches his client afterward
   await ben.evaluate(`(() => {
     const client = ${C};
     client.leave();

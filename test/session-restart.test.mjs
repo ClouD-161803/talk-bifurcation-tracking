@@ -1,8 +1,3 @@
-// a restart of the edit command while a page holds an operation that was applied but whose answer
-// it did not get: the edit command keeps in .session/applied.json the seq of the last operation of
-// each client id in index.html, a hello with the old client id gets it, and the page then neither
-// repeats its operation nor reverts what another page did to it
-
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,9 +9,6 @@ import { press, type } from './helpers/editor.mjs';
 import { DECK, post, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
-// a request to an edit command that is not running fails in the console of the page, and so does
-// the first request after a restart, since the token is of the edit command before. an operation
-// or a hello that reaches the edit command while it stops is answered 503
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 503 .*\/\.session\/(op|hello)$/];
 
 test('a hello with the old client id gets the seq of its last operation in index.html after a kill', { timeout: 60_000 }, async (t) => {
@@ -58,11 +50,6 @@ test('a page whose applied operation lost its answer, and that missed the end of
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
   await converge(server, [ann, ben]);
 
-  // the requests of Ann reach the edit command, and their answers are lost. the poll held before
-  // is answered at the next news, here a third person who joins, and the polls after it are lost.
-  // the state of Ann does not reach the edit command at all. it would be sent only when the caret
-  // of Ann is in the paragraph before the first lost poll, and the paragraph, which Ben changes
-  // below, would then be held on the page of Ben
   await ann.evaluate(`(() => {
     const fetched = window.fetch;
     window.__polls = 0;
@@ -83,13 +70,11 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await caretAtEnd(ann, el(0, 'p'));
   await type(ann, ' brave');
   await until(() => server.read().includes('<p>First slide brave</p>'), 'the operation of Ann to reach index.html');
-  // Ann goes on typing while her operation waits for its answer
   await show(ann, 'Two');
   await caretAtEnd(ann, el(1, 'p'));
   await type(ann, ' later');
   await ann.waitFor(`${TEXT}.includes('<p>Second slide later</p>')`);
 
-  // Ben sees the word of Ann and changes it
   await front(ben);
   await ben.waitFor(`${TEXT}.includes('<p>First slide brave</p>')`);
   await show(ben, 'One');
@@ -98,7 +83,6 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await type(ben, 'bold');
   await until(() => server.read().includes('<p>First slide bold</p>'), 'the edit of Ben to reach index.html');
 
-  // the stop answers the polls with ended, which Ann does not get, and Ben's session ends
   server.edit.child.kill('SIGTERM');
   await server.edit.exited;
   await server.start(['--port', String(port)]);
@@ -106,6 +90,5 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await ann.waitFor(ONLINE, 20_000);
   const text = await converge(server, [ann]);
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide bold</p>').replace('<p>Second slide</p>', '<p>Second slide later</p>'));
-  // the state of Ann that waited is sent first after the restart, with the token of the edit command before
   clean(ann, [...REFUSED, /the answer was lost/, /status of 404 .*\/\.session\/presence/]);
 });

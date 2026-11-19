@@ -1,11 +1,3 @@
-// the apply of a session: the deck on the page made to read as a new text of the file, e.g. the text
-// with the edits of another person, through the smallest change of the page that the change of the
-// text needs. a change inside one text element is written into one text node with replaceData, or
-// else into the content of the element with setContentWithTex. a change inside a start tag is set
-// on the attributes of the element. any other change places, removes, and moves the units of the
-// innermost element around it, and a unit whose text did not change keeps its node on the page.
-// the work is planned before the page is changed, and a change that cannot be planned is a reload
-
 import type { App } from '../app.ts';
 import type { MathLookup } from '../math.ts';
 import type { Pairing, TextElement } from '../render.ts';
@@ -17,11 +9,6 @@ import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, st
 export const NO_MATH: MathLookup = () => null;
 const SVG = 'http://www.w3.org/2000/svg';
 
-// what an apply changed on the page. touched holds for the elements changed, replaced, or taken
-// off the page, whose entries of the history are pruned, and within holds for an element inside
-// which the apply changed, placed, or took an element. hosts are the text elements whose content
-// was set and placed the new elements, which are typeset by the promises of typeset, and caret
-// puts the caret back after them
 export type Done = {
   changed: Element[];
   touched: (el: Element) => boolean;
@@ -39,10 +26,8 @@ type Ctx = {
   pairing: Pairing;
   text: string;
   touched: Set<Element>;
-  // the elements whose children changed their order
   reordered: Set<Element>;
   gone: Element[];
-  // the parents of the elements taken off the page
   cuts: Element[];
   changed: Element[];
   hosts: Element[];
@@ -64,11 +49,8 @@ const done = (ctx: Ctx, structural: boolean, caret: (() => void) | null): Done =
   };
 };
 
-// a text of the page reads as the text of the file, where a space typed at the end of a line is a
-// no-break space on the page, as render.ts writes it
 const sameText = (live: string, file: string): boolean => live === file || (!file.includes(' ') && live.replace(/ /g, ' ') === file);
 
-// the caret of the person in host, put back at its character after the content of host is set
 function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
   if (app.caretHost() !== host) return null;
   const before = caretOf(host, mathIn(host));
@@ -76,7 +58,6 @@ function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
   let inputs = -1;
   return (after) => {
     if (!host.isConnected) return;
-    // after MathJax, the caret is put back only when the person did not type meanwhile
     if (after && inputs !== typed) return;
     inputs = typed;
     const math = mathIn(host);
@@ -85,12 +66,9 @@ function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
   };
 }
 
-// the inputs on the page, which tell keepCaret that the person typed while MathJax ran
 let typed = 0;
 document.addEventListener('input', () => void (typed += 1), true);
 
-// the element of the page that holds the children of s, an element inside the text element of
-// textEl, reached through the items of the page, which match the children of the file one to one
 function liveIn(textEl: TextElement, s: SrcEl, math: MathLookup): Element | null {
   const path: number[] = [];
   for (let e = s; e !== textEl.src; e = e.parent!) {
@@ -112,10 +90,6 @@ function liveIn(textEl: TextElement, s: SrcEl, math: MathLookup): Element | null
 const shiftPiece = (p: Piece, d: number): Piece =>
   p.kind === 'text' ? { kind: 'text', dec: { start: p.dec.start + d, end: p.dec.end + d } } : { kind: 'math', dec: { start: p.dec.start + d, end: p.dec.end + d }, inner: { start: p.inner.start + d, end: p.inner.end + d } };
 
-// a change inside one text node of the text element, outside its formulas, written into the text
-// node of the page with replaceData, which keeps the caret and the selection of the person. false,
-// with nothing changed, when the change is not one of plain characters in a run of text, or leaves
-// blank a run of a div or a span, which may then end the text element, see isTextElement()
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const at = textAt(textEl.src, w.start, w.endA);
   if (!at) return false;
@@ -142,13 +116,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const was = old.slice(piece.dec.start, piece.dec.end);
   const q = p - piece.dec.start;
   const now = was.slice(0, q) + ins + was.slice(q + cut);
-  // a dollar or a backslash typed, removed, or beside the change may start a formula, which MathJax
-  // then typesets. one that the change leaves apart already failed to start one
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
-  // one replaceData per run, from the last, keeps a caret between two runs at its characters. a
-  // caret at an insertion stays before it, hence two people who take turns at one point each keep a
-  // run of their own. an end of the selection inside a run, which replaceData puts at its start, is
-  // put at its end by mapOffset, as through the other applies
   const sel = getSelection();
   const ends = sel?.rangeCount ? ([[sel.anchorNode, sel.anchorOffset], [sel.focusNode, sel.focusOffset]] as const) : null;
   for (const e of runsOf(was, now).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
@@ -162,8 +130,6 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   return true;
 }
 
-// the text element paired again with s, its element in the file, in place of textEl. null when the
-// page does not read as s, and the element is then a problem, as at an open
 export function repairText(pairing: Pairing, textEl: TextElement, s: SrcEl, math: MathLookup): TextElement | null {
   const scratch: Pairing = { texts: [], byLive: new Map(), elements: new Map(), inner: new Map(), sections: [], problems: [], root: null };
   pairElement(s, textEl.live, textEl.slide, math, scratch);
@@ -183,8 +149,6 @@ export function repairText(pairing: Pairing, textEl: TextElement, s: SrcEl, math
   return next;
 }
 
-// the content of the element of the page set to content with setContentWithTex, whose typesetting
-// is waited for after the apply. the elements inside it are replaced
 function setContent(ctx: Ctx, live: Element, content: string): void {
   for (const el of live.querySelectorAll('*')) {
     ctx.touched.add(el);
@@ -197,9 +161,6 @@ function setContent(ctx: Ctx, live: Element, content: string): void {
   ctx.hosts.push(live);
 }
 
-// a change inside a text element, read again as the element and set as its content. false when
-// the new bytes are not one element of its tag, and 'reload' when they are not a text element, since
-// its new children are not paired and typing in it would be lost, both with the deck left as it was
 function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | null | false | 'reload' {
   let text = true;
   const next = graft(ctx.source, textEl.src, ctx.text, (root) => (text = isTextElement(root)));
@@ -209,7 +170,6 @@ function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | nul
   const caret = keepCaret(ctx.app, textEl.live);
   const steps = !!textEl.live.querySelector('.fragment');
   setContent(ctx, textEl.live, ctx.text.slice(range.start, range.end));
-  // the formulas are typeset after the apply, hence the page reads as the file without them now
   repairText(ctx.pairing, textEl, next, NO_MATH);
   if (steps || textEl.live.querySelector('.fragment')) {
     restep(ctx, textEl.live);
@@ -219,8 +179,6 @@ function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | nul
   return caret;
 }
 
-// the name of an attribute of the file on el: the name of the page in its case, which SVG keeps,
-// e.g. viewBox, where the file is read in lower case
 function liveName(el: Element, name: string): string {
   const own = [...el.attributes].find((a) => a.name.toLowerCase() === name);
   if (own || el.namespaceURI !== SVG) return own?.name ?? name;
@@ -232,18 +190,12 @@ function liveName(el: Element, name: string): string {
   }
 }
 
-// the change of a start tag from the attributes from to those of to, set on el: each class, each
-// declaration, and each attribute that changed, so that the classes and the declarations that the
-// theme and reveal.js set at run time are kept
 function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   const a = stateOf(from);
   const b = stateOf(to);
   let any = false;
   let more = false;
   if (a.classes.join(' ') !== b.classes.join(' ')) {
-    // the classes of the file in its order, then those of the theme and reveal.js, then those of the
-    // editor, as at an open. every step is shown while the deck is edited, as Doc.place marks the
-    // steps of a new slide
     const step = b.classes.includes('fragment') && !a.classes.includes('fragment');
     const unstep = a.classes.includes('fragment') && !b.classes.includes('fragment');
     const runtime = [...el.classList].filter((c) => !a.classes.includes(c) && !b.classes.includes(c) && !(unstep && c === 'visible'));
@@ -273,11 +225,7 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
     more = true;
     motion ||= MOTION.includes(k);
   }
-  // a backdrop reads its motion once, where the editor draws it again after a change of its
-  // drawing, its window, or its labels, see watch() in commands/backdrop.ts
   if (motion && el.matches('.backdrop')) (window as unknown as Page).Beeson?.remount?.(el);
-  // the theme sets a viewer without data-keep-theme to the mode of the deck, see syncViewers() in
-  // src/main.ts
   const theme = b.attrs['data-keep-theme'] === undefined ? (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark') : b.attrs.theme;
   if (viewer && (theme ?? null) !== el.getAttribute('theme')) {
     if (theme === undefined) el.removeAttribute('theme');
@@ -293,24 +241,15 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
 
 type Page = { Beeson?: { mount?(root: Element): void; refreshChrome?(): void; remount?(el: Element): void } };
 const MOTION = ['data-duration', 'data-stagger', 'data-loop'];
-// the attributes of a surface that the editor sets on its drawing, see configure() in
-// src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
 const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
 const DRAWN = '.surface, .plot';
 const figureOf = (attrs: Attr[]): string | null => {
   const s = stateOf(attrs);
   return s.classes.includes('tikz') ? (s.attrs['data-figure'] ?? '') : null;
 };
-// the theme draws a backdrop into its element once, hence an element does not become a backdrop or
-// stop being one in place
 const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('backdrop');
 
-// a change of the start tag of el from the attributes from to those of to that a drawing of the
-// theme around el does not read again
 function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
-  // a TikZ figure loads the output named by data-figure only at mount, see mountFigures() in
-  // src/tikz.ts. the spans of its parts are watched there, hence a change of data-part is not a
-  // reload
   if (figureOf(from) !== figureOf(to)) return true;
   const holder = el.closest(DRAWN);
   if (!holder) return false;
@@ -320,15 +259,11 @@ function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].some((k) => k !== 'class' && k !== 'style' && a[k] !== b[k] && !free.includes(k));
 }
 
-// el and the steps inside it shown, as every step is while the deck is edited
 function showSteps(el: Element, self = true): void {
   if (self && el.classList.contains('fragment')) el.classList.add('visible');
   for (const f of el.querySelectorAll('.fragment')) f.classList.add('visible');
 }
 
-// the indexes of the steps of the slide of el, or of every slide under el, written as in the file,
-// before reveal.js sorts and numbers them again at a sync, as it does at an open. reveal.js wrote its
-// own numbers over those of the file, among which a changed index would be written raw
 function restep(ctx: Ctx, el: Element): void {
   const scope = el.closest('section') ?? el;
   for (const f of scope.querySelectorAll('.fragment, [data-fragment-index]')) {
@@ -340,15 +275,11 @@ function restep(ctx: Ctx, el: Element): void {
   }
 }
 
-// the theme drawn again around host after a change of its text: the citations numbered and the
-// theorems counted when host had a citation before the change, has one, or is in a theorem, and the
-// heads of the slides otherwise, since a count reads the whole deck at each key typed
 function refreshText(host: Element, had: boolean): void {
   if (had || host.querySelector('cite') || host.closest('p.theorem')) (window as unknown as Page).Beeson?.refreshChrome?.();
   else refreshHeads(host);
 }
 
-// the slides of reveal.js read again, with the theme drawn again around them
 export function refresh(app: App): void {
   (window as unknown as Page).Beeson?.refreshChrome?.();
   app.deck()?.sync?.();
@@ -359,16 +290,10 @@ function makeCtx(app: App, text: string): Ctx {
   return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), reordered: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
 }
 
-// a deck changed by an apply that then does not read as the text, i.e. neither as before nor as the
-// text. it throws, since a reload is answered only with the deck as it was. target is the text that
-// the deck was to read, with the edits of the person that the client has not read, see turn()
 export function partial(target?: string): never {
   throw Object.assign(new Error('the deck does not read as the text after an apply'), { target });
 }
 
-// the deck made to read as text, which differs from the text of the source in w, at spot. null when
-// it cannot be done, with the deck left as it was, after which the page is loaded again. the page is
-// changed synchronously, and the formulas of the new content are typeset by the promises of the result
 export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | null {
   const ctx = makeCtx(app, text);
   if (spot.kind === 'text') {
@@ -381,8 +306,6 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
       refreshText(textEl.live, had);
       return done(ctx, false, null);
     }
-    // an element left open inside the text element is carried over the elements after it by the
-    // parser of the whole file
     const r = elementRange(textEl.src);
     if (r && closing(text.slice(r.start, r.end + text.length - ctx.source.text.length), textEl.src) === 'open') return null;
     const caret = coarse(ctx, textEl);
@@ -394,12 +317,9 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
   }
   if (spot.kind === 'tag') {
     const from = spot.el.attrs;
-    // a reload is answered before retag() sets the source, since the deck reads as before at a reload
     const t = startTag(ctx.source, spot.el, text);
     if (t && (redrawn(spot.live, from, t.attrs) || backdropOf(from) !== backdropOf(t.attrs))) return null;
     if (!t || !retag(ctx.source, spot.el, text, t)) return within(ctx, spot.el, spot.live);
-    // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
-    // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) {
       restep(ctx, spot.live);
       refresh(app);
@@ -410,7 +330,6 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
   return null;
 }
 
-// a change of el as a whole, applied among the children of its parent
 function within(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   const parent = el.parent;
   const up = live.parentElement;
@@ -418,7 +337,6 @@ function within(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   return structural(ctx, parent, up);
 }
 
-// the text element on the page reads as its bytes in the new text
 function checkText(ctx: Ctx, live: Element): boolean {
   const textEl = ctx.pairing.byLive.get(live);
   if (!textEl || !isTextElement(textEl.src)) return false;
@@ -426,26 +344,17 @@ function checkText(ctx: Ctx, live: Element): boolean {
   return !!range && ctx.source.text === ctx.text && renderTextElement(ctx.source, textEl, mathIn(live), ctx.app.tagEdits) === ctx.text.slice(range.start, range.end);
 }
 
-// a unit of a container in the plan of its new children: one kept, possibly moved, one placed from
-// the new text, one whose content or start tag changed, or one whose text element changed
 type Op =
   | { kind: 'keep'; node: Element | null; stable: boolean }
   | { kind: 'place'; src: SrcEl; bytes: string; node: Element | null }
   | { kind: 'text'; node: Element; from: SrcEl; to: SrcEl }
   | { kind: 'inner'; node: Element; from: SrcEl; to: SrcEl; plan: Plan | null };
-// the ops of the units between the units that kept their place at the start and at the end, and
-// after, the node of the first unit kept at the end
 type Plan = { live: Element; ops: Op[]; after: Element | null };
 
-// reload is set when a script or another element of raw text is put or taken among the children of
-// an element that is kept, or when a surface or a plot, which read their element once, would
-// change, which is a reload
 type Planner = { liveOf: Map<SrcEl, Element>; drops: { node: Element; bytes: string; role: string }[]; places: (Op & { kind: 'place' })[]; caretHost: Element | null; reload: boolean };
 
-// the visible text among the children of s, outside its units, which a plan does not change
 const strayText = (s: SrcEl): string => s.children.flatMap((c) => (c.kind === 'text' && /\S/.test(c.decoded) ? [c.decoded.trim()] : [])).join('\n');
 
-// the indexes of the longest increasing run of values, which keep their place
 function longestRun(values: number[]): Set<number> {
   const tails: number[] = [];
   const prev = new Array<number>(values.length).fill(-1);
@@ -466,7 +375,6 @@ function longestRun(values: number[]): Set<number> {
   return out;
 }
 
-// the plan that makes the children of live, the element of from, read as those of to
 function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element): Plan | null {
   if (strayText(from) !== strayText(to)) return null;
   const ou = unitsWithin(from)?.units ?? [];
@@ -497,7 +405,6 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
       ops.push({ kind: 'keep', node: nodeOf(om[match[j]].el), stable: stable.has(j) });
       return;
     }
-    // an old unit of the same tag between the same units kept in place is the same unit changed
     let hi = om.length;
     for (let k = j + 1; k < nm.length; k++) {
       if (stable.has(k)) {
@@ -529,7 +436,6 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
   return { live, ops, after };
 }
 
-// the op of an old unit a changed into b, or null when b is placed in its stead
 function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null): Op | null {
   if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open || isStack(a) !== isStack(b) || backdropOf(a.attrs) !== backdropOf(b.attrs)) return null;
   const aText = isTextElement(a);
@@ -545,23 +451,18 @@ function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null)
   return plan && { kind: 'inner', node, from: a, to: b, plan };
 }
 
-// a slide that holds the slides of a vertical stack, which reveal.js and the theme set up apart
-// from a slide, hence a slide that becomes a stack or stops being one is placed anew
 const isStack = (e: SrcEl): boolean => e.tag === 'section' && e.children.some((c) => c.kind === 'element' && c.tag === 'section');
 
-// the role of a slide on the page, kept by a node reused in another place
 const roleOf = (el: Element): string => (el.localName !== 'section' ? '' : el.parentElement?.localName === 'section' ? 'inner' : el.querySelector(':scope > section') ? 'stack' : 'slide');
 const roleIn = (e: SrcEl): string => (e.tag !== 'section' ? '' : e.parent?.tag === 'section' ? 'inner' : isStack(e) ? 'stack' : 'slide');
 
 const isUnit = (ctx: Ctx, placed: Set<Element>, el: Element): boolean => ctx.pairing.elements.has(el) || placed.has(el);
 
-// the next sibling of n that is the node of a unit
 function nextUnit(ctx: Ctx, placed: Set<Element>, n: Element): Element | null {
   for (let s = n.nextElementSibling; s; s = s.nextElementSibling) if (isUnit(ctx, placed, s)) return s;
   return null;
 }
 
-// a new element of the page made from its element in the new text, as Doc.place makes one
 function make(ctx: Ctx, src: SrcEl): Element {
   const node = document.importNode(src.node, true) as Element;
   media.resolve(node);
@@ -585,7 +486,6 @@ function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLEl
     } else if (op.kind === 'place') {
       op.node ??= make(ctx, op.src);
       placed.add(op.node);
-      // the empty notes that the notes pane made on the slide give way to the notes of the file
       if (op.node.matches('aside.notes')) {
         for (const c of [...plan.live.children]) {
           if (c === op.node || !c.matches('aside.notes') || ctx.pairing.elements.has(c) || c.textContent?.trim()) continue;
@@ -608,17 +508,12 @@ function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLEl
     }
     next = n;
   }
-  // the units kept among units that moved changed their order, whichever of them the longest run
-  // kept in place, hence an undo of an earlier move of any of them would undo this order. an undo
-  // that puts a unit in or takes one out of them is kept
   if (moved) {
     ctx.reordered.add(plan.live);
     for (const op of plan.ops) if (op.kind === 'keep' && op.node) ctx.changed.push(op.node);
   }
 }
 
-// the change at the children of el, the element of live: the units of the new text planned against
-// those of the page, the page changed by the plan, and the pairing made again from the new text
 function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   const app = ctx.app;
   let next: Source;
@@ -627,9 +522,6 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   } catch {
     return null;
   }
-  // the element of the new text at the place of el, which is the same element when it starts and
-  // ends where el does. a change read at the wrong level, e.g. a slide put before a slide whose
-  // heading starts as its own, is planned at the parent of el
   const d = ctx.text.length - ctx.source.text.length;
   let to = atPath(next.slides, pathOf(el));
   for (;;) {
@@ -647,8 +539,6 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   if (live.closest(DRAWN) && live !== live.closest(DRAWN)) return null;
   const plan = reconcile(ctx, pl, el, to, live);
   if (!plan || pl.reload) return null;
-  // a unit taken from one element and placed in another keeps its node, unless it is a slide that
-  // changes its role
   const pool = new Map<string, Element[]>();
   const key = (bytes: string, role: string) => `${role}\n${bytes}`;
   for (const d of pl.drops) pool.set(key(d.bytes, d.role), [...(pool.get(key(d.bytes, d.role)) ?? []), d.node]);
@@ -683,8 +573,6 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   focus.el?.focus({ preventScroll: true });
   restep(ctx, live);
   (window as unknown as Page).Beeson?.refreshChrome?.();
-  // the theme numbers the viewers in the order of the deck at an open and at a mount, see
-  // markViewers() in src/print.ts, and a viewer moved or after one taken off is numbered again so
   document.querySelectorAll('tycho-viewer').forEach((v, i) => {
     if (v.getAttribute('data-still') !== String(i)) v.setAttribute('data-still', String(i));
   });
@@ -704,13 +592,10 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   });
 }
 
-// the current slide of the person kept through an apply, since reveal.js keeps its index. a slide
-// taken off the page gives way to the slide at its index, i.e. the slide after it, or the last one
 export function keepSlide(app: App, current: Element | null, at: { h: number; v?: number } | null): void {
   const deck = app.deck();
   if (!deck) return;
   deck.sync?.();
-  // reveal.js keeps its index and its current slide through sync, hence the indexes are compared
   if (current?.isConnected) {
     const at = deck.getIndices(current);
     const now = deck.getIndices();

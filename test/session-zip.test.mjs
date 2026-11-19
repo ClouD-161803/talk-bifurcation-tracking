@@ -1,13 +1,3 @@
-// File > Export To > Talk Folder… of a session in Chrome, on the edit command started on a talk
-// folder cut from test-deck.html. a guest downloads the folder through a relay started here. the
-// unzipped deck is shown by scripts/check.mjs in Chrome, Firefox, and Safari, where the backdrop
-// of its wrapped file is drawn. Chrome and Firefox open the deck from the disk with every other
-// host blocked. Safari under automation refuses file:// and cannot block a host, hence it is
-// served the deck from a local port, and a load from another host is reported there. the host
-// downloads the same folder. a phone and a tablet with a trackpad are told about phones and tablets
-// first, and a folder over the limit is refused with its size. Cancel stops a download, and a page
-// that edits without a session does not have the command
-
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -24,7 +14,6 @@ import { startEdit, stopEdit, talkFolder, until, within } from './helpers/sessio
 import { entries, unzipTo } from './helpers/zip.mjs';
 
 const SECRET = 'the secret of the group for this test';
-// the name of the talk folder, with a space, which the zip and its one folder are named after
 const NAME = 'My talk';
 const ZIP = `${NAME}.zip`;
 const MB = 1024 * 1024;
@@ -34,16 +23,8 @@ const PHONES = 'On a phone or a tablet, a deck is opened from a web server, such
 const DONE = `Unzip ${ZIP} first, unless your browser has already unzipped it. Then open index.html in the unzipped folder with a double click. On a phone or a tablet, a deck is opened from a web server instead.`;
 const MOVED = `Move ${ZIP} to a computer and unzip it there. Then open index.html in the unzipped folder with a double click.`;
 const FAILED = 'The talk folder could not be downloaded. Try again.';
-// the files of a talk folder that a deck does not load, which the zip leaves out
 const LEFT_OUT = ['.env', 'node_modules/x/a.js', 'check/a.png', 'slides.pdf', 'slides.pptx'];
 
-/**
- * The index.html of the talk folder: the head and the scripts of test-deck.html around five of its
- * slides, found by their headings. The title slide traces brand/transfer.js, and the section slide
- * names data/broucke.json, a JSON file that a deck opened from the disk cannot read. The slide of
- * the figures has a figure per mode and the macro LL of tex.js in its caption, the slide of the
- * videos plays a short clip, and the last slide shows the TikZ figure cr3bp.
- */
 function deck() {
   const text = readFileSync('test-deck.html', 'utf8');
   const sections = text.match(/<section[\s\S]*?<\/section>/g);
@@ -63,8 +44,6 @@ function deck() {
     swap(slide('Chapter one'), 'data-trajectories="demo/broucke-sample.js"', 'data-trajectories="data/broucke.json"'),
     swap(slide('Figures are first class citizens'), String.raw`\(\mathcal{L}_{1}\)`, String.raw`\(\LL{1}\)`),
     videos,
-    // figures/cr3bp.js was compiled for a box of 604 by 396 px, and check.mjs reports another box
-    // as stale
     '<section>\n  <h2>A TikZ figure</h2>\n  <div class="figure-box tikz" data-figure="cr3bp" style="width: 604px; height: 396px"></div>\n</section>',
   ];
   const head = text.slice(0, text.indexOf('<div class="slides">') + '<div class="slides">'.length);
@@ -73,15 +52,12 @@ function deck() {
   return `${head}\n\n${slides.join('\n\n')}\n\n${tail}`;
 }
 
-// the talk folder at folder, with the files that the deck loads and the files of LEFT_OUT
 function build(folder) {
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, 'index.html'), deck());
   for (const path of ['theme', 'brand', 'preamble.tex', 'references.bib', 'figures/cr3bp.tex', 'figures/cr3bp.js', 'demo/figure-dark.png', 'demo/figure-light.png']) {
     cpSync(resolve(path), join(folder, path), { recursive: true });
   }
-  // tex.js as npm run tex writes it for this deck. the tex.js of the repository holds the paper that
-  // index.html cites, and check.mjs reports it as stale for a deck that does not cite it
   const tex = deckTex(join(folder, 'index.html'));
   writeFileSync(tex.file, tex.text);
   mkdirSync(join(folder, 'media'));
@@ -97,7 +73,6 @@ function build(folder) {
   }
 }
 
-// the files of folder by their paths below it, without .session/ of the edit command
 function files(folder, dir = '') {
   return readdirSync(join(folder, dir), { withFileTypes: true }).flatMap((e) => {
     const path = dir ? `${dir}/${e.name}` : e.name;
@@ -106,10 +81,6 @@ function files(folder, dir = '') {
   });
 }
 
-/**
- * The talk folder NAME and the edit command on it, shared through relay when one is given. read()
- * gives index.html, and guestUrl is the link of the session through the relay.
- */
 async function zipTalk(t, { relay = null, env = {} } = {}) {
   const { root, config } = talkFolder(t);
   const folder = join(root, NAME);
@@ -130,21 +101,6 @@ async function zipTalk(t, { relay = null, env = {} } = {}) {
   };
 }
 
-/**
- * The script of a page of a test. The array window.__zip records the requests of the zip by method
- * and address. While window.__hold.op is set, an operation of the page is held, and while
- * window.__hold.piece is set, a piece of the zip is held, until window.__release(). A held request
- * fails at the abort of its signal, as a request in flight does, and window.__aborted counts these
- * aborts. The array window.__saved records
- * the names of the downloads of the page, and window.__said each state of the dialog Talk Folder
- * as { text, buttons }, or null once it is closed, since a state may be over before it is read. A
- * button that is disabled or marked with aria-disabled, and drawn dimmed, is recorded with
- * (disabled) after its label. The array window.__pressed records the label of each button of a
- * dialog that was pressed, by a tap, a click, or a key.
- * With window.__hold.op set to 'sending', the operations are released as soon as the dialog says
- * that it waits for them, within the 4 s that src/session/client/zip.ts waits. With
- * window.__hold.piece set to 'gone', a piece is answered as by an edit command that has dropped the zip.
- */
 const PAGE = `{
   const fetched = window.fetch;
   window.__zip = [];
@@ -194,9 +150,6 @@ const PAGE = `{
   }, true);
 }`;
 
-// an iPad with a trackpad: iPadOS names itself a Mac with a touch screen, and the page has a coarse
-// and a fine pointer. both are set here, since a page has the pointers of its machine, and a runner
-// does not have a mouse
 const IPAD = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });
 Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });
 {
@@ -204,16 +157,10 @@ Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });
   window.matchMedia = (query) => media(/^\\(any-pointer: (coarse|fine)\\)$/.test(query) ? 'all' : query);
 }`;
 
-// a phone of Android. without it, the page has the platform of its runner, which is a computer for
-// a touch screen alone on Windows
 const PHONE = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux armv8l' });`;
 
-// a tablet of Windows, i.e. a page with a touch screen alone on a system that opens a deck from the disk
 const WINDOWS = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });`;
 
-// a page of the editor on the deck of zipTalk at url, with PAGE. its MathJax, backdrops, and video
-// take longer to start than the small deck of TALK in test/helpers/client.mjs, for which open()
-// waits 15 s
 async function editorOn(browser, url, { script = '', ...options }) {
   const page = await open(browser, url, { ...options, script: `${PAGE}\n${script}`, ready: false });
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 60_000);
@@ -221,10 +168,8 @@ async function editorOn(browser, url, { script = '', ...options }) {
   return page;
 }
 
-// the texts of the dialog in the order shown, each once
 const texts = (said) => said.filter(Boolean).map((s) => s.text).filter((text, i, all) => text && text !== all[i - 1]);
 
-// the center of the element of an expression, once it is shown
 async function centerOf(page, expression) {
   const read = `(() => {
     const el = ${expression};
@@ -238,7 +183,6 @@ async function centerOf(page, expression) {
 
 const touch = (page, type, points) => page.send('Input.dispatchTouchEvent', { type, touchPoints: points });
 
-// a trusted tap with touch, or a click with the mouse
 async function press(page, expression, { tap = false } = {}) {
   const at = await centerOf(page, expression);
   if (!tap) return click(page, at);
@@ -250,11 +194,6 @@ const TITLE = (bar) => `[...document.querySelectorAll('.beeson-edit-menubar [rol
 const ITEM = (label) => `[...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.getClientRects().length && i.querySelector('.label')?.textContent === ${JSON.stringify(label)}).at(-1)`;
 const BUTTON = (label) => `[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((b) => b.textContent === ${JSON.stringify(label)})`;
 
-/**
- * A menu item chosen through the menus as a person does, e.g. File, Export To, Talk Folder…. With
- * the mouse, the pointer is moved onto the row of a submenu so that it opens. With tap set, each
- * row is tapped.
- */
 async function choose(page, [bar, ...items], { tap = false } = {}) {
   await front(page);
   await press(page, TITLE(bar), { tap });
@@ -267,14 +206,11 @@ async function choose(page, [bar, ...items], { tap = false } = {}) {
   }
 }
 
-// the downloads of the browser of page saved into dir
 async function downloadsTo(page, dir) {
   mkdirSync(dir, { recursive: true });
   await page.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir, eventsEnabled: true });
 }
 
-// the bytes of the download name in dir, once Chrome has finished it, i.e. renamed it from its
-// .crdownload
 const downloaded = (dir, name, timeout = 60_000) =>
   until(() => {
     const names = readdirSync(dir);
@@ -283,7 +219,6 @@ const downloaded = (dir, name, timeout = 60_000) =>
 
 const H2 = (heading) => `[...document.querySelectorAll('.reveal .slides > section h2')].find((h) => h.textContent.startsWith(${JSON.stringify(heading)}))`;
 
-/** Asserts the entries of zip against the talk folder whose index.html reads text, and returns them. */
 function assertZip(zip, folder, text) {
   const all = entries(zip);
   const names = all.map((e) => e.name).sort();
@@ -299,10 +234,8 @@ function assertZip(zip, folder, text) {
   return all;
 }
 
-// a program found on the PATH
 const onPath = (name) => (process.env.PATH ?? '').split(delimiter).some((dir) => dir && (existsSync(join(dir, name)) || existsSync(join(dir, `${name}.exe`))));
 
-// the reason why check.mjs cannot drive browser on this machine, or null
 function cannotRun(browser) {
   if (browser === 'firefox') {
     const gecko = process.env.GECKOWEBDRIVER;
@@ -316,17 +249,11 @@ function cannotRun(browser) {
   return null;
 }
 
-/**
- * Runs node scripts/check.mjs on deck in browser, and resolves with its exit code and output. Firefox
- * on Linux without a display is run under xvfb-run, as in the workflow check, since WebGL in
- * software needs a window there.
- */
 function check(browser, deck, out, limit) {
   const args = [resolve('scripts/check.mjs'), '--deck', deck, '--out', out, ...(browser === 'chrome' ? [] : ['--browser', browser])];
   const xvfb = browser === 'firefox' && process.platform === 'linux' && !process.env.DISPLAY && onPath('xvfb-run');
   const [command, argv] = xvfb ? ['xvfb-run', ['-a', '-s', '-screen 0 1920x1080x24', process.execPath, ...args]] : [process.execPath, args];
   return new Promise((done) => {
-    // in a group of its own on macOS and Linux, so that the browser that it started is stopped with it
     const unix = process.platform !== 'win32';
     const child = spawn(command, argv, { stdio: ['ignore', 'pipe', 'pipe'], detached: unix });
     let output = '';
@@ -348,19 +275,11 @@ function check(browser, deck, out, limit) {
   });
 }
 
-// the answers of safaridriver when remote automation is off, or when another session holds Safari
 const SAFARI_OFF = /Allow remote automation|safaridriver --enable|did not start|session not created|Could not create a session/i;
 
-// the warnings of the console of a page of Chrome, kept in window.__warnings
 const WARNINGS = `window.__warnings = [];
   { const warn = console.warn; console.warn = function (...a) { window.__warnings.push(a.map(String).join(' ')); return warn.apply(this, a); }; }`;
 
-/**
- * Opens the unzipped deck in the browser name, and asserts that the backdrops of the wrapped file
- * and of brand/transfer.js have trajectories and are painted, and that nothing was loaded from
- * elsewhere. Chrome and Firefox open the deck from the disk, and Safari from a local port. In
- * Chrome, the console is read as well.
- */
 async function backdropsDrawn(name, deckFile) {
   const chrome = name === 'chrome';
   const site = name === 'safari' ? await serve(dirname(deckFile)) : null;
@@ -412,7 +331,6 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     const dir = join(server.root, 'guest downloads');
     await downloadsTo(guest, dir);
     await show(guest, 'Figures');
-    // the operation of the edit is held until the dialog says that it waits for it
     await guest.evaluate(`window.__hold.op = 'sending'`);
     await caretAtEnd(guest, H2('Figures'));
     await type(guest, ' and a guest');
@@ -432,7 +350,6 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     assert.deepEqual(await guest.evaluate('window.__saved'), [ZIP]);
     assert.deepEqual(readdirSync(dir), [ZIP]);
 
-    // the edit command and the relay keep nothing of the zip once it is downloaded
     const requests = await guest.evaluate('window.__zip');
     const piece = requests.find((r) => r.method === 'GET');
     assert.ok(piece && requests.some((r) => r.method === 'DELETE'), JSON.stringify(requests));
@@ -475,8 +392,6 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     await host.close();
   });
 
-  // check.mjs opens the deck from file:// in Chrome and in Firefox, which are started with every
-  // other host blocked. it serves the deck to Safari from a local port
   for (const name of ['chrome', 'firefox', 'safari']) {
     const titles = [`scripts/check.mjs shows the unzipped deck in ${name} without a page error`, `in ${name}, the backdrops of the wrapped file and of brand/transfer.js draw their trajectories`];
     const reason = cannotRun(name);
@@ -512,8 +427,6 @@ test('on a phone, Talk Folder… is reached through the File menu, tells about p
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await zipTalk(t);
-  // the editor is told that the phone is not a Mac, as on Android, where Return presses the button
-  // that has the focus. on a Mac it presses the default button of a dialog
   const phone = await editorOn(browser, `${sessionUrl(server.edit)}&edit-platform=other`, { name: 'Cy', width: 390, height: 844, mobile: true, script: PHONE });
   assert.deepEqual(await phone.evaluate(`[matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches, navigator.platform]`), [true, 'Linux armv8l'], 'the page has a touch screen alone');
   const dir = join(server.root, 'phone downloads');
@@ -528,17 +441,12 @@ test('on a phone, Talk Folder… is reached through the File menu, tells about p
 
   await choose(phone, PATH, { tap: true });
   await phone.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(PHONES)}`);
-  // a screen reader reads the sentence with the title of the dialog
   const described = `document.getElementById(document.querySelector('dialog.beeson-edit-dialog[open]').getAttribute('aria-describedby'))`;
   assert.equal(await phone.evaluate(`${described}?.textContent`), PHONES);
-  // and each later text of the download once it is written
   assert.equal(await phone.evaluate(`${described}.getAttribute('aria-live')`), 'polite');
-  // the pieces of the zip are held, hence the zip is still on its way at the second tap and at the key
   await phone.evaluate('window.__hold.piece = true');
   await press(phone, BUTTON('Download'), { tap: true });
   await phone.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
-  // Download keeps its place and the focus without an effect while the zip is on its way, so that a
-  // second tap or Return does not land on Cancel
   const way = `({ buttons: window.__said.at(-1)?.buttons, focus: document.activeElement?.textContent, posts: window.__zip.filter((r) => r.method === 'POST').length })`;
   const held = { buttons: ['Cancel', 'Download (disabled)'], focus: 'Download', posts: 1 };
   assert.deepEqual(await phone.evaluate(way), held);
@@ -609,8 +517,6 @@ test('a guest whose talk folder is over the limit of a download through the rela
   await downloadsTo(guest, dir);
   await choose(guest, PATH);
   await guest.waitFor(`window.__said.at(-1)?.buttons?.join() === 'Close'`);
-  // the bytes of the talk folder: index.html with the wrapped name, and each file of the folder that
-  // is not left out. the wrapped copy of the JSON file does not count
   const index = Buffer.byteLength(server.read()) + '.js'.length;
   const bytes = files(server.folder).filter((f) => f !== 'index.html' && !LEFT_OUT.includes(f)).reduce((n, f) => n + statSync(join(server.folder, f)).size, index);
   const size = (Math.ceil((bytes / MB) * 10) / 10).toFixed(1);
@@ -630,7 +536,6 @@ test('Cancel during a download closes the dialog, downloads nothing, and the edi
   const host = await editorOn(browser, sessionUrl(server.edit), { name: 'Ann' });
   const dir = join(server.root, 'downloads');
   await downloadsTo(host, dir);
-  // the pieces of the zip are held, hence the dialog is still downloading at Cancel
   await host.evaluate('window.__hold.piece = true');
   await choose(host, PATH);
   await host.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
@@ -649,7 +554,6 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await zipTalk(t);
-  // on a Mac, Return presses the default button of a dialog, and this dialog does not have one
   const host = await editorOn(browser, `${sessionUrl(server.edit)}&edit-platform=mac`, { name: 'Ann' });
   await host.evaluate('window.__hold.piece = true');
   await choose(host, PATH);
@@ -659,7 +563,6 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   assert.deepEqual(await host.evaluate(seen), way);
   await key(host, 'Enter');
   assert.deepEqual(await host.evaluate(seen), way);
-  // Space presses the button that has the focus on every system
   await key(host, 'Space');
   await host.waitFor('window.__said.at(-1) === null');
   assert.deepEqual(await host.evaluate('window.__pressed'), ['Cancel']);
@@ -669,7 +572,6 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   clean(host);
 });
 
-// a signal ends a process at once on Windows, where a page is thus not told the end of the session
 test('the end of the session closes the dialog of a download that is on its way or that failed, and not the one of a finished download', { timeout: 840_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -677,13 +579,11 @@ test('the end of the session closes the dialog of a download that is on its way 
   const pages = [];
   for (const name of ['Ann', 'Ben', 'Cy']) pages.push(await editorOn(browser, sessionUrl(server.edit), { name }));
   const [waiting, refused, finished] = pages;
-  // the button that has the focus before the menu is opened
   const HOME = `[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Navigator')`;
   for (const page of [waiting, refused]) await page.evaluate(`(${HOME}.focus(), true)`);
   await waiting.evaluate('window.__hold.piece = true');
   await choose(waiting, PATH);
   await waiting.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
-  // the edit command has dropped the zip of this page, which a page cannot ask for again
   await refused.evaluate(`window.__hold.piece = 'gone'`);
   await choose(refused, PATH);
   await refused.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(FAILED)}`);
@@ -698,16 +598,12 @@ test('the end of the session closes the dialog of a download that is on its way 
     await page.waitFor(`${open}.join() === 'The session has ended'`, 30_000);
     assert.equal((await page.evaluate('window.__said')).at(-1), null);
     assert.equal(await page.evaluate('document.activeElement?.textContent'), 'Close');
-    // the focus is given back through both dialogs, to where it was before the menu
     await press(page, BUTTON('Close'));
     await page.waitFor(`${open}.length === 0`, 10_000);
     assert.equal(await page.evaluate(`document.activeElement === ${HOME}`), true, 'the focus is on the button that had it before Talk Folder…');
   }
-  // the download was stopped with its dialog: the piece that is held was told the abort
   await waiting.waitFor('window.__aborted === 1', 10_000);
-  // the download did not end with a request to try again, which a page of an ended session cannot follow
   assert.deepEqual((await waiting.evaluate('window.__said')).filter((state) => state && state.buttons.join() !== 'Cancel'), []);
-  // what to do with the zip is still read once the end of the session is closed
   await finished.waitFor(`${open}.join() === 'Talk Folder,The session has ended'`, 30_000);
   assert.deepEqual((await finished.evaluate('window.__said')).at(-1), { text: DONE, buttons: ['Done'] });
   await waiting.evaluate('(window.__hold.piece = false, window.__release())');

@@ -1,10 +1,3 @@
-// the sync core of the synchronous editor, imported from the compiled theme/edit.mjs: the rules
-// of a patch, the authority, and a fuzz test in which 2 to 5 replicas edit test-deck.html at once
-// over a network that delays and reorders, with operations in flight while typing goes on,
-// refusals, ties at one point, and late joins. every replica converges on the text of the
-// authority, an accepted operation is applied whole, and the merge of a replica agrees with the
-// shift of the authority. each run is seeded, and a failure names its seed
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -17,7 +10,6 @@ import { moveAnchors } from '../src/session/anchor.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
 
-// mulberry32, a small seeded generator
 function generator(seed) {
   let a = seed >>> 0;
   const next = () => {
@@ -32,12 +24,10 @@ function generator(seed) {
 }
 
 const isHigh = (c) => c >= 0xd800 && c <= 0xdbff;
-// an offset moved off the middle of a surrogate pair
 const whole = (text, i) => (i > 0 && i < text.length && isHigh(text.charCodeAt(i - 1)) ? i - 1 : i);
 
 const ALPHABET = ['a', 'b', 'x', ' ', '\n', '<', '>', '"', '&', ';', '/', '=', '😀', 'é'];
 
-// a random edit of text near one of the hot spots, so that conflicts and ties are frequent
 function edit(r, text, spots) {
   const near = () => {
     if (r.chance(0.1)) return whole(text, r.int(text.length + 1));
@@ -56,7 +46,6 @@ function edit(r, text, spots) {
     return text.slice(0, at) + text.slice(end);
   }
   if (kind < 8) {
-    // several patches in one change, e.g. a find and replace, applied from the end
     const points = Array.from({ length: 2 + r.int(3) }, near).sort((a, b) => b - a);
     let out = text;
     let last = Infinity;
@@ -68,7 +57,6 @@ function edit(r, text, spots) {
     }
     return out;
   }
-  // a move: a range cut and inserted elsewhere
   const a = near();
   const b = whole(text, Math.min(text.length, a + 1 + r.int(30)));
   const cut = text.slice(0, a) + text.slice(b);
@@ -76,11 +64,8 @@ function edit(r, text, spots) {
   return cut.slice(0, to) + text.slice(a, b) + cut.slice(to);
 }
 
-// a text of 40 lines t0 to t39, in which the token mode inserts lines
 const TOKEN_TEXT = Array.from({ length: 40 }, (_, i) => `t${i}\n`).join('');
 
-// an edit of text that inserts one to three lines, each a new token n<k>, at the start of a line,
-// a third of them after the line t5, where ties are frequent
 function tokenEdit(r, text, created) {
   const starts = [0];
   for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
@@ -95,18 +80,10 @@ function tokenEdit(r, text, created) {
   return out;
 }
 
-// a session of an authority and replicas over a network in which every message waits in a queue.
-// in the token mode every edit inserts new tokens, a replica that falls behind the log of the
-// authority reads the whole state again, as after events without ops, and so does a replica with an
-// accepted operation in flight now and then. a replica that waits for the answer to an operation
-// does not read the whole state, as the client holds it back. every token is then in the text once.
-// with faults the edit command restarts now and then, and an answer is lost now and then, after
-// which the client sends its request again until it is answered, one request at a time
 function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxOps = 1000, spot = null, tokens = false, faults = false } = {}) {
   const r = generator(seed);
   const where = `seed ${seed}`;
   let authority = new Authority(text, { maxOps, epoch: `e${seed}` });
-  // the restarts of the edit command so far, and hence the one whose tokens are known
   let process = 0;
   const spots = spot === null ? Array.from({ length: 3 }, () => r.int(text.length)) : [spot, spot, spot];
   const replicas = [];
@@ -123,8 +100,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     return state;
   }
 
-  // the client says hello again without v, with the client id of its operation in flight as was,
-  // and merges the whole text. after a restart it goes on under a new client id
   function hello(state) {
     const { replica } = state;
     const applied = authority.applied(replica.sender);
@@ -139,9 +114,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     stats.resyncs++;
   }
 
-  // the edit command stops and starts again: index.html and .session/applied.json are written and
-  // read again under a new epoch, and the log and the tokens are lost. a part of the operations and
-  // the answers on the way is lost, and a request whose answer is lost is sent again
   function restart() {
     authority.written(authority.n);
     const table = authority.table();
@@ -176,14 +148,11 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     let answer, op;
     if (entry.process === process) ({ answer, op } = authority.submit(request, state.replica.client));
     else {
-      // the token is of the edit command before a restart, and the base of another epoch
       if (authority.applied(request.client) >= request.seq) stats.appliedRefused++;
       answer = r.chance(0.5) ? { ok: false, reason: 'unknown', v: authority.version } : authority.submit(request, request.client).answer;
     }
-    // a request sent again gets its earlier answer, without an operation
     if (op) {
       stats.accepted++;
-      // the operation is applied whole: every patch is moved, none is cut or left out
       assert.equal(op.patches.length, request.patches.length, `${where}: an operation was applied in part`);
       op.patches.forEach((p, k) => {
         assert.equal(p.text, request.patches[k].text, `${where}: a patch was changed`);
@@ -195,13 +164,11 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
       assert.equal(authority.text, before, `${where}: a refused operation changed the text`);
     }
     if (faults && r.chance(0.2)) {
-      // the answer is lost, and the client sends the request again
       toAuthority.push(entry);
       stats.lost++;
     } else state.answers.push({ request, answer });
   }
 
-  // an answer reaches the client, which sends its next request
   function hear(state) {
     const { request, answer } = state.answers.shift();
     state.replica.answer(request, answer);
@@ -211,7 +178,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     send(state);
   }
 
-  // the whole state read again by a replica that does not wait for an answer
   function reread(state) {
     if ((state.sent && !state.answered) || (faults && state.sending)) return false;
     if (state.sent && state.answered.ok) stats.flightResyncs++;
@@ -221,7 +187,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
   }
 
   function deliver(state, count) {
-    // after a restart the events of the edit command before are answered 404, and the client says hello again
     if (state.process !== process && !state.inbox.length) {
       if (!state.sending) hello(state);
       return send(state);
@@ -231,8 +196,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
       const ack = op.client === state.replica.client && state.sent?.seq === op.seq;
       state.replica.receive(op);
       if (ack) {
-        // the merge of the replica agrees with the shift of the authority: after the broadcast of
-        // its own operation, a replica that did not type since it sent holds the same text
         if (!state.editedSince && !state.replica.needsResync) assert.equal(state.replica.mine, state.replica.base, `${where}: the merge of a replica and the shift of the authority disagree`);
         state.sent = null;
       }
@@ -248,7 +211,6 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     if (roll < 0.38) {
       const before = state.replica.mine;
       let next = tokens ? tokenEdit(r, before, created) : edit(r, before, spots);
-      // two replicas that insert at one point at once make a tie
       if (!tokens && r.chance(spot === null ? 0.1 : 0.7)) {
         const at = Math.min(spots[0], before.length);
         next = before.slice(0, whole(before, at)) + r.pick(['<b>t</b>', 'q', '😀']) + before.slice(whole(before, at));
@@ -267,12 +229,10 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
       const flying = replicas.filter((s) => s.sent && s.answered?.ok);
       if (reread(flying.length ? r.pick(flying) : state)) send(state);
     } else if (roll >= 0.995 && replicas.length < 6) {
-      // a late join, from the text of an older version that the editor read and the operations after it
       join(authority.oldest + r.int(authority.n - authority.oldest + 1));
       stats.joins++;
     }
   }
-  // everything in the network is delivered until nothing is left to send
   for (let round = 0; round < 10_000; round++) {
     if (toAuthority.length) submit(0);
     else {
@@ -302,12 +262,10 @@ test('every replica converges on the text of the authority, on test-deck.html, o
     const stats = session(seed);
     for (const k in total) total[k] += stats[k];
   }
-  // the runs do cover refusals, ties, and late joins
   assert.ok(total.accepted > 1000 && total.refused > 20 && total.ties > 50 && total.joins > 0, JSON.stringify(total));
 });
 
 test('replicas that insert at one point at once converge, with the text of the earlier operation first', () => {
-  // a point in the text of a paragraph, where an insertion is not widened
   const spot = deck.indexOf('<p>') + 3;
   assert.ok(spot > 3);
   let ties = 0;
@@ -341,7 +299,6 @@ test('no edit is duplicated or lost over restarts of the edit command, lost answ
     const stats = session(seed, { text: TOKEN_TEXT, tokens: true, faults: true, maxOps: seed % 2 ? 3 : 1000, steps: 300 });
     for (const k in total) total[k] += stats[k];
   }
-  // the runs do cover restarts with an operation in flight, and refusals of an applied operation
   assert.ok(total.restarts > 800 && total.lost > 2500 && total.appliedRefused > 1000 && total.restartFlights > 1500, JSON.stringify(total));
 });
 
@@ -353,14 +310,10 @@ test('after a restart of the edit command, a resync keeps an operation in flight
     r.outgoing();
     return r;
   };
-  // the operation was written before the restart, the new epoch reads it from the file, and hello
-  // answers its seq
   const held = sent();
   held.resync('<p>HelloX world</p>\n<p>more</p>\n', 'F.0', 1);
   assert.equal(held.mine, '<p>HelloX world</p>\n<p>more</p>\n');
   assert.equal(held.outgoing(), null);
-  // the operation was lost with the edit command, and is sent again, also when hello does not know
-  // the client id
   for (const applied of [0, undefined]) {
     const lost = sent();
     lost.resync('<p>Hello world</p>\n<p>more</p>\n', 'F.0', applied);
@@ -370,15 +323,12 @@ test('after a restart of the edit command, a resync keeps an operation in flight
 });
 
 test('after a restart, a resync neither repeats nor reverts an applied operation whose answer was lost or refused', () => {
-  // the hello after the restart answers applied, i.e. the seq of the last operation of the old
-  // client id in the text, which is 1 here
   for (const reason of ['unknown', 'stale']) {
     const base = '<p>Hello world, again</p>\n';
     const e = new Authority(base, { epoch: 'E' });
     const a = new Replica('aaaaaaaa', base, 'E.0');
     a.edit('<p>Hello brave world, again</p>\n');
     const request = a.outgoing();
-    // the answer and the broadcast of the operation are lost
     const sent = e.submit(request, 'A');
     assert.equal(sent.answer.ok, true);
     const b = new Replica('bbbbbbbb', base, 'E.0');
@@ -391,7 +341,6 @@ test('after a restart, a resync neither repeats nor reverts an applied operation
     assert.equal(a.mine, '<p>Hello brave world, once more</p>\n', reason);
     assert.equal(a.outgoing(), null, reason);
   }
-  // the answer arrived and the broadcast did not, and the other person rewrote the line
   const base = '<h2>Results</h2>\n<p>Hello world</p>\n';
   const e = new Authority(base, { epoch: 'E' });
   const a = new Replica('aaaaaaaa', base, 'E.0');
@@ -417,7 +366,6 @@ test('a resync that does not know whether the text holds an operation in flight 
     const e = new Authority(base, { epoch: 'E' });
     const a = new Replica('aaaaaaaa', base, 'E.0');
     a.edit(relay);
-    // the request of A does not reach the edit command, which applies the bullet of B and restarts
     const request = a.outgoing();
     e.submit({ client: 'bbbbbbbb', seq: 1, base: 'E.0', patches: diff(base, editor) }, 'B');
     const f = new Authority(e.text, { epoch: 'F' });
@@ -442,11 +390,9 @@ test('a replica keeps its base, its text, and its operation in flight through a 
   a.rebind('cccccccc');
   assert.equal(a.client, 'cccccccc');
   assert.equal(a.inFlight, true);
-  // a hello asks for the seq of the old client id while its operation is in flight
   assert.equal(a.sender, 'aaaaaaaa');
   assert.equal(a.base, base);
   assert.equal(a.mine, '<p>Hello brave world!</p>\n');
-  // the broadcast under the old client id still acknowledges the operation
   assert.equal(a.receive(op), null);
   assert.equal(a.inFlight, false);
   assert.equal(a.sender, 'cccccccc');
@@ -461,17 +407,14 @@ test('the authority keeps the seq of the last operation of each client in the te
   assert.equal(a.applied('nobody'), undefined);
   a.submit({ client: 'c', seq: 1, base: 'E.0', patches: [{ start: 3, end: 3, text: 'd' }] }, 'C');
   a.submit({ client: 'c', seq: 2, base: 'E.1', patches: [{ start: 4, end: 4, text: 'e' }] }, 'C');
-  // the text in memory holds both operations, and the table holds only what is written
   assert.equal(a.applied('c'), 2);
   assert.deepEqual(a.table(), [['old', 7]]);
   assert.equal(a.written(1), false, 'the last operation of c is not written at version 1');
   assert.equal(a.written(2), true);
   assert.deepEqual(a.table(), [['old', 7], ['c', 2]]);
   assert.equal(a.written(2), false);
-  // a restart keeps the table and not the log
   const b = new Authority(a.text, { epoch: 'F', applied: a.table() });
   assert.equal(b.applied('c'), 2);
-  // the table keeps the last 1024 clients
   for (let i = 0; i < 1100; i++) b.submit({ client: `k${i}`, seq: 1, base: b.version, patches: [] }, 'K');
   b.written(b.n);
   assert.equal(b.table().length, 1024);
@@ -482,7 +425,6 @@ test('the authority keeps the seq of the last operation of each client in the te
 test('replicas converge on a short text that changes() gives up on', () => {
   const text = ['<section>', '  <h2>One</h2>', '  <p>First</p>', '</section>', ''].join('\n');
   for (let seed = 201; seed <= 260; seed++) session(seed, { text, steps: 120 });
-  // the null case of changes(): the texts are too far apart, and diff gives one patch
   const other = 'something else entirely, with no line in common\n';
   assert.equal(changes(text, other), null);
   const patches = diff(text, other);
@@ -491,7 +433,6 @@ test('replicas converge on a short text that changes() gives up on', () => {
 });
 
 test('the log of the authority does not keep a copy of the text per operation', () => {
-  // a slice of 13 or more characters keeps the whole string that it was cut from alive in V8
   setFlagsFromString('--expose-gc');
   const gc = globalThis.gc ?? runInNewContext('gc');
   const a = new Authority('abcdefghij\n'.repeat(95_000), { epoch: 'E' });
@@ -500,7 +441,6 @@ test('the log of the authority does not keep a copy of the text per operation', 
   for (let i = 0; i < 1000; i++) {
     const at = (i * 7919) % (a.text.length - 20);
     if (i % 2) {
-      // a change of the file, whose patches diff() cuts from a whole new text
       const text = `${a.text.slice(0, at)}${'y'.repeat(20)}${a.text.slice(at + 20)}`;
       a.enter([{ start: at, end: at + 20, text: text.slice(at, at + 20) }], 'file');
     } else a.submit({ client: 'c', seq: i + 1, base: a.version, patches: [{ start: at, end: at + 20, text: 'x'.repeat(20) }] }, 'C');
@@ -519,13 +459,10 @@ test('two patches conflict when they share a character or one is an insertion st
   assert.equal(conflict(p(2, 5), p(5, 5, 'x')), false);
   assert.equal(conflict(p(3, 3, 'a'), p(3, 3, 'b')), false);
   assert.equal(conflict(p(2, 5), p(5, 8)), false);
-  // at a tie the text of the operation ordered first comes first
   const base = 'abcdef';
   const first = [p(3, 3, 'X')], second = [p(3, 3, 'Y')];
   assert.equal(apply(apply(base, first), shift(second, first)), 'abcXYdef');
-  // the moved operation and the operation it is moved over give one text in either direction
   assert.equal(apply(apply(base, second), shift(first, second, false)), 'abcXYdef');
-  // an insertion at the start of a replaced range comes before its new text, and at its end after it
   assert.equal(apply(apply(base, [p(2, 4, 'R')]), shift([p(2, 2, 'i'), p(4, 4, 'j')], [p(2, 4, 'R')])), 'abiRjef');
   assert.equal(shift([p(1, 3)], [p(2, 2, 'x')]), null);
 });
@@ -555,18 +492,15 @@ test('the authority refuses stale, invalid, and conflicting operations, and answ
   assert.equal(a.submit({ client: 'd', seq: 2, base: 'F.0', patches: [] }, 'Bo').answer.reason, 'stale');
   assert.equal(a.submit({ client: 'd', seq: 3, base: 'E.1', patches: [{ start: 5, end: 99, text: '' }] }, 'Bo').answer.reason, 'invalid');
   assert.equal(a.submit({ client: 'd', seq: 4, base: 'E.1', patches: [{ start: 3, end: 4, text: '' }, { start: 1, end: 2, text: '' }] }, 'Bo').answer.reason, 'invalid');
-  // a patch that cuts a surrogate pair or carries a lone surrogate
   const b = new Authority('a😀b', { epoch: 'E' });
   assert.equal(b.submit({ client: 'c', seq: 1, base: 'E.0', patches: [{ start: 2, end: 2, text: 'x' }] }, 'A').answer.reason, 'invalid');
   assert.equal(b.submit({ client: 'c', seq: 2, base: 'E.0', patches: [{ start: 1, end: 1, text: '\ud800' }] }, 'A').answer.reason, 'invalid');
-  // an operation of an older version is moved over the later ones
   const seen = [];
   a.observe((op, text) => seen.push(text));
   a.submit({ client: 'd', seq: 5, base: 'E.1', patches: [{ start: 11, end: 11, text: '!' }] }, 'Bo');
   assert.deepEqual(a.submit({ client: 'e', seq: 1, base: 'E.1', patches: [{ start: 0, end: 0, text: '> ' }] }, 'Cy').answer, { ok: true, v: 'E.3' });
   assert.equal(a.text, '> howdy world!');
   assert.deepEqual(seen, ['howdy world!', '> howdy world!']);
-  // the log keeps two operations, hence the text of version 1 is rebuilt and that of 0 is not
   assert.equal(a.textAt(1), 'howdy world');
   assert.equal(a.textAt(0), null);
   assert.equal(a.since('E.0'), null);
@@ -575,8 +509,6 @@ test('the authority refuses stale, invalid, and conflicting operations, and answ
 });
 
 test('a repeated sequence number of a client with another base or other patches is refused as invalid', () => {
-  // a page that loaded again with its old client id starts at seq 1, and its operation must not be
-  // answered as the earlier one without being applied
   const a = new Authority('abc\n', { epoch: 'E' });
   const first = { client: 'reusedid', seq: 1, base: 'E.0', patches: [{ start: 3, end: 3, text: 'd' }] };
   assert.deepEqual(a.submit(first, 'Ann').answer, { ok: true, v: 'E.1' });
@@ -591,7 +523,6 @@ test('a replica repairs a lone surrogate in mine, and stops sending when a resyn
   const base = '<p>hi 😀</p>\n';
   const a = new Authority(base, { epoch: 'E' });
   const r = new Replica('me', base, 'E.0');
-  // half of an emoji, e.g. left by a script that set a text node, is sent as U+FFFD
   assert.equal(r.edit('<p>hi \uD83D and more</p>\n'), '<p>hi � and more</p>\n');
   assert.equal(r.edit('<p>hi � and more</p>\n'), null, 'a well-formed text is taken as it is');
   const request = r.outgoing();
@@ -599,7 +530,6 @@ test('a replica repairs a lone surrogate in mine, and stops sending when a resyn
   assert.equal(answer.ok, true);
   r.receive(op);
   assert.equal(r.mine, a.text);
-  // the first refusal as invalid is followed by a resync, and the second stops the sending
   r.edit(`${a.text}x`);
   const first = r.outgoing();
   r.answer(first, { ok: false, reason: 'invalid', v: a.version });
@@ -619,7 +549,6 @@ test('a replica reads the whole state again after a checksum mismatch, and keeps
   const r = new Replica('me', 'one two three', 'E.0');
   r.edit('one two three four');
   const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: [{ start: 0, end: 3, text: 'ONE' }] }, 'O');
-  // the base of the replica was damaged, e.g. by a fault of the client
   r.base = 'one tw0 three';
   r.receive(op);
   assert.equal(r.needsResync, true);
@@ -670,7 +599,6 @@ test('a resync after a restart shows the conflicts with the whole text, and the 
   assert.equal(ours.resync(now, 'F.0'), mine.replace('Two', 'Deux'));
 });
 
-// the start and end tags of a text, in order
 const skeleton = (text) =>
   tokenize(text)
     .filter((t) => t.type === 'start' || t.type === 'end')
@@ -678,7 +606,6 @@ const skeleton = (text) =>
     .join(' ');
 
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'use', 'stop']);
-// the start tags minus the end tags of each element that is not void
 function balance(text) {
   const out = {};
   for (const t of tokenize(text)) {
@@ -688,8 +615,6 @@ function balance(text) {
   return out;
 }
 
-// a random edit of base that is valid HTML alone: a part of an attribute value replaced, an
-// element inserted between two tokens, an element deleted, or a part of a text replaced
 function validEdit(r, base, tokens, window) {
   const inWindow = tokens.filter((t) => t.start >= window[0] && t.end <= window[1]);
   const letters = () => Array.from({ length: 1 + r.int(3) }, () => r.pick(['1', '2', '5', 'a', 'z'])).join('');
@@ -709,7 +634,6 @@ function validEdit(r, base, tokens, window) {
       return base.slice(0, at) + `<span class="n${letters()}">${letters()}</span>` + base.slice(at);
     }
     if (kind === 2) {
-      // an element without a child element, from its start tag to its end tag
       const i = r.int(inWindow.length - 2);
       const [s, t, e] = inWindow.slice(i, i + 3);
       if (s.type !== 'start' || t.type !== 'text' || e.type !== 'end' || e.name !== s.name || s.name === 'script') continue;
@@ -724,7 +648,6 @@ function validEdit(r, base, tokens, window) {
   }
 }
 
-// two replicas that each send one edit of the same version, ordered by the authority in the order given
 function race(base, textA, textB, aFirst) {
   const a = new Authority(base, { epoch: 'E' });
   const ra = new Replica('aaaaaaaa', base, 'E.0'), rb = new Replica('bbbbbbbb', base, 'E.0');
@@ -763,7 +686,6 @@ test('two valid concurrent edits merge into a text with the tag skeleton of one 
     const window = [s.start, Math.min(deck.length, s.start + 1500)];
     const textA = validEdit(r, deck, tokens, window), textB = validEdit(r, deck, tokens, window);
     const pa = diff(deck, textA), pb = diff(deck, textB);
-    // each order applied through the conflict rule, where the operation sent again wins
     const orders = [[pa, pb], [pb, pa]].map(([first, second]) => {
       const moved = shift(second, first);
       if (!moved) conflicts++;
@@ -840,8 +762,6 @@ test('the merge of the editor keeps each text of two slides that a received text
 
 const times = (text, part) => text.split(part).length - 1;
 
-// the texts of race() of a change and a key in both orders, and of the merge of the editor with
-// either of them unread
 function merges(base, changed, typed) {
   return {
     'change first': race(base, changed, typed, true),
@@ -902,7 +822,6 @@ test('a slide moved together with a new slide or a pasted paragraph of the same 
   const typed = base.replace('Thank you', 'Thank you all');
   for (const [what, moved] of [['a new slide', s('New', 'Thank you') + intro + rest + results], ['a pasted paragraph', intro.replace('</section>', '  <p>Thank you</p>\n</section>') + rest + results]]) {
     for (const [how, text] of Object.entries(merges(base, moved, typed))) {
-      // a new slide changes the number of slides, hence the moved slide merges as lines
       if (what === 'a pasted paragraph') assert.equal(times(text, 'Thank you all'), 1, `${how}: the key is in the text`);
       assert.ok(times(text, '<p>Thank you</p>') >= 1, `${what}, ${how}: ${what} is in the text`);
       for (const h of ['Intro', 'Results', 'Method', 'Data']) assert.ok(times(text, `<h2>${h}</h2>`) >= 1, `${what}, ${how}: the slide ${h} is in the text`);
@@ -933,7 +852,6 @@ test('a vertical stack moved before three slides by one replica and a key of ano
   for (const moveFirst of [true, false]) assert.equal(race(base, moved, base.replace('More of top 2', 'More of top 2 by Bob'), moveFirst), moved.replace('More of top 2', 'More of top 2 by Bob'), `${moveFirst ? 'move' : 'key'} first`);
 });
 
-
 test('a move that also adds a paragraph keeps this paragraph when another replica types in the moved paragraph, in both orders and in the merge of the editor', () => {
   const [base, moved] = MOVES['inside its slide'];
   const typed = base.replace('Second slide', 'Second slide by Ana');
@@ -941,15 +859,12 @@ test('a move that also adds a paragraph keeps this paragraph when another replic
     assert.equal(times(text, '<p>New paragraph</p>'), 1, `${how}: the new paragraph is in the text`);
     assert.ok(times(text, 'Second slide') >= 1, `${how}: the moved paragraph is in the text`);
   }
-  // diff() gives the key in the heading and the removal of the paragraph below as one patch
   for (const [how, text] of Object.entries(merges(base, moved.replace('<h2>Two</h2>', '<h2>Two by Ben</h2>'), typed))) {
     assert.ok(times(text, 'Second slide') >= 1, `a key in the heading, ${how}: the moved paragraph is in the text`);
     assert.ok(text.includes(' by Ben') || text.includes(' by Ana'), `a key in the heading, ${how}: a key is in the text`);
   }
 });
 
-// the texts of every order of arrival of the texts of two or three people, and of the merge of the
-// editor of each person with the others unread, by edits() and by fine()
 function everyMerge(base, texts) {
   const out = {};
   const orders = texts.length === 2 ? [[0, 1], [1, 0]] : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
@@ -971,8 +886,6 @@ const typedIn = (text, ...keys) => keys.reduce((t, [at, key]) => t.replace(at, `
 const TWO_DOWN = PARAS.replace('  <p>Para 2</p>\n', '').replace('  <p>Para 4</p>\n', '  <p>Para 4</p>\n  <p>Para 2</p>\n');
 const BOTH_DOWN = PARAS.replace('  <p>Para 1</p>\n', '').replace('  <p>Para 3</p>\n', '').replace('  <p>Para 4</p>\n', '  <p>Para 4</p>\n  <p>Para 1</p>\n  <p>Para 3</p>\n');
 
-// a move by one person and keys of the others in the moved text, each as the base, the texts of the
-// people, and the text at the end
 const CARRIED = {
   'a slide moved below two slides, with a key in it': [DECK(1, 2, 3, 4), [DECK(2, 3, 1, 4), typedIn(DECK(1, 2, 3, 4), ['S1 text', ' by Ana'])], typedIn(DECK(2, 3, 1, 4), ['S1 text', ' by Ana'])],
   'a slide moved to the start, with a key in its heading': [DECK(1, 2, 3, 4), [DECK(3, 1, 2, 4), typedIn(DECK(1, 2, 3, 4), ['<h2>S3', ' by Ana'])], typedIn(DECK(3, 1, 2, 4), ['<h2>S3', ' by Ana'])],
@@ -1050,7 +963,6 @@ test('a word typed in a slide that nobody moves is kept with every slide when an
 });
 
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
-  // changes() gives up beyond 2000 changed lines, and gives one hunk for one long line
   for (const join of ['\n', '']) {
     const base = `<section>\n${Array.from({ length: 3000 }, (_, i) => `<p>Item ${i} uses foo here</p>`).join(join)}\n</section>\n`;
     const replaced = base.replaceAll('foo', 'bar');
@@ -1066,7 +978,6 @@ test('a replace in every paragraph and a word typed at once in one of them are b
   }
 });
 
-// the shortest time of a few runs of fn, in ms
 function timeOf(fn, runs = 5) {
   let best = Infinity;
   for (let i = 0; i < runs; i++) {
@@ -1077,8 +988,6 @@ function timeOf(fn, runs = 5) {
   return best;
 }
 
-// the median of the ratios of the times of slow and fast over runs, each fast run right after a
-// slow one so that a burst of load slows both
 function ratioOf(slow, fast, runs = 9) {
   const ratios = [];
   for (let i = 0; i < runs; i++) ratios.push(timeOf(slow, 1) / timeOf(fast, 1));
@@ -1086,7 +995,6 @@ function ratioOf(slow, fast, runs = 9) {
 }
 
 test('shift and mergePatches take a time linear in the number of patches, and an operation has at most 2000 patches', () => {
-  // n insertions at the even offsets of a text, and n at its odd offsets, which do not conflict
   const at = (n, odd) => Array.from({ length: n }, (_, i) => ({ start: 2 * i + odd, end: 2 * i + odd, text: odd ? 'y' : 'x' }));
   const time = (n) => {
     const even = at(n, 0), odd = at(n, 1);
@@ -1095,7 +1003,6 @@ test('shift and mergePatches take a time linear in the number of patches, and an
       assert.equal(mergePatches(even, odd).patches.length, 2 * n);
     });
   };
-  // ten times the patches take about ten times as long, and a hundred times when the time is quadratic
   const ratio = () => time(20_000) / time(2000);
   let r = ratio();
   if (r >= 30) r = ratio();
@@ -1118,8 +1025,6 @@ test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt 
   assert.equal(a.oldest, 0);
   assert.equal(a.textAt(0), texts.get(0));
   assert.equal(a.textAt(990), texts.get(990));
-  // the time grows with the operations undone only by the cost of their patches, not by a copy of the
-  // text for each. each text is encoded, as the edit command sends it
   const ratio = () => ratioOf(() => Buffer.byteLength(a.textAt(0)), () => Buffer.byteLength(a.textAt(990)));
   let k = ratio();
   for (let tries = 1; tries < 3 && k >= 10; tries++) k = ratio();
@@ -1129,24 +1034,18 @@ test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt 
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
   const base = '<section>\n<div class="box" style="left: 10px; top: 4px">A</div>\n</section>\n';
   const a = base.replace('10px', '20px'), b = base.replace('10px', '15px');
-  // a diff by characters alone gives two patches that are valid together, and 25px
   assert.equal(apply(base, [...changes(base, a), ...changes(base, b)].sort((x, y) => x.start - y.start)).includes('25px'), true);
   for (const aFirst of [true, false]) {
     const merged = race(base, a, b, aFirst);
     assert.ok(merged === a || merged === b, merged);
     assert.ok(!merged.includes('25px'));
   }
-  // a character reference is widened whole, and so is a tag
   assert.deepEqual(diff('a &lt; b', 'a &gt; b'), [{ start: 2, end: 6, text: '&gt;' }]);
   assert.deepEqual(diff('<p id=x>t</p>', '<p id=y>t</p>'), [{ start: 0, end: 8, text: '<p id=y>' }]);
 });
 
-// the snippets of the edits of the widen test, which open and close tags, raw text, comments, and
-// references, and U+0130, whose lowercase is two code units long
 const SNIPPETS = ['a', ' ', '\n', '<', '>', '"', "'", '&', '&amp;', ';', '/', '=', '<p>', '</p>', '<b class="x y">', '<i title=\'a>b\'>', '<!--', '-->', '<script>', '</script>', '</script ', '<title>', '</title>', '<style>', '</style>', '<textarea>', '</textarea>', '<!doctype html>', '<?x', '</ ', '😀', '\ud83d'];
 
-// a seeded walk of edits of test-deck.html, each near a spot where tokens are hard, and the patches
-// of each text that widen is given, of which half are near the edit
 function* walk(seed, rounds) {
   const r = generator(seed);
   const spots = ['<script', '</script', '<style', '<!--', '-->', 'class="', '<title', '&', '<svg', '<math', '<pre', '<textarea'].map((m) => deck.indexOf(m)).filter((i) => i >= 0);
@@ -1168,8 +1067,6 @@ function* walk(seed, rounds) {
 test('widen gives the same patches when it tokenizes again only the part of a text that changed since the last', () => {
   const reset = () => widen('<p>another text</p>', [{ start: 0, end: 0, text: '' }]);
   for (const seed of [1, 2, 3]) {
-    // the tokens of each text are those of the text before, as for the base of a page at each keystroke,
-    // and now and then of a text in between, as for the text with an operation in flight
     const step = [];
     let before = null;
     for (const { text, patches, other } of walk(seed, 1000)) {
@@ -1195,7 +1092,6 @@ test('a format that one browser puts around a word and a key that another browse
     const r = new Replica('me', base, 'E.0');
     const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: diff(base, first) }, 'O');
     r.edit(second);
-    // the authority refuses the operation of the browser that it hears second
     const refused = r.outgoing();
     const answer = a.submit(refused, 'me').answer;
     assert.equal(answer.reason, 'conflict');
@@ -1203,7 +1099,6 @@ test('a format that one browser puts around a word and a key that another browse
     assert.equal(r.receive(op), want);
     a.submit(r.outgoing(), 'me');
     assert.equal(a.text, want);
-    // the broadcast of the operation may also come before the answer
     const early = new Replica('me', base, 'E.0');
     early.edit(second);
     early.outgoing();
@@ -1213,16 +1108,12 @@ test('a format that one browser puts around a word and a key that another browse
   assert.equal(apply(base, mergePatches(key, format, 'ours', base).patches), want);
   assert.equal(apply(base, mergePatches(format, key, 'ours', base).patches), want);
   assert.deepEqual(mergePatches(key, format, 'ours', base).conflicts, []);
-  // a key at the start of the word stays before the new element, and one at its end after it
   for (const [word, kept] of [['Zslide', 'Z<em>slide</em>'], ['slideZ', '<em>slide</em>Z']]) {
     const edge = diff(base, base.replace('slide', word));
     assert.equal(apply(base, mergePatches(edge, format, 'ours', base).patches), base.replace('slide', kept));
   }
-  // without the text of the two operations, the patch of the side that wins is kept alone, and
-  // so is it for a format of the other browser inside the word
   assert.equal(apply(base, mergePatches(key, format, 'ours').patches), formatted);
   assert.equal(apply(base, mergePatches(diff(base, base.replace('slide', 's<b>li</b>de')), format, 'ours', base).patches), formatted);
-  // a replica back from a break still shows the two as a conflict
   const away = new Replica('me', base, 'E.0');
   away.edit(formatted);
   const missed = new Authority(base, { epoch: 'E' }).submit({ client: 'other', seq: 1, base: 'E.0', patches: key }, 'O').op;
@@ -1232,8 +1123,6 @@ test('a format that one browser puts around a word and a key that another browse
 test('a replica keeps a format with a key of its own in the word, the removal of a format, and a format with a key further on the line, together with the keys of another browser inside the word', () => {
   const base = '<section>\n  <p>Second slide here</p>\n</section>\n';
   const at = (p) => base.replace('Second slide here', p);
-  // the key of the other browser reaches the authority first, and the replica hears of it after
-  // it sent its first edit and made its second
   const race = (start, other, first, second) => {
     const a = new Authority(start, { epoch: 'E' });
     const r = new Replica('me', start, 'E.0');
@@ -1252,9 +1141,7 @@ test('a replica keeps a format with a key of its own in the word, the removal of
   assert.equal(race(italic, at('Second <em>slZide</em> here'), at('Second slide here')), at('Second slZide here'));
   assert.equal(race(italic, at('Second <em>Zslide</em> here'), at('Second slide here')), at('Second Zslide here'));
   assert.equal(race(italic, at('Second <em>slideZ</em> here'), at('Second slide here')), at('Second slideZ here'));
-  // a format that replaces letters of its word and a key between these letters stay a conflict
   assert.equal(race(base, at('Second <em>sXde</em> here'), at('Second slZide here')), at('Second slZide here'));
-  // so does one word replaced by two browsers, whose letters are not mixed
   const first = at('First slide here'), [mine, theirs] = [at('Opening slide here'), at('Initial slide here')];
   assert.equal(apply(first, mergePatches(diff(first, theirs), diff(first, mine), 'ours', first).patches), mine);
   assert.equal(apply(first, mergePatches(diff(first, mine), diff(first, theirs), 'theirs', first).patches), mine);
@@ -1262,24 +1149,16 @@ test('a replica keeps a format with a key of its own in the word, the removal of
   assert.equal(race(base, at('Second slZide hYere'), at('Second <em>slide</em> here')), at('Second <em>slZide</em> hYere'));
 });
 
-// the edits that fine() finds in the two words interleave without a conflict, e.g. near to plane
-// as ne to pl and r to ne, and near to large as n to l and e to rg
-// the patch of a browser on a line spans from its first change to its last, hence the patches of
-// two fixes of one word conflict, and the finer edits of both are taken
 test('two fixes of letters of one word by two browsers at once are both kept, with the other keys of both operations', () => {
   for (const [base, theirs, mine, want] of [
     ['<p>It is definatley here</p>', '<p>It is definitley here.</p>', '<p>It is definately here</p>', '<p>It is definitely here.</p>'],
     ['<p>a mispelld word</p>', '<p>a Mispelld word.</p>', '<p>a mispelle word</p>', '<p>a Mispelle word.</p>'],
-    // a key of each browser in another paragraph
     ['<p>a mispelld word</p>\n<p>one two three</p>', '<p>a Mispelld word</p>\n<p>One two three!</p>', '<p>a mispelle word</p>\n<p>one twoo three</p>', '<p>a Mispelle word</p>\n<p>One twoo three!</p>'],
-    // a sentence without spaces
     ['<p>今日は良い天気です。</p>', '<p>今日は悪い天気です。!</p>', '<p>今日は良い景色です。</p>', '<p>今日は悪い景色です。!</p>'],
   ]) {
     const t = diff(base, theirs), o = diff(base, mine);
     assert.equal(apply(base, mergePatches(t, o, 'ours', base).patches), want, `${theirs} and ${mine}`);
     assert.equal(apply(base, mergePatches(o, t, 'ours', base).patches), want, `${mine} and ${theirs}`);
-    // the operation of the other browser reaches the authority first, and the replica sends its
-    // merged text again after the refusal of its own
     const a = new Authority(base, { epoch: 'E' });
     const r = new Replica('me', base, 'E.0');
     r.edit(mine);
@@ -1292,14 +1171,9 @@ test('two fixes of letters of one word by two browsers at once are both kept, wi
   }
 });
 
-// the patch of theirs spans from slide to here, hence it conflicts with the patch of ours, and the
-// finer edits are taken, since none of them conflicts
-// fine() finds the removal of a line one letter further on when the next line starts with the same
-// characters. the letter that the other browser removes is then before this edit, and not in it
 test('a line that one browser removes and the first letter of this line that another browser removes at once do not cost a letter of the next line', () => {
   for (const [base, theirs, mine] of [
     ['<ul>\n  <li>Moon 42</li>\n  <li>Method 41</li>\n</ul>\n', '<ul>\n  <li>Method 41</li>\n</ul>\n', '<ul>\n  <li>oon 42</li>\n  <li>Method 41</li>\n</ul>\n'],
-    // the line is moved to the end
     ['<p>Method 13</p>\n<p>Moon 12</p>\n<p>Intro 11</p>\n', '<p>Moon 12</p>\n<p>Intro 11</p>\n<p>Method 13</p>\n', '<p>ethod 13</p>\n<p>Moon 12</p>\n<p>Intro 11</p>\n'],
   ]) {
     const t = diff(base, theirs), o = diff(base, mine);
@@ -1319,7 +1193,6 @@ test('the merge of a replica keeps the edits of two browsers in one word and in 
     ['Second slide here', 'Second slde heXre', 'Second slide ere', 'Second slde eXre'],
     ['Second slide-here', 'Second slde-heXre', 'Second slide-ere', 'Second slde-eXre'],
     ['Second slide2here', 'Second slde2heXre', 'Second slide2ere', 'Second slde2eXre'],
-    // a tag that is removed, or put around a run that holds a tag
     ['Second <em>slide</em>x here', 'Second slidex heYre', 'Second <em>slide</em> here', 'Second slide heYre'],
     ['Second s<b>li</b>dex here', 'Second <a href="u">s<b>li</b>de</a>x heYre', 'Second s<b>li</b>de here', 'Second <a href="u">s<b>li</b>de</a> heYre'],
   ]) {
@@ -1360,8 +1233,6 @@ test('a replica that hears an operation away from its unsent key on a deck of 20
   assert.ok(ratio < 2.5, `a receive with an unsent key costs ${ratio.toFixed(1)} times one without`);
 });
 
-// random decks of slides, vertical stacks, lists, and equal lines, some with CRLF, as lines with
-// the line ranges of their slides and elements
 const WORDS = ['Orbit', 'Moon', 'Halo', 'Data', 'Method', 'Same words', 'Thank you', 'Intro'];
 function deckOf(r) {
   const lines = [], slides = [], elements = [];
@@ -1399,10 +1270,6 @@ const range = (at, n) => Array.from({ length: n }, (_, i) => at + i);
 const TEXT = /^(\s*<(h2|p|li)>)(.+)(<\/\2>)$/;
 const MOVING = new Set(['move', 'several', 'slide', 'slides', 'keyed', 'keyed slide']);
 
-// one edit k of person p, as the lines it removes, the lines it changes, the lines it puts before
-// a line, and the texts that must be in the result. null when the deck does not allow it. slides
-// moves two slides with another between them, as one command, and keyed a paragraph or a slide
-// together with a key in another line
 function editOf(r, d, p, k, kind = r.pick(['key', 'letter', 'add', 'delete', 'move', 'move', 'several', 'slide', 'duplicate', 'slides', 'keyed'])) {
   const { lines, slides, elements } = d;
   const texts = lines.map((l, i) => (TEXT.test(l) ? i : -1)).filter((i) => i >= 0);
@@ -1457,7 +1324,6 @@ function editOf(r, d, p, k, kind = r.pick(['key', 'letter', 'add', 'delete', 'mo
   return kind === 'duplicate' ? { kind, cut: [], mod: {}, put, want: [] } : { kind, cut, mod: {}, put, want: cut.map((i) => lines[i].trim()) };
 }
 
-// the lines of the base that an edit touches, with both lines next to the place it puts lines
 const touch = (e) => new Set([...e.cut, ...Object.keys(e.mod).map(Number), ...(e.put ? [e.put[0] - 1, e.put[0]] : [])]);
 const disjoint = (a, b) => ![...a].some((x) => b.has(x));
 
@@ -1470,7 +1336,6 @@ function textOf(d, list) {
   return out.map((l) => l + d.eol).join('');
 }
 
-// a deck and the edits of 2 or 3 people, 1 to 3 each, that touch different lines
 function roundOf(seed) {
   const r = generator(seed), d = deckOf(r), all = [];
   for (let p = 2 + r.int(2); p > 0; p--) {
@@ -1484,7 +1349,6 @@ function roundOf(seed) {
   return { base: textOf(d, []), d, all, texts: all.map((list) => textOf(d, list)) };
 }
 
-// the text of the edit command after the texts arrive in order, or null when a page differs
 function arrive(base, texts, order) {
   const a = new Authority(base, { epoch: 'E' });
   const rs = texts.map((t, i) => new Replica(`r${i}xxxxxxx`, base, 'E.0'));
@@ -1510,8 +1374,6 @@ function arrive(base, texts, order) {
 
 const trimmed = (text) => text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-// what a round breaks: every order of arrival and the merge of the editor of each person with the
-// others unread, against the edits of the round
 function broken({ d, all, base, texts }) {
   const res = {};
   for (const order of texts.length === 2 ? [[0, 1], [1, 0]] : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]) res[`order ${order.join('')}`] = arrive(base, texts, order);
@@ -1522,14 +1384,11 @@ function broken({ d, all, base, texts }) {
   });
   const flat = all.flat(), bad = [], starts = [0];
   for (const l of d.lines) starts.push(starts.at(-1) + l.length + d.eol.length);
-  // the patches of each person as the session and the editor find them, and as the others find
-  // them in the text of the two others
   const patches = texts.map((t) => [...diff(base, t), ...edits(base, t)]);
   if (texts.length === 3) texts.forEach((_, p) => {
     const merged = edits(base, arrive(base, texts.filter((_, q) => q !== p), [0, 1]));
     texts.forEach((_, q) => q !== p && patches[q].push(...merged));
   });
-  // the lines of the base that a patch changes, and with near both lines next to an insertion
   const linesHit = (pt, near) => range(0, d.lines.length).filter((i) => {
     const [s, e] = [starts[i], starts[i + 1]];
     return pt.start < pt.end ? pt.start < e && s < pt.end : near ? s <= pt.start && pt.start <= e : s < pt.start && pt.start < e;
@@ -1537,48 +1396,33 @@ function broken({ d, all, base, texts }) {
   const hit = patches.map((list) => new Set(list.flatMap((pt) => linesHit(pt, false))));
   const near = patches.map((list) => list.map((pt) => new Set(linesHit(pt, true))));
   const nearAll = near.map((list) => new Set(list.flatMap((x) => [...x])));
-  // a line of the base is needed when nobody changes or deletes it, and everyone whose patches
-  // change it moved it
   const need = new Map();
   d.lines.forEach((l, i) => {
     if (!l.trim() || flat.some((e) => i in e.mod || (e.cut.includes(i) && !MOVING.has(e.kind)))) return;
     if (all.every((list, q) => !hit[q].has(i) || list.some((e) => MOVING.has(e.kind) && e.cut.includes(i)))) need.set(l.trim(), (need.get(l.trim()) ?? 0) + 1);
   });
-  // an edit is apart when its lines, and the patches of its person near them, are not near a patch
-  // of anyone else
   const apart = (e) => {
     const t = touch(e);
     if (!flat.every((f) => f.p === e.p || disjoint(t, touch(f)))) return false;
     const mine = new Set([...t, ...near[e.p].filter((x) => !disjoint(x, t)).flatMap((x) => [...x])]);
     return all.every((_, q) => q === e.p || disjoint(mine, nearAll[q]));
   };
-  // a line diff can align a move with other lines, and the losses are checked only where each move
-  // is found as removals of its runs of whole lines and an insertion of its lines
   const runs = (cut) => cut.reduce((out, i) => (out.at(-1)?.at(-1) === i - 1 ? out.at(-1).push(i) : out.push([i]), out), []);
   const lines = (e) => e.put[1].map((l) => l.trim());
   const whole = (list, e) => list.some((x) => x.start === x.end && trimmed(x.text).join('\n') === lines(e).join('\n')) &&
     runs(e.cut).every((r) => list.some((x) => !x.text && x.start === starts[r[0]] && x.end === starts[r.at(-1) + 1]));
   const moved = flat.filter((e) => MOVING.has(e.kind));
   const clean = moved.every((e) => whole(diff(base, texts[e.p]), e) && whole(edits(base, texts[e.p]), e));
-  // the edits of the editor in a session keep as these line edits, which mergeEdits() tells apart,
-  // each move of lines that are once in the base and in the text, with text in each run, where the
-  // edits of its characters are at most 500, and that mergeEdits() reads as a move, i.e. a move of
-  // slides or of a person whose edits are all such moves without a key
   const once = (e) => runs(e.cut).every((r) => r.some((i) => /(^|>)[^<]*[^\s<]/.test(d.lines[i]))) &&
     lines(e).every((w) => [base, texts[e.p]].every((t) => trimmed(t).filter((l) => l === w).length === 1)) && charEdits(base, texts[e.p], 500) !== null;
   if (clean) for (const e of moved) if (once(e) && (e.kind.includes('slide') || all[e.p].every((f) => MOVING.has(f.kind) && f.kind !== 'keyed' && once(f))) && !whole(fine(base, texts[e.p]), e)) bad.push(`the ${e.kind} of person ${e.p} is not kept whole by fine()`);
-  // a key in a slide whose lines between its tags no other edit touches is in the text, also when
-  // a move is not clean
   const inner = (i) => d.slides.filter((s) => s[0] < i && i < s[0] + s[1] - 1).flatMap((s) => range(s[0] + 1, s[1] - 2));
   const alone = flat.filter((e) => e.kind.startsWith('key') && flat.every((f) => f === e || disjoint(touch(f), new Set(Object.keys(e.mod).flatMap(inner)))));
   for (const [how, text] of Object.entries(res)) {
     if (text === null) bad.push(`${how}: the pages differ`);
-    // three people can end with an element twice, or without it, after two races in a row, a known
-    // limit
     if (text === null || (texts.length === 3 && how.startsWith('order'))) continue;
     for (const e of alone) if (!text.includes(e.want.at(-1))) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${e.want.at(-1)}`);
     if (!clean) continue;
-    // a key typed next to a line is not a loss of this line
     const have = trimmed(text.replace(/ k\d\d/g, '')).reduce((m, l) => m.set(l, (m.get(l) ?? 0) + 1), new Map());
     for (const [l, n] of need) if ((have.get(l) ?? 0) < n) bad.push(`${how}: the line ${l} of the base is in the text ${have.get(l) ?? 0} times, not ${n}`);
     for (const e of flat) if (apart(e)) for (const w of e.want) if (!text.includes(w)) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${w}`);
@@ -1587,9 +1431,6 @@ function broken({ d, all, base, texts }) {
 }
 
 test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command, keep each edit apart from the others and each line of the base that nobody removed, and the edits of the editor keep each move whole', () => {
-  // the line merge of fe435eb2 loses a key or a line of 89 and 291 as well. edits() gives the
-  // heading typed in and the paragraphs moved out of a slide of 936 as one change, which the editor,
-  // with fine(), does not. 1850 and 2932 lose a key without the gate
   const known = new Set([89, 291, 936]);
   const failed = [];
   for (const seed of [...Array(1500).keys()].map((i) => i + 1).concat(1850, 2932)) {
@@ -1599,9 +1440,6 @@ test('random edits of two or three people, in every order of arrival and in the 
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
 });
 
-// a slide with three equal paragraphs, and an edit of one person: the removal of the paragraph k,
-// or a copy of it put before it. places are the offsets of the text that the editor gives, i.e. the
-// start tag after a removed paragraph and the start tag of a copy
 const EQUAL = ['<section>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Other</p>\n', '</section>\n'];
 function equalEdit(kind, k, lines = EQUAL) {
   const out = [...lines];
@@ -1610,9 +1448,6 @@ function equalEdit(kind, k, lines = EQUAL) {
   return { text: out.join(''), places: [out.slice(0, 1 + k).join('').length + 2] };
 }
 
-// replicas that each make one edit of base at once, over a network where the answers and the
-// broadcasts of each replica arrive in an order that the seed picks. with typing, the replicas
-// also type a letter after Other at random steps
 function crowd(base, edits, seed, typing = false) {
   const r = generator(seed);
   const authority = new Authority(base, { epoch: 'E' });
@@ -1646,8 +1481,6 @@ function crowd(base, edits, seed, typing = false) {
   return { text: authority.text, ops: authority.since('E.0') ?? [] };
 }
 
-// the anchors of threads on the start tags at offsets of base, moved over ops as the edit command
-// moves them, with null for a thread whose element was removed
 function follow(base, ops, offsets) {
   let text = base;
   const slide = { start: 0, end: '<section>'.length, tag: 'section' };
@@ -1673,7 +1506,6 @@ test('a thread on an element stays on it when another person removes an equal el
   const line = '<section><p>Same</p><p>Same</p></section>\n';
   const one = crowd(line, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
   assert.deepEqual(follow(line, one.ops, starts(line)), [null, starts(one.text)[0]]);
-  // two elements with the same start tag on one line, which are not equal
   const tags = '<section><p>A</p><p>Same</p></section>\n';
   const first = crowd(tags, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
   assert.deepEqual(follow(tags, first.ops, starts(tags)), starts(first.text));
@@ -1701,12 +1533,10 @@ test('the threads on three equal elements that nobody removes end on their own e
     const people = 2 + r.int(2);
     const chosen = Array.from({ length: people }, () => [r.pick(['remove', 'copy']), r.int(3)]);
     const { text, ops } = crowd(base, chosen.map(([kind, k]) => equalEdit(kind, k)), seed, seed % 2 === 0);
-    // the elements in the order of the text: the index in base of each that stays, and -1 for a copy
     const removed = new Set(chosen.filter(([kind]) => kind === 'remove').map(([, k]) => k));
     const order = [0, 1, 2].flatMap((k) => [...chosen.filter(([kind, j]) => kind === 'copy' && j === k).map(() => -1), ...(removed.has(k) ? [] : [k])]);
     const at = starts(text);
     assert.equal(at.length, order.length, `seed ${seed}: ${JSON.stringify(chosen)} ends with ${at.length} elements`);
-    // the thread of a removed element may attach to a copy put in later, as to an undone removal
     const kept = [0, 1, 2].filter((k) => !removed.has(k));
     const moved = follow(base, ops, starts(base));
     assert.deepEqual(kept.map((k) => moved[k]), kept.map((k) => at[order.indexOf(k)]), `seed ${seed}: ${JSON.stringify(chosen)}`);

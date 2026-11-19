@@ -1,18 +1,8 @@
-// the keys of every command in a page of a session, on both platforms: two commands that take one
-// key in one region are a fault, since the key runs only the first of them that is enabled. the
-// commands of the editor that share a key in disjoint states are listed in KNOWN, with
-// the region and the key
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { open, sessionUrl, talk } from './helpers/client.mjs';
 
-// the commands of the editor that share a key in one region, keyed by the commands, the region, and
-// the chord, each with why the key reaches each of them. a range of cells is a range selected in a
-// table, whose keys RANGE_KEYS of commands/table.ts takes in a listener before the keys of the
-// editor. in a text, the commands of text/flow.ts are defined first, those of commands/text.ts
-// next, and those of commands/table.ts last
 const NUDGE = 'a nudge needs a selected element, an arrow changes the slide without one, and a range of cells takes it first';
 const DELETE = 'a range of cells takes the key first, and the selected elements are deleted otherwise';
 const FLOW = 'the caret goes on into the next text element where there is one, and into the next cell otherwise';
@@ -40,8 +30,6 @@ const KNOWN = {
   'text.flow.newParagraph text.newParagraph | text Enter': 'a selection over several text elements is replaced by a new paragraph first, and Return splits the text element otherwise',
 };
 
-// each command with its keys on the platform of the page and the regions that take them, as
-// Commands.forKey of src/editor/commands.ts reads them
 const COMMANDS = `(() => {
   const app = window.BeesonSession.client().app;
   return app.commands.list().map((c) => ({
@@ -52,8 +40,6 @@ const COMMANDS = `(() => {
   }));
 })()`;
 
-// a key string as one chord on the platform: Mod as Meta or Ctrl, the modifiers in one order, and
-// the Shift of a symbol left out, since keymap.ts does not compare it
 function chord(key, platform) {
   const parts = key.endsWith('++') ? [...key.slice(0, -2).split('+'), '+'] : key.split('+');
   const name = parts.pop();
@@ -63,11 +49,8 @@ function chord(key, platform) {
   return [...[...mods].sort(), one].join('+');
 }
 
-// a key without Mod, Ctrl, Alt, or Meta, other than a function key, as isPlain of commands.ts
 const plain = (key) => !/(^|\+)(Mod|Ctrl|Alt|Meta)\+/.test(key) && !/^(Shift\+)?F\d+$/.test(key);
 
-// the regions in which each key of command c is taken. a text takes a key of inText only with a
-// modifier, and a text and the notes leave a plain character to the typing
 function taken(c) {
   const out = [];
   for (const key of c.keys) {

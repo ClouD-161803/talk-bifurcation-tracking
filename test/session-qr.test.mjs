@@ -1,20 +1,11 @@
-// the QR code of the Share dialog, from src/session/qr.ts, read back without a dependency after
-// ISO/IEC 18004: the finder, timing, and alignment patterns, the dark module, the format and the
-// version information with their BCH codes, the mask chosen by the penalty rules, the codewords in
-// the order of placement, the blocks with zero Reed-Solomon syndromes, and the bytes of the text
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { qr } from '../src/session/qr.ts';
 
-// the codewords of each version 1 to 10, and the error correction codewords per block and the
-// blocks at level M, after tables 1 and 9 of the standard
 const TOTAL = [26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
 const ECC = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
 const BLOCKS = [1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
-// the remainder bits after the codewords, after table 1
 const REMAINDER = [0, 7, 7, 7, 7, 7, 0, 0, 0, 0];
-// the row and the column of the centers of the alignment patterns, after annex E
 const ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
 
 const MASKS = [
@@ -30,7 +21,6 @@ const MASKS = [
 
 const capacity = (version) => Math.floor(((TOTAL[version - 1] - ECC[version - 1] * BLOCKS[version - 1]) * 8 - 4 - (version < 10 ? 8 : 16)) / 8);
 
-// the remainder of data shifted by the degree of poly, modulo poly, over GF(2)
 function bchRemainder(data, poly) {
   const degree = 31 - Math.clz32(poly);
   let r = data << degree;
@@ -38,7 +28,6 @@ function bchRemainder(data, poly) {
   return r;
 }
 
-// GF(256) with the primitive polynomial 0x11d
 const EXP = new Array(512), LOG = new Array(256);
 for (let i = 0, x = 1; i < 255; i++, x = x & 0x80 ? ((x << 1) ^ 0x11d) & 0xff : x << 1) {
   EXP[i] = x;
@@ -47,13 +36,10 @@ for (let i = 0, x = 1; i < 255; i++, x = x & 0x80 ? ((x << 1) ^ 0x11d) & 0xff : 
 for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
 const mul = (a, b) => (a && b ? EXP[LOG[a] + LOG[b]] : 0);
 
-// the syndromes of a block, the values of its polynomial at alpha^0 to alpha^(n - 1)
 function syndromes(block, n) {
   return Array.from({ length: n }, (_, i) => block.reduce((s, c) => mul(s, EXP[i]) ^ c, 0));
 }
 
-// the modules that are not data: finders with their separators, timing, alignment, format, and
-// version information
 function functionMap(version) {
   const n = 4 * version + 17;
   const fixed = Array.from({ length: n }, () => new Array(n).fill(false));
@@ -68,8 +54,6 @@ function functionMap(version) {
   return fixed;
 }
 
-// the data modules in the order of placement: two columns at a time from the right, up and down
-// in turn, skipping the vertical timing pattern
 function placement(fixed) {
   const n = fixed.length;
   const out = [];
@@ -84,7 +68,6 @@ function placement(fixed) {
   return out;
 }
 
-// the four penalty rules of section 7.8.3
 function penalty(dark) {
   const n = dark.length;
   let score = 0;
@@ -99,7 +82,6 @@ function penalty(dark) {
           run = 1;
         }
       }
-      // 1:1:3:1:1 with four light modules on one side, the quiet zone counting as light
       const get = (b) => b >= 0 && b < n && at(a, b);
       for (let b = 0; b + 7 <= n; b++) {
         if (![1, 0, 1, 1, 1, 0, 1].every((v, k) => get(b + k) === !!v)) continue;
@@ -117,7 +99,6 @@ function penalty(dark) {
   return score + 10 * Math.floor(Math.abs((count * 100) / (n * n) - 50) / 5);
 }
 
-// the format information of a code with the level M and a mask, placed into a copy of dark
 function withFormat(dark, mask) {
   const n = dark.length;
   const out = dark.map((row) => row.slice());
@@ -134,7 +115,6 @@ function withFormat(dark, mask) {
   return out;
 }
 
-// reads a code back and returns its text, asserting every structure on the way
 function read(dark) {
   const n = dark.length;
   assert.ok(dark.every((row) => row.length === n), 'the code is square');
@@ -193,7 +173,6 @@ function read(dark) {
   const raw = dark.map((row, r) => row.map((d, c) => (fixed[r][c] ? d : d !== MASKS[mask](r, c))));
   for (const [r, c] of order.slice(TOTAL[version - 1] * 8)) assert.equal(raw[r][c], false, 'a remainder bit is light');
 
-  // the mask has the lowest penalty of the eight
   const scores = MASKS.map((m, k) => penalty(withFormat(raw.map((row, r) => row.map((d, c) => (fixed[r][c] ? d : d !== m(r, c)))), k)));
   assert.equal(scores[mask], Math.min(...scores), `mask ${mask} scores ${scores[mask]} of ${scores}`);
 

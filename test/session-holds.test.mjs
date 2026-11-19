@@ -1,8 +1,3 @@
-// the holds of a session in Chrome, on the edit command started on a temporary talk folder: a key,
-// a command, or a drag of one page that would move, delete, split, retag, or replace a text element
-// that another page types in, or an element around it, is refused with the bubble, and the person
-// who types keeps the caret and the next keys. a command that changes none of these is not refused
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
@@ -17,15 +12,11 @@ const BETA = el(1, 'li:nth-child(2)');
 const SECOND = el(1, 'p');
 const listOf = (page) => page.evaluate(`${el(1, 'ul')}.outerHTML`);
 const ITEMS = (text) => text.match(/<ul>[\s\S]*?<\/ul>/)?.[0].replace(/\s+/g, ' ');
-// the last element of slide Two whose text starts with text, i.e. its text element
 const LAST = (text) => `[...${el(1, 'h2')}.parentElement.querySelectorAll('*')].findLast((e) => e.textContent.startsWith(${JSON.stringify(text)}))`;
 
-// whether page reads the caret of the person of name in the text element of expression
 const caretOf = (page, name, expression) => page.evaluate(`${P}.resolved().some((r) => r.name === ${JSON.stringify(name)} && r.caret?.el === ${expression})`);
-// whether the focus of page is in the text element of expression
 const caretIn = (page, expression) => page.evaluate(`(() => { const h = ${expression}; return document.activeElement === h && h.contains(getSelection().focusNode); })()`);
 
-/** Ana types text at the end of the text element of expression, until Ben sees it held by her. */
 async function holding(ana, ben, expression, text) {
   await front(ana);
   await caretAtEnd(ana, expression);
@@ -33,15 +24,11 @@ async function holding(ana, ben, expression, text) {
   await until(() => ben.evaluate(`${HOLDER(expression)} === 'Ana' && ${expression}.textContent.endsWith(${JSON.stringify(text)})`), 'the text element that Ana types in, with her text, to be held on the page of Ben');
 }
 
-// the same, and the page of Ben then holds the element until Ana leaves it, however long the test
-// takes
 async function kept(ana, ben, expression, text) {
   await holding(ana, ben, expression, text);
   await keep(ben);
 }
 
-// a key that the browser runs as an edit command of its own, e.g. the paste of the clipboard by
-// Ctrl+V, or by Cmd+V on a Mac
 const MOD = process.platform === 'darwin' ? 4 : 2;
 async function edit(page, letter, command) {
   const base = { key: letter, code: `Key${letter.toUpperCase()}`, windowsVirtualKeyCode: letter.toUpperCase().charCodeAt(0), modifiers: MOD };
@@ -61,7 +48,6 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
     const data = { items: [{ mimeType: 'text/plain', data: 'dropped' }], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await ben.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
   };
-  // each case: the act, given the place of the second item of its text selection
   const cases = [
     ['Backspace', () => press(ben, 'Backspace')],
     ['Delete', () => press(ben, 'Delete')],
@@ -74,8 +60,6 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
     ['a drop', drop],
   ];
   for (const [what, act] of cases) {
-    // a text selection from offset 2 of item n - 1 to the same place in item n, first into the held
-    // item and then over Gamma and Delta
     for (const n of [2, 4]) {
       await front(ben);
       await leave(ben);
@@ -95,7 +79,6 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
       assert.notEqual(await listOf(ben), before, `${what} over two items that are not held is taken`);
       assert.equal(await ben.evaluate(BUBBLE), null, `${what} over two items that are not held`);
       assert.ok((await listOf(ben)).includes('<li contenteditable="true">Beta typed by Ana</li>'), `${what} over two items that are not held leaves the held item as it was`);
-      // the act undone, so that the next case finds Gamma and Delta again
       for (let i = 0; i < 4 && (await listOf(ben)) !== before; i++) await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
       assert.equal(await listOf(ben), before, `${what} over two items that are not held is undone`);
     }
@@ -131,7 +114,6 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, which
     await frame(ben);
     assert.equal(await ben.evaluate(`${SECOND}?.outerHTML`), before, `${what} leaves the paragraph as it was`);
     assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
-    // the same act in the paragraph Third, which is not held
     const all = await ben.evaluate(slide);
     await leave(ben);
     await frame(ben);
@@ -156,12 +138,10 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, which
 });
 
 const FOURTH = LAST('Fourth');
-// the elements of slide Two before the paragraph Fifth, and those from it on
 const PART = (from) => `(() => { const c = [...${el(1, 'h2')}.parentElement.children]; const i = c.findIndex((e) => e.textContent.trim().startsWith('Fifth')); return c.slice(${from ? 'i' : '0, i'}).map((e) => e.outerHTML).join(''); })()`;
 const HEAD = PART(false);
 const TAIL = PART(true);
 
-// a text selection from offset at of the text element of expression up into the one before it
 async function spanUp(page, expression, at = 2) {
   await front(page);
   await leave(page);
@@ -171,7 +151,6 @@ async function spanUp(page, expression, at = 2) {
   await frame(page);
 }
 
-// the whole text of the text element of expression selected
 async function whole(page, expression) {
   await front(page);
   await leave(page);
@@ -186,12 +165,8 @@ test('a paragraph style, a list style, or Paste Style over a text selection from
   await show(ben, 'Two');
   await kept(ana, ben, FOURTH, ' typed');
   const before = await ben.evaluate(HEAD);
-  // the style of a list item, which Paste Style sets with its list
   await caretAtEnd(ben, ALPHA);
   await ben.evaluate(`${C}.app.commands.run('text.copyStyle')`);
-  // each case: the command, and how its text selection is made from a text element. a text
-  // selection up from the held paragraph has its focus in the paragraph before it, and Paste Style
-  // sets the list and the style of a text selection whose part in the focus is its whole text
   const fromStart = (page, expression) => spanUp(page, expression, 0);
   const cases = [
     ['text.list.ol', spanUp],
@@ -245,9 +220,6 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
   await select(cy, SECOND);
   await frame(cy);
   await unbubble(cy);
-  // the move handle is drawn beyond the left edge of the window of a phone, hence its grip is
-  // dragged. the pointer events of the touch are made in the page, since Chrome may give a touch on
-  // a grip to a text element beside it (issue 61), and the deck then moves to another slide
   await cy.evaluate(`(() => {
     const grip = document.querySelector('.beeson-grip[data-handle="e"]');
     const r = grip.getBoundingClientRect();
@@ -274,7 +246,6 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
   clean(cy);
 });
 
-// the translate of the element of expression
 const PLACE = (expression) => `${expression}.style.translate`;
 const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
@@ -285,7 +256,6 @@ test('a double click on the move handle of a held paragraph, or Enter on this ha
   await show(ben, 'Two');
   await kept(ana, ben, SECOND, ' typed');
   const THIRD = LAST('Third');
-  // each case: the act on the paragraph of expression, whose selector picks it on the current slide
   const cases = [
     ['a double click on the move handle', async (selector) => {
       await front(ben);
@@ -380,7 +350,6 @@ const OTHER = `  <p>Second slide</p>
     <tr><td>C2</td><td>D2</td></tr>
     <tr><td>C3</td><td>D3</td></tr>
   </table>`;
-// the classes that a drag of a table puts on the page while it runs
 const GESTURES = ['beeson-column-resizing', 'beeson-resizing', 'beeson-line-moving', 'beeson-line-refused', 'beeson-autofilling'];
 
 test('a drag of the grip of a column, of the edge of a table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 360_000 }, async (t) => {
@@ -391,11 +360,6 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
   await kept(ana, ben, a2, ' typed');
   const rows = (n) => ben.evaluate(`[...${el(n, 'table')}.rows].map((r) => { const b = r.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; })`);
   const run = (id) => ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
-  // each case: how Ben shows the grip on the slide of index n, the grip or its point, and how far it
-  // is dragged.
-  // the grip of the last column sets its width, the grip at the right edge of the table selected as
-  // an object sets the widths of all, the bar of the third row moves it above the second, and the
-  // fill handle of the first row fills the second
   const cases = [
     ['the grip of a column', () => click(ben, 'section.present th:nth-child(2)'), '.beeson-table-bars .grip[data-grip="1"]', async () => ({ dx: 40 })],
     ['the edge of the table', async () => {
@@ -406,7 +370,6 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
     ['the bar of a row', async () => {
       await click(ben, 'section.present tr:nth-child(3) td');
       await run('table.selectRow');
-      // the segment of the third row is pressed at its top, which no other control covers
     }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 4 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
     ['the fill handle', async () => {
       await click(ben, 'section.present th');
@@ -464,7 +427,6 @@ test('a drag in the navigator of a slide where a text element is held is refused
   await show(ben, 'Two');
   await kept(ana, ben, SECOND, ' typed');
   const ORDER = `[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('h2').textContent).join(',')`;
-  // the paragraph of slide Two, wherever the slide is
   const p = `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2').textContent === 'Two').querySelector('p')`;
   const row = (n) => center(ben, `.beeson-edit-nav .row:nth-of-type(${n})`);
   await front(ben);
@@ -478,8 +440,6 @@ test('a drag in the navigator of a slide where a text element is held is refused
   await frame(ben);
   assert.equal(await ben.evaluate(ORDER), 'One,Two', 'a refused drag leaves the slides in their order');
   assert.equal(await ben.evaluate(BUBBLE), null, 'the release of a refused drag is not refused again');
-  // every state that the page of Ana sends while it applies the move, since a state without her
-  // caret ends her hold on every other page until her next state
   await ana.evaluate(`(() => {
     const c = ${C};
     const send = c.sendPresence.bind(c);
@@ -571,7 +531,6 @@ test('Caption off, Footnote off, and a layout of the slide are refused when they
     await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
     await frame(ben);
   };
-  // each case: the command, how Ben selects on the slide of index n, and the element that it takes off
   const cases = [
     ['figure.caption with the picture selected', 'figure.caption', (n) => select(ben, el(n, 'img')), (n) => el(n, 'figcaption')],
     ['figure.caption with a caret in the caption', 'figure.caption', async (n) => {
@@ -582,7 +541,6 @@ test('Caption off, Footnote off, and a layout of the slide are refused when they
     ['slide.layout.title with nothing selected', 'slide.layout.title', none, null],
     ['slide.footnote with nothing selected', 'slide.footnote', none, (n) => el(n, '.foot')],
   ];
-  // the slide of the held element of each case, and the third slide, where nothing is held
   const holds = [[caption, 0, 'One'], [caption, 0, 'One'], [caption, 0, 'One'], [foot, 1, 'Two']];
   for (const [i, [what, id, put, off]] of cases.entries()) {
     const [held, n, heading] = holds[i];
@@ -626,7 +584,6 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
   const kind = () => ben.evaluate(`${C}.app.selection.kind`);
   const slides = `document.querySelectorAll('.reveal .slides > section').length`;
   const drafts = `[...document.querySelectorAll('.beeson-comments textarea')].filter((x) => x.getClientRects().length).length`;
-  // each case: what Ben does with the held paragraph selected, and what holds once it is done
   const cases = [
     ['Enter', () => press(ben, 'Enter'), async () => (await kind()) === 'text' && (await caretIn(ben, SECOND))],
     ['Escape', () => press(ben, 'Escape'), async () => (await kind()) === 'none'],
@@ -647,12 +604,10 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
     }, () => ben.evaluate(`${C}.app.commands.state('shell.format').checked === !window.__format`)],
     ['insert.comment', () => ben.evaluate(`${C}.app.commands.run('insert.comment')`), () => ben.evaluate(`${drafts} === 1`)],
     ['insert.comment from a context menu', () => ben.evaluate(`${C}.app.commands.run('insert.comment', { kind: 'element', target: ${SECOND} })`), () => ben.evaluate(`${drafts} === 1`)],
-    // a preview and Copy Guides change nothing in the deck
     ['a preview or Copy Guides', () => null, () => ben.evaluate(`${JSON.stringify(PREVIEWS)}.every((id) => !${C}.app.commands.refused(id))`)],
   ];
   for (const [what, act, done] of cases) {
     await show(ben, 'Two');
-    // the caret of Ben that Enter put into the paragraph is taken out first
     await leave(ben);
     await select(ben, SECOND);
     await frame(ben);
@@ -666,7 +621,6 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
   clean(ben);
 });
 
-// the commands that leave a selected element as it is, and those that change it
 const TAKEN = ['insert.shape.rectangle', 'insert.line', 'insert.arrow', 'insert.table', 'insert.tableSize', 'insert.formula', 'insert.code', 'insert.theorem', 'insert.qr', 'insert.image', 'insert.video', 'insert.file', 'insert.footnote', 'insert.backdrop', 'find.matchCase', 'find.wholeWords', 'find.tex', 'find.scopeAll', 'find.scopeNotes', 'find.scopeAlt', 'notes.zoomIn', 'notes.zoomOut', 'notes.zoomReset', 'slide.duplicate', 'slide.gallery', 'slide.transition.fade', 'play.rehearse', 'play.useTimings', 'play.clearTimings', 'text.bold', 'text.italic', 'text.code', 'text.strike', 'text.superscript', 'text.subscript', 'text.tone.text', 'text.link', 'text.removeLink', 'text.clear'];
 const KEPT = ['steps.add', 'insert.citation', 'element.delete', 'arrange.nudge.right.far', 'find.replaceAll', 'text.bigger', 'slide.magicMove'];
 
@@ -692,7 +646,6 @@ test('a held paragraph selected as an element takes a new shape, table, or slide
     assert.equal(await ben.evaluate(`${C}.app.commands.refused(${JSON.stringify(id)})`), true, `${id} is refused`);
     assert.equal(await ben.evaluate(BUBBLE), REFUSED, `${id} shows the bubble`);
   }
-  // each case: what Ben runs with the held paragraph selected, and what holds once it is done
   const slides = `document.querySelectorAll('.reveal .slides > section').length`;
   const count = (selector) => `Reveal.getSlides()[1].querySelectorAll(${JSON.stringify(selector)}).length`;
   const cases = [
@@ -727,7 +680,6 @@ test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose
   const label = el(0, '.label');
   await kept(ana, ben, label, ' typed');
   const gallery = `!!document.querySelector('.beeson-backdrop-gallery')`;
-  // the drawing of a file, which takes the labels off a backdrop, and a built-in drawing
   for (const [slide, n, drawing] of [['One', 0, 'logo'], ['Two', 1, 'tubes']]) {
     const backdrop = el(n, '.backdrop');
     const before = await ben.evaluate(`${C}.app.doc.elementText(${backdrop})`);
@@ -752,11 +704,9 @@ test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose
     }
   }
   clean(ana);
-  // the gallery looks for the file of the Broucke drawing, which the talk does not have
   clean(ben, [/status of 404 .*demo\/broucke-sample\.js/]);
 });
 
-/** page loaded again, online, and in front. */
 async function reload(page) {
   const count = await loads(page);
   await page.evaluate('location.reload()').catch(() => {});
@@ -766,7 +716,6 @@ async function reload(page) {
   await front(page);
 }
 
-// the state of Ana that page last heard was sent after her last key of the paragraph of slide Two
 const PAUSED = `${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`;
 
 test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 360_000 }, async (t) => {
@@ -775,7 +724,6 @@ test('a page that loads after a person stopped typing does not see the text elem
   await show(ben, 'Two');
   await holding(ana, ben, SECOND, ' typed');
   await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
-  // the 30 s of the hold pass on the clocks of Ana and Ben, and Ana sends that she is not active
   await ana.evaluate(`(${P}.skew = 31000, ${P}.set({}), true)`);
   await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.active === false)`), 'Ana to be idle on the page of Ben');
   await ben.evaluate(`${P}.skew = 31000`);
@@ -807,8 +755,6 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   await reload(ben);
   await refused('after it loads again');
 
-  // a caret move of Ana into another element and back starts her 30 s anew, since the restart
-  // below is refused only while her page sends that she is active
   await front(ana);
   await caretAtEnd(ana, ALPHA);
   await until(() => caretOf(ben, 'Ana', ALPHA), 'the caret of Ana in the first item on the page of Ben');
@@ -816,7 +762,6 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   await until(() => ben.evaluate(PAUSED), 'the caret of Ana back in the paragraph on the page of Ben');
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
-  // the hello of Ana is held, hence the page of Ben is read alone and hears Ana anew
   await ana.evaluate(`__net.rule('/.session/hello', 'hold')`);
   await until(() => ana.evaluate(`${C}.connection !== 'online'`), 'Ana offline');
   await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
@@ -828,7 +773,6 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   await ana.waitFor(ONLINE, 20_000);
   await refused('after the restart');
 
-  // bringing the page of Ana to the front can take its caret out
   await front(ana);
   await caretAtEnd(ana, SECOND);
   await typeKeys(ana, ' more');
@@ -868,8 +812,6 @@ test('a page that joins while a person pauses ends the hold when the page of thi
   await show(cy, 'Two');
   await until(() => caretOf(cy, 'Ana', SECOND), 'the caret of Ana to be read on the page of Cy');
   assert.equal(await cy.evaluate(HOLDER(SECOND)), 'Ana', 'the paragraph is held on the page of Cy');
-  // a clock of Cy far behind keeps the hold of its own first hearing for the whole test. the hold
-  // then ends only by the state that the page of Ana sends by its timer when her 30 s pass
   await cy.evaluate(`${P}.skew = -1e8`);
   await until(() => cy.evaluate(`${HOLDER(SECOND)} === null`), 'the hold to end on the page of Cy when Ana is idle', 60_000);
   clean(ana);
@@ -877,9 +819,6 @@ test('a page that joins while a person pauses ends the hold when the page of thi
   clean(cy);
 });
 
-// the next state of the page fails for the page at once, and window.__late.serve() sends it to the
-// edit command afterward, as a request that a relay answered with 504 and that the edit command then
-// serves
 const LATE = `{
   const fetched = window.fetch;
   const late = window.__late = { state: 'off', serve: null };
@@ -898,14 +837,11 @@ test('a state of a person who stopped being active that reaches the edit command
   await show(ben, 'Two');
   await holding(ana, ben, SECOND, ' typed');
   await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
-  // the 30 s of Ana pass on her clock, and the state that says so is kept from the edit command
   await ana.evaluate(`(window.__late.state = 'armed', ${P}.skew += 31000, ${P}.set({}), true)`);
   await until(() => ana.evaluate(`window.__late.state === 'kept'`), 'the state of Ana that says she is not active to fail for her page');
-  // Ana types again, and the page of Ben hears her key and then the end of her typing
   await typeKeys(ana, 'X');
   const typed = `r.name === 'Ana' && r.caret?.at === 'Second slide typedX'.length`;
   await until(() => ben.evaluate(`${SECOND}.textContent.endsWith('typedX') && ${P}.resolved().some((r) => ${typed} && !r.typing && r.active)`), 'the key of Ana and the end of her typing on the page of Ben');
-  // the kept state now reaches the edit command, and it is the last state of Ana that Ben hears
   await ana.evaluate(`window.__late.serve()`);
   await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.active === false)`), 'the late state of Ana on the page of Ben');
   assert.equal(await ben.evaluate(HOLDER(SECOND)), 'Ana', 'the paragraph is still held after the late state');
@@ -921,10 +857,6 @@ test('a state of a person who stopped being active that reaches the edit command
   clean(ben);
 });
 
-// the page keeps from the edit command its states that do not say typing while window.__quiet is
-// 'typing', and every state while it is 'all', as for another page that does not hear these states.
-// window.__sent is the last state that it sent, and window.__kept says that a state after a state of
-// typing was kept
 const QUIET = `(() => {
   const c = ${C};
   const send = c.sendPresence.bind(c);
@@ -944,20 +876,17 @@ test('a state that says a person stopped being active does not begin a hold on a
   await show(ana, 'Two');
   await show(ben, 'Two');
   const idle = `r.name === 'Ana' && r.active === false`;
-  // the page of Ben hears Ana typing, and it does not hear that she stops
   await ana.evaluate(QUIET);
   await ana.evaluate(`(window.__quiet = 'typing', true)`);
   await holding(ana, ben, SECOND, ' typed');
   await until(() => ana.evaluate(`window.__kept === true && !${C}.presenceBusy && !${C}.presenceDue`), 'the page of Ana to keep the state of the end of her typing');
   const last = await ana.evaluate(`({ v: window.__sent.v, at: window.__sent.caret?.at ?? null })`);
   await until(() => ben.evaluate(`[...${P}.others.values()].some((o) => o.state.typing && o.state.v === ${JSON.stringify(last.v)} && (o.state.caret?.at ?? null) === ${last.at})`), 'the last state of the typing of Ana on the page of Ben');
-  // the 30 s pass on the clock of Ben, and then on the clock of Ana, whose page says so
   await ben.evaluate(`(${P}.skew += 31000, true)`);
   assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the hold of the key ends after 30 s on the clock of Ben');
   await ana.evaluate(`(window.__quiet = null, ${P}.skew += 31000, ${P}.set({}), true)`);
   await until(() => ben.evaluate(`${P}.resolved().some((r) => ${idle})`), 'Ana to stop being active on the page of Ben');
   assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the state that follows a state of her typing does not begin a hold');
-  // Ana moves her caret to the heading and 30 s pass, and the page of Ben hears of both at once
   const heading = el(1, 'h2');
   const before = await ana.evaluate(`${P}.sent.caret.el`);
   await ana.evaluate(`(window.__quiet = 'all', true)`);
