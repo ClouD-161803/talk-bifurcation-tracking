@@ -18,6 +18,9 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`. The TyCHO runtime and the Latin Modern Roman faces are the exceptions, and they are copied by hand. Add libraries that decks load to `scripts/vendor.mjs`, together with their licenses.
 - In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
+- `realpathSync` of Node keeps the short names of Windows, e.g. `RUNNER~1`. `realpathSync.native` and `realpath` of `fs/promises` resolve them.
+- On Windows, another program may hold `index.html` open for a moment. A rename over it is therefore tried again.
+- `node:zlib` has `crc32` only since Node 20.15. The CRC-32 of a zip entry is read from the trailer of gzip.
 
 ## Features
 
@@ -95,6 +98,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Find slides of `test-deck.html` by their content, not by their number, and assert that they are found.
 - Pass `drafts: true` to a page only in tests of the unsaved edits. These edits are offered on a dialog to the next page of the same test.
 - Do not export `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_INDEX_FILE` in a test. Git then works on the repository that they name.
+- `node:test` runs the after hooks in the order they were added, and skips the rest after one fails. A hook is not bounded by the timeout of its test.
 
 ## Browsers and reveal.js
 
@@ -126,3 +130,17 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - A pinch of the trackpad arrives as gesture events in Safari, and as a wheel event with Ctrl in the other browsers.
 - In Safari on a phone, the memory of all canvases together is small. Set the size of a canvas to 0 once it is read.
 - The cancel of a dialog at Esc may be ignored when the dialog was not used since a former cancel. Close a dialog at Esc in a keydown listener of the dialog.
+- A screen reader may skip a live region added together with its text, and does not read it again when its text is set to the same text. A node that is moved or written again loses the focus and is read again.
+- Outside the top modal dialog the page is inert. A live region of a page with an open dialog therefore sits in the same dialog.
+- A removed button does not send `focusout` in every browser, and a pointer that stays still does not send `pointerenter`.
+- A phone keyboard sends a delete as an input event, without a keydown of its key. A key of an input method that composes text comes with `isComposing` or `keyCode` 229, and belongs to the composition.
+- `maxLength` counts UTF-16 code units, an emoji as two, and a cut inside a composition breaks the input method.
+- iOS Safari fires no `contextmenu` at a long press, hence the page times the hold. An iPad names itself a Mac, and a Windows tablet opens a deck from the disk.
+- A phone may suspend or close a hidden page without `pagehide`. The unread keys of a session are sent at `visibilitychange`.
+- Firefox keeps a page with a `beforeunload` listener out of its back-forward cache. The listener is thus added only while an edit is unsent.
+- Safari aborts a write into IndexedDB that starts once the page is hidden or closed, but keeps a write into `localStorage`, whose quota is a few MB. It keeps the Web Locks of a page in its back-forward cache, hence the lock is released at `pagehide`.
+- `crypto.randomUUID`, `crypto.subtle`, and `navigator.clipboard` work only in a secure context.
+- A browser opens at most 6 connections to one host, for all the pages of the origin together.
+- A second page loaded into one iframe adds an entry to the history of the tab.
+- `::highlight` does not read custom properties in every browser. A highlight therefore takes the literal color of its tone.
+- An attribute set to its own value still invalidates the style.
