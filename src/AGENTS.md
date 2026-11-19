@@ -14,6 +14,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - Keep the edit command and the relay free of dependencies. They are run on Node 20 and later, on Windows, macOS, and Linux.
 - Do not block the edit command with a long step. Every page of a session waits on its one process.
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`. The TyCHO runtime and the Latin Modern Roman faces are the exceptions, and they are copied by hand. Add libraries that decks load to `scripts/vendor.mjs`, together with their licenses.
+- In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
 
 ## Features
@@ -24,6 +25,8 @@ The rules below are for work on the template itself: the theme, the editor, the 
 ## Theme
 
 - Take every color from the custom properties of `theme/beeson.css`. Use orange for motion and progress, and violet for structure.
+- Keep the plot palette, `--data-1` to `--data-8` of `theme/beeson.css`, as the Okabe–Ito palette, whose colors can be told apart with color vision deficiency, with the color of the text in place of black. Keep the same colors in the same order in the styles of `styles/`.
+- Keep `axes.formatter.use_mathtext` in the Matplotlib styles. The tick labels are then set as math, since cmr10, the fallback typeface of Matplotlib, does not have a minus sign.
 - Set type in Latin Modern Roman at 22, 28, 36, 48, 64, or 96 px on the design size of 1920 by 1080. Set math in the TeX font of MathJax.
 - Keep body text at 48 px, i.e. the 24 points of the AIAA guideline for a slide 7.5 in high. Keep captions and tables at 36 px, and code boxes at 22 px.
 - When you rename a class or an attribute for the glossary, make the theme read only the new name. Add the old name to `test/names.test.mjs`, and under "Avoid" in its entry of `GLOSSARY.md`.
@@ -34,6 +37,13 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 - The demo deck in `index.html` is the start of every new talk. It is also the page published on GitHub Pages from `main`.
 - The tests of `npm test` are run on `test-deck.html`, a frozen copy of the demo deck. Hence you can change the demo deck without changing the tests.
+- The two figures, `demo/broucke-sample.js`, and the TyCHO viewer of the demo deck are written by the scripts of `demo/`. Run them from the root of the repository, with a checkout of TyCHO next to it at the build from which `theme/vendor/tycho/` was copied.
+
+  ```sh
+  uv run --with matplotlib,numpy,scipy python demo/figures.py .
+  uv run --project ../tycho/code python demo/broucke.py
+  uv run --project ../tycho/code --with scipy python demo/tycho-scene.py index.html
+  ```
 
 ## Verifying
 
@@ -47,8 +57,15 @@ On a laptop, the whole suite of `npm test` takes over an hour, with every core b
 - Run `node --test test/perf.test.mjs` yourself after you change how backdrops are drawn. This test is skipped on CI.
 - In the workflow `check`, `npm test` is run only in beeson-group/slides. In a talk, only the checks of the deck are run.
 - A PR is checked on Ubuntu only: the tests, the deck in Chrome and in Firefox, and the figures. Windows, macOS, and Safari are checked on `main` after each merge.
+- `npm test` is not run on macOS, since WebGL is drawn there by SwiftShader, too slowly for the timings of the tests.
 - Before the merge of a change that is specific to Windows, macOS, or Safari, start a round on every system with `gh workflow run check --ref <branch>`. Watch this round as well.
 - Fix a failed round on `main` before other changes are merged.
+
+## Workflows
+
+- In the workflow `pr-agent`, a comment is first read by the job `authorize`, whose token can only read and which does not have a concurrency group. Hence a comment that is not a command of a person with write access does not cancel a running review. Keep this job apart from the review.
+- Keep the commands accepted by `authorize` equal to those of the pinned release of PR-Agent. Read the changelog of a new release before you bump its image.
+- A PR from a fork is reviewed only on a command of a person with write access, since the events of a fork come with a read-only token and without the secrets. Comments on issues are ignored, since the number of an issue is read by PR-Agent as the number of a PR.
 
 ## Writing a test
 
