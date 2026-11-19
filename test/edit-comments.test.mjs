@@ -69,11 +69,11 @@ test('a thread is anchored on the text that the page read, and moved to the curr
   const base = authority.version;
   const read = authority.text;
   replace(authority, '<h2>One</h2>', '<h2>One</h2>\n  <p>New</p>');
-  const thread = comments.add(ANN, { base, anchor: tagRange(read, '<p>Second'), slide: slideRange(read, 'Second'), text: 'Look', mentions: [BO, BO] });
+  const thread = comments.add(ANN, { base, anchor: tagRange(read, '<p>Second'), slide: slideRange(read, 'Second'), text: `Look @{${BO}} @{${BO}}` });
   reads(authority.text, thread.anchor, '<p>Second slide</p>');
   reads(authority.text, thread.slide, '<section>\n  <h2>Two');
   assert.equal(thread.anchor.tag, 'p');
-  assert.deepEqual([thread.author, thread.text, thread.replies, thread.mentions], [ANN, 'Look', [], [BO]]);
+  assert.deepEqual([thread.author, thread.text, thread.replies, thread.mentions], [ANN, `Look @{${BO}} @{${BO}}`, [], [BO]]);
   const onSlide = comments.add(BO, { base, anchor: null, slide: slideRange(read, 'Second'), text: 'Slide' });
   assert.deepEqual([onSlide.anchor, onSlide.slide], [thread.slide, thread.slide]);
   const deck = comments.add(BO, onDeck(authority, 'Deck'));
@@ -105,11 +105,9 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   // the limit counts characters, of which an emoji is one and two units of UTF-16
   assert.equal(status({ ...ok, text: '😀'.repeat(4001) }), 413);
   assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200);
-  assert.equal(status({ ...ok, mentions: ['short'] }), 400);
-  assert.equal(status({ ...ok, mentions: 'x' }), 400);
-  const people = Array.from({ length: 51 }, (_, i) => `${i}`.padStart(22, 'P'));
-  assert.deepEqual(comments.add(ANN, { ...ok, mentions: people }), { status: 413, error: 'the comment has more than 50 mentions' });
-  assert.equal(status({ ...ok, mentions: people.slice(1) }), 200);
+  const people = Array.from({ length: 51 }, (_, i) => `@{${`${i}`.padStart(22, 'P')}}`);
+  assert.deepEqual(comments.add(ANN, { ...ok, text: people.join(' ') }), { status: 413, error: 'the comment has more than 50 mentions' });
+  assert.equal(status({ ...ok, text: people.slice(1).join(' ') }), 200);
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
   assert.equal(status(ok), 409, 'the base is older than the log');
 });
@@ -117,9 +115,9 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
 test('a thread takes replies, edits, deletes, a resolve, and a reopen, within its limits', (t) => {
   const { authority, comments } = open(sessionDir(t), DECK, { maxBytes: 60_000 });
   const thread = comments.add(ANN, onDeck(authority, 'Question'));
-  const replied = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] });
+  const replied = comments.reply(thread.id, BO, { text: `Answer @{${ANN}}` });
   const reply = replied.replies[0];
-  assert.deepEqual([reply.author, reply.text, replied.mentions], [BO, 'Answer', [ANN]]);
+  assert.deepEqual([reply.author, reply.text, replied.mentions], [BO, `Answer @{${ANN}}`, [ANN]]);
   assert.equal(comments.edit(thread.id, BO, { text: 'Not mine' }).status, 403);
   assert.equal(comments.edit(thread.id, ANN, { text: 'Question, edited' }).text, 'Question, edited');
   assert.equal(typeof comments.list(ANN).comments[0].edited, 'number');
@@ -143,6 +141,18 @@ test('a thread takes replies, edits, deletes, a resolve, and a reopen, within it
   assert.equal(comments.remove(thread.id, ANN, {}), null);
   assert.equal(comments.list(ANN).comments.length, added);
   assert.ok(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id, 'a delete gives the bytes back');
+});
+
+test('the mentions of a thread are read from the texts of its comments, and an edit or a delete that takes out an @name takes out its mention', (t) => {
+  const { authority, comments } = open(sessionDir(t), DECK);
+  const CY = 'CyCyCyCyCyCyCyCyCyCyCy';
+  // the list sent by a page is not read
+  const thread = comments.add(ANN, { ...onDeck(authority, `For @{${BO}}`), mentions: [CY] });
+  assert.deepEqual(thread.mentions, [BO]);
+  const reply = comments.reply(thread.id, CY, { text: `cc @{${ANN}} and @\u2060{${CY}}`, mentions: [CY] }).replies[0];
+  assert.deepEqual(comments.list(ANN).comments[0].mentions, [BO, ANN], 'a brace typed after an @ by hand is not a mention');
+  assert.deepEqual(comments.edit(thread.id, ANN, { text: 'For nobody' }).mentions, [ANN]);
+  assert.deepEqual(comments.remove(thread.id, CY, { reply: reply.id }).mentions, []);
 });
 
 test('a deck holds at most 2000 threads', (t) => {
@@ -313,7 +323,7 @@ test('a change of a thread that cannot be written is taken back and refused', (t
   const file = join(dir, 'comments.json');
   const { authority, comments, logged } = open(dir, DECK);
   const thread = comments.add(ANN, onDeck(authority, 'Question'));
-  const reply = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] }).replies[0];
+  const reply = comments.reply(thread.id, BO, { text: `Answer @{${ANN}}` }).replies[0];
   const before = structuredClone(comments.list(ANN));
   const bytes = comments.bytes;
   let told = 0;
@@ -327,8 +337,8 @@ test('a change of a thread that cannot be written is taken back and refused', (t
     } catch {}
     const refused = (x, error) => assert.deepEqual(x, { status: 503, error });
     refused(comments.add(ANN, onDeck(authority, 'Lost')), 'The host could not save the comment');
-    refused(comments.reply(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
-    refused(comments.edit(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
+    refused(comments.reply(thread.id, ANN, { text: `Lost @{${BO}}` }), 'The host could not save the comment');
+    refused(comments.edit(thread.id, ANN, { text: `Lost @{${BO}}` }), 'The host could not save the comment');
     refused(comments.edit(thread.id, BO, { reply: reply.id, text: 'Lost, and a longer text' }), 'The host could not save the comment');
     refused(comments.remove(thread.id, BO, { reply: reply.id }), 'The host could not delete the comment');
     refused(comments.remove(thread.id, ANN, {}), 'The host could not delete the comment');
@@ -979,7 +989,7 @@ test('the requests of the comments, and the events that tell the other pages of 
   const empty = await s.get(ann);
   assert.deepEqual(empty, { v: 0, at: ann.v, comments: [], seen: 0, read: {} });
   const { text, base } = await s.deck();
-  const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look', mentions: [bo.person] });
+  const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: `Look @{${bo.person}}` });
   assert.equal(created.status, 200);
   const thread = created.json();
   reads(text, thread.anchor, '<p>Second slide</p>');
@@ -1114,7 +1124,7 @@ test('the time up to which a person read a thread is kept, told to the other pag
   let last = 0;
   const thread = async (text) => {
     await until(() => Date.now() > last, 'the clock to pass the time of the thread before');
-    const made = (await first.call('comments', bo, { base, anchor: null, slide: null, text, mentions: [ann.person] })).json();
+    const made = (await first.call('comments', bo, { base, anchor: null, slide: null, text: `${text} @{${ann.person}}` })).json();
     last = made.time;
     return made;
   };

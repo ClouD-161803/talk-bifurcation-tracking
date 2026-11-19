@@ -15,6 +15,7 @@ import {
   COMMENT_MAX,
   formatVersion,
   isPersonId,
+  MENTION,
   REPLIES_MAX,
   THREADS_MAX,
   type Anchor,
@@ -70,11 +71,20 @@ function cleanText(raw: unknown): string | Failure {
   return raw;
 }
 
-function cleanMentions(raw: unknown): string[] | Failure {
-  if (raw === undefined || raw === null) return [];
-  if (Array.isArray(raw) && raw.length > MENTIONS_MAX) return fail(413, `the comment has more than ${MENTIONS_MAX} mentions`);
-  if (!Array.isArray(raw) || !raw.every(isPersonId)) return fail(400, 'mentions must be person ids');
-  return [...new Set(raw as string[])];
+const mentionsIn = (text: string) => new Set([...text.matchAll(MENTION)].map((m) => m[1]));
+
+// a text of a comment with at most MENTIONS_MAX people mentioned in it, or a failure
+function withMentions(raw: unknown): string | Failure {
+  const text = cleanText(raw);
+  if (isFailure(text)) return text;
+  return mentionsIn(text).size > MENTIONS_MAX ? fail(413, `the comment has more than ${MENTIONS_MAX} mentions`) : text;
+}
+
+// the people mentioned in the texts of a thread and of its replies, in the order of the texts
+function mentionsOf(t: Comment): string[] {
+  const all = new Set<string>();
+  for (const text of [t.text, ...t.replies.map((r) => r.text)]) for (const m of mentionsIn(text)) all.add(m);
+  return [...all];
 }
 
 // any tag name, since the tokenizer gives one of any length and of any character but a few
@@ -102,7 +112,8 @@ function readThread(t: unknown): Comment | null {
   if (c.edited !== undefined && !isNumber(c.edited)) return null;
   if (c.resolved !== undefined && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
   if (c.removed !== undefined && !(c.removed && (c.removed.text === null || isKept(c.removed.text)) && (c.removed.slide === undefined || isKept(c.removed.slide)))) return null;
-  const out: Comment = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
+  const out: Comment = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [] };
+  out.mentions = mentionsOf(out);
   if (c.removed) out.removed = copyRemoved(c.removed);
   if (c.edited !== undefined) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
@@ -216,10 +227,8 @@ export class Comments {
     if (body.id !== undefined && !isPageId(body.id)) return fail(400, 'id must be made by crypto.randomUUID()');
     const held = body.id === undefined ? undefined : this.threads.get(body.id);
     if (held) return held.author === person ? held : fail(409, 'the id is taken');
-    const text = cleanText(body.text);
+    const text = withMentions(body.text);
     if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
     if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
     if (this.bytes + bytesOf(text) > this.maxBytes) return tooLarge();
@@ -228,7 +237,7 @@ export class Comments {
     const at = this.anchorsAt(n, body.anchor, body.slide);
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
-    const thread: Comment = { id: (body.id as string | undefined) ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    const thread: Comment = { id: (body.id as string | undefined) ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions: [...mentionsIn(text)] };
     if (item.removed) thread.removed = copyRemoved(item.removed);
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
@@ -252,24 +261,22 @@ export class Comments {
     if (body.id !== undefined && !isPageId(body.id)) return fail(400, 'id must be made by crypto.randomUUID()');
     const held = body.id === undefined ? undefined : thread.replies.find((r) => r.id === body.id);
     if (held) return held.author === person ? thread : fail(409, 'the id is taken');
-    const text = cleanText(body.text);
+    const text = withMentions(body.text);
     if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
     if (this.locked) return readOnly();
     const reply: CommentReply = { id: (body.id as string | undefined) ?? newId(), author: person, time: this.now(), text };
     const size = replyBytes(reply);
     if (this.bytes + size > this.maxBytes) return tooLarge();
-    const mentioned = thread.mentions.length;
+    const mentioned = thread.mentions;
     thread.replies.push(reply);
     this.bytes += size;
-    this.mention(thread, mentions);
+    thread.mentions = mentionsOf(thread);
     this.recount(thread);
     const undo = () => {
       thread.replies.pop();
       this.bytes -= size;
-      thread.mentions.length = mentioned;
+      thread.mentions = mentioned;
       this.recount(thread);
     };
     return this.commit([id], undo, NOT_SAVED) ?? thread;
@@ -282,26 +289,24 @@ export class Comments {
     const target = this.target(thread, body.reply);
     if (isFailure(target)) return target;
     if (target.author !== person) return fail(403, 'only the author may edit a comment');
-    const text = cleanText(body.text);
+    const text = withMentions(body.text);
     if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
     const edited = this.now();
     const grow = target === thread ? headBytes({ ...thread, text, edited }) - this.heads.get(id)! : replyBytes({ ...(target as CommentReply), text, edited }) - replyBytes(target as CommentReply);
     if (grow > 0 && this.bytes + grow > this.maxBytes) return tooLarge();
-    const was = { text: target.text, edited: target.edited, mentioned: thread.mentions.length };
+    const was = { text: target.text, edited: target.edited, mentioned: thread.mentions };
     if (target !== thread) this.bytes += grow;
     target.text = text;
     target.edited = edited;
-    this.mention(thread, mentions);
+    thread.mentions = mentionsOf(thread);
     this.recount(thread);
     const undo = () => {
       target.text = was.text;
       if (was.edited === undefined) delete target.edited;
       else target.edited = was.edited;
       if (target !== thread) this.bytes -= grow;
-      thread.mentions.length = was.mentioned;
+      thread.mentions = was.mentioned;
       this.recount(thread);
     };
     return this.commit([id], undo, NOT_SAVED) ?? thread;
@@ -336,12 +341,16 @@ export class Comments {
       };
       return this.commit([id], undo, error, true) ?? null;
     }
-    const replies = thread.replies;
+    const replies = thread.replies, mentioned = thread.mentions;
     thread.replies = replies.filter((r) => r !== target);
     this.bytes -= replyBytes(target as CommentReply);
+    thread.mentions = mentionsOf(thread);
+    this.recount(thread);
     const undo = () => {
       thread.replies = replies;
       this.bytes += replyBytes(target as CommentReply);
+      thread.mentions = mentioned;
+      this.recount(thread);
     };
     return this.commit([id], undo, error) ?? thread;
   }
@@ -447,10 +456,6 @@ export class Comments {
   private target(thread: Comment, reply: unknown): Comment | CommentReply | Failure {
     if (reply === undefined || reply === null) return thread;
     return thread.replies.find((r) => r.id === reply) ?? fail(404, 'there is no such reply');
-  }
-
-  private mention(thread: Comment, mentions: string[]): void {
-    for (const m of mentions) if (!thread.mentions.includes(m) && thread.mentions.length < 4 * MENTIONS_MAX) thread.mentions.push(m);
   }
 
   // the anchors of a request, checked against the text at version n
