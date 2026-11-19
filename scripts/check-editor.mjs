@@ -401,7 +401,7 @@ try {
     const from = grips[corner];
     const dx = corner.endsWith('e') ? -60 : 60;
     const dy = corner.startsWith('s') ? -34 : 34;
-    // the Command key on the Mac, as Alt elsewhere, turns the snap off, as in test/editor-figure-frame.test.mjs
+    // the Command key on the Mac, as Alt elsewhere, turns the snap off, as in test/editor-figure-grips.test.mjs
     await drag(from, { dx, dy, mods: [platform === 'mac' ? 'Meta' : 'Alt'] });
     await frames();
     const w1 = await evaluate(`${drawn}.width`);

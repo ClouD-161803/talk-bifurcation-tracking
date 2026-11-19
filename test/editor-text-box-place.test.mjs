@@ -1026,7 +1026,7 @@ describe('the first key in a new title box', () => {
 
   // F7: a drag by a bar went on after a change of slide, and the release moved the row of the slide
   // that was left, as an entry of the history. a key does not change the slide during the drag, as
-  // test/editor-table.test.mjs checks for PageDown
+  // test/editor-table-rows.test.mjs checks for PageDown
   for (const platform of PLATFORMS) {
     for (const [how, go] of [['Reveal.slide', (page) => page.evaluate('Reveal.slide(2)')]]) {
       test(`a change of slide by ${how} ends the drag of a row by its bar without a change of the file (${platform})`, async (t) => {
