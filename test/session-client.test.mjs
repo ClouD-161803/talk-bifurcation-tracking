@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
+import { click, clickText, drag, press, type, typeKeys } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 import { cleanPersonName, nameKey } from '../src/session/protocol.ts';
 
@@ -366,6 +366,67 @@ for (const [what, change, slow] of [
     // the change from outside and the committed word are each kept once
     const line = text.match(/<p>Second[^\n]*/)[0];
     assert.deepEqual([line.split('你好').length, line.replace('你好', '')], [2, marker], line);
+  });
+}
+
+// every answer of the edit command to the page waits while window.__held is set
+const HOLD = `(() => {
+  const f = window.fetch.bind(window);
+  window.__held = true;
+  window.fetch = (...a) => f(...a).then(async (r) => { while (window.__held) await new Promise((d) => setTimeout(d, 20)); return r; });
+  return true;
+})()`;
+// the moves by Ben of the list of slide Two, or of the paragraph that Ann dragged when same is set,
+// while the answers to the page of Ann wait when held is set
+const MOVES = {
+  'a nudge of another element': { run: async (b) => {
+    await b.evaluate(`${C}.app.selection.set('elements', [${el(1, 'ul')}])`);
+    await press(b, 'ArrowDown');
+  } },
+  'a nudge of another element while the answers to the drag wait': { run: async (b) => {
+    await b.evaluate(`${C}.app.selection.set('elements', [${el(1, 'ul')}])`);
+    await press(b, 'ArrowDown');
+  }, held: true },
+  'a nudge of the dragged element': { run: async (b) => {
+    await b.evaluate(`${C}.app.selection.set('elements', [${el(1, 'p')}])`);
+    await press(b, 'ArrowDown');
+  }, same: true },
+  'a move of another element in the order of the slide': { run: async (b) => {
+    await b.evaluate(`(async () => { const ul = ${el(1, 'ul')}; await ${C}.app.doc.move(ul, ul.parentElement, ${el(1, 'h2')}); return true; })()`);
+  } },
+};
+
+for (const [name, move] of Object.entries(MOVES)) {
+  test(`an Undo after a drag takes back the drag only, and not ${name} by another person`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+    const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    await converge(server, [a, b]);
+    for (const page of [a, b]) await show(page, 'Two');
+    await front(a);
+    await a.evaluate(`${C}.app.selection.set('elements', [${el(1, 'p')}])`);
+    await a.waitFor(`!!document.querySelector('.beeson-handle')`);
+    if (move.held) await a.evaluate(HOLD);
+    await drag(a, '.beeson-handle', { dx: 80, dy: 40 });
+    if (!move.held) assert.match(await converge(server, [a, b]), /<p style="translate: \d+px \d+px">Second slide<\/p>/);
+    const dragged = server.read();
+    await front(b);
+    await move.run(b);
+    if (move.held) {
+      await until(() => server.read() !== dragged || null, 'the move of Ben in index.html');
+      await a.evaluate('(window.__held = false, true)');
+    }
+    const moved = await converge(server, [a, b]);
+    assert.match(moved, /<p style="translate: \d+px \d+px">Second slide<\/p>/);
+    assert.notEqual(moved, dragged, 'Ben moved the list');
+    const want = move.same ? moved : moved.replace(/<p style="translate: \d+px \d+px">Second slide<\/p>/, '<p>Second slide</p>');
+    await front(a);
+    await press(a, 'Mod+Z');
+    assert.equal(await converge(server, [a, b]), want, 'the paragraph is back, and the list stays where Ben moved it');
+    clean(a);
+    clean(b);
   });
 }
 
