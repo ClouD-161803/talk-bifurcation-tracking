@@ -1,6 +1,3 @@
-// checks of the scrubber of the progress line (src/scrub.ts) and of full screen
-// (src/fullscreen.ts) on the demo deck, in Chrome
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
@@ -14,12 +11,10 @@ async function openDeck(t, query = '', { deck = 'test-deck.html', ...size } = {}
   const mouse = (type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   const key = (code, k) => page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: code, key: k })
     .then(() => page.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: code, key: k }));
-  // the band is opened by a mouse at rest in the reach
   const rest = async (x = 960) => {
     await mouse('mouseMoved', x, 1075);
     await page.waitFor(scrubbing);
   };
-  // the tick of the last slide is at the right edge of the window, one pixel past its last column
   const click = async (at, y = 1075) => {
     const x = Math.min(at, 1918);
     await mouse('mouseMoved', x, y);
@@ -30,13 +25,11 @@ async function openDeck(t, query = '', { deck = 'test-deck.html', ...size } = {}
   return { page, mouse, key, rest, click, finger };
 }
 
-// waits until ms have passed in the page, e.g. for a rest to have ended
 const past = async (page, ms) => {
   const now = await page.evaluate('performance.now()');
   await page.waitFor(`performance.now() > ${now + ms}`);
 };
 
-// the pacing of a talk is cleared, since the checks below are written for a deck without one
 const unpaced = `Reveal.getSlides().forEach((s) => delete s.dataset.timing); Reveal.configure({ totalTime: null, defaultTiming: null })`;
 
 const look = `(() => {
@@ -65,9 +58,6 @@ test('the progress line is left as drawn until the mouse rests at the bottom of 
 
 const scrubbing = `document.querySelector('.reveal').classList.contains('scrubbing')`;
 
-// the accident of issue 11. on its way to a control low on a slide, the pointer comes within 48 px
-// of the bottom edge, or it crosses the reach without a rest. the wait in the page is longer than
-// the rest, hence a rest that was started at the crossing is over before the band is read
 test('the band is not opened by a pointer that does not rest in the reach', { timeout: 60000 }, async (t) => {
   const { page, mouse } = await openDeck(t);
   await mouse('mouseMoved', 960, 1040);
@@ -80,12 +70,9 @@ test('the band is not opened by a pointer that does not rest in the reach', { ti
   await page.waitFor(scrubbing);
 });
 
-// a taller window of the same width keeps the scale of the deck, and reveal.js does not report a
-// resize then
 test('the reach follows the bottom edge of a window that grows taller at the same scale', { timeout: 60000 }, async (t) => {
   const { page, mouse } = await openDeck(t, '', { width: 1920, height: 1200 });
   const scale = await page.evaluate('Reveal.getScale()');
-  // a listener added after that of the band, which has then run
   await page.evaluate(`window.resized = 0; addEventListener('resize', () => { resized += 1; })`);
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1350, deviceScaleFactor: 1, mobile: false });
   await page.waitFor(`resized && innerHeight === 1350`);
@@ -96,7 +83,6 @@ test('the reach follows the bottom edge of a window that grows taller at the sam
   await mouse('mouseMoved', 960, 1340);
   await page.waitFor(scrubbing);
 
-  // a shorter window halves the scale, and the band is then 960 px wide in the middle of the window
   await mouse('mouseMoved', 960, 700);
   await page.evaluate('resized = 0');
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 540, deviceScaleFactor: 1, mobile: false });
@@ -109,8 +95,6 @@ test('the reach follows the bottom edge of a window that grows taller at the sam
   await page.waitFor(scrubbing);
 });
 
-// the controls of a tycho viewer at the bottom of a slide end about 100 px above the bottom of the
-// window. a pointer on them is above the rows of numbers and names of the open band
 test('the open band is closed by a pointer above its rows of numbers and names', { timeout: 60000 }, async (t) => {
   const { page, mouse } = await openDeck(t);
   await mouse('mouseMoved', 960, 1075);
@@ -119,7 +103,6 @@ test('the open band is closed by a pointer above its rows of numbers and names',
   assert.equal(await page.evaluate(scrubbing), false, 'the band is open with the pointer 105 px above the bottom edge');
 });
 
-// the place of a tick on the screen, and what the band shows
 const tickX = (i) => `(() => {
   const band = document.querySelector('.scrub').getBoundingClientRect();
   return band.left + band.width * parseFloat(document.querySelectorAll('.scrub-tick')[${i}].style.left) / 100;
@@ -175,10 +158,8 @@ test('the name of each section is written over the first tick of its section, an
     assert.ok(Math.abs(band.names[k].left - tick.x) < 1.5, `${section.name} starts at ${band.names[k].left}, and its first tick is at ${tick.x}`);
   }
   assert.ok(Math.abs(band.names.at(-1).right - band.band.right) < 1.5, 'the name of the closing slide ends at the end of the band');
-  // of the other ticks, only the last one has its number
   assert.deepEqual(band.ticks.filter((tick) => tick.numbered).map((tick) => tick.number), [...deck.sections.map((s) => String(s.first + 1)), String(band.ticks.length)]);
 
-  // a click on a name shows its section slide
   const name = band.names[1];
   await click(name.left + 10, name.y);
   await page.waitFor(`Reveal.getCurrentSlide().classList.contains('section') && Reveal.getCurrentSlide().querySelector('h2').textContent === ${JSON.stringify(name.text)}`);
@@ -187,9 +168,6 @@ test('the name of each section is written over the first tick of its section, an
   await page.waitFor(`Reveal.getCurrentSlide().classList.contains('closing')`);
 });
 
-// a deck of 41 numbered slides with a start time under each number, on a band 844 px wide, whose
-// last section starts at the third-to-last tick. the number of a section starts at its tick and
-// that of the last tick ends at its tick, hence their boxes would meet
 test('the number and time of the last tick are not met by those of a section that starts before it', { timeout: 60000 }, async (t) => {
   const { page, mouse } = await openDeck(t, '', { width: 844, height: 600 });
   await page.evaluate(`(() => {
@@ -264,7 +242,6 @@ test('the last viewed slide is shown on the band, and a click on it shows the st
   const left = await page.evaluate(current);
   assert.equal(left.f, 1);
 
-  // a jump with the band
   await rest();
   await click(await page.evaluate(tickX(deck.last)));
   await page.waitFor(`Reveal.getIndices().h === ${deck.h[deck.last]}`);
@@ -275,10 +252,8 @@ test('the last viewed slide is shown on the band, and a click on it shows the st
   await click(band.ticks[deck.i].x);
   await page.waitFor(`Reveal.getIndices().h === ${left.h}`);
   assert.deepEqual(await page.evaluate(current), left);
-  // the slide jumped from is then the last viewed slide
   await page.waitFor(`document.querySelectorAll('.scrub-tick')[${deck.last}].classList.contains('viewed')`);
 
-  // a move to the next slide is not a jump, and the End key is one
   await key(39, 'ArrowRight');
   await rest();
   band = await page.evaluate(shown);
@@ -304,7 +279,6 @@ test('the slide at which the overview was opened is the last viewed slide after 
   assert.deepEqual(band.ticks.filter((tick) => tick.classes.includes('viewed')).map((tick) => tick.number), ['3']);
 });
 
-// reveal.js closes the overview at a click on a slide before it shows the slide, in one task
 test('the slide at which the overview was opened is the last viewed slide after a click on a slide in it', { timeout: 60000 }, async (t) => {
   const { page, key, rest, click } = await openDeck(t);
   const h = await page.evaluate(`Reveal.getSlides().map((s) => Reveal.getIndices(s).h)`);
@@ -353,7 +327,6 @@ test('the start time of each slide is shown with totalTime, as in the speaker vi
   assert.equal(times.length, total);
 });
 
-// a phone in landscape. the wait in the page is longer than the rest of a finger
 const phone = { width: 844, height: 390, mobile: true };
 
 test('a finger at rest in the reach opens the band, and the slide of the tick under it is shown when it is lifted', { timeout: 60000 }, async (t) => {
@@ -366,7 +339,6 @@ test('a finger at rest in the reach opens the band, and the slide of the tick un
   const target = band.ticks.at(-2);
   await finger('touchMove', target.x, 372);
   await page.waitFor(`document.querySelectorAll('.scrub-tick')[${band.ticks.length - 2}].classList.contains('hover')`);
-  // the finger on the band is not a swipe, with which reveal.js would show the slide before
   assert.deepEqual(await page.evaluate('Reveal.getIndices()'), before);
   const heading = await page.evaluate(`document.querySelector('.scrub-heading').textContent`);
   assert.ok(heading.startsWith(`${target.number} · `), `the number of the tick is written before the heading, in "${heading}"`);
@@ -376,7 +348,6 @@ test('a finger at rest in the reach opens the band, and the slide of the tick un
   assert.ok(heading.endsWith((await page.evaluate(current)).heading));
 });
 
-// the place of the tick of a slide on the closed band, at which a finger rests
 const tickOf = (slide) => `(() => {
   const band = document.querySelector('.scrub').getBoundingClientRect();
   return band.left + band.width * Reveal.getSlidePastCount(${slide}) / (Reveal.getTotalSlides() - 1);
@@ -431,8 +402,6 @@ test('a finger picks a name as the mouse does, and the heading over the band sho
   }
 });
 
-// on a phone in landscape, the names are inside the reach of a finger. the band is opened once to
-// find the place of a name, and it is closed by a key
 test('a finger that rests on a name and is lifted without a move shows the slide of the name', { timeout: 60000 }, async (t) => {
   const { page, key, finger } = await openDeck(t, '', phone);
   await page.evaluate('Reveal.slide(3)');
@@ -451,8 +420,6 @@ test('a finger that rests on a name and is lifted without a move shows the slide
   await page.waitFor(`Reveal.getCurrentSlide().classList.contains('section') && Reveal.getCurrentSlide().querySelector('h2').textContent === 'Chapter two'`);
 });
 
-// the lift of the first finger never reaches the page, and the presses after it are made in the
-// page. a press of a second finger in a pinch is not primary
 test('a new finger closes a band left open by a finger whose lift was lost, and a second finger does not', { timeout: 60000 }, async (t) => {
   const { page, finger } = await openDeck(t, '', phone);
   await finger('touchStart', 200, 375);
@@ -496,11 +463,8 @@ test('a finger that rests on a surface low on a slide drags the surface, and it 
 
 test('a finger that leaves the band upward does not show another slide or step', { timeout: 60000 }, async (t) => {
   const { page, finger } = await openDeck(t, '', phone);
-  // a slide with steps left, which a swipe upward would show
   await page.evaluate('Reveal.slide(3)');
   const before = await page.evaluate('Reveal.getIndices()');
-  // the pointer events and each open and close of the band, by their time in the page. the band is
-  // closed by the move above it
   await page.evaluate(`(() => {
     const r = window.record = { events: [], closed: false };
     const t0 = performance.now();
@@ -529,7 +493,6 @@ test('a finger that leaves the band upward does not show another slide or step',
 test('a tap in the reach moves the show on, and it does not open the band', { timeout: 60000 }, async (t) => {
   const { page, finger } = await openDeck(t, '', phone);
   const before = await page.evaluate(current);
-  // the tap is on the progress line, at which reveal.js would show the slide of this place
   await finger('touchStart', 600, 388);
   await finger('touchEnd');
   await page.waitFor(`Reveal.getIndices().h === ${before.h + 1}`);
@@ -537,8 +500,6 @@ test('a tap in the reach moves the show on, and it does not open the band', { ti
   assert.equal(await page.evaluate(scrubbing), false);
 });
 
-// requestFullscreen is replaced with a count, since the full screen of headless Chrome does not
-// change the size of the window
 const counted = `(() => {
   window.calls = { enter: 0, exit: 0 };
   let full = null;
@@ -556,10 +517,8 @@ test('F enters full screen and leaves it', { timeout: 60000 }, async (t) => {
   assert.deepEqual(await page.evaluate('calls'), { enter: 1, exit: 1 });
 });
 
-// the window is made to cover the screen with the toolbar shown, as a Safari window in the full
-// screen of macOS
-const systemFull = (on) => `(() => {
-  for (const [k, v] of Object.entries({ outerWidth: 1920, outerHeight: ${on ? 1080 : 1000}, innerHeight: 1000 })) Object.defineProperty(window, k, { configurable: true, value: v });
+const systemFull = (on, outerWidth = 1920) => `(() => {
+  for (const [k, v] of Object.entries({ outerWidth: ${outerWidth}, outerHeight: ${on ? 1080 : 1000}, innerHeight: 1000 })) Object.defineProperty(window, k, { configurable: true, value: v });
   for (const [k, v] of Object.entries({ width: 1920, height: 1080 })) Object.defineProperty(screen, k, { configurable: true, value: v });
   window.dispatchEvent(new Event('resize'));
 })()`;
@@ -571,17 +530,28 @@ test('a window in the full screen of the system is taken into full screen at the
   await key(39, 'ArrowRight');
   assert.deepEqual(await page.evaluate('calls'), { enter: 1, exit: 0 });
 
-  // after the page leaves full screen, e.g. with Esc, the window is not taken back into it
   await page.evaluate('document.exitFullscreen()');
   await page.evaluate(systemFull(true));
   await key(39, 'ArrowRight');
   assert.deepEqual(await page.evaluate('calls'), { enter: 1, exit: 1 });
 
-  // until the window has left the full screen of the system and entered it again
   await page.evaluate(systemFull(false));
   await page.evaluate(systemFull(true));
   await key(37, 'ArrowLeft');
   assert.deepEqual(await page.evaluate('calls'), { enter: 2, exit: 1 });
+});
+
+test('a maximized window of Windows, wider than the screen by its frame, is not taken into full screen', { timeout: 60000 }, async (t) => {
+  const { page, key } = await openDeck(t);
+  await page.evaluate(counted);
+  await page.evaluate(systemFull(true, 1936));
+  await key(39, 'ArrowRight');
+  assert.deepEqual(await page.evaluate('calls'), { enter: 0, exit: 0 });
+});
+
+test('a deck in a window as narrow as a phone is shown as slides, not as the scroll view of reveal.js', { timeout: 60000 }, async (t) => {
+  const { page } = await openDeck(t, '', { width: 390, height: 844, mobile: true });
+  assert.equal(await page.evaluate('Reveal.isScrollView()'), false);
 });
 
 test('a window that does not cover the screen is not taken into full screen', { timeout: 60000 }, async (t) => {
@@ -609,13 +579,11 @@ test('the title, section, and closing slides are not numbered, and the slides af
   })()`);
   assert.deepEqual(numbers, ['', '', '1 / 3', '2 / 3', '', '3 / 3', '', 'A1', 'A2']);
 
-  // the band has a tick for each numbered slide only
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 960, y: 1075, button: 'none' });
   await page.waitFor(scrubbing);
   const labels = await page.evaluate(`[...document.querySelectorAll('.scrub-tick')].map((t) => t.firstChild.textContent)`);
   assert.deepEqual(labels, ['1', '2', '3']);
 
-  // the running head of a slide after the closing slide names the appendix
   const runs = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('.run')?.textContent ?? '')`);
   assert.deepEqual(runs, ['', '', 'Chapter one', 'Chapter one', '', 'Chapter two', '', 'Appendix slides', 'Appendix slides']);
 });
@@ -626,7 +594,6 @@ test('the slides of a stack have ticks, and a step down a stack is not a jump', 
   await rest();
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.scrub-tick')].map((t) => t.firstChild.textContent)`), ['1', '2', '3', '4']);
 
-  // into the stack, down it, and out of it, one slide at a time
   await page.evaluate('Reveal.slide(1)');
   for (const heading of ['Second', 'Third', 'Fourth']) {
     await page.evaluate('Reveal.next()');
@@ -635,7 +602,6 @@ test('the slides of a stack have ticks, and a step down a stack is not a jump', 
   await past(page, 100);
   assert.equal(await page.evaluate(`document.querySelector('.scrub .viewed')`), null, 'a slide is marked as the last viewed slide');
 
-  // a jump out of the last slide still marks it
   await page.evaluate('Reveal.slide(0)');
   await page.waitFor(`document.querySelector('.scrub-tick.viewed')?.firstChild.textContent === '4'`);
 });
@@ -651,7 +617,6 @@ test('a last viewed slide without a tick has its name at its end of the band', {
   const h = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.dataset.appendix === '2')`);
   assert.ok(h > 0, 'the page has a second slide in its appendix');
 
-  // from the appendix to the second numbered slide, whose tick is at the middle of the band
   await page.evaluate(`Reveal.slide(${h})`);
   await rest();
   await click(960);
@@ -663,7 +628,6 @@ test('a last viewed slide without a tick has its name at its end of the band', {
   await click(1900, name.y);
   await page.waitFor(at('Appendix two'));
 
-  // from the title slide
   await page.evaluate(`Reveal.slide(0)`);
   await click(960);
   await page.waitFor(at('Second'));
@@ -674,7 +638,6 @@ test('a last viewed slide without a tick has its name at its end of the band', {
   await page.waitFor(at('A title'));
 });
 
-// a phone in portrait, on which the names do not fit at their full width
 test('the names on a narrow band are cut, and they do not run into each other', { timeout: 60000 }, async (t) => {
   const { page, finger } = await openDeck(t, '', { width: 390, height: 844, mobile: true });
   await page.evaluate(`document.querySelector('.reveal .slides > section.section').dataset.run = 'The name of a section that is far too long for a phone'`);
@@ -693,7 +656,6 @@ test('the names on a narrow band are cut, and they do not run into each other', 
   }
 });
 
-// the title of the hovered slide is shown in full, with the descenders of g and y inside its box
 test('the title over the band is not cut at its descenders', { timeout: 60000 }, async (t) => {
   const { page, rest } = await openDeck(t);
   await rest();

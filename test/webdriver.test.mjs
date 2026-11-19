@@ -1,5 +1,3 @@
-// checks of the driver lookup and the local server in scripts/webdriver.mjs
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';

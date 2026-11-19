@@ -1,33 +1,21 @@
-// the reader of a LaTeX preamble. a definition that MathJax can hold is read into the form of its
-// configuration, i.e. tex.macros and tex.environments, a package is mapped to the extension of
-// MathJax with its commands, and a kind of theorem is read from \newtheorem. every other statement
-// is skipped and listed with its reason. the reader does not depend on Node or on a browser, since
-// it is run by scripts/tex.mjs and by the editor
-
 import { plainText } from './accents.ts';
 import type { Kind, Style } from './kinds.ts';
 
 export { USUAL, kindsOf, type Kind, type Style } from './kinds.ts';
 
-/** A macro in the form of tex.macros of MathJax: the body, the number of arguments, and the default of an optional first argument. */
 export type MacroDef = string | [string, number] | [string, number, string];
-/** An environment in the form of tex.environments of MathJax: the code at its begin and at its end, the number of arguments, and the default of an optional first argument. */
 export type EnvironmentDef = [string, string] | [string, string, number] | [string, string, number, string];
 export type Skipped = { file: string; line: number; text: string; reason: string };
 export type Preamble = {
   macros: Record<string, MacroDef>;
   environments: Record<string, EnvironmentDef>;
-  // the extensions of MathJax to load on top of those of every deck
   packages: string[];
   theorems: Record<string, Kind>;
   skipped: Skipped[];
 };
-/** Returns the file that a preamble names in \input, \usepackage, or \documentclass, or null when it is not next to the preamble. */
 export type Resolve = (name: string, kind: 'input' | 'package' | 'class') => { file: string; text: string } | null;
 export type Options = { file?: string; resolve?: Resolve };
 
-// EXTENSION is the extension of MathJax with the commands of a package of LaTeX. an empty name
-// marks a package whose commands every deck has, from the extension ams or from the theme
 const EXTENSION: Record<string, string> = {
   amsmath: '',
   amssymb: '',
@@ -59,19 +47,14 @@ const EXTENSION: Record<string, string> = {
   units: 'units',
   upgreek: 'upgreek',
 };
-// the extensions of MathJax for these packages need a font that is not in theme/vendor/mathjax
 const UNVENDORED = new Set(['bbm', 'bbold', 'bboldx', 'dsfont']);
 const STYLES = ['plain', 'definition', 'remark'];
 
 class Skip extends Error {}
 
-// a list of names in a sentence, with the serial comma
 const listed = (names: string[]): string => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`);
-// a line break and its indent read as one space, as in TeX
 const tidy = (text: string): string => text.replace(/\s*\n\s*/g, ' ').trim();
 
-// uncomment returns the text without its comments, and the line of the source of each character
-// that is kept. as in TeX, a comment ends with its line and with the indent of the next line
 function uncomment(source: string): { text: string; lines: number[] } {
   const src = source.replace(/\r\n?/g, '\n');
   let text = '';
@@ -96,21 +79,16 @@ function uncomment(source: string): { text: string; lines: number[] } {
   return { text, lines };
 }
 
-/** Reads a LaTeX preamble into the macros and environments of MathJax, its extensions, and the kinds of theorem. */
 export function readPreamble(source: string, options: Options = {}): Preamble {
   const macros: Record<string, MacroDef> = {};
   const environments: Record<string, EnvironmentDef> = {};
   const packages: string[] = [];
   const theorems: Record<string, Kind> = {};
-  // the skipped statements, with the count of the statements read before each, since a \let is
-  // skipped only once its target is defined again
   const skipped: (Skipped & { order: number })[] = [];
-  // lets holds each macro that a \let made a second name of a command outside the preamble
   const lets = new Map<string, { target: string; entry: Omit<Skipped, 'reason'> & { order: number } }>();
   const files = new Set([options.file ?? 'preamble.tex']);
   let style: Style = 'plain';
   let order = 0;
-  // set at \begin{document}, after which nothing is read in any file
   let done = false;
 
   const define = (macro: string, def: MacroDef): void => {
@@ -127,7 +105,6 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
   const scan = (file: string, source: string): void => {
     const { text, lines } = uncomment(source);
     const n = text.length;
-    // the start and the count of the statement that is read
     let from = 0;
     let at = 0;
 
@@ -137,14 +114,12 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
     };
     const entry = (end: number) => ({ order: at, file, line: lines[from], text: tidy(text.slice(from, end)) });
     const note = (end: number, reason: string): void => void skipped.push({ ...entry(end), reason });
-    // the name of the control sequence at i, and the index after it
     const control = (i: number): [string, number] => {
       let end = i + 1;
       while (end < n && /[A-Za-z@]/.test(text[end])) end++;
       if (end === i + 1) end++;
       return [text.slice(i + 1, end), end];
     };
-    // the text between the brace at i and its closing brace, and the index after it
     const group = (i: number): [string, number] => {
       if (text[i] !== '{') throw new Skip('a brace is expected');
       let depth = 0;
@@ -155,7 +130,6 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
       }
       throw new Skip('a brace is not closed');
     };
-    // the text of an optional argument after i, or null without one
     const bracket = (i: number): [string, number] | null => {
       const open = space(i);
       if (text[open] !== '[') return null;
@@ -168,7 +142,6 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
       }
       throw new Skip('a bracket is not closed');
     };
-    // an argument after i: a group, a control sequence, or one character, as in TeX
     const argument = (i: number): [string, number] => {
       const start = space(i);
       if (start >= n) throw new Skip('an argument is missing');
@@ -180,13 +153,11 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
       const [name, end] = control(start);
       return [`\\${name}`, end];
     };
-    // the name of the macro that is defined after i, bare or in braces
     const macroName = (i: number): [string, number] => {
       const [name, end] = argument(i);
       if (!/^\\([A-Za-z@]+|.)$/.test(name)) throw new Skip('the name of a macro is expected');
       return [name.slice(1), end];
     };
-    // the number of arguments and the default of the first one, as after \newcommand{\name}
     const counts = (i: number, owner: string): [number, string | null, number] => {
       const count = bracket(i);
       if (!count) return [0, null, i];
@@ -195,8 +166,6 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
       const preset = bracket(count[1]);
       return preset ? [args, preset[0], preset[1]] : [args, null, count[1]];
     };
-    // the end of the lines of a statement that is skipped: the line on which its braces are
-    // closed, or its first line when they are not closed
     const lineEnd = (start: number): number => {
       let depth = 0;
       let first = -1;
@@ -252,8 +221,6 @@ export function readPreamble(source: string, options: Options = {}): Preamble {
           if (text[b] === '=') b = space(b + 1);
           if (text[b] !== '\\') throw new Skip('a \\let of a character is not read');
           const [target, end] = control(b);
-          // a macro of the preamble is copied. a command from outside it is named, which holds
-          // until the command is defined again
           const origin = lets.get(target)?.target ?? (target in macros ? null : target);
           const copy = macros[target];
           define(alias, origin !== null ? `\\${origin}` : Array.isArray(copy) ? ([...copy] as MacroDef) : copy);

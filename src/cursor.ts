@@ -1,9 +1,5 @@
-// two pointer effects: the trajectories near the pointer are tinted in the accent color, and a dot
-// at the pointer is toggled with the key p, for pointing during a talk
-
 import { Orbits } from './orbits.ts';
 
-// the radius of the tint, in slide pixels
 const REACH = 20;
 
 let dot: HTMLDivElement | null = null;
@@ -21,8 +17,6 @@ export function togglePointer(): void {
   document.body.append(dot);
 }
 
-// orbits returns the mounted drawings, slide returns the current slide, and the tint is off with
-// tintOn false, as well as under reduced motion
 export function initCursor(orbits: () => Orbits[], slide: () => HTMLElement | null, tintOn = true): void {
   let last: { x: number; y: number } | null = null, frame = 0;
   const lit = new Set<Orbits>();

@@ -1,6 +1,3 @@
-// check of the backdrops of the demo deck, in Chrome: a drawing may run off the slide, but it is not
-// cut at an edge of its box inside the slide
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
@@ -15,8 +12,6 @@ const boxes = `[...document.querySelectorAll('.backdrop[data-backdrop]')].map((b
   };
 })`;
 
-// the sides of the box crossed by the trajectories, in the projection of Orbits. the function is also
-// run in the page, hence it does not use anything outside its body
 function cuts(box, trajectories) {
   const slide = { width: 1920, height: 1080 };
   const scale = box.height / 2 / box.half,
@@ -34,8 +29,6 @@ function cuts(box, trajectories) {
   return [...found].join(' ');
 }
 
-// a backdrop of a file is fitted when its slide is shown, hence each slide is shown before its
-// window is read
 const filed = `(async () => {
   const out = [];
   for (const b of Beeson.backdrops.filter((b) => b.el.dataset.trajectories !== undefined)) {
@@ -71,8 +64,6 @@ test('no backdrop is cut at an edge of its box inside the slide', { timeout: 600
   );
 });
 
-// the number of painted pixels of the head canvas of the backdrop of the current slide, read during
-// its trace
 const headPixels = `(() => {
   const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
   const { width, height } = b.head;
@@ -88,7 +79,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
   const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test-deck.html'));
   await page.waitFor(deckSettled);
-  // the title slide draws brand/transfer.js, whose spiral carries a head of its own from the start
   await new Promise((done) => setTimeout(done, 800));
   const [titleRunning, titlePixels] = await page.evaluate(headPixels);
   assert.ok(titleRunning, 'the backdrop of the title slide is traced');
@@ -98,7 +88,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
     const { h, v } = Reveal.getIndices(document.querySelector('${selector}').closest('section'));
     Reveal.slide(h, v);
   })()`;
-  // the wide ribbon has neither a spacecraft nor data-heads, hence no head
   await page.evaluate(slideTo('.backdrop[data-backdrop="wideRibbon"]'));
   await new Promise((done) => setTimeout(done, 800));
   const [ribbonRunning, ribbonPixels] = await page.evaluate(headPixels);
@@ -106,8 +95,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
   assert.equal(ribbonPixels, 0);
 });
 
-// the alpha of the pixels of rows from to to of the backdrop of the current slide, with its head
-// canvas over its base canvas, read in one task, i.e. without a frame drawn between the two reads
 const alphas = (from, to) => `(() => {
   const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
   const c = document.createElement('canvas');
@@ -119,21 +106,14 @@ const alphas = (from, to) => `(() => {
   const { data } = ctx.getImageData(0, ${from}, c.width, ${to - from});
   return Array.from({ length: ${to - from} }, (_, r) => Array.from({ length: c.width }, (_, x) => data[4 * (r * c.width + x) + 3]));
 })()`;
-// the pixels of values more than 3 off their most common value. a trajectory stroked in pieces is beaded
-// at every joint, i.e. at dozens of pixels of a row, while the software rasterizer of Chrome, on the
-// Linux and Windows runners, may leave a pixel of a long line lighter by up to about 25
 const outliers = (values) => {
   const counts = new Map();
   for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
   const mode = [...counts].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
   return values.filter((v) => Math.abs(v - mode) > 3).length;
 };
-// the row of rows with the most ink, i.e. the center of a horizontal trajectory
 const center = (rows) => rows.reduce((best, row, r) => (row.reduce((a, b) => a + b) > rows[best].reduce((a, b) => a + b) ? r : best), 0);
 
-// the page traces two straight trajectories at an opacity of 0.6 in 2 s, the second with a glow, from
-// x = 96 px to 1824 px on the rows y = 324 px and 756 px. a trajectory stroked in pieces, one per frame,
-// is beaded at the joints of the pieces, and the glow of the pieces adds up
 test('a trajectory is traced in one stroke, hence without beads, and its trace ends on its still', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -154,13 +134,11 @@ test('a trajectory is traced in one stroke, hence without beads, and its trace e
   const still = plainStill[center(plainStill)];
   assert.ok(outliers(still.slice(150, 1770)) <= 2, `the alpha along the still is off at ${outliers(still.slice(150, 1770))} pixels`);
 
-  // a row of the glow 4 px off the trajectory, behind the head
   const r = center(glowing) + 4;
   const off = glowing[r].slice(150, glowing[center(glowing)].findLastIndex((a) => a > 0) - 40).map((a, x) => Math.abs(a - glowingStill[r][150 + x]));
   assert.ok(glowing[r][300] > 0, 'the glow is drawn 4 px off the trajectory');
   assert.ok(Math.max(...off) <= 3, `the glow during the trace is off its still by up to ${Math.max(...off)}`);
 
-  // the drawing left by the trace is the still drawn after it
   const changed = await page.evaluate(`(() => {
     const b = Beeson.backdrops[0], ctx = b.base.getContext('2d');
     const before = ctx.getImageData(0, 0, b.base.width, b.base.height).data;
@@ -173,10 +151,6 @@ test('a trajectory is traced in one stroke, hence without beads, and its trace e
   assert.equal(changed, 0);
 });
 
-// the third slide of the page traces three crossing trajectories in 2 s, which are finished in the
-// reverse of the order of their file. the frames are drawn by frame() at 60 per second on a clock
-// of the test, up to 4 ms before the end of the trace, when the violet trajectory is 3.5 px short of
-// its end, and then once after the end, when the still is drawn
 test('the last frame of a trace is its still, with the trajectories overlapped in the order of the file', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -187,8 +161,6 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
   await page.waitFor('Beeson.backdrops.some((o) => Reveal.getCurrentSlide().contains(o.el) && o.trajectories.length === 3 && o.W > 0)');
   const out = await page.evaluate(`(() => {
     const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
-    // the base canvas is read through a copy, since Chrome may move a canvas read with
-    // getImageData from the GPU to the CPU, where its glows are blurred differently by one level
     const read = () => {
       const c = document.createElement('canvas');
       c.width = b.W;
@@ -204,10 +176,6 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
     const traced = b.finished, last = read();
     b.frame(2001);
     const still = read();
-    // the head of the violet trajectory is at x = 1820.5 px, at the scale of 1080 px per unit. the
-    // pixels are compared premultiplied, within 8 of 255. the software rasterizer of Chrome, on the
-    // Linux and Windows runners, draws a line and its glow differently by up to 6 when its length
-    // changes, while the two orders of two trajectories at their crossing differ by up to about 55
     const premultiplied = (d, i, c) => (c === 3 ? d[i + 3] : (d[i + c] * d[i + 3]) / 255);
     let changed = 0, near = 0;
     for (let i = 0; i < last.length; i += 4) {
@@ -236,20 +204,15 @@ test('the trajectories of a backdrop with data-stagger are started one after ano
     Reveal.slide(h, v);
     return +el.dataset.stagger;
   })()`);
-  // the clock is taken from the start of the first trajectory, which a slow runner may delay
   const staggered = `Beeson.backdrops.find((b) => b.el.hasAttribute('data-stagger'))`;
   await page.waitFor(`${staggered}.idx[0] > 0`);
   await new Promise((done) => setTimeout(done, 1300));
   const started = await page.evaluate(`${staggered}.idx.map((j) => j > 0)`);
   const count = started.filter(Boolean).length;
-  // the trajectories are started in the order of the file, hence the started ones come first
   assert.deepEqual(started, started.map((_, i) => i < count));
   assert.ok(count >= 2 && count <= Math.ceil(1.6 / stagger) + 1, `${count} of ${started.length} trajectories started`);
 });
 
-// the fourth slide of the page has a straight trajectory of three points, 864 px apart. the tint at the
-// pointer is the disc of the trajectories within its radius, hence it reaches the radius on both sides of
-// the pointer and does not run past it, with the pointer on a point of the trajectory and between points
 test('the tint at the pointer is a disc of its radius', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -287,8 +250,6 @@ test('the tint at the pointer is a disc of its radius', { timeout: 60000 }, asyn
   }
 });
 
-// a backdrop that is a step of its slide is hidden and left untraced until its step is shown, and it
-// is reset when the step is hidden again
 test('a backdrop that is a step is traced from its step on', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -312,9 +273,6 @@ test('a backdrop that is a step is traced from its step on', { timeout: 60000 },
   assert.deepEqual(await page.evaluate(state), { tracing: false, done: false, opacity: '0' });
 });
 
-// the hooks of the editor: Beeson.remount draws a backdrop again from its attributes in place of
-// its drawing, Beeson.preview draws a div outside the slides without taking it into
-// Beeson.backdrops, and Beeson.fitWindow gives the window of a drawing fitted to the box
 test('Beeson.remount, Beeson.preview, and Beeson.fitWindow draw a backdrop for the editor', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -354,8 +312,6 @@ test('Beeson.remount, Beeson.preview, and Beeson.fitWindow draw a backdrop for t
   assert.ok(out.fitted && out.fitted.half > 0 && Number.isFinite(out.fitted.cx), JSON.stringify(out.fitted));
 });
 
-// a thumbnail of the editor may be drawn again before the file of its backdrop is loaded, and its drawing is then
-// out of the page at the load
 test('a drawing of a file that is taken out of the page before the load is redrawn without an error', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());

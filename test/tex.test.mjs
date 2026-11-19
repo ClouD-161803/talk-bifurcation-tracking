@@ -1,8 +1,3 @@
-// the script tex.js of a deck: the keys that a deck cites, the content of the script and its text
-// of src/texfile.ts, and the command npm run tex of scripts/tex.mjs, which writes the script from
-// the preamble.tex and the references.bib next to the deck, and which turns the theme/macros.js of
-// an older talk into a preamble.tex
-
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,13 +24,11 @@ const page = (body, head = '<script src="tex.js"></script>') =>
   `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n${head}\n<script src="theme/mathjax-config.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;
 const DECK = page('<section><p>Tubes<cite data-key="koon2000"></cite> and orbits<cite data-key="szebehely1967, koon2000"></cite>.</p></section>');
 
-// the object that a script tex.js assigns to window.beesonTex
 const run = (script) => {
   const window = {};
   vm.runInNewContext(script, { window });
   return JSON.parse(JSON.stringify(window.beesonTex));
 };
-// a folder of a deck, deleted after the test
 const folder = (t, files) => {
   const root = mkdtempSync(join(tmpdir(), 'slides tex-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -76,12 +69,11 @@ test('the text of the script is one assignment in ASCII, with the references in 
   const { tex: content } = texOf(readPreamble(PREAMBLE), readBibtex(BIB), html);
   const script = texScript(content);
   assert.deepEqual(run(script), content);
-  assert.match(script, /^\/\/ [^\n]*\n(\/\/ [^\n]*\n)*window\.beesonTex = \{\n/);
+  assert.match(script, /^window\.beesonTex = \{\n/);
   assert.ok(script.endsWith('};\n'));
   assert.ok(!/[^\x20-\x7e\n]/.test(script), 'a character outside ASCII');
   assert.ok(script.indexOf('"gomez2004"') < script.indexOf('"szebehely1967"'));
   assert.ok(script.includes('G\\u00f3mez & Koon'));
-  // one line per macro and per reference, so that a change is one line of a diff
   assert.ok(script.includes('\n    "vb": ["\\\\boldsymbol{#1}",1],\n'));
   assert.equal(texScript(texOf(readPreamble(PREAMBLE), readBibtex(BIB), html).tex), script);
 });
@@ -114,7 +106,6 @@ test('npm run tex writes tex.js next to the deck and prints what it skipped and 
   assert.match(out, /preamble\.tex:2: \\usepackage\{tikz\}: MathJax does not have an extension for the package tikz/);
   assert.match(out, /references\.bib:4: @article\{open, title = \{Not closed: a brace is not closed/);
   assert.match(out, /index\.html: the key lost1999 is cited, and it is not in references\.bib/);
-  // a second run writes the same bytes
   tex(root);
   assert.equal(readFileSync(join(root, 'tex.js'), 'utf8'), script);
   assert.equal(deckTex(join(root, 'index.html')).text, script);
@@ -156,7 +147,6 @@ test('npm run tex turns the theme/macros.js of an older talk into a preamble.tex
   assert.ok(!html.includes('macros.js'));
   assert.deepEqual(Object.keys(run(readFileSync(join(root, 'tex.js'), 'utf8')).macros), ['vb', 'dd', 'R', 'LL']);
   assert.match(out, /preamble\.tex: written from theme\/macros\.js, which is deleted/);
-  // the preamble is the source from then on: a second run reads it and does not write it
   writeFileSync(join(root, 'preamble.tex'), '\\newcommand{\\only}{o}\n');
   tex(root);
   assert.equal(readFileSync(join(root, 'preamble.tex'), 'utf8'), '\\newcommand{\\only}{o}\n');

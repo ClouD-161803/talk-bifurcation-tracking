@@ -1,5 +1,3 @@
-// checks of scripts/vendor.mjs, run on a copy of the script so that theme/vendor/ is not touched
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
