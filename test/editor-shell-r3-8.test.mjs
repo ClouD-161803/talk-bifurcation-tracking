@@ -522,8 +522,7 @@ async function menuLabels(page, bar) {
     const at = await page.evaluate(`(() => { const r = document.querySelectorAll('.beeson-edit-menu')[0].querySelectorAll('.item')[${n}].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
     // a submenu is opened after a rest of the pointer on its row, in place of the one open before
-    await sleep(350);
-    assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`), 2, `the submenu ${item.label} of ${bar} is not opened`);
+    await page.waitFor(`document.querySelectorAll('.beeson-edit-menu')[0].querySelectorAll('.item')[${n}].getAttribute('aria-expanded') === 'true' && document.querySelectorAll('.beeson-edit-menu').length === 2`).catch(() => assert.fail(`the submenu ${item.label} of ${bar} is not opened`));
     labels.push(...(await read(1)).map((i) => i.label));
   }
   await press(page, 'Escape');
