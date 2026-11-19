@@ -263,6 +263,7 @@ const HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
 // are format characters, hence a flag of a region loses them
 const SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
 const JOINER = /^[\u200c\u200d]$/u;
+const FLAG_TAG = /^[\u{e0020}-\u{e007f}]$/u;
 const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
 
 // the characters of raw that show, with the selectors and joiners that belong to them
@@ -274,6 +275,7 @@ export function shown(raw: string): string {
     if (!HIDDEN.test(c)) kept.push(c);
     else if (SELECTOR.test(c) && (shows(before) || SELECTOR.test(before ?? ''))) kept.push(c);
     else if (JOINER.test(c) && (shows(before) || SELECTOR.test(before ?? '')) && shows(chars[i + 1])) kept.push(c);
+    else if (FLAG_TAG.test(c) && (before === '\u{1f3f4}' || FLAG_TAG.test(before ?? ''))) kept.push(c);
   });
   return kept.join('');
 }

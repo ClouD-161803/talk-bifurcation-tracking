@@ -936,13 +936,13 @@ test('names that look the same as a name present, or that show nothing, are refu
   const hello = (name) => post(edit.port, `${edit.base}.session/hello`, { name });
   assert.equal((await hello('Claudio')).status, 200);
   // a zero-width space, a soft hyphen, the fullwidth forms, a right-to-left override, and a joiner
-  for (const name of ['Claudio​', 'Cl­audio', 'Ｃｌａｕｄｉｏ', 'Claudio‮', '⁧Claudio', 'Clau‍dio']) {
+  for (const name of ['Claudio\u200b', 'Cl\u00adaudio', 'Ｃｌａｕｄｉｏ', 'Claudio\u202e', '\u2067Claudio', 'Clau\u200ddio']) {
     assert.deepEqual((await hello(name)).json(), { taken: { name: 'Claudio' } }, JSON.stringify(name));
   }
-  for (const name of ['​', '‮‍', '️', '⁦ ­']) assert.equal((await hello(name)).status, 400, JSON.stringify(name));
+  for (const name of ['\u200b', '\u202e\u200d', '\ufe0f', '\u2066 \u00ad']) assert.equal((await hello(name)).status, 400, JSON.stringify(name));
   // a family emoji joined by zero-width joiners, an emoji with its variation selector, and names in
   // Arabic, Hebrew, and Persian, the last with a zero-width non-joiner, are kept as typed
-  for (const name of ['\u{1F468}‍\u{1F469}‍\u{1F467} Ana', '❤️ Bo', 'سارا', 'דנה', 'نیک‌نام']) {
+  for (const name of ['👨\u200d👩\u200d👧 Ana', '❤\ufe0f Bo', 'سارا', 'דנה', 'نیک\u200cنام', '🏴\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f} Ian']) {
     const answer = await hello(name);
     assert.equal(answer.status, 200, JSON.stringify(name));
     assert.equal(answer.json().name, name);
