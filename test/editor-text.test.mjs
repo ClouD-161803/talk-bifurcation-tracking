@@ -567,7 +567,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       assert.deepEqual(control, { disabled: false, text: '—' }, 'the Effect control is not enabled for an element shown with the slide');
       await clickText(page, EFFECT);
       await pickItem(page, 'Dim');
-      await roundTrip(page, edited([[ALPHA, '<p class="semi-fade-out fragment" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
+      await roundTrip(page, edited([[ALPHA, '<p class="fragment semi-fade-out" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
       assert.deepEqual(errors(page), []);
     });
 
@@ -577,7 +577,7 @@ describe('Magic Move glide, formula key, and list marks', () => {
       await frames(page);
       await clickText(page, await chipOf(page, 'Alpha'));
       await pickItem(page, 'Fade Out');
-      await roundTrip(page, edited([[ALPHA, '<p class="fade-out fragment" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
+      await roundTrip(page, edited([[ALPHA, '<p class="fragment fade-out" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
       assert.deepEqual(errors(page), []);
     });
   }

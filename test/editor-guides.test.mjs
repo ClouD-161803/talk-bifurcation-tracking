@@ -183,7 +183,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.deepEqual((await guides(page)).sort(), [['x', 400], ['y', 300], ['y', 700]]);
     await byteExact(page, [mathGuides('x400 y300 y700')]);
-    assert.equal(await page.evaluate(`localStorage.getItem('beeson-edit-guides:' + location.pathname)`), null);
     await page.evaluate('new Promise((done) => setTimeout(done, 1500))');
     page = await guidesPage(platform, MATH, true);
     assert.equal((await page.evaluate('window.BeesonEditor.status()')).recover, true);

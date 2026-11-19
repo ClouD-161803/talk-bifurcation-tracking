@@ -1,5 +1,4 @@
 import type { App } from '../app.ts';
-import { entering } from '../commands/edit.ts';
 import { TONES as STEP_TONES, colorSteps, wordColors, type ColorStep } from '../commands/math.ts';
 import { deckKinds, theoremOf } from '../commands/text.ts';
 import { isShape, toneOfShape } from '../commands/shape.ts';
@@ -7,7 +6,7 @@ import { kindOf, listKind, type ListKind, selectedTextElements, startList, style
 import { around, FORMATS, inlineTargets, isTone, type FormatName } from '../text/inline.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { closeMenus, menuOpen, openMenu, type MenuItem } from '../ui/menu.ts';
-import { GLYPHS, button, glyph, keepFocus, note, numberField, row, section, segmented, textField, type Control, type Run } from './controls.ts';
+import { GLYPHS, button, entering, glyph, keepFocus, note, numberField, row, section, segmented, textField, type Control, type Run } from './controls.ts';
 import { COLOR_CSS, coloredItem, openSteps, stepButton, toneName } from './formula.ts';
 
 Object.assign(GLYPHS, {

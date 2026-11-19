@@ -1,7 +1,7 @@
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS, type Command, type Group } from '../commands.ts';
-import { entering } from '../commands/edit.ts';
 import { onSlides } from '../commands/slide.ts';
+import { entering } from '../inspector/controls.ts';
 import { injectStyle, make, store, stored, wire } from '../ui/dom.ts';
 import { icon, itemIcon } from '../ui/icons.ts';
 import { playing } from '../commands/preview.ts';

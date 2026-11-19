@@ -1,5 +1,4 @@
 import type { App } from '../app.ts';
-import { twinOf } from '../canvas/hit.ts';
 import { moveTo, oneByOne, placedIndex, setFinal, setIndexReader, setStart, setStep, shift, stepAt, type Plan, type Start } from '../shown-steps.ts';
 import type { TagEdit } from '../tags.ts';
 import { docOf } from './slide.ts';
@@ -120,18 +119,6 @@ export function startOnClick(app: App, video: Element, on: boolean): void {
   const edit = effectEdit(app.doc.tagState(m.els[i]), on ? 'play' : 'in');
   const plan = on && stepAt(m.plan, i) < 0 ? setStep(m.plan, i, 'last') : m.plan;
   writePlan(app, m, plan, Object.keys(edit).length ? new Map([[m.els[i], edit]]) : new Map());
-  playAfterFragment(app, m.els[i]);
-}
-
-function playAfterFragment(app: App, video: Element): void {
-  for (const el of [video, twinOf(app, video)]) {
-    if (!el) continue;
-    const s = app.doc.tagState(el);
-    if (!s.classes.includes('fragment') || s.classes.indexOf('play') > s.classes.indexOf('fragment')) continue;
-    const classes = s.classes.filter((c) => c !== 'play');
-    classes.splice(classes.indexOf('fragment') + 1, 0, 'play');
-    app.doc.setTag(el, { order: { attrs: Object.keys(s.attrs), classes, style: Object.keys(s.style) } }, 'steps');
-  }
 }
 
 export function install(app: App): void {
@@ -349,7 +336,6 @@ export function install(app: App): void {
         if (first < 0) first = i;
       }
       if (extra.size || plan !== s.m.plan) writePlan(a, s.m, plan, extra);
-      if (effect === 'play') for (const el of extra.keys()) playAfterFragment(a, el);
     },
   });
 }

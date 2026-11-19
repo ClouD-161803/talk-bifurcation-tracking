@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { titled } from '../src/editor/commands/edit.ts';
+import { titled } from '../src/editor/history.ts';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));

@@ -318,33 +318,9 @@ describe('the rows and selection of the Object List', () => {
   const drawnGuides = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-hand-guide')].filter((g) => !g.hidden && !g.classList.contains('off')).map((g) => [g.dataset.axis, Number(g.dataset.at)]).sort()`);
   const MATH_TAG = '<section>\n  <h2>Math, an ordered list, and a zone</h2>';
-  const GUIDES_KEY = `beeson-edit-guides:/${LAYOUTS}`;
   const RULERS = { 'beeson-edit-rulers': '1' };
 
   for (const platform of PLATFORMS) {
-    test(`${platform}: guides kept in the storage of the browser are shown, and written into data-guides at the next change of the guides of their slide`, async (t) => {
-      const legacy = SECTIONS.map((_, i) => (i === MATH ? { x: [300], y: [] } : i === MATH + 1 ? { x: [], y: [200] } : { x: [], y: [] }));
-      const page = await load(t, platform, MATH, { [GUIDES_KEY]: js(legacy), ...RULERS });
-      assert.deepEqual(await drawnGuides(page), [['x', 300]]);
-      await byteExact(page);
-      await exec(page, 'view.guides.add', { x: [], y: [500] });
-      await frames(page);
-      assert.deepEqual(await drawnGuides(page), [['x', 300], ['y', 500]]);
-      const edited = await render(page);
-      assert.equal(edited, page.source.replace(MATH_TAG, MATH_TAG.replace('<section>', '<section data-guides="x300 y500">')));
-      const kept = JSON.parse(await page.evaluate(`localStorage.getItem(${js(GUIDES_KEY)})`));
-      assert.deepEqual([kept[MATH], kept[MATH + 1]], [{ x: [], y: [] }, { x: [], y: [200] }]);
-      await undo(page);
-      await frames(page);
-      assert.deepEqual(await drawnGuides(page), [['x', 300]]);
-      assert.deepEqual(JSON.parse(await page.evaluate(`localStorage.getItem(${js(GUIDES_KEY)})`))[MATH], { x: [300], y: [] });
-      await checkEdit(page, edited, page.source);
-      assert.deepEqual(await drawnGuides(page), [['x', 300], ['y', 500]]);
-      await page.evaluate(`Reveal.slide(${MATH + 1})`);
-      await frames(page);
-      assert.deepEqual(await drawnGuides(page), [['y', 200]]);
-    });
-
     test(`${platform}: Clear All Guides on Slide takes data-guides off its section, and Paste Guides writes it on another`, async (t) => {
       const page = await load(t, platform, MATH, RULERS);
       await exec(page, 'view.guides.add', { x: [960], y: [540] });

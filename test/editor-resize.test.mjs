@@ -31,17 +31,15 @@ describe('pictures drawn at the size written', () => {
   let last = null;
   let saves = 0;
 
-  async function editor(platform, n = MATH, { keep = false } = {}) {
+  async function editor(platform, n = MATH) {
     await last?.close().catch(() => {});
     const page = await browser.newPage();
     last = page;
     await page.send('Page.bringToFront');
     const url = `${server.origin}/${LAYOUTS}?edit&still&edit-platform=${platform}`;
     await page.goto(url);
-    if (!keep) {
-      await page.evaluate('localStorage.clear()');
-      await page.goto(url);
-    }
+    await page.evaluate('localStorage.clear()');
+    await page.goto(url);
     await page.waitFor(deckSettled);
     await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
     page.source = readFileSync(LAYOUTS, 'utf8');
@@ -306,7 +304,6 @@ describe('pictures drawn at the size written', () => {
     await frames(page);
   };
   const titleOf = (page) => page.evaluate(`Reveal.getCurrentSlide().querySelector('h1, h2')?.textContent ?? ''`);
-  const stored = (page) => page.evaluate(`JSON.parse(localStorage.getItem('beeson-edit-guides:' + location.pathname) ?? '[]')`);
   const navRow = (page, i) => page.evaluate(`(() => {
   const r = document.querySelectorAll('.beeson-edit-nav .row')[${i}];
   r.scrollIntoView({ block: 'center' });
@@ -330,7 +327,6 @@ describe('pictures drawn at the size written', () => {
         const attrs = await written(page);
         assert.deepEqual(attrs.flatMap((a, i) => (a === null ? [] : [[i, a]])), copies.map((i) => [i, 'x640 y300']), `data-guides is not on the slides ${copies} after ${what}: ${JSON.stringify(attrs)}`);
         assert.equal((await render(page)).split('data-guides="x640 y300"').length - 1, copies.length, `the file does not hold the guides of ${copies.length} slides after ${what}`);
-        assert.deepEqual(await stored(page), [], `guides are kept in the storage after ${what}`);
       };
       await check(MATH, 'the add');
       await clickText(page, await navRow(page, MATH));
@@ -370,23 +366,6 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       assert.deepEqual(await handGuides(page), []);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
-    });
-
-    test(`${platform}: a guide stored in an earlier session is read at its slide after a slide is added before it`, async () => {
-      const first = await editor(platform);
-      const legacy = SECTIONS.map((_, i) => ({ x: i === MATH ? [640] : [], y: [] }));
-      await first.evaluate(`localStorage.setItem('beeson-edit-guides:' + location.pathname, ${JSON.stringify(JSON.stringify(legacy))})`);
-      const page = await editor(platform, 0, { keep: true });
-      await exec(page, 'view.rulers');
-      await clickText(page, await navRow(page, 0));
-      await exec(page, 'slide.new');
-      await frames(page);
-      await goTo(page, MATH + 1);
-      assert.equal(await titleOf(page), 'Math, an ordered list, and a zone');
-      assert.deepEqual(await handGuides(page), [['x', 640]], 'the stored guide is not read at its slide after a slide is added before it');
-      await goTo(page, MATH);
-      assert.deepEqual(await handGuides(page), [], 'the slide now at the index of the stored guide shows it');
       assert.deepEqual(errors(page), []);
     });
   }

@@ -1,7 +1,5 @@
 import type { Deck } from './reveal.d.ts';
 
-const FADE = 400;
-
 const running = new WeakSet<HTMLVideoElement>();
 const turns = new WeakMap<HTMLVideoElement, number>();
 let turn = 0;
@@ -78,13 +76,21 @@ function stop(v: HTMLVideoElement): void {
   turns.delete(v);
   v.pause();
   if (!played) return;
-  if (getComputedStyle(v).visibility !== 'hidden' && !v.hasAttribute('data-covered')) {
+  const style = getComputedStyle(v);
+  if (style.visibility !== 'hidden' && !v.hasAttribute('data-covered')) {
     v.load();
     return;
   }
   setTimeout(() => {
     if (!running.has(v) && v.currentTime > 0) v.currentTime = 0;
-  }, FADE + 50);
+  }, transitionsEnd(style) + 50);
+}
+
+const seconds = (list: string) => list.split(',').map((s) => parseFloat(s) || 0);
+
+function transitionsEnd(style: CSSStyleDeclaration): number {
+  const delays = seconds(style.transitionDelay);
+  return 1000 * Math.max(0, ...seconds(style.transitionDuration).map((d, i) => d + delays[i % delays.length]));
 }
 
 function guard(v: HTMLVideoElement): void {

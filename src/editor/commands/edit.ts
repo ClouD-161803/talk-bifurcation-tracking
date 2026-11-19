@@ -1,16 +1,11 @@
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import { store, stored } from '../ui/dom.ts';
+import { titled } from '../history.ts';
+import { entering } from '../inspector/controls.ts';
+import { showFormat } from '../inspector/inspector.ts';
 
 const IN = OUTSIDE_DIALOGS.filter((r) => r !== 'field');
-
-const MINOR = new Set(['a', 'an', 'the', 'and', 'but', 'nor', 'or', 'as', 'at', 'by', 'for', 'from', 'in', 'into', 'of', 'on', 'onto', 'to', 'via', 'with']);
-
-export function titled(label: string): string {
-  const words = label.split(/(\s+)/);
-  const last = words.length - 1;
-  return words.map((w, i) => (i === 0 || i === last || !MINOR.has(w) ? w.replace(/^\p{Ll}/u, (l) => l.toUpperCase()) : w)).join('');
-}
 
 const SPELLING_KEY = 'beeson-spelling';
 
@@ -43,8 +38,6 @@ function installSpelling(app: App): void {
   });
 }
 
-export type Entering = { enter(): unknown; follow(): void };
-export const entering = new WeakMap<Element, Entering>();
 const entered = async (run: () => Promise<void>, enter: boolean) => {
   const field = document.activeElement && entering.get(document.activeElement);
   if (!field) return run();
@@ -58,7 +51,6 @@ const entered = async (run: () => Promise<void>, enter: boolean) => {
 const frame = () => new Promise((done) => requestAnimationFrame(done));
 
 async function sizeAndPosition(app: App): Promise<void> {
-  const { showFormat } = await import('../inspector/inspector.ts');
   showFormat(app, 'arrange');
   for (let i = 0; i < 3; i++) {
     const panel = document.getElementById('beeson-edit-panel-format');
