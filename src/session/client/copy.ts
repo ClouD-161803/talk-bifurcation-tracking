@@ -64,6 +64,8 @@ type State = {
   madeOf: string | null;
   // the tokens of the records taken over at the join or left for rest(), which the first hello retires
   retire: Token[];
+  // the delete of the record of the page once its edits are acknowledged, until it commits
+  dropping: Promise<unknown> | null;
 };
 
 const states = new WeakMap<Client, State>();
@@ -152,7 +154,7 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[]; made: number } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [] };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [], dropping: null };
     states.set(client, st);
   }
   return st;
@@ -370,6 +372,13 @@ export const keeps = (client: Client): boolean => {
   return !s || (!st.unavailable && st.kept?.mine === s.mine && st.kept.v === s.v);
 };
 
+// the delete of the record of the page started at its acknowledgment, which a reload waits for at
+// most OPEN_WAIT, since a delete in flight is aborted with the page and leaves the record behind
+export function dropped(client: Client): Promise<unknown> {
+  const d = states.get(client)?.dropping;
+  return d ? Promise.race([d, new Promise((done) => setTimeout(done, OPEN_WAIT))]) : Promise.resolve();
+}
+
 // the save state once the edits of a copy taken over at the join are sent, until the next edit
 export function restoredLine(client: Client): string | null {
   return states.get(client)?.note ?? null;
@@ -432,7 +441,11 @@ export function install(client: Client): void {
     st.stored = false;
     st.kept = null;
     st.last = null;
-    void run('readwrite', (s) => s.delete(st.id)).catch(() => {});
+    const d = (st.dropping = run('readwrite', (s) => s.delete(st.id))
+      .catch(() => {})
+      .finally(() => {
+        if (st.dropping === d) st.dropping = null;
+      }));
   };
 
   const stop = (): void => {

@@ -10,7 +10,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/port.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { early, keeps } from './copy.ts';
+import { dropped, early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
 import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type FigureState, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
@@ -632,6 +632,7 @@ export class Client {
       if (this.ended) this.slides().inert = false;
       return;
     }
+    await dropped(this);
     location.reload();
   }
 

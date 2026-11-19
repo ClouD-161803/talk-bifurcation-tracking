@@ -35,11 +35,11 @@ const COPIES = `new Promise((done) => {
 
 // a page whose operation is held in flight with an edit of slide One, and then a change of the head
 // of index.html, which the page must load again for
-async function waiting(t, edit = ' slow') {
+async function waiting(t, edit = ' slow', script = '') {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${script}` });
   await converge(server, [page]);
   await page.evaluate(`__net.rule('/.session/op', 'hold')`);
   await show(page, 'One');
@@ -98,8 +98,20 @@ test('letters typed while a page waits to load again after a change of the head 
   clean(page);
 });
 
+// a delete in IndexedDB on the first load of the page commits 300 ms late, as on a slow disk
+const SLOW_DELETE = `if (!sessionStorage.getItem('__slow')) {
+  sessionStorage.setItem('__slow', '1');
+  const d = IDBObjectStore.prototype.delete;
+  IDBObjectStore.prototype.delete = function (k) {
+    const end = Date.now() + 300;
+    const spin = () => (Date.now() < end ? (this.count().onsuccess = spin) : d.call(this, k));
+    spin();
+  };
+}`;
+
 test('a page that must load again while offline reconnects first, and loads again once its edit is acknowledged', { timeout: 120_000 }, async (t) => {
-  const { server, page } = await waiting(t);
+  // the record of the edit is deleted before the page loads again, also on a slow disk
+  const { server, page } = await waiting(t, ' slow', SLOW_DELETE);
   await page.evaluate(OFFLINE);
   // the reconnects after 1 and 2 s fail, and the next one waits 4 s
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt - Date.now() > 3000`, 20_000);
