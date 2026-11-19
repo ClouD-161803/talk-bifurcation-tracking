@@ -1,10 +1,3 @@
-// the findings of round 1 of the council on the shell, the navigator, and the place of an insert,
-// on both platforms: the scroll bars of a zoomed canvas, the inspector at the start, the View and
-// Zoom popups of the toolbar, the numbers and the skipped slides of the navigator, the popover of
-// Add Slide, the place of a new text box and QR code, the keyboard sheet, the history after an
-// empty box, Paste Style on a step, and the brand images of the thumbnails. each edit is checked
-// byte for byte, after an undo and a redo, and after a save and an open
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -35,8 +28,6 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-// the editor on a deck served over HTTP, with the storage of the origin emptied first, or with
-// keep the storage of the page before, and with slide n shown
 async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 }, scheme, keep = false } = {}) {
   const page = await browser.newPage(size);
   t.after(() => page.close().catch(() => {}));
@@ -56,7 +47,6 @@ async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, 
   return page;
 }
 
-// an undo gives the text before byte for byte, and a redo gives the edited text again
 async function undoRedo(page, before, edited) {
   await undo(page);
   await sleep(100);
@@ -90,8 +80,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the whole text of the first shown element of the current slide matched by selector with has in
-// its text is selected, with the focus in its block
 const selectAll = (page, selector, has) =>
   page.evaluate(`(() => {
     const el = [...document.querySelectorAll('.reveal section.present ' + ${JSON.stringify(selector)})].find((e) => e.textContent.includes(${JSON.stringify(has)}));
@@ -110,7 +98,6 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform);
     await page.evaluate(`Reveal.slide(${await slideOf(page, 'Math, an ordered list')})`);
     await frames(page);
-    // from a step: the body style of the paragraph makes a paragraph of a list item
     await selectAll(page, 'p.fragment', 'Coriolis');
     await exec(page, 'text.copyStyle');
     await selectAll(page, 'li', 'A first step');
@@ -123,7 +110,6 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, page.source, item);
     await undo(page);
     await sleep(100);
-    // onto a step: the small style of a paragraph is set on the paragraph of the step
     await selectAll(page, 'p', 'The lead-in');
     await exec(page, 'text.style.small');
     await frames(page);
@@ -152,7 +138,6 @@ test('discard takes the last entry out of the history without an undo, and keeps
   assert.equal(h.undoLabel, 'a');
   assert.equal(h.canRedo, false);
   assert.deepEqual(log, []);
-  // an entry pushed right after the discard is kept
   h.push(entry('c'));
   assert.equal(h.undoLabel, 'c');
   assert.equal(changes, 4);
@@ -167,12 +152,9 @@ const PENDING = `document.querySelector('.reveal section.present .beeson-pending
 
 for (const platform of PLATFORMS) {
   for (const [id, label] of [['insert.text', 'Text Box'], ['insert.code', 'Code Box'], ['insert.footnote', 'Footnote']]) {
-    // a text box left empty is written as an empty paragraph in the entry of its insert
     const kept = id === 'insert.text';
     test(`an empty ${label} that is left is ${kept ? 'written as an empty paragraph' : 'taken out of the history'}, without a Redo (${platform})`, async (t) => {
-      // slide 4 does not have a footnote
       const page = await load(t, platform, { n: 4 });
-      // an edit before the insert stays the entry of Undo
       await exec(page, 'slide.hide');
       await frames(page);
       const hidden = await render(page);
@@ -218,8 +200,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the numbers of the rows of the navigator, '' for a row without one, and whether a row is the bar
-// of a skipped slide
 const navRows = (page) =>
   page.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r) => ({
     no: r.querySelector('.no').textContent,
@@ -240,7 +220,6 @@ for (const platform of PLATFORMS) {
       assert.equal(await count(page), `Slide ${n + 1} of ${total}`);
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-nav .row[aria-current="true"] .no').textContent`), String(n + 1));
     }
-    // a hidden slide is a thin double bar without its picture or number, and it keeps its place
     await page.evaluate('Reveal.slide(3)');
     await frames(page);
     await exec(page, 'slide.hide');
@@ -249,16 +228,13 @@ for (const platform of PLATFORMS) {
     const list = await navRows(page);
     assert.deepEqual(list[3], { no: '', skip: true, height: list[3].height, pic: false });
     assert.ok(list[3].height <= 14, `the bar of the skipped slide is ${list[3].height} px high`);
-    // the slides after it are numbered in show order, as in the navigators of Keynote and PowerPoint
     assert.deepEqual(list.map((r) => r.no), Array.from({ length: total }, (_, i) => (i === 3 ? '' : String(i < 3 ? i + 1 : i))));
-    // the bar is selected by a click, and the slide is shown again from its context menu
     await page.evaluate('Reveal.slide(0)');
     await frames(page);
     const bar = await page.evaluate(`(() => { const r = document.querySelectorAll('.beeson-edit-nav .row')[3]; r.scrollIntoView({ block: 'center' }); const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
     await click(page, bar);
     await frames(page);
     assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .row')[3].getAttribute('aria-selected')`), 'true');
-    // the status counts the slides in the show, and reads the hidden slide by the slide before it
     assert.equal(await count(page), `Hidden slide, after slide 3 of ${total - 1}`);
     await click(page, bar, { button: 'right' });
     await frames(page);
@@ -286,7 +262,6 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 3 });
     assert.deepEqual(await inspector(page), { shown: true, tab: 'Format' });
     assert.equal((await state(page, 'shell.format')).checked, true);
-    // closed with Format, it stays closed when the editor is opened again in the same browser
     await exec(page, 'shell.format');
     await frames(page);
     assert.equal((await inspector(page)).shown, false);
@@ -321,7 +296,6 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await frames(page);
     assert.equal(await rectOf(page, '.beeson-edit-gallery'), null);
-    // the + button at the foot of the navigator opens the chooser over it, inside the window
     const plus = '.beeson-edit-nav .foot [data-command="slide.gallery"]';
     await click(page, plus);
     await frames(page);
@@ -330,7 +304,6 @@ for (const platform of PLATFORMS) {
     assert.ok(g, 'the + button of the navigator does not open the chooser');
     assert.ok(g.bottom <= p.top && p.top - g.bottom <= 12, `the chooser is ${p.top - g.bottom} px over the + button`);
     assert.ok(g.left <= p.right && g.right >= p.left, 'the chooser is not over the + button');
-    // a layout chosen there adds a slide after the current one
     await click(page, '.beeson-edit-gallery .tile[data-layout="content"]');
     await sleep(150);
     assert.equal(await count(page), `Slide 5 of ${(await navRows(page)).length}`);
@@ -341,8 +314,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the gap, in slide px, between the new box of a Text Box and the block before it, and the gap of
-// the theme between two paragraphs
 const gapAbove = (page) =>
   page.evaluate(`(() => {
     const box = document.querySelector('.reveal section.present .beeson-pending');
@@ -365,8 +336,6 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await frames(page);
     const edited = await render(page);
-    // the paragraph is written where its empty box was drawn: 10 px under its place in the flow,
-    // i.e. the 24 px between two paragraphs less the 14 px under a list item
     assert.match(edited, /<\/ol>\n  <p style="translate: 0px 10px">A new paragraph.<\/p>\n/);
     const written = await page.evaluate(`(() => {
       const p = document.querySelector('.reveal section.present > ol + p');
@@ -380,7 +349,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// five paragraphs on the clipboard of the editor, which fill the text column of a slide to its foot
 const PARAGRAPHS = ['<!--beeson-->', ...Array.from({ length: 5 }, (_, i) => `<p>Paragraph ${i + 1} of a column that is filled to the foot of the slide.</p>`)].join('\n');
 
 const slideBoxOf = (page, selector) =>
@@ -394,7 +362,6 @@ const slideBoxOf = (page, selector) =>
     return { left: (r.left - o.left) / k, top: (r.top - o.top) / k, right: (r.right - o.left) / k, bottom: (r.bottom - o.top) / k };
   })()`);
 
-// a new slide of layout, with its column filled to the foot
 async function fullSlide(page, layout) {
   await exec(page, `slide.new.${layout}`);
   await frames(page);
@@ -412,7 +379,6 @@ for (const platform of PLATFORMS) {
     await exec(page, 'insert.qr');
     await frames(page);
     const qr = await slideBoxOf(page, '.reveal section.present .qr');
-    // the figure box of a content slide, at the right of its column, in the slide px of theme/beeson.css
     const figureBox = { left: 1200, top: 120, right: 1800, bottom: 920 };
     assert.ok(qr.left >= figureBox.left && qr.right <= figureBox.right && qr.top >= figureBox.top && qr.bottom <= figureBox.bottom, `the QR code is not in the zone: ${JSON.stringify(qr)}`);
     assert.ok(Math.abs((qr.left + qr.right) / 2 - 1500) < 2 && Math.abs((qr.top + qr.bottom) / 2 - 520) < 2, `the QR code is not at the center of the zone: ${JSON.stringify(qr)}`);
@@ -423,8 +389,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
-  // since R9.9, a QR code is put in the free space of the slide, as every new element, and it is
-  // not centered over the text
   test(`a QR code inserted on a full wide slide is put off its text, inside the slide (${platform})`, async (t) => {
     const page = await load(t, platform);
     await fullSlide(page, 'wide');
@@ -446,7 +410,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the width of the navigator, of the picture of its first thumbnail, and the cursor of its resizer
 const navGeometry = (page) =>
   page.evaluate(`(() => {
     const nav = document.querySelector('.beeson-edit-nav').getBoundingClientRect();
@@ -467,7 +430,6 @@ for (const platform of PLATFORMS) {
     const wide = await navGeometry(page);
     assert.equal(wide.nav, 300);
     assert.ok(wide.pic > start.pic + 80, `the thumbnail is ${wide.pic} px wide after the drag, and was ${start.pic} px`);
-    // the drag stops at 140 and at 360 px
     await drag(page, wide.edge, { dx: 400 });
     await sleep(100);
     assert.equal((await navGeometry(page)).nav, 360);
@@ -489,7 +451,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the keyboard sheet: its colors, its groups with their rows, and the boxes of its sections
 const keySheet = (page) =>
   page.evaluate(`(() => {
     const d = document.querySelector('dialog.beeson-edit-keys');
@@ -508,8 +469,6 @@ const keySheet = (page) =>
     return { tokens, bg: getComputedStyle(d).backgroundColor, fg: getComputedStyle(d).color, box: { left: box.left, right: box.right, bottom: box.bottom }, sections, scrolls: body.scrollHeight > body.clientHeight + 1 || body.scrollWidth > body.clientWidth + 1 };
   })()`);
 
-// the labels of the items of a menu of the menu bar, in their order, with the items of a submenu
-// after its own label, as the keyboard sheet lists them
 async function menuLabels(page, bar) {
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((m) => m.textContent.trim() === ${JSON.stringify(bar)}).click()`);
   await frames(page);
@@ -521,7 +480,6 @@ async function menuLabels(page, bar) {
     if (!item.submenu) continue;
     const at = await page.evaluate(`(() => { const r = document.querySelectorAll('.beeson-edit-menu')[0].querySelectorAll('.item')[${n}].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
-    // a submenu is opened after a rest of the pointer on its row, in place of the one open before
     await page.waitFor(`document.querySelectorAll('.beeson-edit-menu')[0].querySelectorAll('.item')[${n}].getAttribute('aria-expanded') === 'true' && document.querySelectorAll('.beeson-edit-menu').length === 2`).catch(() => assert.fail(`the submenu ${item.label} of ${bar} is not opened`));
     labels.push(...(await read(1)).map((i) => i.label));
   }
@@ -550,7 +508,6 @@ for (const platform of PLATFORMS) {
       assert.deepEqual(listed, edit.filter((l) => listed.includes(l)), 'the Edit group is not in the order of the Edit menu');
       assert.ok(listed.every((l) => edit.includes(l)), `rows of Edit outside the Edit menu: ${listed.filter((l) => !edit.includes(l))}`);
       assert.ok(sheet.sections.some((s) => s.head === 'Other'), JSON.stringify(sheet.sections.map((s) => s.head)));
-      // every group is inside the box of the sheet, which ends under its longest column
       assert.equal(sheet.scrolls, false, 'the sheet scrolls');
       for (const s of sheet.sections) assert.ok(s.left >= sheet.box.left && s.right <= sheet.box.right, `the group ${s.head} is outside the sheet`);
       const low = Math.max(...sheet.sections.map((s) => s.bottom));
@@ -560,7 +517,6 @@ for (const platform of PLATFORMS) {
   }
 }
 
-// the labels of the items of the open menu, with their check marks
 const openMenuItems = (page) =>
   page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].map((m) => ({ label: m.querySelector('.label')?.textContent ?? m.textContent.trim(), checked: m.getAttribute('aria-checked') === 'true' }))`);
 const pickItem = (page, label) =>
@@ -578,8 +534,6 @@ for (const platform of PLATFORMS) {
     assert.equal(bar.fits, true, 'the toolbar is wider than 1280 px');
     assert.equal(bar.rows, 1);
     assert.equal(bar.labels, true);
-    // the arrow of the View button opens its menu under the button, since R22.1 with the Slide
-    // Sorter, the rulers, and the gridlines
     const view = '.beeson-edit-split:has(> [data-command="toolbar.view"])';
     await click(page, `${view} .more`);
     await frames(page);
@@ -591,7 +545,6 @@ for (const platform of PLATFORMS) {
     await pickItem(page, 'Rulers');
     await frames(page);
     assert.equal((await state(page, 'view.rulers')).checked, true);
-    // the Zoom popup shows the zoom, and sets a level or Fit
     const zoom = '.beeson-edit-top [data-command="toolbar.zoom"]';
     const face = () => page.evaluate(`document.querySelector('${zoom} .readout').textContent`);
     assert.match(await face(), /^\d+%$/);
@@ -615,7 +568,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the gaps between the slide and the edges of the cell, in CSS px, with the canvas scrolled to x, y
 const edges = (page, x, y) =>
   page.evaluate(`(() => {
     const s = window.BeesonEditorShell.stage;
@@ -634,7 +586,6 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditorShell.stage.setZoom(2)');
     await frames(page);
     const start = await edges(page, 0, 0);
-    // the native bars of the platform are left on: overlay bars on macOS, classic bars elsewhere
     assert.equal(start.overflow, 'scroll');
     assert.equal(start.bars, 'auto');
     assert.ok(Math.abs(start.left - 32) < 1.5 && Math.abs(start.top - 32) < 1.5, `at the upper left the pasteboard is ${JSON.stringify(start)}`);

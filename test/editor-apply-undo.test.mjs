@@ -1,7 +1,3 @@
-// the history of the person on the page of an apply of the synchronous editor, see
-// src/editor/session/apply.ts and src/editor/history.ts: an entry whose undo or redo would write
-// over a change of another person, or take it off the page, is dropped by the apply
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -22,7 +18,6 @@ const once = (text, from, to) => {
 };
 const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
 const slideWith = (text, heading) => sectionsOf(text).find((s) => s.includes(`<h2>${heading}`) || s.includes(`<h1>${heading}`));
-// text with the slide of heading moved before the slide of other
 const moveSlide = (text, heading, other) => {
   const s = slideWith(text, heading);
   const without = text.replace(`${s}\n`, '');
@@ -41,8 +36,6 @@ test('a move of the person and its redo are dropped when another person moves th
   assert.equal((await applyOn(b, moveSlide(await sessionText(b), 'Code boxes', 'Thank you'))).reload, false);
   assert.equal((await status(b)).undo, false, 'the move of a slide is dropped');
 
-  // the item moved by the person is the one that the apply keeps in place, while the item before it
-  // is moved
   await b.evaluate(`(() => { const last = ${ITEM('When exporting')}; return ${E}.doc.move(last, last.parentElement, ${ITEM('Each step')}); })()`);
   await b.waitFor(`${E}.status().undo`);
   const text = await sessionText(b);
@@ -96,8 +89,6 @@ test('a removal of the person, known by its touches alone, is dropped when anoth
   assert.equal((await status(b)).undo, false);
 });
 
-// test/pages/editor-r29-1.html, opened from the folder of the theme, with a line on its third slide
-// from its shape to the right edge of its table, which sits in the flow under a paragraph
 const GLUED = once(once(readFileSync('test/pages/editor-r29-1.html', 'utf8').replaceAll('"../../theme/', '"theme/'),
   '<table><tr>', '<table data-anchor="a2"><tr>'),
   'translate: 1300px 700px"></div>', 'translate: 1300px 700px" data-anchor="a1"></div>\n  <svg class="line" width="1148" height="360" style="translate: 252px 400px; z-index: 1" data-from="a1 0.5 0.5" data-to="a2 1 0.5"><defs><marker id="line-1" orient="auto-start-reverse"><path d="M-4-2.5 1 0-4 2.5z"></path></marker></defs><line x1="1148" y1="360" x2="0" y2="0"></line></svg>');
@@ -142,7 +133,6 @@ test('the nudges after an apply that dropped the entry of their run are a new en
   assert.ok((await b.evaluate(`${E}.render()`)).includes('translate: 1px 0px'), 'an undo takes the two nudges back');
 });
 
-// the outlines and the running heads that the theme draws from the headings of the section slides
 const CHROME = `[...document.querySelectorAll('.reveal ul.outline, .reveal .run[data-generated]')].map((e) => e.textContent)`;
 const HEADING = `Reveal.getCurrentSlide().querySelector('h2')`;
 
@@ -155,7 +145,6 @@ test('a Markdown substitution in the heading of a section slide, its undo, and i
   await a.waitFor(`${HEADING}.querySelector('em')?.textContent === 'x' && ${E}.state('edit.undo').label === 'Undo Markdown'`);
   const text = await a.evaluate(`${E}.render()`);
   assert.ok(text.includes('<h2>Chapter two <em>x</em></h2>'));
-  // the chrome of a page that takes each text from an apply
   const b = await sessionPage(browser);
   t.after(() => b.close());
   const chromeOf = async (s) => {

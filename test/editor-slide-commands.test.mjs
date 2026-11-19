@@ -1,9 +1,3 @@
-// regression tests of R9.3 on both platforms with trusted input: the slides of the navigator, the
-// slide commands, and their undo. after an undo or a redo of a slide command the canvas, the
-// selected thumbnails, the count of the status bar, the inspector, and the focus are on one slide,
-// a change of layout forth and back gives the file byte for byte, and the navigator numbers the
-// slides in show order
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -16,8 +10,6 @@ const PLATFORMS = ['mac', 'other'];
 let browser;
 let server;
 before(async () => {
-  // the test of every slide changed to each layout is one read of 48 s on a runner, and of over the
-  // 120 s in which Chrome must answer by default on two cores, hence the limit of an answer is 8 min
   browser = await launch({ offline: false, timeout: 480000 });
   server = await serve('.');
 });
@@ -35,8 +27,6 @@ const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 let saves = 0;
 
-// the editor on the demo deck served over HTTP, in a window of 1600 by 1000 px, with the Format
-// pane of the inspector shown
 async function load(t, platform, { n = 0, mode = 'light' } = {}) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close().catch(() => {}));
@@ -56,7 +46,6 @@ async function load(t, platform, { n = 0, mode = 'light' } = {}) {
   return page;
 }
 
-// the row of slide n of the navigator, counted from 1, scrolled into view and clicked
 async function row(page, n, modifiers = '') {
   const at = await page.evaluate(`(() => {
     const r = document.querySelectorAll('.beeson-edit-nav .row')[${n - 1}];
@@ -68,7 +57,6 @@ async function row(page, n, modifiers = '') {
   await frames(page);
 }
 
-// a trusted key, then a wait for the history and the refresh that it starts
 async function key(page, keys) {
   await press(page, keys);
   await sleep(150);
@@ -79,9 +67,6 @@ async function key(page, keys) {
 const UNDO = 'Mod+Z';
 const REDO = (platform) => (platform === 'mac' ? 'Mod+Shift+Z' : 'Mod+Y');
 
-// the slide of each view, counted from 1: the slide of reveal.js, 0 when it is off the page, the
-// slide drawn on the canvas, the current row, the count of the status bar, the selected rows, the
-// focused row, and the layout in the card of the inspector with that of the current slide
 const VIEWS = `(() => {
   window.BeesonEditor.status();
   const secs = [...document.querySelectorAll('.reveal:not(.beeson-peek) .slides > section')];
@@ -98,17 +83,12 @@ const VIEWS = `(() => {
     focus: rows.indexOf(document.activeElement) + 1,
     card: document.querySelector('.ed-chooser .what > span:last-child')?.textContent ?? '',
     layout: layout(cur),
-    // the layouts of the selected slides, of which several read Multiple Layouts
     layouts: [...new Set(rows.flatMap((r, i) => (r.getAttribute('aria-selected') === 'true' ? [layout(secs[i]) + (secs[i].classList.contains('narrow') ? ' narrow' : secs[i].classList.contains('wide') ? ' wide' : '')] : [])))].length,
   };
 })()`;
 
 const NAMES = { content: 'Content', section: 'Section', title: 'Title', closing: 'Closing', figure: 'Figure', split: 'Split' };
 
-// agree asserts that every view is on slide current, with the rows of selected selected, the focus
-// on the current row when focus is set, and the layout of the slide in the card of the inspector
-// when card is set, i.e. when the caret is not in a text, or Multiple Layouts for selected slides
-// of several layouts
 async function agree(page, what, { n, current, selected, focus = true, card = true }) {
   const v = await page.evaluate(VIEWS);
   const want = { n, reveal: current, canvas: current, row: current, status: `Slide ${current} of ${n}`, selected };
@@ -118,9 +98,6 @@ async function agree(page, what, { n, current, selected, focus = true, card = tr
   if (card) assert.ok(v.card.startsWith(v.layouts > 1 ? 'Multiple Layouts' : NAMES[v.layout]), `the inspector reads the layout "${v.card}" on a ${v.layout} slide ${what}`);
 }
 
-// finding 1 (navigator-slides-canvas-2, dialogs-undo-a11y-1 and 2): an undo puts back the current
-// slide and the selected slides from before a slide command, a redo those from after it, and the
-// canvas, the thumbnails, the status bar, the inspector, and the focus agree
 for (const platform of PLATFORMS) {
   test(`after a slide command, its undo, and its redo every view is on one slide (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -173,9 +150,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the parts of the current slide in slide px: the boxes of its heading, its running head, and its
-// texts, the word blocks left as loose children of the section, the children of its plate, and
-// the overflow count of the status
 const PARTS = `(() => {
   const s = Reveal.getCurrentSlide();
   const stage = document.querySelector('.reveal:not(.beeson-peek) .slides').getBoundingClientRect();
@@ -195,10 +169,6 @@ const PARTS = `(() => {
 const meets = (a, b) => a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
 const inside = (w) => w.l >= -1 && w.r <= 1921 && w.t >= -1 && w.b <= 1081;
 
-// finding 2 (navigator-slides-canvas-1, and probes 13 and 14 of the juror of round 4): a content
-// slide changed to Figure has its words in the caption at the lower left, clear of the heading and
-// the running head, a text that runs past the slide is reported, a slide without a drawing gets the
-// empty plate of the layout, which a new table fills, and a change back to Content gives the file
 for (const platform of PLATFORMS) {
   test(`a content slide changed to Figure has its words in the caption and an empty plate, and a change back gives the file (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -216,7 +186,6 @@ for (const platform of PLATFORMS) {
       }
       const out = p.words.filter((w) => !inside(w)).length;
       assert.equal(p.overflow, out, `slide ${n} has ${out} texts past the slide, and the status reports ${p.overflow}`);
-      // slide 3 has a backdrop and slide 5 a figure, which take the place of the plate
       if (n === 4 || n === 6) assert.deepEqual(p.plate, [], `slide ${n} does not get the empty plate of the layout`);
       const edited = await render(page);
       await page.evaluate('window.BeesonEditor.undo()');
@@ -238,8 +207,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 2, part 2: a text of the caption of a figure slide that reaches its heading or its
-// running head is marked and counted in the status, as a text past the slide is
 for (const platform of PLATFORMS) {
   test(`a long text changed to Figure that reaches the heading is reported in the status (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
@@ -261,9 +228,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 11 (check 7 of the laptop tests of round 4): a change of layout forth and back gives the
-// file byte for byte, for every slide of the demo deck, each of which has a footnote, a backdrop,
-// a figure box, or notes
 const LAYOUTS = ['title', 'section', 'content', 'narrow', 'wide', 'figure', 'split', 'closing'];
 for (const platform of PLATFORMS) {
   test(`every slide of the demo deck changed to each layout and back gives the file byte for byte (${platform})`, async (t) => {
@@ -296,8 +260,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 3 (shell-2): after a jump of three or more slides, the thumbnail of a far slide with a
-// backdrop keeps its drawing at the size of the slide
 const THUMB = `(() => {
   const c = document.querySelectorAll('.beeson-edit-nav .row .pic')[0]?.shadowRoot?.querySelector('canvas');
   return c ? Math.round(10 * c.getBoundingClientRect().width) / 10 : null;
@@ -316,8 +278,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 4 (navigator-slides-canvas-3): a new slide by Return, the key of New Slide, or its menu
-// item repeats the layout of a figure or a split slide, and the gallery focuses that layout
 for (const platform of PLATFORMS) {
   test(`a new slide after a figure or a split slide repeats its layout (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -338,22 +298,17 @@ for (const platform of PLATFORMS) {
       for (let i = 0; i < 3; i++) await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
     }
-    // a title slide is still followed by a content slide
     await row(page, 1);
     await key(page, 'Enter');
     assert.equal((await page.evaluate(VIEWS)).layout, 'content');
   });
 }
 
-// finding 5 (navigator-slides-canvas-4): with slides of several layouts selected, the Slide pane
-// reads Multiple Layouts, the chooser marks no layout, the Hidden box is mixed, the Text Column is
-// not shown, and the controls act on every selected slide
 for (const platform of PLATFORMS) {
   test(`the Slide pane shows a mixed state for slides of several layouts and acts on all of them (${platform})`, async (t) => {
     const page = await load(t, platform);
     await row(page, 8);
     await exec(page, 'slide.hide');
-    // a range by Shift, since Ctrl with a click is a click of the right button on macOS
     await row(page, 6);
     await row(page, 8, 'Shift');
     const pane = await page.evaluate(`(() => {
@@ -369,7 +324,6 @@ for (const platform of PLATFORMS) {
     await click(page, '.beeson-edit-layouts .tile[data-layout="wide"]');
     await sleep(200);
     assert.deepEqual(await page.evaluate(classes), ['wide', 'wide', 'wide']);
-    // the change of the three slides is one entry of the history
     await page.evaluate('window.BeesonEditor.undo()');
     await frames(page);
     assert.deepEqual(await page.evaluate(classes), first);
@@ -379,8 +333,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 6 (navigator-slides-canvas-5): the navigator and the light table number the slides in
-// show order, and a hidden slide does not take a number of its own
 for (const platform of PLATFORMS) {
   test(`a hidden slide does not take a number in the navigator and the light table (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -396,7 +348,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 7 (menus-keys-6): Mod+A in the navigator selects every slide
 for (const platform of PLATFORMS) {
   test(`Mod+A in the navigator selects every slide (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -408,9 +359,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 8 (menus-keys-12): Move Slide Up and Down are dimmed on the canvas, where their keys do
-// nothing, since Alt with an arrow adds a row to a table there and the sheet of keys lists a key
-// at one command of the slide, and they run by their keys in the navigator
 for (const platform of PLATFORMS) {
   test(`Move Slide Up is dimmed on the canvas and runs by Alt+ArrowUp in the navigator (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
@@ -430,8 +378,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 9 (menus-keys-8): the context menu of the slide canvas offers Duplicate Slide and Delete
-// Slide
 for (const platform of PLATFORMS) {
   test(`the context menu of the canvas offers Duplicate Slide and Delete Slide (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 5 });
@@ -444,7 +390,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 10 (navigator-slides-canvas-7): Duplicate of several slides is named in the plural
 for (const platform of PLATFORMS) {
   test(`the duplicate of several slides is named Duplicate Slides (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -456,9 +401,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding 12 (state 54 of round 4, and Add Section of PowerPoint): the context menus of a thumbnail
-// and of the empty part of the navigator list New Section after New Slide, which inserts a section
-// slide after the slide under the pointer, or at the end of the deck, as one entry of the history
 const MENU = `[...([...document.querySelectorAll('.beeson-edit-menu')].at(-1)?.querySelectorAll('.item') ?? [])].map((el) => el.dataset.command).filter(Boolean)`;
 async function pick(page, id) {
   const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-menu')].at(-1).querySelector('.item[data-command="${id}"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -495,8 +437,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the status bar counts in show order, as the navigator numbers the slides: a hidden slide is not
-// numbered, and it is read by the shown slide before it
 const COUNT = `(() => { const c = document.querySelector('.beeson-edit-bottom .count'); return { text: c.textContent, struck: c.querySelector('s')?.textContent ?? null, name: c.getAttribute('aria-label') }; })()`;
 for (const platform of PLATFORMS) {
   test(`the status bar counts the slides in show order, and names a hidden slide (${platform})`, async (t) => {

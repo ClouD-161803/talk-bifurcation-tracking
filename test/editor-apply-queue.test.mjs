@@ -1,14 +1,3 @@
-// the applies of the synchronous editor around the edits of the person, see
-// src/editor/session/session.ts. the client writes the text of an apply against the text that it
-// last read from the port, hence an edit of the person that the client has not read yet is kept
-// through every apply and told through onChange after it: an edit typed between two queued
-// applies, a box inserted, a content set, and slides duplicated while an apply waits, and an edit
-// next to an apply that replaces most of the text. a key and a remote insertion at one point are
-// both kept, the insertion first. an open composition holds back the change of its own slide only,
-// until after the input that Safari sends after its end, and a page that does not read as its
-// text after an apply asks for a reload, also after a change held back that cannot be made in full
-// at the end of the composition
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -34,8 +23,6 @@ const render = (page) => page.evaluate(`${E}.render()`);
 const sessionText = (page) => page.evaluate(`${E}.session.text()`);
 const changes = (page) => page.evaluate('window.__changes');
 
-// the apply of text started on page, whose reload flag is put in window.__results[name] once it
-// resolves
 const start = (page, name, text) => page.evaluate(`(() => {
   window.__results ??= {};
   window.__results[${JSON.stringify(name)}] = null;
@@ -44,7 +31,6 @@ const start = (page, name, text) => page.evaluate(`(() => {
 })()`);
 const resolved = (...names) => names.map((n) => `window.__results?.[${JSON.stringify(n)}] != null`).join(' && ');
 
-// the row of the slide n of the navigator clicked, with the keys of modifiers held
 async function row(page, n, modifiers = '') {
   const at = await page.evaluate(`(() => {
     const r = document.querySelectorAll('.beeson-edit-nav .row')[${n}];
@@ -66,7 +52,6 @@ test('an edit typed between two queued applies is kept through both, and told th
   const one = once(b.source, 'Copy-paste the code', 'Paste the code');
   const two = once(one, 'Thank you', 'Thanks');
   const told = await changes(b);
-  // the client wrote two against one, the text of the apply before it
   const result = await b.evaluate(`(() => {
     const first = ${E}.apply(${JSON.stringify(one)});
     document.execCommand('insertText', false, ' Typed.');
@@ -81,8 +66,6 @@ test('an edit typed between two queued applies is kept through both, and told th
   assert.deepEqual(b.errors, []);
 });
 
-// the apply inserts at the point of a key that the client has not read, which does not conflict
-// with it, or replaces the word that the key replaced, which does. the caret stays after the key
 for (const [what, select, from, to, want] of [
   ['an insertion of the apply at the point of the key keeps both, the apply first', false, 'attention.</p>', 'attention. See more.</p>', 'attention. See more.QQQ</p>'],
   ['a change of the apply to the characters that the key replaced keeps the key', true, "viewer's attention.", "viewer's focus.", "viewer's QQQ."],
@@ -156,7 +139,6 @@ test('a content that the document model sets while an apply arrives is kept, and
   await caretAtEnd(b, P1);
   await typeKeys(b, '!');
   await b.waitFor('window.__changes > 0');
-  // the client reads the text in its listener of onChange, and writes the apply against it
   const mine = await sessionText(b);
   assert.ok(mine.includes('attention.!</p>'));
   await closeGate(b);
@@ -188,8 +170,6 @@ test('slides duplicated while an apply arrives are kept, as the apply merges ont
   const count = await b.evaluate(SECTIONS);
   const mine = await sessionText(b);
   const told = await changes(b);
-  // the first copy is done, and the duplicate waits for the typeset of the second copy, whose node
-  // is on the page
   await closeGate(b, `${SECTIONS} === ${count + 2}`);
   await b.evaluate(`(() => {
     ${E}.exec('slide.duplicate');
@@ -230,8 +210,6 @@ test('an edit of the person is kept when the apply removes more than half of the
   assert.deepEqual(b.errors, []);
 });
 
-// on a page that loads the engine of the port after the deck is opened, the engine takes over what
-// the port tracked from the start of the page, hence its first apply reads a key typed before it
 test('a key typed before the engine of the port is loaded is kept by its first apply', async (t) => {
   const b = await editorPage(browser);
   t.after(() => b.close());
@@ -262,7 +240,6 @@ test('during a composition, an apply into the composing text resolves at once an
   await start(b, 'first', first);
   await start(b, 'second', second);
   await b.evaluate(`document.execCommand('insertText', false, 'q')`);
-  // the client waits for each apply before it sends or applies anything more
   await b.waitFor(resolved('first', 'second'));
   assert.deepEqual(await b.evaluate('window.__results'), { first: false, second: false });
   assert.equal(await b.evaluate(`${THANKS}.textContent`), 'Thank you Y');
@@ -306,8 +283,6 @@ test('during a composition, the changes before and after the composing text are 
   assert.deepEqual(b.errors, []);
 });
 
-// Safari sends compositionend before the input of the committed text, in one task with the
-// microtasks run between the two events, which the awaits of resolved promises stand for
 const SAFARI_COMMIT = (key) => `(async () => {
   const p = ${P1};
   const node = p.lastChild;
@@ -444,7 +419,6 @@ test('a change held back during a composition that cannot be made in full at its
   await showSlide(b, 'Show your steps');
   await caretAtEnd(b, P1);
   await compose(b, 'compositionstart');
-  // a block element inside a paragraph, which the apply cannot make in full
   const text = once(b.source, "viewer's attention.</p>", "viewer's attention. <div>q</div></p>");
   await start(b, 'first', text);
   await b.waitFor(resolved('first'));
@@ -455,8 +429,6 @@ test('a change held back during a composition that cannot be made in full at its
   assert.deepEqual(b.errors, []);
 });
 
-// the timers of the check of the port after an apply, held until window.__checks() runs them and
-// returns their count, and the loads of the page through onReload counted in window.__reloads
 const HOLD_CHECKS = `(() => {
   const set = window.setTimeout.bind(window);
   const clear = window.clearTimeout.bind(window);
@@ -479,7 +451,6 @@ const HOLD_CHECKS = `(() => {
   return true;
 })()`;
 
-// a text node changed behind the back of the editor, which stands for a defect of an apply
 const BREAK = `(() => {
   const p = ${P2};
   p.firstChild.data = p.firstChild.data.replace('Copy-paste', 'Broken');
@@ -512,7 +483,6 @@ test('a page that does not read as its text after an apply is loaded again when 
   assert.equal((await applyOn(b, one)).reload, false);
   await b.evaluate(BREAK);
   assert.equal((await applyOn(b, once(one, '<h2>Chapter one</h2>', '<h2>Chapter one A</h2>'))).reload, false);
-  // the key comes before the check that the applies set
   await typeKeys(b, 'k');
   await b.waitFor(`${P1}.textContent.endsWith('attention.k')`);
   await b.evaluate('window.__checks()');
@@ -527,7 +497,6 @@ test('an edit without a key right after an apply does not load the page again th
   await showSlide(b, 'Show your steps');
   await caretAtEnd(b, P1);
   assert.equal((await applyOn(b, once(b.source, 'Thank you', 'Thanks'))).reload, false);
-  // dictation and an input method change the text without a key
   await b.evaluate(`document.execCommand('insertText', false, ' Spoken')`);
   assert.equal(await b.evaluate('window.__checks()'), 1, 'the check runs after the edit');
   assert.equal(await b.evaluate('window.__reloads'), 0);
@@ -565,7 +534,6 @@ test('text() hands back the last text while a duplicate of a slide waits for its
   await closeGate(b, `${SECTIONS} === ${count + 1}`);
   await b.evaluate(`(${E}.exec('slide.duplicate'), true)`);
   await b.waitFor(`window.__held > 0 && ${E}.doc.busy`);
-  // an edit typed during the duplicate is not in the text until the duplicate is over
   const typed = await b.evaluate(`(() => {
     const p = ${P1};
     p.focus();

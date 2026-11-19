@@ -1,6 +1,3 @@
-// resizes by the grips and by the fields W and H, with Constrain Proportions, the width written
-// being the width drawn, the readouts of a move or a resize, and other fixes of round 6
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,13 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure, selectPicture, type } from './helpers/editor.mjs';
 
-// resizing, lines, and guides of package R5.2 on both platforms, driven with trusted input: a
-// picture sized in the editor is drawn at the size written into its tag, with or without the
-// editor, the fields W and H give the drawn picture, a marquee selects a line, an element snaps to
-// the ends and the middle of a line and a line to the other elements, the guides placed by hand
-// follow their slide, a picture is stretched with Constrain Proportions off, and a text block is
-// given a width by its grips. each edit is checked byte for byte after an undo, and after a save
-// and an open of the saved text
 describe('pictures drawn at the size written', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const PLATFORMS = ['mac', 'other'];
@@ -41,8 +31,6 @@ describe('pictures drawn at the size written', () => {
   let last = null;
   let saves = 0;
 
-  // the editor on slide n of the deck of layouts, served over HTTP, with the storage of the browser
-  // cleared first unless keep is set
   async function editor(platform, n = MATH, { keep = false } = {}) {
     await last?.close().catch(() => {});
     const page = await browser.newPage();
@@ -82,7 +70,6 @@ describe('pictures drawn at the size written', () => {
     assert.deepEqual(now, []);
   }
 
-  // the edit, the file again after an undo, the edit again after a redo, and a save opened again
   async function roundTrip(page, edited) {
     await undo(page);
     await frames(page);
@@ -94,7 +81,6 @@ describe('pictures drawn at the size written', () => {
     await saveAndReopen(page, `r5-2-${++saves}.html`);
   }
 
-  // the screen point of a point in slide px, and the box of an element in slide px
   const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
@@ -108,8 +94,6 @@ describe('pictures drawn at the size written', () => {
   return { left: (b.left - r.left) / k, top: (b.top - r.top) / k, width: b.width / k, height: b.height / k };
 })()`);
 
-  // the box of the picture of the shown image or video of selector in slide px, fitted in its box
-  // with object-fit contain where its style sets that
   const pictureBox = (page, selector) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const sr = s.getBoundingClientRect(), k = sr.width / s.offsetWidth;
@@ -124,14 +108,11 @@ describe('pictures drawn at the size written', () => {
   return { left: (b.left - sr.left) / k, top: (b.top - sr.top) / k, width: b.width / k, height: b.height / k };
 })()`);
 
-  // the height in slide px that the caption of the figure of ZONE_IMG adds to its picture, which the
-  // field H of the figure selected as one object gives with the picture, as its frame holds both
   async function captionBand(page) {
     const pic = await pictureBox(page, FIGURE_BOX_IMG), cap = await slideBox(page, '.reveal section.present .figure-box > figcaption');
     return Math.max(pic.top + pic.height, cap.top + cap.height) - Math.min(pic.top, cap.top) - pic.height;
   }
 
-  // the Arrange pane of the Format tab shown, and the values of its fields W and H
   async function arrange(page) {
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await sleep(50);
@@ -145,7 +126,6 @@ describe('pictures drawn at the size written', () => {
   return { w: f('width')?.value ?? null, h: f('height')?.value ?? null, wOff: !!f('width')?.disabled, hOff: !!f('height')?.disabled };
 })()`);
 
-  // a value typed into a field of the inspector and committed with Return
   async function setField(page, name, value) {
     const at = await page.evaluate(`(() => { const r = document.querySelector('${PANEL} #beeson-edit-num-${name}').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await click(page, at, { count: 3 });
@@ -155,8 +135,6 @@ describe('pictures drawn at the size written', () => {
     await sleep(80);
   }
 
-  // the figure box of the math slide selected with a click on its image, whose grips and size fields size
-  // the image, with its caption kept under it
   async function selectFigureBoxFigure(page) {
     await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
@@ -175,18 +153,15 @@ describe('pictures drawn at the size written', () => {
       await roundTrip(page, edited);
       assert.deepEqual(errors(page), []);
 
-      // a white figure of a plate, which the theme scales down to fit
       const plate = await editor(platform, WHITE_FIGURE);
       await clickText(plate, '.reveal section.present .plate > img');
       await clickText(plate, '.reveal section.present .plate > img');
       await arrange(plate);
       await setField(plate, 'width', 1800);
-      // the white frame of 24 px around the picture is inside the width of the image
       const whiteFigure = await slideBox(plate, '.reveal section.present .plate > img');
       assert.ok(near(whiteFigure.width, 1800) && near(whiteFigure.height, 1752 * 1.2 + 48), `the paper image of width 1800 is drawn at ${Math.round(whiteFigure.width)} by ${Math.round(whiteFigure.height)}`);
       assert.deepEqual(errors(plate), []);
 
-      // the same tags in a deck without the editor
       const show = await browser.newPage();
       await show.goto(`${server.origin}/${LAYOUTS}?still`);
       await show.waitFor(deckSettled);
@@ -213,7 +188,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the line of the current slide drawn from a to b in slide px with Insert > Line, then deselected
   async function addLine(page, a, b) {
     await exec(page, 'insert.line', { from: a, to: b });
     await frames(page);
@@ -227,13 +201,11 @@ describe('pictures drawn at the size written', () => {
       const page = await editor(platform);
       await addLine(page, { x: 400, y: 960 }, { x: 900, y: 960 });
       assert.equal(await lineEnds(page), 0, 'the line is still selected');
-      // a marquee from below the line up across its middle
       const from = await screen(page, 600, 1050);
       const to = await screen(page, 700, 940);
       await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
       await frames(page);
       assert.equal(await lineEnds(page), 2, 'the marquee does not select the line');
-      // a marquee beside the end of the line selects nothing
       await press(page, 'Escape');
       const off = await screen(page, 950, 1050);
       const offTo = await screen(page, 1000, 1000);
@@ -244,7 +216,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the guides of a snap that are drawn, each as its axis and its place in slide px
   const guidesShown = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-guide')].filter((g) => !g.hidden).map((g) => {
   const s = document.querySelector('.reveal .slides');
   const sr = s.getBoundingClientRect(), k = sr.width / s.offsetWidth, r = g.getBoundingClientRect();
@@ -255,13 +226,10 @@ describe('pictures drawn at the size written', () => {
   for (const platform of PLATFORMS) {
     test(`${platform}: a dragged figure snaps to the end and the middle of a line, with the guide drawn`, async () => {
       const page = await editor(platform);
-      // a vertical line at x 1100 from y 300 to 700, left of the figure box, with its middle at y 500
       await addLine(page, { x: 1100, y: 300 }, { x: 1100, y: 700 });
       const drawn = await render(page);
       await selectFigure(page, FIGURE_BOX_IMG);
       const figureBox = await slideBox(page, '.reveal section.present .figure-box');
-      // the left edge of the figure box is dragged to 5 px right of the line, and its top to 5 px under the
-      // middle of the line
       const start = await screen(page, figureBox.left + figureBox.width / 2, figureBox.top + figureBox.height / 2);
       const k = (await screen(page, 1, 0)).x - (await screen(page, 0, 0)).x;
       const dx = (1105 - figureBox.left) * k, dy = (505 - figureBox.top) * k;
@@ -286,8 +254,6 @@ describe('pictures drawn at the size written', () => {
 
     test(`${platform}: a dragged line snaps by its end to the middle of a figure and to the end of another line, with the guides drawn`, async () => {
       const page = await editor(platform);
-      // a horizontal line under the figure box, whose right end is dragged to 3 px right of the middle of
-      // the figure box at x 1500, which is not on a line of the layout
       await addLine(page, { x: 1300, y: 1000 }, { x: 1450, y: 1000 });
       const k = (await screen(page, 1, 0)).x - (await screen(page, 0, 0)).x;
       const z = await slideBox(page, '.reveal section.present .figure-box');
@@ -309,7 +275,6 @@ describe('pictures drawn at the size written', () => {
       await redo(page);
       assert.equal(await render(page), edited);
 
-      // a second line, whose left end is dragged to 3 px under the right end of the first
       await addLine(page, { x: 400, y: 700 }, { x: 600, y: 700 });
       [, line] = await ends(page);
       const [first] = await ends(page);
@@ -335,9 +300,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the guides of the current slide, as drawn, the title of the slide, the guides kept in the
-  // storage of the browser by an editor before data-guides, by the index of their slide, and the
-  // center of a row of the navigator
   const handGuides = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-hand-guide')].filter((g) => !g.hidden && !g.classList.contains('off')).map((g) => [g.dataset.axis, Number(g.dataset.at)])`);
   const goTo = async (page, n) => {
     await page.evaluate(`Reveal.slide(${n})`);
@@ -356,12 +318,10 @@ describe('pictures drawn at the size written', () => {
     test(`${platform}: a guide follows its slide when slides are moved, added, duplicated, pasted, and deleted, and through an undo of each`, async () => {
       const page = await editor(platform);
       const title = await titleOf(page);
-      // the guides are drawn while the rulers are shown
       await exec(page, 'view.rulers');
       await exec(page, 'view.guides.add', { x: [640], y: [300] });
       await frames(page);
       assert.deepEqual(await handGuides(page), [['x', 640], ['y', 300]]);
-      // the guides are in data-guides on the section of the slide, and not in the storage
       const written = (page) => page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.getAttribute('data-guides'))`);
       const check = async (n, what, copies = [n]) => {
         await goTo(page, n);
@@ -373,35 +333,30 @@ describe('pictures drawn at the size written', () => {
         assert.deepEqual(await stored(page), [], `guides are kept in the storage after ${what}`);
       };
       await check(MATH, 'the add');
-      // moved up with the navigator, and back with an undo
       await clickText(page, await navRow(page, MATH));
       await exec(page, 'slide.moveUp');
       await frames(page);
       await check(MATH - 1, 'a move up');
       await undo(page);
       await check(MATH, 'an undo of the move');
-      // a slide added before it
       await clickText(page, await navRow(page, 1));
       await exec(page, 'slide.new');
       await frames(page);
       await check(MATH + 1, 'a new slide before it');
       await undo(page);
       await check(MATH, 'an undo of the new slide');
-      // a slide before it deleted
       await clickText(page, await navRow(page, 1));
       await exec(page, 'slide.delete');
       await frames(page);
       await check(MATH - 1, 'a delete of a slide before it');
       await undo(page);
       await check(MATH, 'an undo of the delete');
-      // duplicated: the copy after it gets a copy of its guides, as in Keynote
       await clickText(page, await navRow(page, MATH));
       await exec(page, 'slide.duplicate');
       await frames(page);
       await check(MATH + 1, 'a duplicate', [MATH, MATH + 1]);
       await undo(page);
       await check(MATH, 'an undo of the duplicate');
-      // copied and pasted after it: the pasted slide keeps the guides, as in Keynote
       await clickText(page, await navRow(page, MATH));
       await exec(page, 'slide.copy');
       await exec(page, 'slide.paste');
@@ -409,7 +364,6 @@ describe('pictures drawn at the size written', () => {
       await check(MATH + 1, 'a paste', [MATH, MATH + 1]);
       await undo(page);
       await check(MATH, 'an undo of the paste');
-      // an undo of the add takes the guides off the file
       const tag = '<section>\n  <h2>Math, an ordered list, and a zone</h2>';
       await byteExact(page, [[tag, tag.replace('<section>', '<section data-guides="x640 y300">')]]);
       await undo(page);
@@ -420,12 +374,9 @@ describe('pictures drawn at the size written', () => {
     });
 
     test(`${platform}: a guide stored in an earlier session is read at its slide after a slide is added before it`, async () => {
-      // the guide as an editor before data-guides kept it, in the storage of the browser by the index
-      // of its slide
       const first = await editor(platform);
       const legacy = SECTIONS.map((_, i) => ({ x: i === MATH ? [640] : [], y: [] }));
       await first.evaluate(`localStorage.setItem('beeson-edit-guides:' + location.pathname, ${JSON.stringify(JSON.stringify(legacy))})`);
-      // the next session adds a slide at the start before it shows the slide of the guide
       const page = await editor(platform, 0, { keep: true });
       await exec(page, 'view.rulers');
       await clickText(page, await navRow(page, 0));
@@ -440,8 +391,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the shown grips of the first selected element by their handle, as screen points, the switch
-  // Constrain Proportions of the Arrange pane, and the scale from slide px to screen px
   const gripsAt = (page) => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.beeson-grip[data-member="0"]')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return [g.dataset.handle, { x: r.left + r.width / 2, y: r.top + r.height / 2 }]; }))`);
   const constrainSwitch = (page) => page.evaluate(`(() => {
   const l = [...document.querySelectorAll('${PANEL} label.ed-check')].find((l) => l.textContent.trim() === 'Constrain Proportions');
@@ -468,7 +417,6 @@ describe('pictures drawn at the size written', () => {
       assert.deepEqual(await constrainSwitch(page), { checked: false, disabled: false }, 'a click does not turn the switch off');
       assert.equal(await render(page), page.source, 'the switch writes into the file');
       const k = await scaleOf(page);
-      // the picture of 600 by 720 is narrowed by 100 with its grip e, and keeps its height
       await drag(page, (await gripsAt(page)).e, { dx: -100 * k });
       await frames(page);
       let box = await slideBox(page, FIGURE_BOX_IMG);
@@ -479,7 +427,6 @@ describe('pictures drawn at the size written', () => {
       assert.deepEqual(await sizeFields(page), { w: '500', h: String(Math.round(720 + (await captionBand(page)))), wOff: false, hOff: false });
       await roundTrip(page, edited);
 
-      // the field H with the switch off sets the height alone, of the picture with its caption
       page = await editor(platform);
       await selectFigureBoxFigure(page);
       await arrange(page);
@@ -507,10 +454,6 @@ describe('pictures drawn at the size written', () => {
       assert.match(edited, IMG_STYLE('width: \\d+px'), 'a height is written by a resize that keeps the aspect');
       await roundTrip(page, edited);
 
-      // Shift on a corner frees the aspect, and then the side grip e and the field W keep the aspect
-      // that the stretched image has. the grip is on the frame of the figure, which holds the band of
-      // 40 px between the picture fitted into its figure box and the caption, and the figure box of a picture with
-      // a width is the size of the picture, hence the picture is 40 px higher than the frame shrinks
       page = await editor(platform);
       await selectFigureBoxFigure(page);
       await arrange(page);
@@ -525,7 +468,6 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       box = await slideBox(page, FIGURE_BOX_IMG);
       assert.ok(near(box.width / box.height, aspect, 0.01), `the grip e of a stretched image changes its aspect from ${aspect.toFixed(3)} to ${(box.width / box.height).toFixed(3)}`);
-      // the fields of the picture selected inside its figure give the picture alone
       await clickText(page, FIGURE_BOX_IMG);
       await frames(page);
       await setField(page, 'width', 200);
@@ -551,7 +493,6 @@ describe('pictures drawn at the size written', () => {
     test(`${platform}: a video is stretched with its switch off, and a QR code keeps its square with its switch held on`, async () => {
       let page = await editor(platform, SPLIT);
       const VIDEO = '.reveal section.present .figure-box > video';
-      // the figure box is selected with a first click, and its video with a second
       await clickText(page, VIDEO);
       await clickText(page, VIDEO);
       await frames(page);
@@ -580,7 +521,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the lead-in paragraph of the math slide, as a point inside its text
   const LEAD = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent === 'The lead-in of a display')`;
   const leadBox = (page) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
@@ -647,7 +587,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the screen point of the end 2 of the line of the current slide, and the center of its grip
   const arrowAt = (page) => page.evaluate(`(() => {
   const svg = Reveal.getCurrentSlide().querySelector('svg.line');
   const l = svg.querySelector('line'), r = svg.getBoundingClientRect(), k = r.width / svg.width.baseVal.value;
@@ -666,7 +605,6 @@ describe('pictures drawn at the size written', () => {
       assert.ok(near(at.grip.x, at.end.x, 1) && near(at.grip.y, at.end.y, 1), `the grip of the arrowhead is off its end: ${JSON.stringify(at)}`);
       const sel = await page.evaluate('window.BeesonEditor.selection?.()');
       assert.equal(Array.isArray(sel) ? sel.length : sel?.elements?.length, 1, 'BeesonEditor.selection() does not count the selected arrow');
-      // a drag of the grip moves the end by the drag, without a jump to the pointer
       const k = await scaleOf(page);
       await drag(page, at.grip, { dx: 0, dy: -100 * k, modifiers: platform === 'mac' ? 'Meta' : 'Alt' });
       await frames(page);
@@ -684,7 +622,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the selected elements by their tag and first class
   const selected = (page) => page.evaluate(`(window.BeesonEditor.selection?.() ?? []).map((e) => [e.tagName.toLowerCase(), ...e.classList].slice(0, 2).join('.'))`);
 
   for (const platform of PLATFORMS) {
@@ -698,7 +635,6 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       assert.deepEqual(await selected(page), ['img.for-dark'], 'the second click on the image does not select the image');
       assert.equal((await state(page, 'image.editMask')).enabled, true, 'Edit Mask is not offered on the image');
-      // Select Figure of the Edit menu, and a click on the band under the figure, select the figure
       assert.equal((await state(page, 'selection.container')).enabled, true, 'Select Figure is not offered on the image');
       await exec(page, 'selection.container');
       await frames(page);
@@ -730,8 +666,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the first click on the image of a locked figure selected the image, which is not locked itself,
-  // and was then moved, resized, and rotated past the lock of its figure
   for (const platform of PLATFORMS) {
     test(`${platform}: the first click on the image of a locked figure selects the figure, which is not moved or rotated`, async () => {
       const page = await editor(platform);
@@ -754,14 +688,10 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the frames, the grips, and the boxes of the members of the selection, in CSS px of the viewport.
-  // a text block is boxed by its box, and a figure by its drawn picture and its caption, which are
-  // the boxes that W and H of the Arrange pane give for a group
   const groupView = (page) => page.evaluate(`(() => {
   const shown = (s) => [...document.querySelectorAll(s)].filter((e) => !e.hidden && e.getBoundingClientRect().width);
   const box = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
   const pic = (el) => [...el.querySelectorAll('img')].find((i) => i.getBoundingClientRect().width) ?? el;
-  // the picture of an image, fitted in its box with object-fit contain
   const drawn = (el) => {
     const r = el.getBoundingClientRect();
     if (!(el instanceof HTMLImageElement) || getComputedStyle(el).objectFit !== 'contain') return r;
@@ -791,7 +721,6 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       const v = await groupView(page);
       assert.equal(v.members.length, 2, 'the group of the paragraph and the figure is not selected');
-      // the frame stands 8 px outside the members, since the figure holds a caption
       const left = Math.min(...v.members.map((m) => m.left)) - 8, top = Math.min(...v.members.map((m) => m.top)) - 8;
       const right = Math.max(...v.members.map((m) => m.right)) + 8, bottom = Math.max(...v.members.map((m) => m.bottom)) + 8;
       assert.equal(v.frames, 0, 'each member of the group is framed by itself');
@@ -801,7 +730,6 @@ describe('pictures drawn at the size written', () => {
       assert.equal(v.grips.length, 8, `the group has ${v.grips.length} grips, not one set of eight`);
       const se = v.grips.find((g) => g.handle === 'se');
       assert.ok(near(se.x, right, 1) && near(se.y, bottom, 1), 'the grip se is not at the corner of the group');
-      // a drag of the corner scales both members about the corner across from it
       const before = await page.evaluate(`window.BeesonEditor.selection().map((el) => ([...el.querySelectorAll('img')].find((i) => i.getBoundingClientRect().width) ?? el).getBoundingClientRect().width)`);
       await drag(page, se, { dx: -(right - left) * 0.2, dy: -(bottom - top) * 0.2 });
       await frames(page);
@@ -814,7 +742,6 @@ describe('pictures drawn at the size written', () => {
       const edited = await render(page);
       const tag = edited.match(/<p [^>]*>The lead-in of a display<\/p>/)?.[0] ?? '';
       assert.ok(/data-group="g1"/.test(tag) && /style="[^"]*width: \d+px/.test(tag), `the width of the paragraph is not written: ${tag}`);
-      // the resize and the group are undone, and redone
       await undo(page);
       await undo(page);
       await frames(page);
@@ -828,8 +755,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the box of the rotate grip, and the boxes of the lines of text of the blocks of the current slide
-  // other than the selected one, in CSS px of the viewport
   const rotorView = (page) => page.evaluate(`(() => {
   const g = document.querySelector('.beeson-rotor');
   const r = g.hidden ? null : g.getBoundingClientRect();
@@ -850,8 +775,6 @@ describe('pictures drawn at the size written', () => {
   for (const platform of PLATFORMS) {
     test(`${platform}: the rotate grip of a selected text block is above its frame, off the text of another block where there is room, and turns the block`, async () => {
       const page = await editor(platform);
-      // the display reaches down to the frame of the second paragraph, whose grip thus covers it, as
-      // the rotate handle of PowerPoint covers a shape above
       const blocks = [['The lead-in of a display', true], ['where the Coriolis term is colored.', false]];
       for (const [words, room] of blocks) {
         const at = await page.evaluate(`(() => { const p = [...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent === ${JSON.stringify(words)}); const r = p.getBoundingClientRect(); return { x: r.right + 3, y: r.top + r.height / 2 }; })()`);
@@ -864,7 +787,6 @@ describe('pictures drawn at the size written', () => {
         const hit = v.text.find((t) => overlaps(v.rotor, t));
         if (room) assert.ok(!hit, `the rotate grip of "${words}" at ${JSON.stringify(v.rotor)} covers the text of a ${hit?.el} at ${JSON.stringify(hit)}`);
       }
-      // the grip turns the last block
       const v = await rotorView(page);
       await drag(page, { x: (v.rotor.left + v.rotor.right) / 2, y: (v.rotor.top + v.rotor.bottom) / 2 }, { dx: 120, dy: 40 });
       await frames(page);
@@ -875,8 +797,6 @@ describe('pictures drawn at the size written', () => {
     });
   }
 
-  // the points of a grid over the inspector at which the stage of the mask edit is hit, and whether
-  // the box of the stage reaches into the inspector
   const maskOverInspector = (page) => page.evaluate(`(() => {
   const pane = document.querySelector('${PANEL}').getBoundingClientRect();
   if (!pane.width) return { reaches: false, hits: [] };
@@ -899,7 +819,6 @@ describe('pictures drawn at the size written', () => {
       await frames(page);
       await exec(page, 'image.editMask');
       await frames(page);
-      // the picture scaled to the top of the slider, past the right edge of the canvas
       await page.evaluate(`(() => {
       const s = document.querySelector('dialog.beeson-mask-bar input[type=range]');
       s.value = '1000';
@@ -917,8 +836,6 @@ describe('pictures drawn at the size written', () => {
   }
 });
 
-// package R6.7 on both platforms, driven with trusted input: a width written by a resize grip is
-// the width drawn, for a picture, a video, a QR code, and a text block, also past the box of a figure box
 describe('the width written by a grip is drawn', () => {
   const PLATFORMS = ['mac', 'other'];
   const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -941,7 +858,6 @@ describe('the width written by a grip is drawn', () => {
   let last = null;
   let saves = 0;
 
-  // the editor on slide n of the deck of layouts, served over HTTP, with the storage cleared
   async function editor(platform, n) {
     await last?.close().catch(() => {});
     const page = await browser.newPage();
@@ -967,11 +883,8 @@ describe('the width written by a grip is drawn', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the shown grips of the first selected element by their handle, as screen points
   const gripsAt = (page) => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.beeson-grip[data-member="0"]')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return [g.dataset.handle, { x: r.left + r.width / 2, y: r.top + r.height / 2 }]; }))`);
 
-  // the width in the style of the shown element of selector, and the width of what is drawn, both in
-  // slide px: the picture of an image or a video fitted in its box, and else the box
   const widths = (page, selector) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const k = s.getBoundingClientRect().width / s.offsetWidth;
@@ -983,7 +896,6 @@ describe('the width written by a grip is drawn', () => {
   return { written: parseFloat(el.style.width), drawn: drawn / k, scale: k };
 })()`);
 
-  // each element, how it is selected, the grip that is dragged, and how far to the right in slide px
   const CASES = [
     { name: 'an image of a zone', slide: MATH, selector: '.reveal section.present .figure-box > img', clicks: 1, grip: 'se', dx: 400 },
     { name: 'a video of a zone', slide: SPLIT, selector: '.reveal section.present .figure-box > video', clicks: 2, grip: 'se', dx: 400 },
@@ -996,7 +908,6 @@ describe('the width written by a grip is drawn', () => {
     for (const c of CASES) {
       test(`${platform}: the width that a grip writes on ${c.name} is the width drawn, also past the box of its zone`, async () => {
         const page = await editor(platform, c.slide);
-        // a text block is selected by a click into its text and Esc
         const selector = c.text ? `${c.selector}[data-r67]` : c.selector;
         if (c.text) {
           await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(c.selector)})].find((p) => p.textContent === ${JSON.stringify(c.text)}).setAttribute('data-r67', '')`);
@@ -1027,7 +938,6 @@ describe('the width written by a grip is drawn', () => {
     }
   }
 
-  // the items of the open menus that run a command, as its id, label, and key text
   const shownItems = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item[data-command]')].map((i) => ({ id: i.dataset.command, label: i.querySelector('.label').textContent, keys: i.querySelector('.keys').textContent }))`);
 
   async function openBar(page, bar) {
@@ -1038,7 +948,6 @@ describe('the width written by a grip is drawn', () => {
     await frames(page);
   }
 
-  // the rows of the sheet of keyboard shortcuts by its group and label, opened from the Help menu
   async function sheetRows(page) {
     await page.evaluate(`window.BeesonEditor.exec('help.keys')`);
     await frames(page);
@@ -1047,8 +956,6 @@ describe('the width written by a grip is drawn', () => {
     return rows;
   }
 
-  // the notation of each platform: the symbols of Keynote on a Mac, and the words of PowerPoint for
-  // Windows elsewhere, e.g. Ctrl+Shift+Up Arrow and Page Down
   const NOTATION = {
     mac: { 'arrange.order.front': '⇧⌘F', 'navigate.next': '⇟', 'edit.redo': '⇧⌘Z', redoSheet: '⇧⌘Z, ⌘Y', nextSheet: '⇟, →, ↓' },
     other: { 'arrange.order.front': 'Ctrl+Shift+Up Arrow', 'navigate.next': 'Page Down', 'edit.redo': 'Ctrl+Y', redoSheet: 'Ctrl+Y, Ctrl+Shift+Z', nextSheet: 'Page Down, Right Arrow, Down Arrow' },
@@ -1081,7 +988,6 @@ describe('the width written by a grip is drawn', () => {
       assert.equal(sheet['Edit > Redo'], want.redoSheet);
       assert.equal(sheet['View > Next Slide'], want.nextSheet);
 
-      // the context menu of the image and the tooltips of the toolbar
       await click(page, '.reveal section.present .figure-box > img', { button: 'right' });
       await frames(page);
       const context = await shownItems(page);
@@ -1101,9 +1007,6 @@ describe('the width written by a grip is drawn', () => {
     });
   }
 
-  // the modifiers of a drag of canvas/drag.ts and of a line end of commands/line.ts, in the group
-  // Mouse of the sheet: the free modifier is ⌘ on a Mac and Alt elsewhere, and the copy modifier ⌥ on
-  // a Mac and Ctrl elsewhere
   const MOUSE = {
     mac: { 'Lock Axis or Angle, Toggle Aspect': '⇧-drag', 'Move, Resize, or Rotate Without Snapping': '⌘-drag', 'Drag a Copy, Resize About the Center': '⌥-drag' },
     other: { 'Lock Axis or Angle, Toggle Aspect': 'Shift+drag', 'Move, Resize, or Rotate Without Snapping': 'Alt+drag', 'Drag a Copy, Resize About the Center': 'Ctrl+drag' },
@@ -1117,7 +1020,6 @@ describe('the width written by a grip is drawn', () => {
       assert.deepEqual(mouse, MOUSE[platform]);
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
 
-      // the modifier of Drag a Copy, held at the release of a drag of the image of the figure box
       const listed = mouse['Drag a Copy, Resize About the Center'];
       const copy = { '⌥-drag': 'Alt', 'Ctrl+drag': 'Ctrl' }[listed];
       const img = '.reveal section.present .figure-box > img.for-dark';
@@ -1132,17 +1034,9 @@ describe('the width written by a grip is drawn', () => {
   }
 });
 
-// regression tests of R6.8 on both platforms with trusted input: the menus of a locked figure, the
-// line steps of a code box after a line is typed or deleted, the fit of the slide in a narrow window,
-// the size of a group in the Arrange pane during a resize, the place of a new text box, the keys of
-// the keyboard sheet, the figure selected from its image, the tiles of the New Slide gallery, and the
-// position in the readouts and in the Arrange pane.
-// after each edit the text is checked byte for byte, after an undo and a redo, and after a save and
-// an open
 describe('locked figure menus, code line steps, and readouts', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // the slide of the deck of layouts with an ordered list and a figure with a caption
   const MATH = 3;
   const IMG = '.reveal section.present figure.figure-box img:not([hidden])';
 
@@ -1165,12 +1059,9 @@ describe('locked figure menus, code line steps, and readouts', () => {
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on the slide n of a deck served over HTTP, with the Format tab shown
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
-    // an earlier test that keeps its page open 1 s after its last edit leaves a draft in the storage
-    // of the origin, and the dialog of this draft then covers the slide of the next page of the deck
     await page.send('Storage.clearDataForOrigin', { origin: server.origin, storageTypes: 'local_storage' });
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
@@ -1184,8 +1075,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     return page;
   }
 
-  // roundTrip checks the edits in the text, then the text before byte for byte after an undo, the
-  // edit after a redo, and an open of the saved edit without problems
   let saves = 0;
   async function roundTrip(page, edits) {
     await byteExact(page, edits);
@@ -1199,7 +1088,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     page.source = text;
   }
 
-  // menuItems returns the label of each item of the open menu, and whether the item is dimmed
   const menuItems = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => ({ label: i.querySelector('.label')?.textContent ?? '', dimmed: i.getAttribute('aria-disabled') === 'true' }))`);
 
@@ -1222,7 +1110,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       assert.equal((await state(page, 'element.delete')).enabled, false, 'Delete of the Edit menu is enabled on the locked figure');
       assert.equal((await state(page, 'arrange.unlock')).enabled, true, 'Unlock of the Arrange menu is dimmed on the locked figure');
       assert.equal((await state(page, 'arrange.lock')).enabled, false, 'Lock of the Arrange menu is enabled on the locked figure');
-      // Unlock of the context menu unlocks the image
       await click(page, IMG, { button: 'right' });
       await frames(page);
       await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === 'Unlock')?.click()`);
@@ -1252,7 +1139,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
   const CODE = '<code class="language-python" data-line-numbers="1-3|4|5-7|8-9">def halo_family():';
   const SEED = '    x0, vy0 = SEED\n';
 
-  // caretAt puts the caret at offset of the text of the code box of the current slide, focused
   const caretAt = (page, offset) =>
     page.evaluate(`(() => {
     const code = document.querySelector('.reveal section.present pre > code');
@@ -1266,7 +1152,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     return false;
   })()`);
 
-  // an edit of the code box writes its text again, with the > of line 5 as &gt;
   const GT = ['if len(members) >= 2:', 'if len(members) &gt;= 2:'];
 
   for (const platform of PLATFORMS) {
@@ -1277,8 +1162,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const source = page.source;
       const text = await page.evaluate(`document.querySelector('.reveal section.present pre > code').textContent`);
       const end3 = text.indexOf(SEED) + SEED.length - 1;
-      // Return at the end of line 3 starts line 4 with the indent of line 3, and the groups after it
-      // are moved down by one line
       assert.ok(await caretAt(page, end3));
       await press(page, 'Enter');
       await frames(page);
@@ -1288,7 +1171,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await type(page, 'pass');
       await frames(page);
       await byteExact(page, [[CODE, shifted], [SEED, `${SEED}    pass\n`], GT]);
-      // the line steps go back with the undo of Return, in one entry with it
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page, typed);
       await page.evaluate('window.BeesonEditor.undo()');
@@ -1297,7 +1179,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await byteExact(page, typed);
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
-      // Backspace at the start of line 4 joins it to line 3, and the groups after it are moved up
       assert.ok(await caretAt(page, end3 + 1));
       await press(page, 'Backspace');
       await frames(page);
@@ -1312,14 +1193,12 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await page.evaluate(`Reveal.slide(Reveal.getIndices(document.querySelector('pre > code').closest('section')).h)`);
       await frames(page);
       const text = await page.evaluate(`document.querySelector('.reveal section.present pre > code').textContent`);
-      // the line of the for is indented by 4, and the line after it by 8
       const FOR = '    for z0 in np.linspace(Z_START, Z_END, STEPS + 1) / DU:\n';
       assert.ok(await caretAt(page, text.indexOf(FOR) + FOR.length - 1));
       await press(page, 'Enter');
       await type(page, 'pass');
       await frames(page);
       await byteExact(page, [[CODE, CODE.replace('1-3|4|5-7|8-9', '1-3|4|6-8|9-10')], [FOR, `${FOR}    pass\n`], GT]);
-      // Return at the start of a line moves it down without an indent of the new line
       await page.evaluate('window.BeesonEditor.undo()');
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
@@ -1331,7 +1210,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // fitOf returns the box of the canvas cell, the box of the slide, and the zoom of the status bar
   const fitOf = (page) =>
     page.evaluate(`(() => {
     const c = document.querySelector('.beeson-edit-canvas');
@@ -1347,11 +1225,8 @@ describe('locked figure menus, code line steps, and readouts', () => {
         const page = await load(t, platform, { n: MATH, size: { width, height: 700 } });
         await wait(page, 200);
         const f = await fitOf(page);
-        // the slide is inside the cell, with a margin of at least 8 px on each side
         assert.ok(f.slide.x >= f.cell.x + 8 - 0.5 && f.slide.x + f.slide.w <= f.cell.x + f.cell.w - 8 + 0.5, js(f));
         assert.ok(f.slide.y >= f.cell.y + 8 - 0.5 && f.slide.y + f.slide.h <= f.cell.y + f.cell.h - 8 + 0.5, js(f));
-        // in a canvas under 400 px, the zoom is the largest hundredth that leaves 8 px, and in a larger
-        // one, a margin of at most 32 px
         const best = (m) => Math.floor(Math.min((f.cell.w - 2 * m) / 1920, (f.cell.h - 2 * m) / 1080) * 100 + 1e-6) / 100;
         if (f.cell.w < 400) assert.equal(f.scale, best(8), js(f));
         else assert.ok(f.scale >= best(32), js(f));
@@ -1361,12 +1236,8 @@ describe('locked figure menus, code line steps, and readouts', () => {
     }
   }
 
-  // fieldsOf returns the values of the fields Width and Height of the Arrange pane
   const fieldsOf = (page) =>
     page.evaluate(`(() => { const v = (n) => document.querySelector('#beeson-edit-panel-format input[name="' + n + '"]')?.value ?? null; return { w: v('Width'), h: v('Height') }; })()`);
-  // groupBoxOf returns the size of the box of the members of the group of the selection, in slide px:
-  // a figure is boxed by its drawn picture and its caption, which hangs under its figure box, and another
-  // element by its box
   const groupBoxOf = (page) =>
     page.evaluate(`(() => {
     const els = window.BeesonEditor.selection();
@@ -1388,7 +1259,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
   for (const platform of PLATFORMS) {
     test(`the Arrange pane shows the size of a group, also during its resize (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
-      // the figure is selected with a click on its image, and the paragraph added with Shift
       await click(page, IMG);
       await click(page, '.reveal section.present > p', { modifiers: 'Shift' });
       await frames(page);
@@ -1401,7 +1271,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const box = await groupBoxOf(page);
       let f = await fieldsOf(page);
       assert.ok(near(f.w, box.w) && near(f.h, box.h), `the fields read ${js(f)} for a group of ${js(box)}`);
-      // the corner grip of the group is held after a move of 120 by 90 px
       const se = await page.evaluate(`(() => { const g = document.querySelector('.beeson-grip[data-group="1"][data-handle="se"]'); const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       const { drag } = await import('./helpers/editor.mjs');
       await drag(page, se, { dx: -120, dy: -90, steps: 12, hold: true });
@@ -1417,8 +1286,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // boxesOf returns the box in slide px of the text of the last item of the list of the current
-  // slide, and the boxes of the new text box and of the element after the list
   const boxesOf = (page) =>
     page.evaluate(`(() => {
     const s = Reveal.getScale();
@@ -1446,8 +1313,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
       assert.equal(b.tag, 'p');
       assert.ok(b.next.top >= b.ink.bottom + 8, `the written box at ${js(b.next)} overlaps the last line of the list at ${js(b.ink)}`);
       assert.ok(Math.abs(b.next.top - empty.top) < 1, `the box is moved from ${empty.top} to ${b.next.top} when it is written`);
-      // the box is moved with the list, by the 20 px of its translate, and it is written where its
-      // empty box was drawn, 10 px under its place in the flow after a list item
       const tag = (await render(page)).match(/<p[^>]*>Typed<\/p>/)?.[0];
       assert.equal(tag, '<p style="translate: 0px 30px">Typed</p>');
       assert.deepEqual(errors(page), []);
@@ -1464,8 +1329,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // item 6: in the trial, Insert listed ⌥⌘E at Formula and at Inline Formula, and View > Zoom listed
-  // ⌘= at Zoom In and at Bigger Notes Text. one key is listed at one item of a menu, enabled or not
   for (const platform of PLATFORMS) {
     test(`no key is listed at two items of one menu or one context menu (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
@@ -1475,10 +1338,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // R6.6's test of the tiles of the layout chooser failed once under load, with the Split tile drawn
-  // unlike on the slide before. each tile is a shadow root, into which the links of the deck were
-  // cloned, and a tile was thus shown before their sheets were loaded. a tile is drawn in the type of
-  // the theme on the frame of the command that opens its gallery
   for (const platform of PLATFORMS) {
     test(`the tiles of the layout chooser and of New Slide are styled when they are shown (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2 });
@@ -1487,7 +1346,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
         window.BeesonEditor.exec(${JSON.stringify(id)});
         return [...document.querySelectorAll('${dialog} .tile .pic')].map((p) => getComputedStyle(p.shadowRoot.querySelector('section h2, section h1')).fontFamily);
       })()`);
-        // New Slide has a tile of Title Only after the eight layouts of the chooser
         assert.equal(fonts.length, id === 'slide.gallery' ? 9 : 8, `the gallery of ${id} is not open`);
         assert.deepEqual(fonts.filter((f) => !/Latin Modern/.test(f)), [], `tiles of ${id} are drawn before the sheets of the theme`);
         await press(page, 'Escape');
@@ -1497,8 +1355,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // item 8: the New Slide gallery drew samples of its own, and the layout chooser drew sampleText of
-  // model/templates.ts. the tile of a layout is the same in both, on a slide with a backdrop too
   const tileSlides = (page, id, dialog) => page.evaluate(`(async () => {
   window.BeesonEditor.exec(${JSON.stringify(id)});
   await new Promise((r) => requestAnimationFrame(r));
@@ -1514,15 +1370,12 @@ describe('locked figure menus, code line steps, and readouts', () => {
       const gallery = await tileSlides(page, 'slide.gallery', '.beeson-edit-gallery:not(.beeson-edit-layouts)');
       await press(page, 'Escape');
       assert.equal(chooser.length, 8);
-      // New Slide has a tile of Title Only after the eight layouts of the chooser
       assert.deepEqual(gallery.map((g) => g.name), [...chooser.map((c) => c.name), 'Title Only']);
       for (const [i, c] of chooser.entries()) assert.equal(gallery[i].slide, c.slide, `the tile of ${c.layout} differs`);
       assert.deepEqual(errors(page), []);
     });
   }
 
-  // item 7: in the trial (state 177), Esc and Edit > Select Figure selected figure.figure-box, but its frame
-  // stayed on the image, above the caption of the figure. the frame of the figure holds its caption
   const FIGURE_IMG = '.reveal section.present .figure-box > img:not([hidden])';
   const frameAndCaption = (page) => page.evaluate(`(() => {
   const box = (e) => { const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
@@ -1533,7 +1386,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
   for (const platform of PLATFORMS) {
     test(`the frame of a figure selected from its image holds its caption (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test-deck.html', n: 4 });
-      // a second click on the image frames its picture alone
       await selectPicture(page, FIGURE_IMG);
       await frames(page);
       const [pic] = (await frameAndCaption(page)).frames;
@@ -1552,7 +1404,6 @@ describe('locked figure menus, code line steps, and readouts', () => {
         assert.equal(s.frames.length, 1);
         const [f] = s.frames;
         assert.ok(pic.bottom < s.caption.top, `the frame of the image at ${js(pic)} reaches the caption`);
-        // the frame of a figure with a caption stands 8 px outside it
         assert.ok(Math.abs(f.top + 8 - pic.top) <= 1 && f.bottom >= s.caption.bottom - 1 && f.left <= Math.min(pic.left, s.caption.left) + 1 && f.right >= Math.max(pic.right, s.caption.right) - 1, `after ${how} the frame at ${js(f)} leaves out the caption at ${js(s.caption)}`);
         await press(page, 'Escape');
         await frames(page);
@@ -1561,17 +1412,11 @@ describe('locked figure menus, code line steps, and readouts', () => {
     });
   }
 
-  // item 10: the readout of a move gives the upper left corner of the element in slide px, and the
-  // fields X and Y of the Arrange pane, the readout of a nudge, and the readout of a line drag gave the
-  // translate. all four give the position on the slide, and a value typed into X or Y moves the
-  // element to that position
   const positionOf = (page) => page.evaluate(`(() => { const v = (n) => document.querySelector('#beeson-edit-panel-format input[name="' + n + '"]')?.value ?? null; return { x: v('X'), y: v('Y') }; })()`);
   const readoutOf = (page) => page.evaluate(`(() => { const o = document.querySelector('.beeson-offset:not(.beeson-guide-readout)'); return o && !o.hidden ? o.textContent : null; })()`);
-  // cornerOf returns the upper left corner of the box of the selected element in slide px
   const cornerOf = (page) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
-  // the frame of the selected element, drawn 8 px outside the picture with its caption of a figure
   const f = document.querySelector('.beeson-overlay > .beeson-frame.selected:not([hidden])').getBoundingClientRect();
   return { x: Math.round((f.left + 8 - r.left) / k), y: Math.round((f.top + 8 - r.top) / k) };
 })()`);
@@ -1600,13 +1445,11 @@ describe('locked figure menus, code line steps, and readouts', () => {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: img.x - 70, y: img.y + 45, button: 'left', clickCount: 1 });
       await frames(page);
       assert.deepEqual(await positionOf(page), held, 'the fields do not give the x and y of the readout of the move');
-      // a nudge to the right
       await press(page, 'ArrowRight');
       await frames(page);
       const nudged = { x: String(Number(held.x) + 1), y: held.y };
       assert.deepEqual(xy(await readoutOf(page)), nudged, 'the readout of a nudge does not give the position');
       assert.deepEqual(await positionOf(page), nudged);
-      // a value typed into X
       const moved = await render(page);
       await click(page, '#beeson-edit-panel-format input[name="X"]');
       await page.evaluate(`document.querySelector('#beeson-edit-panel-format input[name="X"]').select()`);

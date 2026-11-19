@@ -1,7 +1,3 @@
-// a warning note of the editor is shown in full in a window too narrow for the title bar to show it
-// (#57), and every row of a menu of the editor is at least 24 px tall, the target size of WCAG 2.2
-// success criterion 2.5.8 (#82)
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -24,8 +20,6 @@ after(async () => {
 
 const js = (v) => JSON.stringify(v);
 
-// a trusted drop of the file name from the Finder onto the middle of the slide, which the editor
-// refuses with a warning note, since the file is not an image, a PDF, or a video
 async function dropRefused(page, name) {
   const path = join(dir, name);
   writeFileSync(path, 'not a picture');
@@ -35,7 +29,6 @@ async function dropRefused(page, name) {
   await page.waitFor(`window.BeesonEditor.status().message.includes(${js(name)})`);
 }
 
-// the live region that shows the whole note within the window, or null
 const shown = (page, words) => page.evaluate(`(() => {
   const el = [...document.querySelectorAll('[aria-live]')].find((e) => e.textContent.includes(${js(words)}) && e.checkVisibility());
   if (!el) return null;

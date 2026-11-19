@@ -1,9 +1,3 @@
-// the selection on the canvas, driven with trusted input: a click on the border of a block or on a
-// figure selects it, Shift and the command modifier add and remove, a marquee and Select All select
-// several elements, Esc, Return, and Tab move between the states, a drag of several elements and a
-// resize by a handle are one entry of the history each, and a press on the chrome keeps the
-// selection
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -14,17 +8,12 @@ import { serve } from '../scripts/webdriver.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// the slide of the demo deck with a paragraph and a figure in a figure box
 async function figureSlide(page) {
   await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await sleep(200);
 }
 
-// the boxes of the solid frames shown, in CSS pixels of the viewport
 const shownFrames = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden && f.getBoundingClientRect().width).map((f) => { const r = f.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })`);
-// the box of the first shown element matched by selector. a figure that holds a picture is framed at
-// the picture, i.e. at the image or video fitted into it with object-fit contain, and also at its
-// caption while the figure itself is selected
 const boxOf = (page, selector) => page.evaluate(`(() => {
   let el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width);
   const caps = el.matches('figure, .figure-box, .plate') && window.BeesonEditor.selection().includes(el) ? [...el.querySelectorAll(':scope > figcaption, :scope > .caption')].map((c) => c.getBoundingClientRect()).filter((c) => c.width) : [];
@@ -40,7 +29,6 @@ const boxOf = (page, selector) => page.evaluate(`(() => {
   const left = r.left + (r.width - w * s) * px, top = r.top + (r.height - h * s) * py;
   return out({ left, top, right: left + w * s, bottom: top + h * s });
 })()`);
-// whether frame is drawn around box, 0 to 8 px outside it
 const around = (frame, box) => ['left', 'top'].every((k) => box[k] - frame[k] >= -1 && box[k] - frame[k] <= 9) && ['right', 'bottom'].every((k) => frame[k] - box[k] >= -1 && frame[k] - box[k] <= 9);
 
 test('a click on a button of the status bar keeps the selected figure', async (t) => {
@@ -53,7 +41,6 @@ test('a click on a button of the status bar keeps the selected figure', async (t
   assert.ok((await shownFrames(page)).some((f) => around(f, figureBox)), 'the figure is not selected by a click');
   const steps = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await clickText(page, steps);
-  // the pane of the steps narrows the slide, hence the figure is measured again
   await sleep(100);
   const after = await boxOf(page, '.reveal section.present .figure-box');
   assert.ok((await shownFrames(page)).some((f) => around(f, after)), 'the selection is cleared by a click on Steps');
@@ -65,7 +52,6 @@ test('during a drag of a figure, the solid frame is on the figure and not on the
   t.after(() => browser.close());
   const page = await editorPage(browser);
   await figureSlide(page);
-  // the paragraph is selected as a block, by a click into it and Esc
   await page.evaluate(`document.querySelector('.reveal section.present p').focus()`);
   await page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
   const p = await boxOf(page, '.reveal section.present p');
@@ -81,7 +67,6 @@ test('during a drag of a figure, the solid frame is on the figure and not on the
 const P = '.reveal section.present > p';
 const FIGURE_BOX = '.reveal section.present .figure-box';
 const IMG = '.reveal section.present .figure-box > img';
-// the selectors whose element has a solid frame, among those given
 async function framed(page, selectors) {
   const frames = await shownFrames(page);
   const out = [];
@@ -92,7 +77,6 @@ async function framed(page, selectors) {
   return out;
 }
 const caretIn = (page, selector) => page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const s = getSelection(); return document.activeElement === el && !!s.rangeCount && el.contains(s.anchorNode); })()`);
-// a point in the empty margin left of the paragraph, in CSS pixels of the viewport
 const margin = async (page) => {
   const p = await boxOf(page, P);
   return { x: p.left - 60, y: p.top + 4 };
@@ -128,7 +112,6 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await framed(page, [P, FIGURE_BOX]), [P], 'a second Shift-click does not remove the figure');
     await click(page, IMG, { modifiers: 'Mod' });
     assert.deepEqual(await framed(page, [P, FIGURE_BOX]), [P, FIGURE_BOX], 'the command modifier does not add the figure');
-    // a marquee from the margin to the list touches the paragraph and the list, not the heading
     await clickText(page, await margin(page));
     assert.equal((await shownFrames(page)).length, 0, 'a click on an empty point keeps the selection');
     const ul = await boxOf(page, '.reveal section.present > ul');
@@ -180,17 +163,14 @@ test('Return enters the text of a selected block, Tab walks the elements, and a 
   assert.deepEqual(page.errors, []);
 });
 
-// the translate of the elements, in slide pixels, as written in their style
 const translates = (page, selectors) => page.evaluate(`${JSON.stringify(selectors)}.map((s) => [...document.querySelectorAll(s)].find((el) => el.getBoundingClientRect().width).style.translate)`);
 
 test('a drag of two elements writes two translate declarations, undone as one entry', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  // Alt is the free modifier of a drag on Windows and Linux, and the copy modifier on a Mac
   const page = await editorPage(browser, { query: 'edit&still&edit-platform=other' });
   await figureSlide(page);
   const p = await boxOf(page, P);
-  // the figure, selected apart from its image, and the paragraph added by its band
   await selectFigure(page, IMG);
   await click(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 }, { modifiers: 'Shift' });
   await drag(page, IMG, { dx: -30, dy: 40, modifiers: 'Alt' });
@@ -235,7 +215,6 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 800 }]
     const browser = await launch();
     t.after(() => browser.close());
     const page = await layouts(browser, { page: size });
-    // the closing slide, whose QR code theme/beeson.css places in the lower right corner
     await page.evaluate('Reveal.slide(15)');
     await sleep(200);
     await clickText(page, QR);
@@ -243,7 +222,6 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 800 }]
     await drag(page, '.beeson-grip[data-handle="w"]', { dx: -40, modifiers: 'Meta' });
     const [style, box] = [await page.evaluate(`document.querySelector(${JSON.stringify(QR)}).getAttribute('style')`), await boxOf(page, QR)];
     assert.match(style ?? '', /width: \d+px/, 'the width is not written');
-    // the code is placed from the right and the bottom, hence its middle is kept by a translate down
     assert.match(style ?? '', /translate: 0px [1-9]\d*px/, 'the translate is not written');
     assert.ok(Math.abs(box.right - before.right) < 2, 'the right edge does not stay');
     assert.ok(box.left < before.left - 30, 'the left edge does not follow the handle');
@@ -262,8 +240,6 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 800 }]
       const scale = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
       const p = await boxOf(page, P);
       const left = (await page.evaluate(`document.querySelector(${JSON.stringify(P)}).offsetLeft`));
-      // the left edge is dragged to 3 slide px right of the guide at 1200, by the frame above the
-      // grip e of the selected paragraph
       const dx = (1203 - left) * scale;
       const at = { x: p.right + 3, y: p.top + (p.bottom - p.top) / 5 };
       await drag(page, at, { dx });
@@ -288,13 +264,8 @@ test('the width of a resized QR code is written into the file', async (t) => {
   assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes(`width: ${width}`));
 });
 
-// regression tests of R17.5 on both platforms. a group selected with other objects keeps the grips
-// of its frame, which resize it as they do with the group alone (N24). a Shift-click on a figure
-// while the caret is in a text selects the block of the caret with the figure (N26). every grip of
-// a turned figure at the edge of the slide can be pressed at the Fit zoom (requirement 1a, N1)
 describe('grips of a group selected with others', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const PLATFORMS = ['mac', 'other'];
@@ -345,10 +316,8 @@ describe('grips of a group selected with others', () => {
     return page;
   }
 
-  // a point inside the first line of a block of the current slide, in CSS px
   const blockAt = (page, selector) => page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left + 20, y: r.top + 20 }; })()`);
 
-  // the shown grips, each with its handle, whether it is a grip of a group, and its center in CSS px
   const grips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-grip')].filter((g) => !g.hidden && g.getClientRects().length).map((g) => { const r = g.getBoundingClientRect(); return { handle: g.dataset.handle, group: !!g.dataset.group, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })`);
 
   async function groupOnFigures(page, platform) {
@@ -358,7 +327,6 @@ describe('grips of a group selected with others', () => {
     await frames(page);
   }
 
-  // a drag of the grip g by dx, dy in CSS px in eight steps, released
   async function dragGrip(page, g, dx, dy) {
     await mouse(page, 'mouseMoved', g.x, g.y);
     await mouse(page, 'mousePressed', g.x, g.y, { button: 'left', buttons: 1, clickCount: 1 });
@@ -369,8 +337,6 @@ describe('grips of a group selected with others', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // N24: the group of the figure and the paragraph, Shift-clicked with the heading, was drawn as a
-    // frame without grips, while the heading kept its own
     test(`a group selected with another object keeps the eight grips of its frame (${platform})`, async (t) => {
       const page = await load(t, platform);
       await groupOnFigures(page, platform);
@@ -420,7 +386,6 @@ describe('grips of a group selected with others', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N26: with the caret in the heading, a Shift-click on the figure selected the figure alone
     for (const modifiers of ['Shift', 'Mod']) {
       test(`a ${modifiers}-click on a figure with the caret in a text selects the block of the caret with the figure (${platform})`, async (t) => {
         const page = await load(t, platform);
@@ -446,8 +411,6 @@ describe('grips of a group selected with others', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // requirement 1a and N1: at 30 degrees the grip ne of the figure was drawn under the inspector,
-    // past the edge of the canvas, which did not scroll at Fit
     test(`every grip of a figure turned by 30 degrees can be pressed at the Fit zoom (${platform})`, async (t) => {
       const page = await load(t, platform);
       const slideBox = () => page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return [r.left, r.top, r.width]; })()`);
@@ -460,8 +423,6 @@ describe('grips of a group selected with others', () => {
       assert.equal(first.length, 8);
       const covered = await page.evaluate(`(() => { const v = window.BeesonEditorShell.stage.viewport; return ${js(first)}.filter((g) => g.x > v.right || g.x < v.left || g.y > v.bottom || g.y < v.top).map((g) => g.handle); })()`);
       assert.ok(covered.length > 0, 'every grip lies inside the canvas, hence the case of N1 is not set up');
-      // each grip is brought into the canvas by a scroll of the canvas, as a trackpad scrolls it,
-      // and must then be the element under its center
       for (const handle of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
         await page.evaluate(`(() => {
         const el = window.BeesonEditorShell.stage.el;
@@ -481,14 +442,12 @@ describe('grips of a group selected with others', () => {
       })()`);
         assert.ok(hit.top, `the grip ${handle} at ${js(hit)} cannot be pressed`);
       }
-      // a drag of the grip ne, which was under the inspector, resizes the figure
       const ne = (await grips(page)).find((g) => g.handle === 'ne');
       const last = await render(page);
       await dragGrip(page, ne, -30, 20);
       assert.notEqual(await render(page), last, 'the grip ne did not resize the figure');
       await undo(page);
       assert.equal(await render(page), last);
-      // with the selection cleared, the room is taken off and the slide is drawn at Fit again
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection()'), []);
@@ -499,10 +458,6 @@ describe('grips of a group selected with others', () => {
   }
 });
 
-// regression tests of #184 with trusted input. the cursor over a text element is the move cursor
-// wherever a press selects or drags it as a box, and the I-beam only where a press puts the caret,
-// also right after a click under a pointer that is not moved. the handle of a table at the right
-// of a list stays at the table while the pointer crosses the list on its way to the handle
 describe('the move cursor and the I-beam', () => {
   const DECK = 'test/pages/editor-184.html';
 
@@ -536,15 +491,12 @@ describe('the move cursor and the I-beam', () => {
 
   const move = (page, { x, y }) => page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
   const cursorAt = (page, { x, y }) => page.evaluate(`getComputedStyle(document.elementFromPoint(${x}, ${y})).cursor`);
-  // the cursor at the point p after a click there, read without a pointer move
   async function clicked(page, p) {
     await click(page, p);
     await settle(page);
     return cursorAt(page, p);
   }
-  // a point in the words of the first element of the current slide matched by selector
   const words = (page, selector) => center(page, `.reveal section.present ${selector}`);
-  // a click on an empty point of the slide, which takes the caret out and clears the selection
   async function clear(page) {
     await click(page, await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().getBoundingClientRect(); return { x: r.right - 30, y: r.bottom - 30 }; })()`));
     await settle(page);
@@ -605,10 +557,8 @@ describe('the move cursor and the I-beam', () => {
     assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
   });
 
-  // the center of the handle, or null where the handle is hidden
   const handle = (page) => page.evaluate(`(() => { const h = document.querySelector('.beeson-overlay .beeson-handle'); if (h.hidden) return null; const r = h.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
 
-  // the pointer moved in steps from a cell of the table to the handle, with the handle read at each step
   async function toHandle(page) {
     const from = await words(page, 'td');
     await move(page, from);
@@ -634,12 +584,10 @@ describe('the move cursor and the I-beam', () => {
     assert.ok(ul.right > table, 'the list does not reach under the left of the table');
     const to = await toHandle(page);
     assert.ok(to.x > ul.left + 30, 'the handle is not over the list');
-    // a few pixels left of the handle, the list under the pointer is hovered
     await move(page, { x: to.x - 25, y: to.y });
     await settle(page);
     assert.notDeepEqual(await handle(page), to, 'the list left of the handle is not hovered');
 
-    // the same with the caret in a cell of the table
     await click(page, await words(page, 'td'));
     await settle(page);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('td')`), true, 'the cell does not take the caret');
@@ -648,13 +596,8 @@ describe('the move cursor and the I-beam', () => {
   });
 });
 
-// regression tests of R45, two defects found by the last review of the editor. on a Mac, a press
-// with Ctrl is a secondary click, which opens the context menu and does not move the element under
-// it at a slip of the pointer. an undo asked for while a change is still made, e.g. while a dropped
-// picture is sized, takes this change, and not the entry before it
 describe('a Ctrl press on a Mac, undo mid-drop', () => {
   const DECK = 'test/pages/editor-r8-5.html';
-  // the slide of the deck with one image in a figure box
   const FIGURE_BOX_ONE = 1;
   const IMG = '.reveal section.present img';
 
@@ -695,7 +638,6 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
     const page = await load(t, 'mac');
     const source = await render(page);
     const label = await undoLabel(page);
-    // the slip is away from the menu, which Chrome on a Mac opens at the press, to the lower right
     await drag(page, IMG, { dx: -6, dy: -4, steps: 3, modifiers: 'Ctrl' });
     await frames(page);
     await press(page, 'Escape');
@@ -713,7 +655,6 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
     await frames(page);
     const locked = await render(page);
     assert.match(locked, /data-locked/);
-    // an undo at the first turn in which the picture is in the text of the deck
     await page.evaluate(`(() => {
     window.__undone = new Promise((done) => {
       const look = () => (window.BeesonEditor.render().includes('media/clip-dark.png') ? done(Promise.resolve(window.BeesonEditor.undo()).then(() => true)) : setTimeout(look, 0));
@@ -735,9 +676,6 @@ describe('a Ctrl press on a Mac, undo mid-drop', () => {
   });
 });
 
-// the frames of the selection of #184. a selected element, a selected group, the text element of
-// the caret, and an entered group are framed with a white line in a dark halo, which is seen on dark
-// and light slides, and the grips are white in a gray ring. the hover frame is a faint solid line
 describe('frames of the selection on dark and light', () => {
   const DECK = 'test/pages/editor-184-frames.html';
 
@@ -765,7 +703,6 @@ describe('frames of the selection on dark and light', () => {
     await settle(page);
   }
 
-  // the look of each shown part of the overlay matched by selector
   const looks = (page, selector) => page.evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].filter((d) => !d.hidden && d.getClientRects().length).map((d) => {
   const s = getComputedStyle(d);
   return { width: s.borderTopWidth, style: s.borderTopStyle, color: s.borderTopColor, shadow: s.boxShadow, opacity: s.opacity, background: s.backgroundColor, size: d.getBoundingClientRect().width };
@@ -813,7 +750,6 @@ describe('frames of the selection on dark and light', () => {
       await pick(page, '.shape.m1');
       assertWhite(await looks(page, '.beeson-overlay .beeson-frame.union'), 'a group');
       await pick(page, '.shape.m1');
-      // the white dashes of an entered group are drawn over a dark band, which shows between them
       const entered = await page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-frame.entered')].filter((d) => !d.hidden).map((d) => { const s = getComputedStyle(d); return [s.borderTopWidth, s.borderTopColor, s.outlineStyle, s.outlineWidth, s.outlineColor, s.outlineOffset, s.opacity]; })`);
       assert.deepEqual(entered, [['3px', HALO, 'dashed', '1px', WHITE, '-2px', '1']], 'the frame of an entered group');
       assertWhite(await looks(page, '.beeson-overlay .beeson-frame.selected'), 'a member of an entered group');
@@ -844,13 +780,11 @@ describe('frames of the selection on dark and light', () => {
     assert.equal(hover[0].width, '1px', 'the width of the hover frame');
     assert.equal(hover[0].opacity, '0.3', 'the opacity of the hover frame');
 
-    // the hover outline of a text is a faint solid line as well
     await move(page, await at(page, 'p.held'));
     await settle(page);
     const hovered = await page.evaluate(`getComputedStyle(document.querySelector('.reveal section.present p.held')).outlineStyle`);
     assert.equal(hovered, 'solid', 'the hover outline of a text');
 
-    // the handle is highlighted in the color of the text of the editor
     await clear(page);
     await move(page, await at(page, 'p.plain'));
     await settle(page);
@@ -862,8 +796,6 @@ describe('frames of the selection on dark and light', () => {
     assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
   });
 
-  // the padlocks of the selection, each with its label, its place, whether it is drawn closed, and
-  // its center
   const padlocks = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-lock')].filter((d) => !d.hidden).map((d) => {
   const r = d.getBoundingClientRect(), s = getComputedStyle(d);
   return { label: d.getAttribute('aria-label'), title: d.title, left: r.left, top: r.top, width: r.width, closed: s.backgroundColor === s.borderTopColor || s.backgroundColor === getComputedStyle(document.querySelector('.beeson-overlay .beeson-handle')).color, x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -884,7 +816,6 @@ describe('frames of the selection on dark and light', () => {
     assert.equal(locks[0].title, 'Lock');
     assert.equal(locks[0].closed, false, 'the padlock of an element that is not locked is drawn closed');
     assert.equal(Math.round(locks[0].width), 22, 'the size of the padlock');
-    // in the column of the handle, a row under it
     const p = await box(page, 'p.plain');
     assert.ok(Math.abs(locks[0].left - (p.left - 6 - 10 - 22)) <= 1, `the padlock is not in the column of the handle: ${locks[0].left} for a paragraph at ${p.left}`);
     assert.ok(Math.abs(locks[0].top - (p.top - 6 + 23)) <= 1, `the padlock is not a row under the handle: ${locks[0].top} for a paragraph at ${p.top}`);
@@ -912,7 +843,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // the keys press the padlock as they press the handle
     await clear(page);
     await pick(page, 'p.plain');
     await page.evaluate(`document.querySelector('.beeson-overlay .beeson-lock:not([hidden])').focus()`);
@@ -927,7 +857,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // the text element with the caret has a padlock as well
     await clear(page);
     await pick(page, 'p.plain');
     await pick(page, 'p.plain');
@@ -963,7 +892,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // the padlocks are hidden in a drag
     await clear(page);
     await pick(page, '.shape.loose');
     assert.equal((await padlocks(page)).length, 1);
@@ -987,7 +915,6 @@ describe('frames of the selection on dark and light', () => {
     await tap(await at(page, '.shape.loose'));
     await page.waitFor(`window.BeesonEditor.selection().some((el) => el.matches('.shape.loose'))`);
     await page.waitFor(`[...document.querySelectorAll('.beeson-overlay .beeson-lock')].some((d) => !d.hidden)`);
-    // a second tap within the time of a double tap would be a double tap
     await page.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
     await tap((await padlocks(page))[0]);
     await page.waitFor(`document.querySelector('.reveal section.present .shape.loose').hasAttribute('data-locked')`);
@@ -995,8 +922,6 @@ describe('frames of the selection on dark and light', () => {
     assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
   });
 
-  // the group button of the selection, with its label, whether it is drawn filled, its place, and its
-  // center, or null where it is not drawn
   const grouping = (page) => page.evaluate(`(() => {
   const d = [...document.querySelectorAll('.beeson-overlay .beeson-grouping')].find((d) => !d.hidden);
   if (!d) return null;
@@ -1030,7 +955,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // two elements
     await clear(page);
     await pick(page, 'p.plain');
     await pick(page, '.shape.loose', 'Shift');
@@ -1046,12 +970,10 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // two groups
     await clear(page);
     await pick(page, '.shape.m1');
     await pick(page, 'p.pair', 'Shift');
     assert.equal((await grouping(page))?.label, 'Group', 'two groups are not offered Group');
-    // one element by itself has no group button
     await clear(page);
     await pick(page, 'p.plain');
     assert.equal(await grouping(page), null, 'one element has a group button');
@@ -1075,7 +997,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // a member taken out of its entered group stays selected, outside the group
     await clear(page);
     await pick(page, '.shape.m1');
     await pick(page, '.shape.m1');
@@ -1090,7 +1011,6 @@ describe('frames of the selection on dark and light', () => {
     await undo(page);
     await byteExact(page);
 
-    // a group left with one member is dissolved, in the same entry
     await clear(page);
     await pick(page, 'p.pair');
     await pick(page, 'p.pair');
@@ -1119,7 +1039,6 @@ describe('frames of the selection on dark and light', () => {
       await undo(page);
       await byteExact(page);
 
-      // a group of three left with two members is kept
       await clear(page);
       await pick(page, '.shape.m1');
       await pick(page, '.shape.m1');
@@ -1133,10 +1052,6 @@ describe('frames of the selection on dark and light', () => {
   }
 });
 
-// the work of R20.7 on both platforms: nested groups, a selection inside a group, Select All with
-// the lines of a slide, Regroup, the Object List as a tree of groups, the turns by 90 degrees, and
-// the arrange items of the context menu with the bracket keys of Windows. each edit of the file is
-// checked byte for byte, after an undo and a redo, and after a save and an open
 describe('nested groups, Regroup, and the group tree', () => {
   const DECK = 'test/pages/editor-r20-7.html';
   const SOURCE = readFileSync(DECK, 'utf8');
@@ -1154,7 +1069,6 @@ describe('nested groups, Regroup, and the group tree', () => {
   const FIG_A = '<figure class="figure-box" data-group="g1">';
   const FIG_B = '<figure class="figure-box" data-group="g1" style="translate: -300px 100px">';
   const PARA = '<p>A paragraph beside the figures</p>';
-  // the first slide with the figures A and B in g1 inside g2, and the paragraph in g2
   const NESTED = SOURCE.replace(FIG_A, '<figure class="figure-box" data-group="g2 g1">')
     .replace(FIG_B, '<figure class="figure-box" data-group="g2 g1" style="translate: -300px 100px">')
     .replace(PARA, '<p data-group="g2">A paragraph beside the figures</p>');
@@ -1180,9 +1094,7 @@ describe('nested groups, Regroup, and the group tree', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
-  // the selected elements, each as its tag with the alt text of its image, sorted
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + (el.querySelector('img') ? ':' + el.querySelector('img').alt : '')).sort()`);
-  // the upper left corner in slide px of the element of selector
   const boxOf = (page, selector) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides').getBoundingClientRect(), k = s.width / 1920;
   const r = document.querySelector(${js(selector)}).getBoundingClientRect();
@@ -1207,8 +1119,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     return page;
   }
 
-  // text opened again in the editor of page at slide n, e.g. the source after a save and an open,
-  // after which the history is empty
   async function reopen(page, text, n) {
     const s = await page.evaluate(`window.BeesonEditor.open(${js(text)})`);
     assert.deepEqual(s.problems, []);
@@ -1217,8 +1127,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     await frames(page);
   }
 
-  // the text is changed from before by an entry named label, one undo gives before and one redo
-  // the edit byte for byte, and the saved text is opened again as it was
   async function checkEdit(page, label, before, name) {
     const edited = await render(page);
     assert.notEqual(edited, before, `${label} did not change the text`);
@@ -1232,14 +1140,11 @@ describe('nested groups, Regroup, and the group tree', () => {
     return edited;
   }
 
-  // a click with Shift on the paragraph of the current slide
   async function shiftParagraph(page) {
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
     await click(page, p, { modifiers: 'Shift' });
   }
 
-  // the figures A and B in g1 inside g2 with the paragraph, made by Group as in NESTED, with the
-  // rendered text as the source of the page
   async function nest(page, platform) {
     await clickText(page, A);
     await shiftParagraph(page);
@@ -1250,7 +1155,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     await empty(page);
   }
 
-  // the three figures of the first slide made one group without nesting
   async function three(page, platform) {
     await clickText(page, A);
     await press(page, UNGROUP_KEY[platform]);
@@ -1265,8 +1169,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     await empty(page);
   }
 
-  // a copy event and a paste event of what it put on a clipboard of the page, as the browser sends
-  // them for the keys of the system, since the clipboard of the system is shared with the other tests
   const copyPaste = (page) =>
     page.evaluate(`(() => {
     const data = new DataTransfer();
@@ -1277,14 +1179,11 @@ describe('nested groups, Regroup, and the group tree', () => {
     at().dispatchEvent(new ClipboardEvent('paste', { clipboardData: back, bubbles: true, cancelable: true }));
   })()`);
 
-  // a click at the lower left of the slide, where nothing is drawn
   async function empty(page) {
     const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().getBoundingClientRect(); return { x: r.left + 30, y: r.bottom - 30 }; })()`);
     await clickText(page, at);
   }
 
-  // Ctrl with ] or [, and Shift with shift, as Chrome sends the key on a US layout. press() of the
-  // helpers does not know the brackets
   async function bracket(page, right, shift) {
     const key = right ? (shift ? '}' : ']') : shift ? '{' : '[';
     const base = { key, code: right ? 'BracketRight' : 'BracketLeft', windowsVirtualKeyCode: right ? 221 : 219, modifiers: 2 | (shift ? 8 : 0) };
@@ -1299,9 +1198,7 @@ describe('nested groups, Regroup, and the group tree', () => {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
     await sleep(350);
   }
-  // the rows of the Object List as their level and kind, e.g. '2 Group'
   const rows = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.getAttribute('aria-level') + ' ' + r.querySelector('.name').textContent.split(':')[0])`);
-  // the values of data-group in the text that are not on the originals of NESTED, in their order
   const copiedLists = async (page) => (await render(page)).match(/data-group="[^"]*"/g).filter((v) => v !== 'data-group="g2"' && v !== 'data-group="g2 g1"');
 
   for (const platform of PLATFORMS) {
@@ -1397,7 +1294,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       await undo(page);
       assert.equal(await render(page), before);
 
-      // an undo keeps the member selected, and a click on it would select its picture
       assert.deepEqual(await selected(page), ['figure:A first figure']);
       await press(page, platform === 'mac' ? 'Mod+Shift+F' : 'Mod+Shift+ArrowUp');
       await frames(page);
@@ -1413,7 +1309,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       await frames(page);
       const deleted = await render(page);
       assert.doesNotMatch(deleted, /A first figure/);
-      // g1 is left with one member, and its name is taken off this member in the same entry
       assert.match(deleted, /<figure class="figure-box" data-group="g2" style="translate: -300px 100px">/);
       assert.match(deleted, /A third figure/);
       await undo(page);
@@ -1434,7 +1329,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       const a = await boxOf(page, A), b = await boxOf(page, B);
       assert.ok(near(a.top, a0.top) && near(b.top, a0.top), `A and B are not at the top of their union: ${js({ a0, b0, a, b })}`);
       assert.ok(near(a.left, a0.left) && near(b.left, b0.left));
-      // a Shift-click on a selected member takes it off alone, and a click outside leaves the group
       await click(page, B, { modifiers: 'Shift' });
       assert.deepEqual(await selected(page), ['figure:A first figure']);
       await clickText(page, C);
@@ -1488,8 +1382,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     test(`Duplicate, Paste, and a copy by a drag give a nested group fresh names at every level (${platform})`, async (t) => {
       const page = await load(t, platform);
       await nest(page, platform);
-      // the copies of the paragraph, A, and B, in this order: one outer name on all three, and one
-      // inner name on A and B, each new
       const check = (lists, what) => {
         assert.equal(lists.length, 3, `${what}: ${lists}`);
         const [p, a, b] = lists.map((l) => l.slice(12, -1).split(' '));
@@ -1505,7 +1397,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       check(await copiedLists(page), 'Duplicate');
       await undo(page);
       assert.equal(await render(page), NESTED);
-      // the undo selects the group again, and a click on it would enter it
       await empty(page);
       await clickText(page, A);
       await copyPaste(page);
@@ -1535,8 +1426,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       await clickText(page, `${ROW}:nth-child(${inner + 1}) .twist`);
       assert.equal((await rows(page)).filter((r) => r.startsWith('3 ')).length, 0, 'the folded group shows its members');
       assert.equal(await render(page), NESTED);
-      // the folded inner group is dragged as one row behind the paragraph, and its members keep their
-      // order and their lists
       const box = (i) => page.evaluate(`(() => { const b = document.querySelectorAll(${js(ROW)})[${i}].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, bottom: b.bottom }; })()`);
       const folded = await rows(page);
       const from = await box(folded.indexOf('2 Group')), under = await box(folded.indexOf('2 Text'));
@@ -1581,7 +1470,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.ok(at('Bring to Front') < at('Bring Forward') && at('Bring Forward') < at('Send Backward') && at('Send Backward') < at('Send to Back'), labels.join(', '));
       at('Rotate Left 90°');
       at('Rotate Right 90°');
-      // on one figure, none of Group, Ungroup, and Regroup can run, hence their submenu is dimmed
       const dimmed = (label) => page.evaluate(`[...document.querySelector('.beeson-edit-menu').querySelectorAll('.item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)})?.getAttribute('aria-disabled')`);
       assert.equal(await dimmed('Group'), 'true', 'the submenu Group is offered on one figure');
       await page.evaluate('window.BeesonEditorShell.closeMenus()');
@@ -1593,7 +1481,6 @@ describe('nested groups, Regroup, and the group tree', () => {
       assert.deepEqual(await menuRows(page, 1), ['Group', 'Ungroup', 'Regroup']);
       await hover(page, 'Align');
       assert.deepEqual((await menuRows(page, 1)).slice(0, 6), ['Align Left', 'Align Center', 'Align Right', 'Align Top', 'Align Middle', 'Align Bottom']);
-      // two figures are not distributed, hence the submenu opens once a third element is selected
       assert.equal(await dimmed('Distribute'), 'true', 'the submenu Distribute is offered on two figures');
       await page.evaluate('window.BeesonEditorShell.closeMenus()');
       await click(page, 'section.present > h2', { modifiers: 'Shift' });
@@ -1632,11 +1519,6 @@ describe('nested groups, Regroup, and the group tree', () => {
   });
 });
 
-// regression tests of R21.3 on both platforms with trusted input. a group that holds a line is
-// turned as one entry, and the tab keeps answering (V11, V19). Regroup of an inner group gives back
-// the lists that Ungroup took (V12). a layer command does not put an element under a backdrop
-// (V20). a copy of a selection inside an entered group is one group (V13), and a change of the
-// kind of a turned line keeps its ends on the slide (V6)
 describe('turns, Regroup, and layers of inner groups', () => {
   const DECK = 'test/pages/editor-r21-3.html';
   const SOURCE = readFileSync(DECK, 'utf8');
@@ -1667,18 +1549,14 @@ describe('turns, Regroup, and layers of inner groups', () => {
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const sel = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + '[' + (e.getAttribute('data-group') ?? '') + ']')`);
-  // the classes of the selected elements in the file, without those of the editor
   const classes = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => [...e.classList].filter((c) => !c.startsWith('beeson-')).join(' ')).join()`);
 
-  // the promise p, or a failure once ms pass, so that a frozen tab fails its test and does not hang
-  // the run
   function bounded(p, what, ms = 8000) {
     let timer;
     const late = new Promise((_, fail) => (timer = setTimeout(() => fail(new Error(`${what} did not answer within ${ms} ms`)), ms)));
     return Promise.race([p, late]).finally(() => clearTimeout(timer));
   }
 
-  // the deck opened with the editor at slide n
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1695,12 +1573,9 @@ describe('turns, Regroup, and layers of inner groups', () => {
     return page;
   }
 
-  // the point at the fractions u and v of the box of the element of selector on the current slide
   const at = (page, selector, u = 0.5, v = 0.5) =>
     page.evaluate(`(() => { const r = document.querySelector(${js(`${S} ${selector}`)}).getBoundingClientRect(); return { x: r.left + ${u} * r.width, y: r.top + ${v} * r.height }; })()`);
 
-  // the turn of run, each step bounded, after which the tab answers, the line is turned, and one undo
-  // gives the text before
   async function turnsOnce(page, what, run) {
     const before = await render(page);
     await bounded(run(), what);
@@ -1717,7 +1592,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
     await bounded(frames(page), `a frame after the undo of ${what}`);
   }
 
-  // a drag of the shown rotate handle by deg degrees about the center of the frame of the selection
   async function dragRotor(page, deg) {
     const o = await page.evaluate(`(() => {
     const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -1737,7 +1611,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
     await mouse(page, 'mouseReleased', to.x, to.y, { button: 'left', buttons: 0, clickCount: 1 });
   }
 
-  // value typed into the field id of the Arrange pane
   async function typeField(page, id, value) {
     await page.evaluate(`[...document.querySelectorAll('#beeson-edit-panel-format .ed-tabs button')].find((b) => b.textContent === 'Arrange')?.click()`);
     await frames(page);
@@ -1771,7 +1644,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // the lists of the four shapes of the slide of three levels
     const lists = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('.shape')].map((e) => e.getAttribute('data-group'))`);
     for (const [clicks, way] of [[2, 'exec'], [2, 'key'], [3, 'exec']]) {
       test(`V12: Regroup by ${way} after Ungroup of the group selected by ${clicks} clicks gives back the lists byte for byte (${platform})`, async (t) => {
@@ -1801,7 +1673,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
     test(`V20: Send to Back puts a shape just over the backdrop, where a click selects it (${platform})`, async (t) => {
       const page = await load(t, platform, BACKDROP);
       const late = '.shape.rounded';
-      // the right of the shape, which the blue shape does not cover
       const alone = await at(page, late, 0.85, 0.5);
       await click(page, alone);
       assert.equal(await classes(page), 'shape rounded tone-accent');
@@ -1810,7 +1681,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
       await frames(page);
       const edited = await render(page);
       assert.doesNotMatch(edited, /z-index: -/);
-      // the shape is drawn under the blue shape and over the backdrop
       const hit = (p) => page.evaluate(`document.elementFromPoint(${p.x}, ${p.y})?.closest('.shape, .backdrop')?.classList.value.replace(/ beeson-[\\w-]+/g, '') ?? null`);
       assert.equal(await hit(alone), 'shape rounded tone-accent');
       assert.equal(await hit(await at(page, late, 0.1, 0.5)), 'shape tone-blue');
@@ -1839,7 +1709,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
       assert.equal(await render(page), SOURCE);
     });
 
-    // the lists of the shapes of the slide of the entered group, each copy after its original
     const copied = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll(':scope > .shape')].map((e) => e.getAttribute('data-group'))`);
     for (const how of ['Duplicate', 'Copy and Paste', 'a copy by a drag']) {
       test(`V13: ${how} of an inner group inside an entered group is one group that one Ungroup takes apart (${platform})`, async (t) => {
@@ -1885,7 +1754,6 @@ describe('turns, Regroup, and layers of inner groups', () => {
       assert.deepEqual(await sel(page), ['svg[]']);
       await exec(page, 'arrange.setRotation', { deg: 30 });
       await frames(page);
-      // the ends of the stroke of the selected line on the screen
       const ends = () => page.evaluate(`(() => {
       const s = window.BeesonEditor.selection()[0].querySelector(':scope > line, :scope > path'), m = s.getScreenCTM();
       return [s.getPointAtLength(0), s.getPointAtLength(s.getTotalLength())].map((p) => new DOMPoint(p.x, p.y).matrixTransform(m)).map((p) => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
