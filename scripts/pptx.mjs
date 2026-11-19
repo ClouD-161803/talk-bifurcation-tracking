@@ -112,20 +112,31 @@ function timing(videos, clicks) {
   let id = 3;
   const next = () => ++id;
   const inner = next();
-  const start = videos.map((video, n) => {
-    const node = n === 0 ? 'afterEffect' : 'withEffect';
-    return `<p:par><p:cTn id="${next()}" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" nodeType="${node}">`
-      + '<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:cmd type="call" cmd="playFrom(0.0)"><p:cBhvr>'
-      + `<p:cTn id="${next()}" dur="${Math.max(1, Math.round(video.duration))}" fill="hold"/>`
-      + `<p:tgtEl><p:spTgt spid="${video.shape}"/></p:tgtEl></p:cBhvr></p:cmd></p:childTnLst></p:cTn></p:par>`;
-  }).join('');
+  const ms = (duration) => Math.max(1, Math.round(duration));
+  const play = (video, node, delay = 0, from = 0) => `<p:par><p:cTn id="${next()}" presetID="1" presetClass="mediacall" presetSubtype="0" fill="hold" nodeType="${node}">`
+    + `<p:stCondLst><p:cond delay="${delay}"/></p:stCondLst><p:childTnLst><p:cmd type="call" cmd="playFrom(${from ? from.toFixed(3) : '0.0'})"><p:cBhvr>`
+    + `<p:cTn id="${next()}" dur="${ms(video.duration)}" fill="hold"/>`
+    + `<p:tgtEl><p:spTgt spid="${video.shape}"/></p:tgtEl></p:cBhvr></p:cmd></p:childTnLst></p:cTn></p:par>`;
+  const hidden = (shape, node, delay = 0) => `<p:par><p:cTn id="${next()}" presetID="1" presetClass="exit" presetSubtype="0" fill="hold" nodeType="${node}">`
+    + `<p:stCondLst><p:cond delay="${delay}"/></p:stCondLst><p:childTnLst><p:set><p:cBhvr>`
+    + `<p:cTn id="${next()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>`
+    + `<p:tgtEl><p:spTgt spid="${shape}"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>`
+    + '<p:to><p:strVal val="hidden"/></p:to></p:set></p:childTnLst></p:cTn></p:par>';
+  // a video with after lies under the video before it, which is hidden once it has played. Keynote
+  // drops an Appear effect on a video, and it ignores the delay of a group. It reads the delay of an
+  // effect from the effect before it, and PowerPoint from the group. The hiding is hence the first
+  // effect with a delay, at the same time in both, and the video under it is started with it in
+  // Keynote and with the group in PowerPoint, from as far before its start as the delay, so it
+  // shows its first frame then in both. Keynote does not start a video from a time. A second change
+  // on a slide comes late in Keynote, by the delay of the first
+  const plays = videos.map((video, n) => (video.after ? '' : play(video, n === 0 ? 'afterEffect' : 'withEffect'))).join('');
+  const changes = videos.map((video, n) => ({ video, before: videos[n - 1], delay: video.after ? ms(videos[n - 1].duration) : 0 }))
+    .filter(({ video }) => video.after).sort((a, b) => a.delay - b.delay)
+    .map(({ video, before, delay }) => hidden(before.shape, 'withEffect', delay)
+      + play(video, 'withEffect', 0, (Math.ceil(delay / video.duration) * video.duration - delay) / 1000)).join('');
   const steps = clicks.map(({ show, hide }) => {
     const [outer, middle, effect, set] = [next(), next(), next(), next()];
-    const exit = hide === undefined ? '' : `<p:par><p:cTn id="${next()}" presetID="1" presetClass="exit" presetSubtype="0" fill="hold" nodeType="withEffect">`
-      + '<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst><p:set><p:cBhvr>'
-      + `<p:cTn id="${next()}" dur="1" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst></p:cTn>`
-      + `<p:tgtEl><p:spTgt spid="${hide}"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr>`
-      + '<p:to><p:strVal val="hidden"/></p:to></p:set></p:childTnLst></p:cTn></p:par>';
+    const exit = hide === undefined ? '' : hidden(hide, 'withEffect');
     return `<p:par><p:cTn id="${outer}" fill="hold"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst>`
       + `<p:par><p:cTn id="${middle}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>`
       + `<p:par><p:cTn id="${effect}" presetID="1" presetClass="entr" presetSubtype="0" fill="hold" nodeType="clickEffect">`
@@ -142,10 +153,20 @@ function timing(videos, clicks) {
   return '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst>'
     + '<p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>'
     + '<p:par><p:cTn id="3" fill="hold"><p:stCondLst><p:cond delay="indefinite"/><p:cond evt="onBegin" delay="0"><p:tn val="2"/></p:cond></p:stCondLst>'
-    + `<p:childTnLst><p:par><p:cTn id="${inner}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${start}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>${steps}`
+    + `<p:childTnLst><p:par><p:cTn id="${inner}" fill="hold"><p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>${plays}${changes}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>${steps}`
     + '</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
     + '<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq>'
     + `${media}</p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
+}
+
+// the videos in the order of their shapes, each one with after under the one before it
+function under(videos) {
+  const order = [];
+  for (const video of videos) {
+    if (video.after) order.splice(order.length - 1, 0, video);
+    else order.push(video);
+  }
+  return order;
 }
 
 // the videos are above the steps, hence a step shown on a click does not cover them. a recording is
@@ -160,7 +181,7 @@ function slideXml(slide, imageRels, videos, recording, topRels) {
   const media = recording ? [recording, ...videos] : videos;
   return `${HEADER}<p:sld ${NAMESPACES}><p:cSld><p:spTree>${GROUP}${steps}`
     + `${recording ? videoPicture(recording, recording.shape, recording.rels, 'Recording') : ''}${tops}`
-    + `${videos.map((video) => videoPicture(video, video.shape, video.rels)).join('')}</p:spTree></p:cSld>`
+    + `${under(videos).map((video) => videoPicture(video, video.shape, video.rels)).join('')}</p:spTree></p:cSld>`
     + `<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${media.length ? timing(media, clicks) : ''}</p:sld>`;
 }
 
@@ -208,8 +229,10 @@ export function zip(parts) {
  * Each slide has a name, used as the alternative text, images, the PNGs of the whole slide of which
  * each one after the first is shown on a click, and notes, a list of paragraphs. Each of its videos
  * has a path to an MP4 file or its data, a Buffer, a poster, a PNG, the box x, y, width, and height
- * in px of a slide of 1920 by 1080, a duration in ms, loop, and muted. The same path, or the same
- * Buffer object, on several slides is embedded once.
+ * in px of a slide of 1920 by 1080, a duration in ms, loop, and muted. A video with after set lies
+ * under the video before it in the list, and it is shown once that one has played and is hidden,
+ * e.g. the loop of a surface after the clip of its change. The same path, or the same Buffer object,
+ * on several slides is embedded once.
  *
  * A slide may also have a recording, { data, poster, duration, loop }, an MP4 over the whole slide
  * that is played without sound from the start of the slide, and tops, the PNGs of the words of each
