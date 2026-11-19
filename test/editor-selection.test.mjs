@@ -41,7 +41,6 @@ test('a click on a button of the status bar keeps the selected figure', async (t
   assert.ok((await shownFrames(page)).some((f) => around(f, figureBox)), 'the figure is not selected by a click');
   const steps = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await clickText(page, steps);
-  await sleep(100);
   const after = await boxOf(page, '.reveal section.present .figure-box');
   assert.ok((await shownFrames(page)).some((f) => around(f, after)), 'the selection is cleared by a click on Steps');
   assert.deepEqual(page.errors, []);
