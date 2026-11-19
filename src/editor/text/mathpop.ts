@@ -454,13 +454,15 @@ export function install(app: App): void {
   };
   const math: MathPop = { isOpen: () => !!popover && !leaving, open: openMath, close: closeMath, setMath, hold, wholeTex };
   app.math = math;
+  let sheetBeforeClick: HTMLElement | null = null;
+  window.addEventListener('click', () => (sheetBeforeClick = popover), true);
   document.addEventListener('click', (ev) => {
     const target = ev.target instanceof Element ? ev.target : null;
     const container = ev.defaultPrevented ? null : target?.closest('mjx-container');
     if (container && app.hostOf(container)) {
       ev.preventDefault();
       if (!ev.shiftKey && !(app.platform === 'mac' ? ev.metaKey : ev.ctrlKey) && (popover || !showTex(app, container, 'all'))) openMath(container);
-    } else if (popover && target && !popover.contains(target) && !target.closest('.beeson-complete, .beeson-edit-menu')) {
+    } else if (popover && popover === sheetBeforeClick && target && !popover.contains(target) && !target.closest('.beeson-complete, .beeson-edit-menu')) {
       if (away) void away();
       else closeMath(false);
     }

@@ -583,11 +583,8 @@ export function install(app: App): void {
     toolbar: tool(22, 'formula'),
     enabled: ready,
     run: async (a) => {
+      if (a.selection.kind === 'text' && a.commands.enabled('math.inline')) return a.commands.run('math.inline');
       const release = a.math.hold();
-      if (a.selection.kind === 'text' && a.commands.enabled('math.inline')) {
-        setTimeout(() => void a.commands.run('math.inline').finally(release), 0);
-        return;
-      }
       let made: { node: Element; math: Element } | null = null;
       try {
         await a.history.selecting('Insert Formula', async () => {
