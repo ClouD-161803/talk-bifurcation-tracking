@@ -91,16 +91,17 @@ jobs:
       - run: npm ci
       # latex, dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure. dvisvgm is a
       # package of its own on Ubuntu
-      # a mirror of Ubuntu that stops sending a file is left after 30 s without a byte, and the file
-      # is asked again, of the next mirror in the list of the runner. The whole install is tried
-      # again up to three times, since it would otherwise hang up to the limit of the job
+      # a mirror of Ubuntu that stops sending a file is left after 20 s without a byte, and the file
+      # is asked again, of the next mirror in the list of the runner. The options are given on the
+      # command line, since the runner sets its own in /etc/apt/apt.conf.d. A try that hangs anyway
+      # is stopped, and the next try asks the next mirror first
       - run: |
-          printf 'Acquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "5";\n' | sudo tee /etc/apt/apt.conf.d/99stalled-mirror
-          apt-config dump | grep -E '^Acquire::(https?::Timeout|Retries) '
           cat /etc/apt/apt-mirrors.txt || true
           for attempt in 1 2 3; do
-            sudo timeout 240 sh -c 'apt-get update && apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm' && break
+            sudo timeout 240 sh -c 'o="-o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=5" && apt-get $o update && apt-get $o install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm' && break
             test "$attempt" -lt 3
+            m=/etc/apt/apt-mirrors.txt
+            test -f $m && awk 'NR > 1 { print } NR == 1 { f = $0 } END { print f }' $m | awk -F '\t' '{ print $1 "\tpriority:" NR }' | sudo tee $m.next && sudo mv $m.next $m
           done
       - run: latex --version && dvisvgm --version
       - run: node --test test/figures.test.mjs
