@@ -475,6 +475,27 @@ if (process.platform !== 'win32') {
   }
 }
 
+test('a stop answers with ended the next poll of a page that arrives a second later', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const [ana, ben] = [(await post(edit.port, api('hello'), { name: 'Ana' })).json(), (await post(edit.port, api('hello'), { name: 'Ben' })).json()];
+  // the poll of Ana waits at the stop, and Ben is between two polls
+  const first = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json();
+  const waiting = raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${first.v}`);
+  const before = (await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${ben.v}`)).json();
+  await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
+  edit.child.kill('SIGTERM');
+  const { ended } = (await waiting).json();
+  assert.ok(ended);
+  await new Promise((done) => setTimeout(done, 1000));
+  const late = await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${before.v}`).catch((e) => ({ error: e.code ?? e.message }));
+  assert.deepEqual(late.error ?? late.json().ended, ended);
+  assert.equal(await edit.exited, 0);
+});
+
 test('a SIGTERM sent right after the address is printed stops the edit command as usual', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));

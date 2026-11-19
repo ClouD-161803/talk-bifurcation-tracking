@@ -33,8 +33,9 @@ const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg',
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 // the time in ms for which End session waits for the polls of the guests, shorter in the tests
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
-// the time in ms for which a stopped edit command still answers a poll with ended, longer in the tests
-const CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
+// the longest time in ms for which a stopped edit command waits for the next poll of each page of
+// the host, to answer it with ended
+const CLOSE_WAIT = 3000;
 // the most bytes of the files of a talk folder that a page downloads as a zip without the relay,
 // which is also the most that the zips kept at one time hold, smaller in the tests. through the
 // relay, the limit of a folder is the largest answer of the relay
@@ -943,7 +944,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         for (const client of [...zips.keys()]) dropZip(client);
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
-        people.end();
+        const told = people.end();
         // a compile that runs is stopped at once, and index.html, the history, and the comments do
         // not wait for it
         const figuresStopped = figures.stop();
@@ -962,8 +963,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
-        // a poll that arrives in this time is answered with ended, rather than reset by the close
-        await new Promise((done) => setTimeout(done, CLOSE_WAIT));
+        // a page between two polls is answered with ended at its next poll, rather than refused
+        await Promise.race([told, new Promise((done) => setTimeout(done, CLOSE_WAIT))]);
         await new Promise<void>((done) => {
           server.close(() => done());
           setTimeout(() => {

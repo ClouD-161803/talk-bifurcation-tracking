@@ -302,12 +302,18 @@ export class People {
     return this.texRev;
   }
 
-  // the waiting polls answered with ended, at a stop of the edit command, and people.json written
-  end(): void {
+  // the waiting polls answered with ended, at a stop of the edit command, and people.json written.
+  // resolves once every page of the host present has been answered with ended, by a waiting poll or
+  // by a poll that arrives later. a guest is told by the record of the end at the relay
+  end(): Promise<void> {
     this.ended = this.endedBy();
     clearInterval(this.sweeper);
+    for (const m of this.members.values()) if (m.host) this.untold.add(m.client);
+    const told = new Promise<void>((done) => this.toldWaiters.push(done));
     for (const poll of [...this.polls]) this.answer(poll);
+    this.told(null);
     this.saveSync();
+    return told;
   }
 
   // the session ended for every page that came through the relay. their waiting polls are
