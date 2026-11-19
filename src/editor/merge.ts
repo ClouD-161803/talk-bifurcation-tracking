@@ -185,11 +185,12 @@ export function changes(base: string, theirs: string, plain?: boolean): Edit[] |
     removed += end - start;
     out.push({ start, end, text });
   }
-  // the marks count only when each of their hunks is the half of a move that moves() pairs, and the
-  // texts are diffed again without them otherwise
+  // the marks count only when each of their hunks is the half of a move of equal lines, and the
+  // texts are diffed again without them otherwise, unless the texts have no diff without them, e.g.
+  // after slides moved past each other that the mover types in
   if (moved) {
-    const m = moves(base, out, out);
-    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true);
+    const m = movesIn(base, out, false).flatMap((v) => v.was);
+    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true) ?? out;
   }
   // a moved slide is in both texts, which are thus one file
   return removed > base.length / 2 && !moved ? null : out;
@@ -231,30 +232,208 @@ export function edits(base: string, theirs: string): Edit[] {
   return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
 }
 
-// the edits of each move of list that an edit of others clashes with. a move is an insertion of
-// the lines of one or more removals of whole lines of base, in their order, with the lines trimmed
-// and without blank lines. lines without text outside tags, e.g. an empty list item, and lines that
-// two removals or two insertions hold are never moved, since they are not told from an edit of
-// someone else. with others the list itself, every move of the list
-export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean = () => true): Edit[] {
-  const out: [string, Edit[]][] = [], cut = new Map<string, Edit | null>(), put = new Map(cut);
-  let n = 0;
-  for (const e of list) {
-    const w = !e.text && (base[e.start - 1] ?? '\n') + base[e.end - 1] === '\n\n', by = w ? cut : put;
-    const t = (w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : '').replace(/\s*\n\s*/g, '\n').trim();
-    if (/(^|>)[^<]*[^\s<]/.test(t)) by.set(t, by.has(t) ? null : e);
+// a move of a list of edits: removals of whole lines, cuts, in the order of base, whose lines are
+// written in the insertion put, also with changes of the mover in them. was holds the edits of the
+// list that cuts and put are turned from, see turn()
+type Move = { cuts: Edit[]; put: Edit; was: Edit[] };
+
+// a text with words outside tags, i.e. not an empty list item
+const WORDED = /(^|>)[^<]*[^\s<]/;
+const flat = (s: string) => s.replace(/\s*\n\s*/g, '\n').trim();
+// the words of a text outside its tags, with each CJK character a word
+const CJK = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}';
+const WORD = new RegExp(`[${CJK}]|(?:(?![${CJK}])[\\p{L}\\p{N}])+`, 'gu');
+const wordsOf = (s: string) => s.replace(/<[^<>]*>/g, ' ').match(WORD) ?? [];
+
+// whether every tag of s that s closes somewhere is closed after it is opened and before s ends
+function balanced(s: string): boolean {
+  const closed = new Set([...s.matchAll(/<\/([\w-]+)/g)].map((m) => m[1].toLowerCase())), depth = new Map<string, number>();
+  for (const m of s.matchAll(/<(\/?)([\w-]+)(?:[^<>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
+    const name = m[2].toLowerCase(), d = (depth.get(name) ?? 0) + (m[1] ? -1 : 1);
+    if (!closed.has(name) || m[3]) continue;
+    if (d < 0) return false;
+    depth.set(name, d);
   }
+  return [...depth.values()].every((d) => d === 0);
+}
+
+// a removal or an insertion of whole lines turned over the equal lines next to it until its text is
+// balanced, e.g. a slide that the diff removes from its heading to the start tag of the next slide,
+// which is the same removal. e itself when no turn is balanced
+function turn(base: string, e: Edit): Edit {
+  const cut = !e.text;
+  const text = cut ? base.slice(e.start, e.end) : e.text;
+  if ((base[e.start - 1] ?? '\n') !== '\n' || !text.endsWith('\n') || (cut && e.end === e.start) || (!cut && e.start !== e.end) || balanced(text)) return e;
+  const lines = linesOf(text);
+  for (const way of [-1, 1]) {
+    let at = e.start, t = lines;
+    for (let k = 0; k < lines.length; k++) {
+      const end = cut ? at + t.join('').length : at;
+      const line = way < 0 ? base.slice(base.lastIndexOf('\n', at - 2) + 1, at) : base.slice(end, base.indexOf('\n', end) + 1 || base.length);
+      if (!line || line !== (way < 0 ? t[t.length - 1] : t[0])) break;
+      t = way < 0 ? [line, ...t.slice(0, -1)] : [...t.slice(1), line];
+      at += way * line.length;
+      const out = cut ? { start: at, end: at + text.length, text: '' } : { start: at, end: at, text: t.join('') };
+      if (balanced(t.join(''))) return out;
+    }
+  }
+  return e;
+}
+
+// the moves of list. a removal and an insertion whose lines are equal once trimmed are a move, and
+// lines that two removals or two insertions hold are never moved, since it is not known which one
+// moved. a removal, or a run of them, and an insertion that keeps more than half of its words in
+// their order, and not the words of another removal, are a move as well, e.g. a slide that the
+// mover also types in, when the tags of both are whole, unless fuzzy is false
+function movesIn(base: string, list: Edit[], fuzzy = true): Move[] {
+  const cut = new Map<string, Edit | null>(), put = new Map(cut), was = new Map<Edit, Edit>();
+  for (const x of list) {
+    const e = turn(base, x);
+    // a turn onto another edit of the list is not taken
+    if (e !== x && list.some((f) => f !== x && (e.text ? clash(e, f) || (f.start === f.end && f.start === e.start) : overlaps(e, f)))) continue;
+    was.set(e, x);
+    const w = !e.text && e.end > e.start && (base[e.start - 1] ?? '\n') + base[e.end - 1] === '\n\n', by = w ? cut : put;
+    const t = flat(w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : '');
+    if (WORDED.test(t)) by.set(t, by.has(t) ? null : e);
+  }
+  const of = (cuts: Edit[], put: Edit): Move => ({ cuts, put, was: [...cuts, put].map((e) => was.get(e)!) });
+  const out: Move[] = [], used = new Set<Edit>();
   for (const [t, f] of put) {
-    // the group g of the insertion and the removals whose lines come next in it, in their order, with
-    // r the lines left. n counts the edits of every move
     let r = t + '\n';
-    const g = [f!];
+    const g: Edit[] = [];
     for (const [k, e] of cut) if (e && r.startsWith(k + '\n')) r = r.slice(g.push(e) && k.length + 1);
-    if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
+    if (f && !r) {
+      out.push(of(g, f));
+      for (const e of [...g, f]) used.add(e);
+    }
   }
-  // lines are a move only in a list without another change, since a diff can align a copied paragraph
-  // as a removal and an insertion, unlike whole slides, see markMoved()
-  return out.flatMap(([t, g]) => (n === list.length || others === list || /^<section[\s>][^]*\/section>$/.test(t) ? g : []));
+  // the runs of the removals left, in their order, scored by the words that the insertion keeps
+  // less those that it does not keep
+  const cuts = [...cut.values()].filter((e): e is Edit => !!e && !used.has(e)).sort((a, b) => a.start - b.start);
+  if (!fuzzy || cuts.length > 8) return out;
+  for (const f of put.values()) {
+    if (!f || used.has(f) || !cuts.length || !balanced(f.text)) continue;
+    const words = wordsOf(f.text);
+    let best: Edit[] = [], score = 0;
+    for (let i = 0; i < cuts.length; i++) for (let j = i; j < cuts.length; j++) {
+      if (cuts.slice(i, j + 1).some((e) => used.has(e))) break;
+      if (!balanced(cuts.slice(i, j + 1).map((e) => base.slice(e.start, e.end)).join(''))) continue;
+      const mine = cuts.slice(i, j + 1).flatMap((e) => wordsOf(base.slice(e.start, e.end)));
+      const hunks = diff(mine, words, MAX_LINES) ?? [];
+      const gone = hunks.reduce((n, h) => n + h.a1 - h.a0, 0), added = ` ${hunks.flatMap((h) => words.slice(h.b0, h.b1)).join(' ')} `;
+      // the words of another removal in the insertion are moved with it
+      if (cuts.some((e, k) => (k < i || k > j) && wordsOf(base.slice(e.start, e.end)).length && added.includes(` ${wordsOf(base.slice(e.start, e.end)).join(' ')} `))) continue;
+      if (mine.length - 2 * gone > score) [best, score] = [cuts.slice(i, j + 1), mine.length - 2 * gone];
+    }
+    if (!best.length) continue;
+    out.push(of(best, f));
+    best.forEach((e) => used.add(e));
+  }
+  return out;
+}
+
+// the edits of each move of list that an edit of others clashes with. with others the list
+// itself, every move of the list
+export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean = () => true): Edit[] {
+  return movesIn(base, list).flatMap(({ was }) => (others === list || was.some((x) => others.some((o) => hit(x, o))) ? was : []));
+}
+
+// the offset o of a moved onto b with the edits m that turn a into b, after an insertion at o when
+// after is true. null for an offset inside a change
+function through(m: Edit[], o: number, after: boolean): number | null {
+  let d = 0;
+  for (const e of m) {
+    if (e.end < o || (e.end === o && (e.start < e.end || after))) d += e.text.length - (e.end - e.start);
+    else if (e.start < o) return null;
+  }
+  return o + d;
+}
+
+// the offset in b of the offset o of a, where b is a with its lines moved, reindented, or changed
+// in part, read from the characters of both, or from their lines when they differ in more than 500
+// characters. a line of a is then found in b among the lines equal to it once trimmed, or as the
+// line at its place in a run of changed lines as long in both, whose characters are then diffed.
+// null for an offset inside a change
+function across(a: string, b: string, o: number, after: boolean): number | null {
+  const m = charEdits(a, b, 500);
+  if (m) return through(m, o, after);
+  const la = linesOf(a), lb = linesOf(b), oa = offsets(la), ob = offsets(lb);
+  const hunks = diff(la.map((l) => l.trim()), lb.map((l) => l.trim()), MAX_LINES);
+  if (!hunks) return null;
+  // the line of o, where the end of a is the end of its last line
+  let i = 0;
+  while (i < la.length - 1 && oa[i + 1] <= o) i++;
+  let j = i;
+  for (const h of hunks) {
+    if (h.a1 <= i) j += h.b1 - h.b0 - (h.a1 - h.a0);
+    else if (h.a0 <= i) {
+      if (h.a1 - h.a0 !== h.b1 - h.b0) return null;
+      j = h.b0 + i - h.a0;
+      const col = through(charEdits(la[i], lb[j], 500) ?? [{ start: 0, end: la[i].length, text: lb[j] }], o - oa[i], after);
+      return col === null ? null : ob[j] + col;
+    }
+  }
+  if (j >= lb.length) return null;
+  // the column of o in its line without the white space at its ends, which a move may change
+  const col = o - oa[i], lead = la[i].length - la[i].trimStart().length, body = la[i].trim().length;
+  const lead2 = lb[j].length - lb[j].trimStart().length;
+  if (col === 0) return ob[j];
+  if (col <= lead) return ob[j] + lead2;
+  if (col >= lead + body) return ob[j + 1] - (la[i].length - col);
+  return ob[j] + lead2 + col - lead;
+}
+
+// a with each move given the edits of b inside its removals, written into its insertion at the
+// same text, and b without them. an edit that cannot be found in the insertion with the same text
+// around it, e.g. one in a word that the mover changed, stays in b
+export function carry(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
+  let rest = b;
+  const now = new Map<Edit, Edit>();
+  for (const { cuts, put, was } of movesIn(base, a)) {
+    const src = cuts.map((c) => base.slice(c.start, c.end)).join('');
+    const into: Edit[] = [], taken = new Set<Edit>();
+    let at = 0;
+    for (const c of cuts) {
+      for (const x of rest) {
+        if (x.start < c.start || x.end > c.end || !clash(x, c)) continue;
+        const o = at + x.start - c.start, s = across(src, put.text, o, true), e = x.end > x.start ? across(src, put.text, o + x.end - x.start, false) : s;
+        if (s === null || e === null || e < s || flat(put.text.slice(s, e)) !== flat(src.slice(o, o + x.end - x.start))) continue;
+        into.push({ start: s, end: e, text: x.text });
+        taken.add(x);
+      }
+      at += c.end - c.start;
+    }
+    // an edit of b that the move cannot take, e.g. a cut of the same slide at other lines, leaves
+    // the move to stay(), with the edits of b inside it. the same cut is the same removal
+    const left = rest.filter((x) => !taken.has(x));
+    if (left.some((x) => [...cuts, put].some((e) => clash(x, e) && !(e !== put && equal(x, e))))) continue;
+    rest = left;
+    // the move is taken as turned, which is the same text
+    [...cuts, into.length ? { ...put, text: apply(put.text, into) } : put].forEach((e, i) => now.set(was[i], e));
+  }
+  return [now.size ? a.map((e) => now.get(e) ?? e).sort((x, y) => x.start - y.start || x.end - y.end) : a, rest];
+}
+
+// list with each move in it that an edit of others clashes with undone: its cuts and put are
+// replaced by the changes that the mover made in the moved text, each cut with the part of put that
+// its text is in. true when a move is undone. hit tells a clash, e.g. conflict() in
+// src/session/patch.ts
+export function stay(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean = clash): [Edit[], boolean] {
+  const gone = new Map<Edit, Edit[]>();
+  for (const { cuts, put, was } of movesIn(base, list)) {
+    if (!was.some((x) => others.some((o) => hit(x, o)))) continue;
+    const src = cuts.map((c) => base.slice(c.start, c.end)).join('');
+    let at = 0, from = 0;
+    const kept = cuts.flatMap((c, i) => {
+      at += c.end - c.start;
+      const to = i === cuts.length - 1 ? put.text.length : Math.max(from, across(src, put.text, at, false) ?? across(src, put.text, at, true) ?? from);
+      const old = base.slice(c.start, c.end), now = put.text.slice(from, to);
+      from = to;
+      return (charEdits(old, now, 500) ?? [{ start: 0, end: old.length, text: now }]).map((e) => ({ start: c.start + e.start, end: c.start + e.end, text: e.text }));
+    });
+    was.forEach((e, i) => gone.set(e, i ? [] : kept));
+  }
+  return [list.flatMap((e) => gone.get(e) ?? [e]).sort((x, y) => x.start - y.start || x.end - y.end), gone.size > 0];
 }
 
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
@@ -357,13 +536,17 @@ function slid(base: string, d: Edit, own: Edit[], others: Edit[]): Edit {
 // split, e.g. a word replaced by the same word, which is taken once
 export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', apart = false, twice = false): Merge {
   if (apart) {
+    // the edits of each side inside a move of the other side go with the move, the received side
+    // first, hence of two moves of one text the later one is kept
+    [all, ours] = carry(base, all, ours);
+    [ours, all] = carry(base, ours, all);
     [ours, all] = nest(base, ours, all);
-    // a move in a session that a change inside the moved element clashes with is left out whole,
-    // hence the element is neither doubled nor its change lost. it is found before slid() moves the
-    // removal of the move off the change
+    // a move in a session that a change inside the moved element clashes with is undone, with the
+    // changes of the mover kept in place, hence the element is neither doubled nor a change lost. it
+    // is found before slid() moves the removal of the move off the change
     const others = all.filter((h) => !ours.some((o) => equal(o, h)));
-    const moved = new Set([...moves(base, ours, others, clash), ...moves(base, others, ours, clash)]);
-    if (moved.size) return mergeEdits(base, ours.filter((e) => !moved.has(e)), all.filter((e) => !moved.has(e)), prefer, apart, twice);
+    const [mine, a] = stay(base, ours, others), [theirs, b] = stay(base, others, ours);
+    if (a || b) return mergeEdits(base, mine, [...theirs, ...all.filter((h) => !others.includes(h))].sort((x, y) => x.start - y.start || x.end - y.end), prefer, apart, twice);
     ours = ours.map((d) => slid(base, d, ours, all));
     all = all.map((d) => slid(base, d, all, ours));
   }
@@ -491,7 +674,12 @@ export function fine(a: string, b: string): Edit[] {
     const lines = changes(a, b) ?? [];
     const moved = moves(a, lines, lines);
     if (moved[0]) {
-      const out = lines.flatMap((e) => (moved.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ ...x, start: x.start + e.start, end: x.end + e.start })) ?? [e]));
+      // the other changes as the character edits of the whole text, hence as the person who makes
+      // them alone, e.g. a removal of a line that another person removes as well, unless they
+      // reach into a move
+      const rest = charEdits(a, apply(a, lines.filter((e) => !moved.includes(e))), 500);
+      const apart = rest?.every((x) => moved.every((e) => x.end < e.start || x.start > e.end));
+      const out = apart ? [...moved, ...rest!].sort((x, y) => x.start - y.start || x.end - y.end) : lines.flatMap((e) => (moved.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ ...x, start: x.start + e.start, end: x.end + e.start })) ?? [e]));
       const read = moves(a, out, lines);
       if (moved.every((e) => read.includes(e))) found = out;
     }

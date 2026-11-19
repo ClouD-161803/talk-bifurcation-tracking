@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, fine, moves, nest } from '../editor/merge.ts';
+import { carry, changes, fine, nest, stay } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -195,11 +195,17 @@ function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs. with base, the text of both operations, a move of either side
-// that conflicts is left out whole, see mergeEdits(), apart from a move of the side keep, which the
-// dialog after a break decides, and with nested as well, a format of one side and the edits of plain
-// text of the other side inside its run do not conflict, and both are kept, see nest()
+// conflict with a patch of theirs. with base, the text of both operations, the patches of each side
+// inside a move of the other side go with the move, see carry(), and a move of either side that
+// conflicts all the same is undone, with the changes of the mover in place, see stay(), apart from
+// a move of the side keep, which the dialog after a break decides. with nested as well, a format of
+// one side and the edits of plain text of the other side inside its run do not conflict, and both
+// are kept, see nest()
 export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+  if (base !== undefined) {
+    [theirs, ours] = carry(base, theirs, ours);
+    [ours, theirs] = carry(base, ours, theirs);
+  }
   if (base !== undefined && nested) {
     // the finer edits are taken only when none of them conflicts, since the letters of one word
     // replaced on both sides would be mixed
@@ -220,8 +226,9 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const gone = new Set(!base ? [] : ([[ours, theirs, 'ours'], [theirs, ours, 'theirs']] as const).flatMap(([a, b, s]) => (keep === s ? [] : moves(base, a, b, conflict))));
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep).patches, conflicts };
+  const [o, undone] = base === undefined || keep === 'ours' ? [ours, false] : stay(base, ours, theirs, conflict);
+  const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
+  if (undone || gone) return { patches: mergePatches(t, o, wins, base, false, keep).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };

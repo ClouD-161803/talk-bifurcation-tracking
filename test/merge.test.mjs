@@ -731,11 +731,11 @@ test('a move is the removal of whole lines and the insertion of their text in th
   const put = (text) => ({ start: doc.length, end: doc.length, text });
   const key = (s) => ({ start: doc.indexOf(s) + 4, end: doc.indexOf(s) + 4, text: 'x' });
   const hit = (a, b) => a.start < b.end && b.start < a.end;
-  const of = (list, others) => moves(doc, list, others, hit).map((e) => list.indexOf(e));
+  const of = (list, others) => moves(doc, list, others, hit).map((e) => list.indexOf(e)).sort((x, y) => y - x);
   const a = '<p>A one</p>\n', b = '<p>B two</p>\n', s = '<section>\n<h2>S</h2>\n</section>\n';
   assert.deepEqual(of([cut(a), put(a)], [key(a)]), [1, 0], 'a paragraph moved to the end');
   assert.deepEqual(of([cut(a), put(a)], [key('<p>C')]), [], 'a key outside the moved paragraph');
-  assert.deepEqual(of([cut(a), put(a), key('<p>C')], [key(a)]), [], 'a move with another change');
+  assert.deepEqual(of([cut(a), put(a), key('<p>C')], [key(a)]), [1, 0], 'a move with another change');
   assert.deepEqual(of([cut(a.slice(3)), put(a.slice(3))], [key(a)]), [], 'a removal from the middle of a line');
   assert.deepEqual(of([cut(a.slice(0, -1)), put(a.slice(0, -1))], [key(a)]), [], 'a removal without its line break');
   assert.deepEqual(of([cut(a), { start: doc.indexOf('<p>C'), end: doc.indexOf('<p>C') + 3, text: a }], [key(a)]), [], 'a replacement with the text of the removal');
