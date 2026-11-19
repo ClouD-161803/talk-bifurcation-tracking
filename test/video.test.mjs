@@ -148,6 +148,29 @@ test('a video shown in the place of another covers it, and the one under it is p
   assert.deepEqual(errorsOf(page), []);
 });
 
+test('a covered video is rewound once the fade set in the CSS for a covered video is over', { timeout: 120000 }, async (t) => {
+  const page = await browser.newPage({ motion: true });
+  t.after(() => page.close());
+  await page.goto(deckUrl(DECK, '', '/2'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), {
+    textContent: '.reveal .slides section video.fragment[data-covered] { transition: opacity 1500ms ease-out, visibility 0s 1500ms; }',
+  }))`);
+  await page.evaluate('Reveal.next()');
+  await page.waitFor('!first.paused && first.currentTime > 0.2', 30000);
+  await page.evaluate(`(() => {
+    const start = performance.now();
+    window.rewind = null;
+    first.addEventListener('seeking', () => (rewind = { after: performance.now() - start, visibility: getComputedStyle(first).visibility }), { once: true });
+    Reveal.next();
+  })()`);
+  await page.waitFor('!!window.rewind', 30000);
+  const { after, visibility } = await page.evaluate('rewind');
+  assert.ok(after >= 1500, `the covered clip is rewound ${Math.round(after)} ms after the step`);
+  assert.equal(visibility, 'hidden');
+  assert.deepEqual(errorsOf(page), []);
+});
+
 test('a video in a fragment is played from its step on, and it does not call for the step that restores the dimmed fragments', { timeout: 120000 }, async (t) => {
   const page = await open(t, '/3');
   assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector('[data-restore]')`), null);
