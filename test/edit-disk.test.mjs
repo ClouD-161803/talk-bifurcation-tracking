@@ -92,6 +92,26 @@ test('a stop while a write is in flight writes the newest text, and the older wr
   assert.deepEqual(temporary(dir), []);
 });
 
+test('a write of index.html syncs the temporary file before the rename, and the folder after it where the system allows', { timeout: 60_000 }, async (t) => {
+  const { open } = fsp, { renameSync: rename } = fs;
+  const events = [];
+  t.after(() => {
+    [fsp.open, fs.renameSync] = [open, rename];
+    syncBuiltinESMExports();
+  });
+  fsp.open = async (path, ...rest) => {
+    const handle = await open(path, ...rest), sync = handle.sync.bind(handle);
+    handle.sync = () => (events.push(`sync ${String(path).endsWith('.tmp') ? 'tmp' : 'folder'}`), sync());
+    return handle;
+  };
+  fs.renameSync = (from, to) => (events.push('rename'), rename(from, to));
+  syncBuiltinESMExports();
+  const { file, authority } = setup(t, DECK, { quiet: 5, latest: 20 });
+  insert(authority, '<h2>One', 'ONE ');
+  await until(() => readFileSync(file, 'utf8').includes('ONE ') && events.length >= (process.platform === 'win32' ? 2 : 3), 'the write', 5000);
+  assert.deepEqual(events, process.platform === 'win32' ? ['sync tmp', 'rename'] : ['sync tmp', 'rename', 'sync folder']);
+});
+
 test('a stop right after another program wrote the file keeps the change of this program and the last operation', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk } = setup(t, DECK);
   insert(authority, '<h2>One', 'ONE ');

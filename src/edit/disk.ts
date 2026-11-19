@@ -7,7 +7,7 @@
 // wrote after it. the reads and the writes are done one at a time
 
 import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
-import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { open, readFile, realpath, rename, stat } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
@@ -112,7 +112,7 @@ export function setAsideSync(file: string, aside: string, move = true): boolean 
 
 // a step of a task of the disk, i.e. a stat, a resolve, a read, or a write of a file, or a pause. a
 // task is a generator of its steps, hence it is left at a step when the edit command stops
-type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
+type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { syncFolder: string } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
@@ -125,7 +125,35 @@ function perform(step: Step): Promise<unknown> {
   if ('stat' in step) return stat(step.stat).catch(missing);
   if ('resolve' in step) return realpath(step.resolve).catch(() => step.resolve);
   if ('read' in step) return readFile(step.read);
-  return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
+  if ('syncFolder' in step) return syncFolder(step.syncFolder);
+  return writeSynced(step.write, step.bytes, step.mode);
+}
+
+// a file written and synced to the disk, so that a rename over another file after it does not
+// leave an empty file at a power cut
+async function writeSynced(file: string, bytes: Buffer, mode: number | null): Promise<void> {
+  const handle = await open(file, 'w');
+  try {
+    await handle.writeFile(bytes);
+    if (mode !== null) await handle.chmod(mode);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+// the entries of a folder synced to the disk, after a rename in it. a folder cannot be opened on
+// Windows, and some file systems refuse the sync, which is then left out
+async function syncFolder(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const handle = await open(dir, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {}
 }
 
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
@@ -534,6 +562,7 @@ export class Disk {
       this.retryAt = 0;
       this.onWriteError(null);
     }
+    yield { syncFolder: dirname(this.target) };
   }
 
   // a change of the file that the edit command did not write, or false when the file was still
