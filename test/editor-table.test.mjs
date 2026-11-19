@@ -108,7 +108,7 @@ const paste = (page, data) =>
   })()`);
 
 const settled = async (page) => {
-  await sleep(120);
+  await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`);
   return settle(page);
 };
 
@@ -491,8 +491,12 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     await show(page, EQUATIONS);
     await paste(page, { 'text/plain': 'one\ntwo' });
-    await settled(page);
-    assert.ok(!(await render(page)).includes('<table>'), 'plain lines are written as a table');
+    await paste(page, { 'text/plain': 'Family\tPeriod\nHalo\t3.41\n' });
+    await page.waitFor(`window.BeesonEditor.render().includes('<th>Family</th>')`);
+    await settle(page);
+    const text = await render(page);
+    assert.equal(text.split('<table').length, page.source.split('<table').length + 1, 'plain lines are written as a table');
+    assert.doesNotMatch(text, /<t[dh]>one<\/t[dh]>/, 'plain lines are written as a table');
   });
 
   test(`a paste of an HTML table onto the slide writes its cells (${platform})`, async (t) => {
