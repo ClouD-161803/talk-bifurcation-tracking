@@ -1726,3 +1726,13 @@ test('a resync keeps one removal when the whole text lacks the element that the 
     assert.equal(starts(r.mine).length, 2);
   }
 });
+
+test('two people who remove the same blank line and put a slide each after it keep both slides on lines of their own, in both orders', () => {
+  const s = (h) => `<section>\n  <h2>${h}</h2>\n</section>\n`;
+  const base = s('One') + '\n' + s('Two'), at = s('One').length;
+  const put = (h) => [{ start: at, end: at + 1, text: '' }, { start: at + 1, end: at + 1, text: s(h) }];
+  for (const [x, y] of [['X', 'Y'], ['Y', 'X']]) {
+    assert.equal(apply(base, mergePatches(put(x), put(y), 'ours', base).patches), s('One') + s(x) + s(y) + s('Two'));
+    assert.equal(mergeTexts(base, s('One') + s(x) + s('Two'), s('One') + s(y) + s('Two')), s('One') + s(x) + s(y) + s('Two'));
+  }
+});

@@ -198,6 +198,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
     [theirs, ours] = carry(base, theirs, ours);
     [ours, theirs] = carry(base, ours, theirs);
   }
+  const twin = (o: Patch) => !o.text && base?.slice(o.start, o.end).trim() === '' && theirs.some((t) => t.start === o.start && t.end === o.end && !t.text);
+  if (ours.some(twin)) ours = ours.filter((o) => !twin(o));
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
