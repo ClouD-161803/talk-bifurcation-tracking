@@ -33,9 +33,10 @@ const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg',
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 // the time in ms for which End session waits for the polls of the guests, shorter in the tests
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
-// the longest time in ms for which a stopped edit command waits for the next poll of each page of
-// the host, to answer it with ended
-const CLOSE_WAIT = 3000;
+// the time in ms for which a stopped edit command still answers a request, and the longest time
+// for which it waits for the next poll of each page of the host, to answer it with ended
+const CLOSE_WAIT = 200;
+const TOLD_WAIT = 3000;
 // the most bytes of the files of a talk folder that a page downloads as a zip without the relay,
 // which is also the most that the zips kept at one time hold, smaller in the tests. through the
 // relay, the limit of a folder is the largest answer of the relay
@@ -963,8 +964,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
-        // a page between two polls is answered with ended at its next poll, rather than refused
-        await Promise.race([told, new Promise((done) => setTimeout(done, CLOSE_WAIT))]);
+        // a request that arrives in this time is answered, e.g. a poll with ended, rather than reset
+        // by the close, also the next poll of a page of the host that was between two polls
+        await Promise.all([new Promise((done) => setTimeout(done, CLOSE_WAIT)), Promise.race([told, new Promise((done) => setTimeout(done, TOLD_WAIT))])]);
         await new Promise<void>((done) => {
           server.close(() => done());
           setTimeout(() => {
