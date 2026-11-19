@@ -10,6 +10,13 @@ import { createServer } from 'node:net';
 import { extname, join, resolve, sep } from 'node:path';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+const decoded = (path) => {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
 
 const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.mp4': 'video/mp4', '.svg': 'image/svg+xml' };
 
@@ -24,7 +31,7 @@ const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/ja
 export async function serve(folder, { delay = () => 0, writable = false } = {}) {
   const root = resolve(folder);
   const server = createHttpServer(async (request, response) => {
-    const path = join(root, decodeURIComponent(new URL(request.url, 'http://localhost').pathname));
+    const path = join(root, decoded(new URL(request.url, 'http://localhost').pathname));
     try {
       if (!path.startsWith(root + sep)) throw new Error(`${path} is outside ${root}`);
       if (writable && request.method === 'PUT') {

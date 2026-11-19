@@ -120,7 +120,6 @@ test('a file whose path has a malformed escape is carried under a safe name', as
   const text = (await copySlide(a, FILES)).replace('src="figs/shared.png"', 'src="figs/100%.png"');
   const b = await deck(B);
   t.after(() => b.close());
-  await b.evaluate(`(() => { const f = window.fetch; window.fetch = (u, o) => (/\\/figs\\/100%/.test(String(u)) ? Promise.resolve(String(u).includes('/a/') ? new Response('png') : new Response('', { status: 404 })) : f(u, o)); return true; })()`);
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
   assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)).replace('src="figs/shared.png"', 'src="media/100.png"'));
