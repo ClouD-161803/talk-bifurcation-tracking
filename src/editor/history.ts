@@ -4,6 +4,14 @@ export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promi
 
 type Page = { Beeson?: { refreshChrome?(): void } };
 
+const MINOR = new Set(['a', 'an', 'the', 'and', 'but', 'nor', 'or', 'as', 'at', 'by', 'for', 'from', 'in', 'into', 'of', 'on', 'onto', 'to', 'via', 'with']);
+
+export function titled(label: string): string {
+  const words = label.split(/(\s+)/);
+  const last = words.length - 1;
+  return words.map((w, i) => (i === 0 || i === last || !MINOR.has(w) ? w.replace(/^\p{Ll}/u, (l) => l.toUpperCase()) : w)).join('');
+}
+
 export function refreshHeads(host: Element): void {
   const slide = host.closest('section');
   if (!slide?.classList.contains('section') || slide.hasAttribute('data-run') || (slide.querySelector('h2') ?? slide.querySelector('h1')) !== host) return;

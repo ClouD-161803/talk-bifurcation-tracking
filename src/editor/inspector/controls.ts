@@ -1,12 +1,14 @@
 import type { App } from '../app.ts';
 import { keysOf } from '../commands.ts';
-import { entering } from '../commands/edit.ts';
 import { matches } from '../keymap.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { commandKeys } from '../ui/menu.ts';
 
 const SVG = 'http://www.w3.org/2000/svg';
+
+export type Entering = { enter(): unknown; follow(): void };
+export const entering = new WeakMap<Element, Entering>();
 
 export const GLYPHS: Record<string, string[]> = {
   'align-left': ['M3.5 3v14', 'M6.5 5.5h10v3.5h-10z', 'M6.5 11.5h6v3.5h-6z'],
