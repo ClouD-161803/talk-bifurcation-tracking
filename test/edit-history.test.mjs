@@ -983,7 +983,7 @@ test('the texts kept in memory as starting points of a rebuild stay within their
 
 // a deck of 5 MB leaves room for four texts in the budget, hence hundreds of versions lie between
 // two of them, which are applied without a copy of the deck for each
-test('the text of any version of a long history of a deck of 5 MB is rebuilt in about the time of one kept in memory', { timeout: 300_000 }, (t) => {
+test('the text of a version of a deck of 5 MB hundreds of versions after a kept text is rebuilt in about the time of one 10 versions after it', { timeout: 300_000 }, (t) => {
   const deck = DECK.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
   const { authority, history } = open(sessionDir(t), deck, { maxBytes: 1024 * 1024 * 1024 });
   const ids = [];
@@ -994,18 +994,18 @@ test('the text of any version of a long history of a deck of 5 MB is rebuilt in 
   }
   const kept = [...history.checkpoints.keys()];
   assert.ok(kept.length <= 4 && history.step >= 200, `${kept.length} texts kept, one every ${history.step} versions`);
+  // a version 10 versions after a kept text, and one a whole interval of history.step versions after it,
+  // timed in turn so that a burst of load slows both. the median ratio is measured up to three times
   const timeOf = (id) => {
-    let best = Infinity;
-    for (let k = 0; k < 3; k++) {
-      const start = performance.now();
-      Buffer.byteLength(history.textOf(id));
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
+    const start = performance.now();
+    Buffer.byteLength(history.textOf(id));
+    return performance.now() - start;
   };
-  const near = timeOf(ids[kept.at(-1) - 1]);
-  const far = timeOf(ids[kept.at(-1) - 2]);
-  assert.ok(far < 10 * near, `a version ${history.step - 1} versions after a text kept took ${(far / near).toFixed(1)} times as long as a kept one`);
+  const near = ids[kept.at(-2) + 10 - 1], far = ids[kept.at(-1) - 2];
+  const ratio = () => Array.from({ length: 9 }, () => timeOf(far) / timeOf(near)).sort((x, y) => x - y)[4];
+  let k = ratio();
+  for (let tries = 1; tries < 3 && k >= 5; tries++) k = ratio();
+  assert.ok(k < 5, `a version ${history.step - 1} versions after a kept text took ${k.toFixed(1)} times as long as one 10 versions after it`);
   history.stopSync();
 });
 

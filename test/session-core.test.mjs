@@ -1018,6 +1018,14 @@ function timeOf(fn, runs = 5) {
   return best;
 }
 
+// the median of the ratios of the times of slow and fast over runs, each fast run right after a
+// slow one so that a burst of load slows both
+function ratioOf(slow, fast, runs = 9) {
+  const ratios = [];
+  for (let i = 0; i < runs; i++) ratios.push(timeOf(slow, 1) / timeOf(fast, 1));
+  return ratios.sort((x, y) => x - y)[runs >> 1];
+}
+
 test('shift and mergePatches take a time linear in the number of patches, and an operation has at most 2000 patches', () => {
   // n insertions at the even offsets of a text, and n at its odd offsets, which do not conflict
   const at = (n, odd) => Array.from({ length: n }, (_, i) => ({ start: 2 * i + odd, end: 2 * i + odd, text: odd ? 'y' : 'x' }));
@@ -1053,9 +1061,9 @@ test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt 
   assert.equal(a.textAt(990), texts.get(990));
   // the time grows with the operations undone only by the cost of their patches, not by a copy of the
   // text for each. each text is encoded, as the edit command sends it
-  const ratio = () => timeOf(() => Buffer.byteLength(a.textAt(0))) / timeOf(() => Buffer.byteLength(a.textAt(990)));
+  const ratio = () => ratioOf(() => Buffer.byteLength(a.textAt(0)), () => Buffer.byteLength(a.textAt(990)));
   let k = ratio();
-  for (let tries = 0; tries < 2 && k >= 10; tries++) k = ratio();
+  for (let tries = 1; tries < 3 && k >= 10; tries++) k = ratio();
   assert.ok(k < 10, `the oldest version took ${k.toFixed(1)} times as long as a version 10 operations back`);
 });
 
