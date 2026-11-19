@@ -157,8 +157,11 @@ export type VersionInfo = {
   restored?: string;
   start?: true;
 };
+// a text that a version removed, at its place in the text of the version, and the person id of who
+// removed it
+export type Removal = { at: number; text: string; author: string };
 // GET history/<id>?token=
-export type VersionDetail = VersionInfo & { marks: Mark[] };
+export type VersionDetail = VersionInfo & { marks: Mark[]; removals: Removal[] };
 // a text that a person set aside at a conflict, so that it is not lost. author is a person id
 export type AsideInfo = { id: string; time: number; author: string };
 // GET history?token=. rev grows with every change of the list of versions or of the texts set aside
@@ -191,8 +194,8 @@ export type CommentReply = { id: string; author: string; time: number; text: str
 // text of what was removed, its check when it was larger than 4 kB, or null when it is not known. a
 // re-insertion of this text attaches the thread to it again. a thread of an element of a removed slide holds the
 // text of the slide as well in removed.slide, and is attached again only inside a re-insertion of
-// it. a removed slide is itself such a text. author, by, and mentions are person ids, time and
-// edited are times in ms. the offsets are of the text at the version that the answer or the events
+// it. a removed slide is itself such a text. author, by, and mentions are person ids, the
+// mentions those of the texts of the thread and its replies, time and edited are times in ms. the offsets are of the text at the version that the answer or the events
 // answer carrying the thread is of, and a page moves them itself with every later operation
 export type Comment = {
   id: string;
@@ -219,12 +222,12 @@ export type CommentsEvent = ({ v: number; changed: Comment[]; removed: string[] 
 // on an element outside the slides, a slide without an anchor is a comment on the slide, and
 // neither is a comment on the deck. the answer is the thread. id is made by crypto.randomUUID(),
 // and a request sent again with it is answered with the thread as it is
-export type CommentRequest = { token: Token; anchor: TagRange | null; slide: TagRange | null; base: Version; text: string; mentions?: string[]; id?: string };
+export type CommentRequest = { token: Token; anchor: TagRange | null; slide: TagRange | null; base: Version; text: string; id?: string };
 // POST comments/<id>/reply
-export type ReplyRequest = { token: Token; text: string; mentions?: string[]; id?: string };
+export type ReplyRequest = { token: Token; text: string; id?: string };
 // POST comments/<id>/edit and comments/<id>/delete, of the reply of id reply when it is given, and
 // of the thread otherwise, only by its author. the answer of a delete of a thread is empty
-export type CommentEditRequest = { token: Token; text: string; mentions?: string[]; reply?: string };
+export type CommentEditRequest = { token: Token; text: string; reply?: string };
 export type CommentDeleteRequest = { token: Token; reply?: string };
 // POST comments/<id>/resolve and comments/<id>/reopen, by anyone
 export type ResolveRequest = { token: Token };
@@ -290,6 +293,8 @@ export const nameKey = (name: string): string =>
     .normalize('NFKC')
     .replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, '')
     .toLowerCase();
+// a mention in the text of a comment, written @{person id} by the list of people of the field
+export const MENTION = /@\{([A-Za-z0-9_-]{22,64})\}/g;
 export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 export const isToken = (token: unknown): token is Token => typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 

@@ -255,8 +255,8 @@ export class People {
     this.wake();
   }
 
-  // a long poll of client for the news after the version since
-  events(client: string, since: string): Promise<EventsAnswer> | null {
+  // a long poll of client for the news after the version since, held for at most hold ms
+  events(client: string, since: string, hold = HOLD): Promise<EventsAnswer> | null {
     const end = this.ends.get(client);
     if (end) {
       this.told(client);
@@ -265,7 +265,7 @@ export class People {
     const member = this.revive(client);
     if (!member) return null;
     return new Promise((done) => {
-      const poll: Poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
+      const poll: Poll = { client, since, done, hold: setTimeout(() => this.answer(poll), Math.min(HOLD, hold)), gap: null };
       this.polls.add(poll);
       member.polls++;
       member.polled = true;
@@ -302,12 +302,18 @@ export class People {
     return this.texRev;
   }
 
-  // the waiting polls answered with ended, at a stop of the edit command, and people.json written
-  end(): void {
+  // the waiting polls answered with ended, at a stop of the edit command, and people.json written.
+  // resolves once every page of the host present has been answered with ended, by a waiting poll or
+  // by a poll that arrives later. a guest is told by the record of the end at the relay
+  end(): Promise<void> {
     this.ended = this.endedBy();
     clearInterval(this.sweeper);
+    for (const m of this.members.values()) if (m.host) this.untold.add(m.client);
+    const told = new Promise<void>((done) => this.toldWaiters.push(done));
     for (const poll of [...this.polls]) this.answer(poll);
+    this.told(null);
     this.saveSync();
+    return told;
   }
 
   // the session ended for every page that came through the relay. their waiting polls are

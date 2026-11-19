@@ -13,6 +13,7 @@ export const QUERY = 'edit&still&edit-platform=other';
 export const MARK = '<!--beeson-->';
 export const FILES = 'A slide with the files of deck A';
 export const BACKDROP = 'A slide with the backdrop of deck A';
+export const PDF = 'A slide with a PDF figure of deck A';
 export const FIRST_B = 'The first slide of deck B';
 
 const js = JSON.stringify;

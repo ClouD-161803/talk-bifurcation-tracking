@@ -7,6 +7,7 @@ import type { App } from '../app.ts';
 import { growOf, orientOf, view } from '../canvas/frames.ts';
 import { frameOf, holdsSeveral, mediaIn } from '../canvas/hit.ts';
 import { mathIn, type MathLookup } from '../math.ts';
+import { shownSheet } from '../tex/install.ts';
 import { spanTargets } from '../text/flow.ts';
 import { caretOf, pointIn, textIn } from './caret.ts';
 
@@ -39,6 +40,8 @@ export type PresenceHooks = {
   childIn(container: Element, target: Element): Element | null;
   // the text elements of a text selection of this page over several of them, or none
   spanned(): Element[];
+  // the sheet of preamble.tex or references.bib that is open, with its dialog, or null
+  sheet(): { which: 'preamble' | 'bibliography'; dialog: HTMLDialogElement } | null;
 };
 
 export function hooks(app: App): PresenceHooks {
@@ -95,6 +98,7 @@ export function hooks(app: App): PresenceHooks {
     hovered: () => view.hover,
     childIn: (container, target) => (holdsSeveral(container) ? mediaIn(container, target) : null),
     spanned: () => spanTargets(app).map((t) => t.host),
+    sheet: shownSheet,
   };
 }
 

@@ -9,7 +9,7 @@ import { statSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, POINTER, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, PDF, POINTER, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let server;
@@ -95,6 +95,23 @@ test('a backdrop pasted from another deck carries its trajectory file and says w
   assert.match((await status(b)).message, /media\/path\.js is drawn once the deck is saved and opened again/);
   const saved = await b.evaluate(SAVE_INTO('backdrop'));
   assert.deepEqual(saved.files, { 'path.js': size('data/path.js') });
+});
+
+// deck B has media/plot.pdf with other bytes, hence the PDF is renamed as a picture would be
+test('a PDF figure pasted from another deck carries its PDF, and data-pdf names it', async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  const text = await copySlide(a, PDF);
+  const b = await deck(B);
+  t.after(() => b.close());
+  await pasteSlides(b, FIRST_B, text);
+  await pasted(b);
+  const carried = sectionOf(a.source, PDF).replace('src="figs/plot-dark.png"', 'src="media/plot-dark.png"').replace('src="figs/plot-light.png"', 'src="media/plot-light.png"').replaceAll('data-pdf="figs/plot.pdf"', 'data-pdf="media/plot-2.pdf"');
+  assert.equal(sectionOf(await render(b), PDF), carried);
+  const saved = await b.evaluate(SAVE_INTO('pdf'));
+  assert.equal(sectionOf(saved.text, PDF), carried);
+  assert.deepEqual(saved.files, { 'plot-dark.png': size('figs/plot-dark.png'), 'plot-light.png': size('figs/plot-light.png'), 'plot-2.pdf': size('figs/plot.pdf') });
+  assert.deepEqual(errors(b), []);
 });
 
 test('slides pasted in the deck they were copied from keep their paths', async (t) => {

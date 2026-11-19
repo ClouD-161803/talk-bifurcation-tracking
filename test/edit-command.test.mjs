@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { connect, createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, EDIT, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -190,6 +191,9 @@ test('the edit command serves a session and writes every edit into index.html', 
     assert.deepEqual((await put('plot.png', 'c')).json(), { path: 'media/plot-2.png' });
     assert.deepEqual((await put('..%2F..%2Fescape.png', 'd')).json(), { path: 'media/escape.png' });
     assert.equal(text(join(talk, 'media', 'my-plot-1-2.png')), 'b');
+    // a PDF of a PDF figure is taken as a picture is
+    assert.deepEqual((await put('Plot.PDF', '%PDF-1.4')).json(), { path: 'media/plot.pdf' });
+    assert.equal((await put('notes.txt', 'g')).status, 415);
     assert.equal((await put('run.exe', 'e')).status, 415);
     assert.equal((await put('index.html', 'f')).status, 415);
     // a body over 64 MB is refused from its Content-Length, before it is sent
@@ -474,6 +478,27 @@ if (process.platform !== 'win32') {
     });
   }
 }
+
+test('a stop answers with ended the next poll of a page that arrives a second later', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const [ana, ben] = [(await post(edit.port, api('hello'), { name: 'Ana' })).json(), (await post(edit.port, api('hello'), { name: 'Ben' })).json()];
+  // the poll of Ana waits at the stop, and Ben is between two polls
+  const first = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json();
+  const waiting = raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${first.v}`);
+  const before = (await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${ben.v}`)).json();
+  await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
+  edit.child.kill('SIGTERM');
+  const { ended } = (await waiting).json();
+  assert.ok(ended);
+  await new Promise((done) => setTimeout(done, 1000));
+  const late = await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${before.v}`).catch((e) => ({ error: e.code ?? e.message }));
+  assert.deepEqual(late.error ?? late.json().ended, ended);
+  assert.equal(await edit.exited, 0);
+});
 
 test('a SIGTERM sent right after the address is printed stops the edit command as usual', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
@@ -1008,6 +1033,29 @@ test('a media upload needs the token of a page that is present', { timeout: 60_0
   }
   assert.equal(existsSync(join(talk, 'media')) && readdirSync(join(talk, 'media')).length, false, 'a refused upload is written');
   assert.deepEqual((await put(`?token=${ana.token}`)).json(), { path: 'media/plot.png' });
+});
+
+test('the uploads of a run are limited in count and in bytes, and a file sent again is not counted', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { SLIDES_UPLOADS_MAX: '3', SLIDES_UPLOADS_MAX_BYTES: String(2 * 1024 * 1024), XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const { token } = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const put = (name, body, headers) => raw(edit.port, 'PUT', api(`media/${name}?token=${token}`), { body, headers });
+  const hashed = (body) => ({ 'x-content-sha256': createHash('sha256').update(body).digest('hex') });
+  const big = Buffer.alloc(1024 * 1024 + 1, 1);
+  assert.equal((await put('big.png', big)).status, 200);
+  const over = await put('bigger.png', big);
+  assert.equal(over.status, 413);
+  assert.match(over.json().error, /^the session took 1 MB of new files already, and it takes at most 2 MB/);
+  assert.equal((await put('a.png', 'a', hashed('a'))).status, 200);
+  assert.equal((await put('b.png', 'b')).status, 200);
+  assert.deepEqual((await put('a.png', 'a', hashed('a'))).json(), { path: 'media/a.png' }, 'a file sent again is refused');
+  const many = await put('c.png', 'c');
+  assert.equal(many.status, 413);
+  assert.match(many.json().error, /^the session took 3 new files already/);
+  assert.deepEqual(['big.png', 'bigger.png', 'a.png', 'b.png', 'c.png'].map((n) => existsSync(join(talk, 'media', n))), [true, false, true, true, false]);
 });
 
 test('a media upload takes every type of picture and video that the editor takes, and serves it with its type', { timeout: 60_000 }, async (t) => {

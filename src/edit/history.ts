@@ -15,8 +15,8 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncat
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, byWords, copy, diff } from '../session/patch.ts';
-import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { apply, applyEach, byWords, copy, diff } from '../session/patch.ts';
+import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Removal, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
@@ -29,10 +29,11 @@ export type HistoryOptions = {
   // the named ones and those after them
   maxBytes?: number;
   keep?: number;
-  // the texts set aside: at most asideBytes each, and at most asideFiles per person, the oldest of
-  // the person removed first
+  // the texts set aside: at most asideBytes each, at most asideFiles per person, the oldest of the
+  // person removed first, and at most asideTotal bytes in all, the oldest removed first
   asideBytes?: number;
   asideFiles?: number;
+  asideTotal?: number;
   // the texts kept as starting points of a rebuild take at most checkpointBytes, at two bytes a
   // character, or four texts of the deck when they are larger
   checkpointBytes?: number;
@@ -46,7 +47,7 @@ export type HistoryOptions = {
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
 // first and last are times of clock, since and time of now
-// ops are the patches of the operations of a version of people as one operation of the text of the version before
+// ops are the patches of the operations of the version as one operation of the text of the version before
 type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
@@ -57,6 +58,8 @@ const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.htm
 // a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
 // once more than CHECKPOINTS are kept or their budget in bytes is passed
 const STEP = 50;
+// the longest removed text in characters that a version serves for its preview
+const REMOVAL_MAX = 4096;
 const CHECKPOINTS = 64;
 
 // the new ranges of the patches of an operation in the text after it
@@ -209,15 +212,11 @@ function touches(marks: Mark[], p: Patch): boolean {
 }
 
 // the marks of a version kept to the ranges that the version changed, since a change made and
-// undone in one version is not a change of it. a range without a mark is given to the author of
-// the nearest mark that was left out, as when the diff of the version places a change at another
-// equal line, and to author when no mark was left out
+// undone in one version is not a change of it. a range without a mark is given to author
 function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   const ranges = rangesOf(patches);
   const out: Mark[] = [];
-  const dropped: Mark[] = [];
   for (const m of marks) {
-    const n = out.length;
     // the ends of the ranges do not decrease, hence the ranges that meet m follow one another
     for (let k = first(ranges.length, (i) => ranges[i].end >= m.start); k < ranges.length && ranges[k].start <= m.end; k++) {
       const r = ranges[k];
@@ -228,23 +227,8 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
         out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
       }
     }
-    if (out.length === n) dropped.push(m);
   }
   const kept = tidy(out);
-  dropped.sort((a, b) => a.start - b.start);
-  // the index of the dropped mark that reaches furthest among the first i + 1
-  const furthest: number[] = [];
-  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
-  const gap = (m: Mark, r: Range) => Math.max(0, m.start - r.end, r.start - m.end);
-  // of the dropped marks that start at or before r the nearest reaches furthest, and of those after
-  // it the nearest starts first
-  const nearest = (r: Range): string => {
-    const i = first(dropped.length, (k) => dropped[k].start > r.start);
-    const before = i > 0 ? dropped[furthest[i - 1]] : null;
-    const after = i < dropped.length ? dropped[i] : null;
-    if (before && (!after || gap(before, r) <= gap(after, r))) return before.author;
-    return after?.author ?? author;
-  };
   // a range is held by a mark that starts before its end, or at its place when it is empty, and
   // reaches into it. reach is the furthest end of those marks
   const added: Mark[] = [];
@@ -254,10 +238,33 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
     const empty = r.start === r.end;
     while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
     if (empty ? reach >= r.start : reach > r.start) continue;
-    added.push({ start: r.start, end: r.end, author: nearest(r) });
+    added.push({ start: r.start, end: r.end, author });
     reach = Math.max(reach, r.end);
   }
   return added.length ? tidy([...kept, ...added]) : kept;
+}
+
+// the operation ops of the text before as patches of what each changed, found by a diff of the text
+// that it replaces and the text that it writes. the diff of the whole texts could place a change at
+// another equal text
+const refined = (before: string, ops: Patch[]): Patch[] => ops.flatMap((p) => diff(before.slice(p.start, p.end), p.text).map((q) => ({ start: p.start + q.start, end: p.start + q.end, text: q.text })));
+
+// the texts that the patches of a version removed, at their places in the text after it, each given
+// to the author of a mark at its place. a removal longer than REMOVAL_MAX is left out
+function removalsOf(before: string, patches: Patch[], marks: Mark[], author: string): Removal[] {
+  const out: Removal[] = [];
+  let delta = 0;
+  let k = 0;
+  for (const p of patches) {
+    const at = p.start + delta;
+    delta += p.text.length - (p.end - p.start);
+    if (p.end === p.start || p.end - p.start > REMOVAL_MAX) continue;
+    const end = at + p.text.length;
+    while (k < marks.length && marks[k].end < at) k++;
+    const m = marks[k];
+    out.push({ at, text: before.slice(p.start, p.end), author: m && m.start <= end ? m.author : author });
+  }
+  return out;
 }
 
 // patches whose texts are copied, since a slice of a text keeps the whole text in memory
@@ -321,6 +328,7 @@ export class History {
   private readonly keep: number;
   private readonly asideBytes: number;
   private readonly asideFiles: number;
+  private readonly asideTotal: number;
   private readonly checkpointBytes: number;
   private readonly now: () => number;
   private readonly clock: () => number;
@@ -345,6 +353,8 @@ export class History {
   private names = 0;
   private stopped = false;
   private asides: AsideInfo[] = [];
+  // the size in bytes of each text set aside, by id
+  private asideSizes = new Map<string, number>();
   // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
   // the marks of the closed versions of people of this run, in the text before an open one
@@ -363,6 +373,7 @@ export class History {
     this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
+    this.asideTotal = options.asideTotal ?? 256 * 1024 * 1024;
     this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
@@ -421,8 +432,11 @@ export class History {
   }
 
   get(id: unknown): VersionDetail | null {
-    const v = this.find(id);
-    return v ? { ...info(v), marks: v.marks } : null;
+    const i = this.indexOf(id);
+    if (i < 0) return null;
+    const v = this.versions[i];
+    const removals = v.patches.some((p) => p.end > p.start) ? removalsOf(this.textAt(i - 1), v.patches, v.marks, v.authors.length === 1 ? v.authors[0] : '') : [];
+    return { ...info(v), marks: v.marks, removals };
   }
 
   // the text of the deck at version id, or null for an unknown id
@@ -495,15 +509,30 @@ export class History {
     writeFileSync(tmp, bytes);
     renameRetriedSync(tmp, join(this.asideDir, asideName(aside)));
     this.asides.push(aside);
+    this.asideSizes.set(aside.id, bytes.length);
     const theirs = this.asides.filter((a) => a.author === author);
-    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
-      this.asides.splice(this.asides.indexOf(old), 1);
-      try {
-        unlinkSync(join(this.asideDir, asideName(old)));
-      } catch {}
-    }
+    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) this.dropAside(old);
+    this.trimAsides();
     this.changed();
     return aside;
+  }
+
+  private dropAside(a: AsideInfo): void {
+    this.asides.splice(this.asides.indexOf(a), 1);
+    this.asideSizes.delete(a.id);
+    try {
+      unlinkSync(join(this.asideDir, asideName(a)));
+    } catch {}
+  }
+
+  // the oldest texts set aside removed while all of them take more than asideTotal
+  private trimAsides(): void {
+    let total = 0;
+    for (const n of this.asideSizes.values()) total += n;
+    while (total > this.asideTotal && this.asides.length > 1) {
+      total -= this.asideSizes.get(this.asides[0].id) ?? 0;
+      this.dropAside(this.asides[0]);
+    }
   }
 
   // the text set aside as id, or null
@@ -534,7 +563,7 @@ export class History {
       if (open) this.writeAll();
       return null;
     }
-    const patches = copied(diff(this.lastText, text));
+    const patches = copied(open ? refined(this.lastText, open.ops) : diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
     if (restored) v.restored = restored;
@@ -568,9 +597,7 @@ export class History {
     if (i === this.versions.length - 1) return this.lastText;
     let from = -1;
     for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
-    let text = from < 0 ? this.base.text : this.checkpoints.get(from)!;
-    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
-    return text;
+    return applyEach(from < 0 ? this.base.text : this.checkpoints.get(from)!, this.versions.slice(from + 1, i + 1).map((v) => v.patches));
   }
 
   private checkpoint(i: number, text: string): void {
@@ -633,7 +660,7 @@ export class History {
       this.append({ kind: 'open', author: op.author });
     }
     open.marks = moveMarks(open.marks, op.patches, op.author);
-    if (op.author !== AUTHOR) open.ops = compose(open.ops, op.patches);
+    open.ops = compose(open.ops, op.patches);
     this.arm();
   }
 
@@ -700,19 +727,21 @@ export class History {
     }
   }
 
-  // the versions before the oldest of the last keep ms and before the oldest named one left out,
-  // the version before them becoming the base
+  // the versions before the oldest of the last keep ms left out but the tagged ones, the version
+  // before the first one kept becoming the base
   private compact(): void {
     const cutoff = this.now() - this.keep;
     let k = this.versions.findIndex((v) => v.time >= cutoff);
     if (k < 0) k = this.versions.length - 1;
-    const named = this.versions.findIndex((v) => v.name);
-    if (named >= 0) k = Math.min(k, named);
-    if (k <= 0) return;
-    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
-    this.versions = this.versions.slice(k);
+    // a tagged version before k is kept, with the changes of the versions left out before it
+    const keep = this.versions.flatMap((v, i) => (i >= k || v.name ? [i] : []));
+    if (keep[0] === 0 && keep.length === this.versions.length) return;
+    const first = keep[0];
+    const versions = keep.map((i, j) => (j === 0 || keep[j - 1] === i - 1 ? this.versions[i] : { ...this.versions[i], patches: copied(diff(this.textAt(keep[j - 1]), this.textAt(i))) }));
+    if (first > 0) this.base = { time: this.versions[first - 1].time, text: this.textAt(first - 1) };
     const kept = new Map<number, string>();
-    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
+    for (const [i, text] of this.checkpoints) if (keep.includes(i)) kept.set(keep.indexOf(i), text);
+    this.versions = versions;
     this.checkpoints = kept;
     this.step = STEP;
     this.writeAll();
@@ -813,9 +842,14 @@ export class History {
     } catch {}
     for (const name of names) {
       const m = ASIDE.exec(name);
-      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+      if (!m) continue;
+      this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+      try {
+        this.asideSizes.set(m[2], statSync(join(this.asideDir, name)).size);
+      } catch {}
     }
     this.asides.sort((a, b) => a.time - b.time);
+    this.trimAsides();
   }
 }
 

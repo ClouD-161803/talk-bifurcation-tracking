@@ -32,6 +32,8 @@ export type PresenceState = {
   mode: 'edit' | 'present' | 'history';
   // the page is hidden, e.g. in a tab behind another
   away: boolean;
+  // the sheet of preamble.tex or references.bib that is open on the page
+  sheet: 'preamble' | 'bibliography' | null;
 };
 
 export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret'> & {
@@ -242,6 +244,7 @@ function parseState(raw: unknown): PresenceState | null {
     following: typeof s.following === 'string' ? s.following : null,
     mode,
     away: s.away === true,
+    sheet: s.sheet === 'preamble' || s.sheet === 'bibliography' ? s.sheet : null,
   };
 }
 
@@ -287,6 +290,7 @@ export class Presence {
     this.client = client;
     const { app } = client;
     client.resolved = () => this.list;
+    app.listen('sheet', () => this.due(true));
     client.on('ops', (ops) => {
       if (!this.log.seeded) this.seedLog();
       this.log.add(ops);
@@ -515,6 +519,7 @@ export class Presence {
       following: this.fields.following,
       mode: this.fields.mode,
       away: document.visibilityState === 'hidden',
+      sheet: shell.presence.sheet()?.which ?? null,
     };
   }
 
@@ -543,12 +548,15 @@ export class Presence {
     const present = new Set<string>();
     let changed = false;
     let lost = false;
+    // the other pages of this person, e.g. a second tab, are not drawn
+    const mine = new Set(client.people.filter((p) => p.person === client.person).map((p) => p.client));
     for (const p of client.presence) {
       if (p.client === client.client) {
         // the edit command lost the state of this page, e.g. when it dropped the page for silence
         lost = p.state === null && !!this.sent;
         continue;
       }
+      if (mine.has(p.client)) continue;
       const state = parseState(p.state);
       if (!state) continue;
       present.add(p.client);
@@ -616,7 +624,7 @@ export class Presence {
     const prev = o.resolvedKey === key || o.ahead || els === null ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
-      o.resolved = { ...prev, name, color, typing: s.typing, active: s.active, following: s.following, mode: s.mode, away: s.away };
+      o.resolved = { ...prev, name, color, typing: s.typing, active: s.active, following: s.following, mode: s.mode, away: s.away, sheet: s.sheet };
       return;
     }
     const at = (i: number, before: Element | null | undefined): Element | null => {
@@ -644,6 +652,7 @@ export class Presence {
       following: s.following,
       mode: s.mode,
       away: s.away,
+      sheet: s.sheet,
     };
   }
 

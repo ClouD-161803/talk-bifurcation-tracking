@@ -5,7 +5,7 @@
 
 import type { AppliedOp, OpAnswer, OpRequest, Patch, RefusalReason, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, checksum, copy, invert, shift, valid } from './patch.ts';
+import { apply, applyEach, checksum, copy, invert, shift, valid } from './patch.ts';
 
 type Entry = {
   op: AppliedOp;
@@ -95,9 +95,9 @@ export class Authority {
   textAt(n: number): string | null {
     if (n === this.n) return this.text;
     if (!Number.isInteger(n) || n < this.oldest || n > this.n) return null;
-    let text = this.text;
-    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply(text, this.log[i].inverse);
-    return text;
+    const inverses: Patch[][] = [];
+    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) inverses.push(this.log[i].inverse);
+    return applyEach(this.text, inverses);
   }
 
   // the seq of the last operation of client that the text holds, or undefined when the client is not

@@ -27,7 +27,52 @@ const config = (fps, scale, hardwareAcceleration) => ({
 // every system
 const ACCELERATIONS = ['prefer-software', 'no-preference'];
 
-const refused = (reason) => new Error(`${reason}. Export with the option --still to keep the backdrops as stills.`);
+// a clock that is stepped from Node in place of performance.now and requestAnimationFrame, in a page.
+// at(ms) runs the frames asked for at ms after install(), and remove() hands them to the real clock
+export const CLOCK = `{
+  install() {
+    this.real = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
+    // a whole number of seconds ahead of the real clock, so that a time of a frame is summed exactly
+    this.base = Math.ceil(performance.now() / 1000) * 1000 + 1000;
+    this.now = this.base;
+    this.queue = new Map();
+    let id = 0;
+    performance.now = () => this.now;
+    window.requestAnimationFrame = (f) => { this.queue.set(++id, f); return id; };
+    window.cancelAnimationFrame = (i) => { this.queue.delete(i); };
+  },
+  at(ms) {
+    this.now = this.base + ms;
+    const q = this.queue;
+    this.queue = new Map();
+    for (const f of q.values()) f(this.now);
+  },
+  remove() {
+    if (!this.real) return;
+    delete performance.now;
+    window.requestAnimationFrame = this.real.raf;
+    window.cancelAnimationFrame = this.real.caf;
+    for (const f of this.queue.values()) this.real.raf(f);
+    this.real = null;
+  },
+}`;
+
+// installs in a page a VideoFrame that takes a canvas of a 2d context from the bytes of its pixels.
+// Chrome encodes a frame of a canvas in the limited range of video, in which PowerPoint draws near
+// black a level darker than the slide around it, and a frame of bytes in full range, which
+// PowerPoint and Keynote draw at the level of the slide. tycho, whose exportVideo records the
+// scenes, makes its frames with the VideoFrame of the page
+export const FULL_RANGE = `if (!window.__canvasFrame) {
+  const Frame = window.__canvasFrame = VideoFrame;
+  window.VideoFrame = function VideoFrame(source, init) {
+    const ctx = (source instanceof HTMLCanvasElement || source instanceof OffscreenCanvas) && source.getContext('2d');
+    if (!ctx) return new Frame(source, init);
+    const { width, height } = source;
+    return new Frame(ctx.getImageData(0, 0, width, height).data, { ...init, format: 'RGBX', codedWidth: width, codedHeight: height });
+  };
+}`;
+
+export const refused = (reason, what = 'the backdrops') => new Error(`${reason}. Export with the option --still to keep ${what} as stills.`);
 
 // the part of the recorder in the page, installed once in the print view. the elements of a step
 // are marked with data-rec as under or over the canvases of the recorded backdrops, by their order
@@ -154,34 +199,8 @@ const HELPER = `window.__record ??= (() => {
   };
   const png = async (canvas) => toBase64(new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer()));
 
-  // a clock that is stepped from Node in place of performance.now and requestAnimationFrame
-  const clock = {
-    install() {
-      this.real = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
-      // a whole number of seconds ahead of the real clock, so that a time of a frame is summed exactly
-      this.base = Math.ceil(performance.now() / 1000) * 1000 + 1000;
-      this.now = this.base;
-      this.queue = new Map();
-      let id = 0;
-      performance.now = () => this.now;
-      window.requestAnimationFrame = (f) => { this.queue.set(++id, f); return id; };
-      window.cancelAnimationFrame = (i) => { this.queue.delete(i); };
-    },
-    at(ms) {
-      this.now = this.base + ms;
-      const q = this.queue;
-      this.queue = new Map();
-      for (const f of q.values()) f(this.now);
-    },
-    remove() {
-      if (!this.real) return;
-      delete performance.now;
-      window.requestAnimationFrame = this.real.raf;
-      window.cancelAnimationFrame = this.real.caf;
-      for (const f of this.queue.values()) this.real.raf(f);
-      this.real = null;
-    },
-  };
+  const clock = ${CLOCK};
+  ${FULL_RANGE}
 
   let state = null;
 

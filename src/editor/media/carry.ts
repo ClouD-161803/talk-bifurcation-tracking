@@ -1,11 +1,12 @@
 // the files of slides or elements pasted from another deck, kept as new media of this deck. each
-// relative src or poster of an img, a video, or a source, and each data-trajectories, is read from
-// the address of the first deck, and the pasted text names its new path under media/. a file that
-// this deck has at the same path, or under media/, with the same bytes is named and not copied
-// again, and a file of this deck that the page can read is never replaced. where the browser
-// refuses the read, e.g. from file:// or from another port, a dialog asks for the folder of the
-// first deck, which is kept for its address while the page lives once a file is found in it. the
-// address of a copy made in a session does not name a folder, and its files are asked for at once
+// relative src or poster of an img, a video, or a source, each data-pdf of an img, and each
+// data-trajectories, is read from the address of the first deck, and the pasted text names its new
+// path under media/. a file that this deck has at the same path, or under media/, with the same
+// bytes is named and not copied again, and a file of this deck that the page can read is never
+// replaced. where the browser refuses the read, e.g. from file:// or from another port, a dialog
+// asks for the folder of the first deck, which is kept for its address while the page lives once a
+// file is found in it. the address of a copy made in a session does not name a folder, and its
+// files are asked for at once
 
 import type { App } from '../app.ts';
 import { deckAddress, type Arrival } from '../commands/origin.ts';
@@ -27,7 +28,7 @@ function refsIn(text: string): Ref[] {
     if (t.type !== 'start') continue;
     const isMedia = /^(img|video|source)$/.test(t.name);
     for (const a of t.attrs) {
-      if (a.value === null || !(a.name === 'data-trajectories' || (isMedia && (a.name === 'src' || a.name === 'poster')))) continue;
+      if (a.value === null || !(a.name === 'data-trajectories' || (isMedia && (a.name === 'src' || a.name === 'poster')) || (t.name === 'img' && a.name === 'data-pdf'))) continue;
       const path = a.value.trim().replace(/&amp;/g, '&');
       if (path && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(path)) out.push({ start: a.start, end: a.end, name: a.name, path });
     }

@@ -57,7 +57,6 @@ export type Item = { id: string; author: string; time: number; text: string; edi
 // at most KEPT_SIZE characters in their patches, since a slide with a scene is of several MB
 const KEPT = 64;
 const KEPT_SIZE = 8 * 2 ** 20;
-export const MENTION = /@\{([A-Za-z0-9_-]{22,64})\}/g;
 
 // an operation of the text at version v, with the patches that undo it. the texts before and after
 // it are not kept, since each is of the size of the deck. they are built back from the held text
@@ -355,6 +354,8 @@ export class Comments {
     }
     const slides = this.slidesOf(text);
     const places = new Map<string, Place>();
+    let by: Map<number, Element> | null = null;
+    const find = (a: Anchor) => this.find(a, (by ??= this.client.port.elementsAt()));
     threads.forEach((t, i) => {
       const was = this.rereading ? c?.places.get(t.id) : undefined;
       if (was && (was.el ?? was.slide)?.isConnected) {
@@ -362,8 +363,8 @@ export class Comments {
         return;
       }
       const a = items[i];
-      const el = a.anchor && !onSlide(t) && !a.removed ? this.find(a.anchor) : null;
-      const slide = (a.slide && this.find(a.slide)) || el?.closest('.reveal .slides section') || null;
+      const el = a.anchor && !onSlide(t) && !a.removed ? find(a.anchor) : null;
+      const slide = (a.slide && find(a.slide)) || el?.closest('.reveal .slides section') || null;
       const at = a.slide ?? a.anchor;
       places.set(t.id, { el, slide, number: slide && at ? slideAt(slides, at.start)?.number ?? null : null });
     });
@@ -371,14 +372,14 @@ export class Comments {
     return places;
   }
 
-  private find(a: Anchor): Element | null {
-    const el = this.client.port.elementAt(a.start);
+  private find(a: Anchor, by = this.client.port.elementsAt()): Element | null {
+    const el = by.get(a.start) ?? null;
     return el && el.localName.toLowerCase() === a.tag ? el : null;
   }
 
   // a new thread on el, or on the slide when el is null. the edits of this page are acknowledged
   // first, so that the anchors are of a version that the edit command keeps
-  async add(el: Element | null, slide: Element, text: string, mentions: string[]): Promise<Comment> {
+  async add(el: Element | null, slide: Element, text: string): Promise<Comment> {
     const { client } = this;
     const port = client.port;
     for (let k = 0; ; k++) {
@@ -391,14 +392,13 @@ export class Comments {
       const { anchor: a, slide: s } = item;
       if (s && !item.removed && (!el || (a && a.start !== s.start))) {
         try {
-          const thread = await this.once(JSON.stringify(['', text, mentions]), [el, slide], (id) =>
+          const thread = await this.once(JSON.stringify(['', text]), [el, slide], (id) =>
             client.transport.post<Comment>('comments', {
               token: client.token,
               anchor: el ? { start: a!.start, end: a!.end } : null,
               slide: { start: s.start, end: s.end },
               base: base.v,
               text,
-              mentions,
               id,
             }),
           );
@@ -493,7 +493,7 @@ export class Comments {
   // a request on a thread, whose answer replaces the comments of the thread and keeps its anchors
   async act(id: string, route: 'reply' | 'edit' | 'delete' | 'resolve' | 'reopen', body: Record<string, unknown> = {}): Promise<void> {
     const send = (more: Record<string, unknown>) => this.client.transport.post<Comment | Record<string, never>>(`comments/${id}/${route}`, { token: this.client.token, ...body, ...more });
-    const answer = route === 'reply' ? await this.once(JSON.stringify([id, body.text, body.mentions]), [], (reply) => send({ id: reply })) : await send({});
+    const answer = route === 'reply' ? await this.once(JSON.stringify([id, body.text]), [], (reply) => send({ id: reply })) : await send({});
     const t = this.threads.get(id);
     if (!('id' in answer)) this.threads.delete(id);
     else if (t) {

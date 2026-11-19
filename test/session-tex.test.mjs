@@ -23,7 +23,6 @@ const DIR = 'test/pages/tex-sheets';
 const DECK = readFileSync(`${DIR}/index.html`, 'utf8').replaceAll('../../../theme/', 'theme/');
 const SOURCES = ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty'];
 const SECRET = 'a secret of the relay of the tests';
-const HOST_BIB = 'In a session, the host adds a paper to references.bib in the talk folder.';
 const LIST = '.beeson-cite';
 // each citation of the deck as key=number, with ! after a paper that tex.js does not have
 const NUMBERS = `[...document.querySelectorAll('.reveal .slides cite[data-key]')].map((c) => c.dataset.key + '=' + (c.dataset.n ?? '') + (c.hasAttribute('data-missing') ? '!' : '')).join(' ')`;
@@ -523,7 +522,7 @@ test('a paper added to references.bib on disk is found by a new search on a page
   // which takes the caret away from the other page
   for (const [i, page] of list.entries()) {
     await search(page, 3 - i, 'conley');
-    await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`No entry of references.bib matches conley. ${HOST_BIB}`)}`);
+    await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify('No entry of references.bib matches conley. Paste the BibTeX of the paper to add it.')}`);
     await press(page, 'Escape');
     await page.waitFor(`!document.querySelector('${LIST}')`);
   }
@@ -543,54 +542,159 @@ test('a paper added to references.bib on disk is found by a new search on a page
   clean(list[1], MISSING);
 });
 
-test('File > Preamble… and File > Bibliography… are off in a session with a note, and a BibTeX entry pasted into the list of Insert > Citation… is refused with its note', { timeout: 300_000 }, async (t) => {
+const SHEET = 'dialog.beeson-edit-tex[open]';
+
+// the sheet of the File menu with id opened on page, once its sources are read
+async function sheet(page, id) {
+  await front(page);
+  await page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${JSON.stringify(id)})).then(() => true)`);
+  await page.waitFor(`!!document.querySelector('${SHEET}:not([aria-busy])')`);
+}
+
+// text typed into the source of the open Preamble sheet of page, at its end or in place of find
+async function typeInto(page, text, find = null) {
+  await front(page);
+  await page.evaluate(`(() => {
+    const t = document.querySelector('${SHEET} textarea');
+    t.focus();
+    const at = ${find === null ? 't.value.length' : `t.value.indexOf(${JSON.stringify(find)})`};
+    t.setSelectionRange(at, ${find === null ? 'at' : `at + ${JSON.stringify(find)}.length`});
+    return true;
+  })()`);
+  await type(page, text);
+}
+
+// the saves of the sheets of page held until release() is called, as on a slow link
+async function holdSaves(page) {
+  await page.evaluate(`(() => {
+    const fetch = (window.__fetch ??= window.fetch);
+    window.__held = [];
+    window.fetch = function (input, init) {
+      if (!String(input).includes('/.session/source/')) return fetch.call(this, input, init);
+      return new Promise((done) => window.__held.push(() => done(fetch.call(window, input, init))));
+    };
+    return true;
+  })()`);
+  return {
+    count: () => page.evaluate('window.__held.length'),
+    release: () => page.evaluate(`(() => { const held = window.__held; window.__held = []; window.fetch = window.__fetch; held.forEach((go) => go()); return held.length; })()`),
+  };
+}
+
+test('File > Preamble… of a guest of the relay and of the host saves preamble.tex through the edit command, and every page draws the new macro and kind of theorem', { timeout: 300_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
   const server = await texTalk(t);
-  const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
-  const bib = server.read('references.bib');
-  for (const id of ['file.preamble', 'file.bibliography']) assert.equal(await ann.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).enabled`), false, `${id} is enabled in a session`);
-  const items = await fileMenu(ann);
-  assert.deepEqual(['file.preamble', 'file.bibliography'].map((id) => ({ label: items[id].label, disabled: items[id].disabled })), [
-    { label: 'Preamble…Edited by the host in preamble.tex', disabled: true },
-    { label: 'Bibliography…Edited by the host in references.bib', disabled: true },
-  ]);
-  await show(ann, 'Citations');
-  await caretAtEnd(ann, `document.querySelector('.reveal section.present p:nth-of-type(3)')`);
-  await ann.evaluate(`Promise.resolve(window.BeesonEditor.exec('insert.citation')).then(() => true)`);
-  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`).catch(async (e) => {
-    const state = await ann.evaluate(`({ list: !!document.querySelector('${LIST}'), items: document.querySelectorAll('${LIST} li[data-key]').length, note: document.querySelector('${LIST} .note')?.textContent ?? null, active: document.activeElement?.localName, region: ${C}.app.region(), enabled: window.BeesonEditor.state('insert.citation').enabled })`);
-    throw new Error(`the list of Insert > Citation… holds ${JSON.stringify(state)}: ${e.message}`);
-  });
-  assert.equal(await ann.evaluate(`document.querySelector('${LIST} input').placeholder`), 'Author, year, title, or key');
-  await ann.evaluate(`(() => {
-    const input = document.querySelector('${LIST} input');
-    input.value = 'conley';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
-  })()`);
-  await ann.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`No entry of references.bib matches conley. ${HOST_BIB}`)}`);
-  await ann.evaluate(`(() => {
-    const data = new DataTransfer();
-    data.setData('text/plain', '@article{conley1968, author = {Conley, Charles}, title = {Low energy transit orbits}, year = {1968}}');
-    document.querySelector('${LIST} input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-    return true;
-  })()`);
-  await ann.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`A BibTeX entry is not added in a session. ${HOST_BIB}`)}`);
-  assert.equal(await ann.evaluate(`!!document.querySelector('.reveal .slides cite[data-key="conley1968"]')`), false);
-  await ann.evaluate(`(() => {
-    const data = new DataTransfer();
-    data.setData('text/plain', 'https://doi.org/10.1063/1.166509');
-    document.querySelector('${LIST} input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-    return true;
-  })()`);
-  await ann.waitFor(`document.querySelector('${LIST} .note').textContent.startsWith('A DOI')`);
-  assert.ok((await ann.evaluate(`document.querySelector('${LIST} .note').textContent`)).endsWith(HOST_BIB), 'the note of a DOI pasted in a session names what the host does');
-  await converge(server, [ann]);
-  assert.equal(server.read('references.bib'), bib);
-  assert.ok(!server.read().includes('conley1968'));
-  clean(ann, MISSING);
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  const [host, guest] = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
+  for (const id of ['file.preamble', 'file.bibliography']) assert.equal(await guest.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).enabled`), true, `${id} is enabled in a session`);
+  await onEvery([host, guest], `${RED} && ${HEAD} === 'conjecture.'`);
+  await sheet(guest, 'file.preamble');
+  await typeInto(guest, '\\newcommand{\\Q}{\\mathbb{Q}}\n');
+  await until(() => server.read('preamble.tex').endsWith('\\newcommand{\\Q}{\\mathbb{Q}}\n'), 'the macro Q in preamble.tex', 30_000);
+  await until(() => server.read('tex.js').includes('"Q"'), 'the macro Q in tex.js', 30_000);
+  assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
+  await onEvery([host, guest], `!${RED}`);
+  await sheet(host, 'file.preamble');
+  await host.waitFor(`document.querySelector('${SHEET} textarea').value.includes('\\\\newcommand{\\\\Q}')`, 30_000);
+  await typeInto(host, '\\newtheorem{conjecture}[theorem]{Conjecture}\n');
+  await press(host, 'Escape');
+  await until(() => server.read('tex.js').includes('"conjecture"'), 'the kind conjecture in tex.js', 30_000);
+  await onEvery([host, guest], `${HEAD} === 'Conjecture 2.'`);
+  // the sheet of the guest, which did not have edits, reads the text of the host
+  await guest.waitFor(`document.querySelector('${SHEET} textarea').value.includes('{Conjecture}')`, 30_000);
+  assert.equal(await guest.evaluate(`document.querySelector('${SHEET} .note').textContent`), '');
+  clean(host, MISSING);
+  clean(guest, MISSING);
 });
 
-test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px, also with wider letters', { timeout: 300_000 }, async (t) => {
+test('a save of a sheet on a text that another person saved since is refused, merged when the edits are apart, and the person is told and chooses when they clash', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  const preamble = server.read('preamble.tex');
+  await sheet(ann, 'file.preamble');
+  await sheet(ben, 'file.preamble');
+  // the edits of Ben apart from those of Ann are merged into her text
+  const held = await holdSaves(ben);
+  await typeInto(ben, '\\boldsymbol{#1}\\,', '\\boldsymbol{#1}');
+  await until(() => held.count(), 'the held save of Ben', 30_000);
+  await typeInto(ann, '\\newcommand{\\Q}{\\mathbb{Q}}\n');
+  await until(() => server.read('preamble.tex').includes('\\Q'), 'the save of Ann', 30_000);
+  await held.release();
+  await until(() => server.read('preamble.tex').includes('\\boldsymbol{#1}\\,'), 'the merged save of Ben', 30_000);
+  assert.equal(server.read('preamble.tex'), `${preamble.replace('\\boldsymbol{#1}', '\\boldsymbol{#1}\\,')}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
+  await ben.waitFor(`document.querySelector('${SHEET} .note').textContent === 'Someone else saved preamble.tex since you read it, and your edits are merged into their text.'`, 30_000);
+  // the edits of Ben that clash with those of Ann are kept in his sheet, and are not saved until he chooses
+  await ann.waitFor(`document.querySelector('${SHEET} textarea').value.includes('\\\\,')`, 30_000);
+  const again = await holdSaves(ben);
+  await typeInto(ben, '\\newcommand{\\R}{\\mathbb{R}}\n');
+  await until(() => again.count(), 'the held save of Ben', 30_000);
+  await typeInto(ann, '\\newcommand{\\C}{\\mathbb{C}}\n');
+  await until(() => server.read('preamble.tex').includes('\\C'), 'the save of Ann', 30_000);
+  const anns = server.read('preamble.tex');
+  await again.release();
+  const clash = 'Someone else saved preamble.tex since you read it, and your edits clash with theirs. Keep your text, or use theirs.';
+  await ben.waitFor(`document.querySelector('${SHEET} .note').textContent === ${JSON.stringify(clash)}`, 30_000);
+  assert.ok((await ben.evaluate(`document.querySelector('${SHEET} textarea').value`)).includes('\\mathbb{R}'), 'the text of Ben is kept in his sheet');
+  assert.equal(server.read('preamble.tex'), anns);
+  await ben.evaluate(`[...document.querySelectorAll('${SHEET} button')].find((b) => b.textContent === 'Keep My Text').click(), true`);
+  await until(() => server.read('preamble.tex').includes('\\R'), 'the text of Ben saved over the text of Ann', 30_000);
+  assert.ok(!server.read('preamble.tex').includes('\\C'));
+  await ben.waitFor(`document.querySelector('${SHEET} .note').textContent === ''`, 30_000);
+  // the refused saves of Ben are answered with 409
+  clean(ann, MISSING);
+  clean(ben, [...MISSING, /409 \(Conflict\)/]);
+});
+
+test('the people who have a sheet open are shown in the same sheet of the others, and in their status', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await sheet(ann, 'file.bibliography');
+  await sheet(ben, 'file.bibliography');
+  await ben.waitFor(`document.querySelector('${SHEET} .beeson-sheet-presence')?.textContent === 'Annhas references.bib open'`, 30_000);
+  await ann.waitFor(`document.querySelector('${SHEET} .beeson-sheet-presence')?.textContent === 'Benhas references.bib open'`, 30_000);
+  assert.equal(await ben.evaluate(`document.querySelector('${SHEET} .beeson-sheet-presence .flag').classList.contains('c' + ${C}.resolved()[0].color)`), true, 'the flag is in the tone of Ann');
+  await ben.waitFor(`[...document.querySelectorAll('.beeson-session-people .beeson-session-avatar[data-person]')].some((b) => b.getAttribute('aria-label').endsWith('editing references.bib'))`, 30_000);
+  await front(ann);
+  await press(ann, 'Escape');
+  await ben.waitFor(`!document.querySelector('.beeson-sheet-presence')`, 30_000);
+  await press(ben, 'Escape');
+  await sheet(ben, 'file.preamble');
+  await sheet(ann, 'file.bibliography');
+  await front(ben);
+  assert.equal(await ben.evaluate(`!!document.querySelector('.beeson-sheet-presence')`), false, 'a person with the other sheet open is not shown');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('a BibTeX entry pasted into the list of Insert > Citation… in a session is added to references.bib through the edit command, and is cited on every page', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  const bib = server.read('references.bib');
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  await front(ann);
+  await caretAtEnd(ann, `document.querySelector('.reveal section.present p:nth-of-type(3)')`);
+  await ann.evaluate(`Promise.resolve(window.BeesonEditor.exec('insert.citation')).then(() => true)`);
+  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
+  assert.equal(await ann.evaluate(`document.querySelector('${LIST} input').placeholder`), 'Author, year, title, key, or pasted BibTeX');
+  const entry = '@article{conley1968, author = {Conley, Charles}, title = {Low energy transit orbits}, year = {1968}}';
+  await ann.evaluate(`(() => {
+    const data = new DataTransfer();
+    data.setData('text/plain', ${JSON.stringify(entry)});
+    document.querySelector('${LIST} input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await until(() => server.read('references.bib').includes(entry), 'the entry in references.bib', 30_000);
+  assert.ok(server.read('references.bib').startsWith(bib));
+  await until(() => server.read('tex.js').includes('"conley1968"'), 'the reference of conley1968 in tex.js', 30_000);
+  await onEvery([ann, ben], `${NUMBERS} === 'koon2000=1 gomez2004=2 conley1968=3'`);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('the rows of the File menu in a session fit the menu on a phone of 390 px and on a screen of 1440 px, also with wider letters', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   // the system font of Linux and of Android is wider than the one of a Mac
   const wide = '.beeson-edit-menu { letter-spacing: 1px; }';
@@ -600,19 +704,17 @@ test('the notes of File > Preamble… and File > Bibliography… in a session fi
     await converge(server, [page]);
     if (style) await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: ${JSON.stringify(style)} })), true`);
     const items = await fileMenu(page);
-    for (const id of ['file.preamble', 'file.bibliography']) {
-      assert.ok(items[id], `the File menu does not have ${id}`);
-      assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
-      // the row of a note on a second line has room above and below its text, as a row of one line
-      assert.ok(items[id].room >= 2.5, `the label of ${id} touches the edge of its row at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
+    for (const id of ['file.preamble', 'file.bibliography']) assert.deepEqual({ label: items[id]?.label, disabled: items[id]?.disabled }, { label: id === 'file.preamble' ? 'Preamble…' : 'Bibliography…', disabled: false });
+    for (const [id, item] of Object.entries(items)) {
+      assert.ok(item.scroll <= item.client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
+      // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
+      assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     }
-    // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
-    for (const [id, item] of Object.entries(items)) assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     clean(page, MISSING);
   }
 });
 
-test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says the host pastes their lines into preamble.tex', { timeout: 300_000 }, async (t) => {
+test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says to paste their lines with File > Preamble…', { timeout: 300_000 }, async (t) => {
   const deck = await serve('.');
   t.after(() => deck.close());
   const a = await openDeck(browser, `${deck.origin}/${A}?${QUERY}`, A);
@@ -633,5 +735,5 @@ test('a slide pasted in a session with macros that preamble.tex does not have op
   await ann.waitFor(`!!document.querySelector('dialog.paste-macros:not([hidden])') || window.__pasted !== false`, 30_000);
   assert.ok(await ann.evaluate(`!!document.querySelector('dialog.paste-macros:not([hidden])')`), `the paste ended without the dialog: ${await ann.evaluate('String(window.__pasted)')}, ${(await ann.evaluate('window.BeesonEditor.status()')).message}`);
   const text = await ann.evaluate(`document.querySelector('dialog.paste-macros:not([hidden]) p').textContent`);
-  assert.ok(text.startsWith('In a session, the host pastes the lines below at the end of preamble.tex'), text);
+  assert.ok(text.startsWith('Choose File > Preamble… and paste the lines below at the end of the preamble of this deck.'), text);
 });

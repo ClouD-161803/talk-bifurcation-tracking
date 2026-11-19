@@ -6,7 +6,7 @@
 
 import type { AppliedOp, OpAnswer, OpRequest, Patch, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, checksum, diff, mergePatches, shift, valid, wellFormed } from './patch.ts';
+import { alignTo, apply, checksum, coreOf, diff, mergePatches, moveOffsets, placed, shift, valid, wellFormed } from './patch.ts';
 
 export type Side = 'ours' | 'theirs';
 
@@ -40,6 +40,9 @@ export class Replica {
   // after a refusal for a conflict, nothing is sent until base reaches the version of the refusal,
   // since the operation that won may not have been received yet
   private waitFor = -1;
+  // the offsets of mine at which the editor put or removed an element, which place the patches of
+  // every diff of mine, see placed(). they are kept until base is mine
+  private places: number[] = [];
 
   // text is the text at version v that the editor read. seq is the last sequence number used by
   // this client, 0 for a new client
@@ -86,18 +89,46 @@ export class Replica {
     return this.flight !== null && !this.flight.answered;
   }
 
-  // the text that the deck reads as after a change of the deck in this browser. returns the text
-  // with each lone surrogate replaced by U+FFFD, which the deck must then read as, or null when
-  // text is taken as it is
-  edit(text: string): string | null {
+  // the text that the deck reads as after a change of the deck in this browser, and the offsets of
+  // text at which the editor put or removed an element. returns the text with each lone surrogate
+  // replaced by U+FFFD, which the deck must then read as, or null when text is taken as it is
+  edit(text: string, places: readonly number[] = []): string | null {
+    const was = this.mine;
     this.mine = wellFormed(text);
+    const moved = moveOffsets(this.places, was, this.mine);
+    this.places = [...moved, ...places.filter((h) => !moved.includes(h))];
+    this.settle();
     return this.mine === text ? null : this.mine;
   }
 
-  // the operation to send now, or null when one is in flight, a resync is needed, or base is mine
-  outgoing(): OpRequest | null {
+  // the patches that turn text into mine, at the places of the editor
+  private ours(text: string): Patch[] {
+    return placed(text, diff(text, this.mine), this.places, this.mine);
+  }
+
+  // mine becomes text with patches, the merge of ours with the patches of others. the places become
+  // the starts of the removals and insertions of ours in it, which the order of patches tells also
+  // where the others insert at one of them
+  private remine(text: string, patches: Patch[], ours: Patch[]): void {
+    this.mine = apply(text, patches);
+    this.places = this.places.length ? starts(text, patches, new Set(ours)) : [];
+  }
+
+  private settle(): void {
+    if (!this.flight && this.mine === this.base) this.places = [];
+  }
+
+  // the operation to send now, or null when one is in flight, a resync is needed, or base is mine.
+  // held gives the paths of the files that a text names and that wait for their upload, and the
+  // patches that name none of them are sent when the text they give names none either
+  outgoing(held?: (text: string) => string[]): OpRequest | null {
     if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
-    const patches = diff(this.base, this.mine);
+    let patches = this.ours(this.base);
+    if (held) {
+      const paths = held(this.mine);
+      patches = patches.filter((p) => !paths.some((path) => p.text.includes(path)));
+      if (patches.length && held(apply(this.base, patches)).length) return null;
+    }
     if (patches.length === 0) return null;
     this.flight = { client: this.id, seq: ++this.seq, patches, answered: false, accepted: null };
     return { client: this.id, seq: this.seq, base: this.version, patches };
@@ -176,20 +207,21 @@ export class Replica {
     if (!parsed) throw new Error(`${v} is not a version`);
     const before = this.mine;
     const from = this.resyncBase(parsed, applied);
-    const theirs = diff(from, text);
-    const ours = diff(from, this.mine);
+    const ours = this.ours(from);
+    const theirs = alignTo(from, diff(from, text), ours);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
     // a side is given by the dialog after a break, which decides, and mine wins without one
     const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
-    const merged = apply(from, both.patches);
+    this.remine(from, both.patches, ours);
+    const merged = this.mine;
     this.base = text;
-    this.mine = merged;
     this.epoch = parsed.epoch;
     this.n = parsed.n;
     this.flight = null;
     this.waitFor = -1;
     this.needsResync = false;
+    this.settle();
     return merged === before ? null : merged;
   }
 
@@ -219,37 +251,53 @@ export class Replica {
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {
       this.mine = next;
+      this.places = [];
     } else {
       const theirs = op.patches;
       const flown = this.flight?.patches ? shift(this.flight.patches, theirs, true) : null;
-      let merged: string;
       if (this.flight?.patches && flown) {
         // mine was built on base with the operation in flight, mid, hence theirs is moved onto mid
         // with theirs ordered first, which gives the text that the authority will hold
         const mid = apply(this.base, this.flight.patches);
         const onMid = shift(theirs, this.flight.patches, false) ?? [];
-        merged = this.merge(mid, onMid, wins, conflicts, dedupe);
+        const places = this.places.length ? starts(next, flown) : [];
+        this.merge(mid, onMid, wins, conflicts, dedupe);
         this.flight.patches = flown;
+        // the places of the operation in flight, at its starts in the text that the authority will hold
+        this.places.push(...moveOffsets(places, apply(next, flown), this.mine));
       } else {
         if (this.flight) this.flight.patches = null;
-        merged = this.merge(this.base, theirs, wins, conflicts, dedupe);
+        this.merge(this.base, theirs, wins, conflicts, dedupe);
       }
-      this.mine = merged;
     }
     this.base = next;
     this.n = at.n;
+    this.settle();
     if (check && checksum(this.base) !== op.sum) this.needsResync = true;
   }
 
-  // the text with theirs and the patches that turn it into mine. a broadcast operation is merged
-  // with the text, hence a format and the keys of the other side inside its run are both kept, while
-  // the operations missed during a break are shown to the person as conflicts
-  private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): string {
-    const ours = diff(text, this.mine);
+  // mine becomes the text with theirs and the patches that turn it into mine. a broadcast operation
+  // is merged with the text, hence a format and the keys of the other side inside its run are both
+  // kept, while the operations missed during a break are shown to the person as conflicts
+  private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): void {
+    const ours = this.ours(text);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
     // a catch-up is decided
     const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
     conflicts.push(...merged.conflicts);
-    return apply(text, merged.patches);
+    this.remine(text, merged.patches, ours);
   }
+}
+
+// the starts in text with patches of the removals and insertions of the patches of own, or of every
+// patch without own
+function starts(text: string, patches: Patch[], own?: Set<Patch>): number[] {
+  const out: number[] = [];
+  let delta = 0;
+  for (const p of patches) {
+    const c = !own || own.has(p) ? coreOf(text, p) : null;
+    if (c) out.push(c.start + delta);
+    delta += p.text.length - (p.end - p.start);
+  }
+  return out;
 }

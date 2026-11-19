@@ -436,7 +436,7 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     }
     // the text of an element taken from its place is looked for where the patches inserted text
     const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
-    if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    if (o >= 0 && overlaps(inserted, o, o + a.end - a.start)) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
     return { anchor: found, text };
   };
 

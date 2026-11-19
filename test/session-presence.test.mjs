@@ -978,11 +978,8 @@ const TIMERS = `(() => { const p = ${P}; return [p.timer, p.restTimer, p.typingT
 test('after Leave Session and after the end of the session, no element stays held, and no timer of presence runs', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered
-  // soon. a page is thus between two polls once a second. the edit command of this test therefore
-  // answers a poll with ended until it exits, 3 s after index.html is written, in place of 200 ms,
-  // and it is killed once Ana and Cy are told the end
-  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '120000' } });
+  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
@@ -998,6 +995,7 @@ test('after Leave Session and after the end of the session, no element stays hel
   await ben.waitFor(`(() => {
     if (__net.log.findLast((l) => l.url.includes('/.session/events'))?.status !== null) return false;
     window.__before = window.__answers;
+    window.__polls = __net.count('/.session/events');
     ${C}.leave();
     return true;
   })()`);
@@ -1013,15 +1011,15 @@ test('after Leave Session and after the end of the session, no element stays hel
   if (process.platform !== 'win32') {
     server.edit.child.kill('SIGTERM');
     for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
-    server.edit.child.kill('SIGKILL');
-    await server.edit.exited;
+        assert.equal(await server.edit.exited, 0);
     server.edit = null;
     assert.deepEqual(await cy.evaluate(`({ held: ${HOLDER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { held: null, resolved: 0, timers: 0 });
     assert.equal(await ana.evaluate(TIMERS), 0);
   }
   clean(ana);
   // a poll that Ben sent just before his bye may reach the edit command after it, and is then
-  // answered 404
+  // answered 404, but no poll is sent after it
+  assert.equal(await ben.evaluate(`__net.count('/.session/events') - window.__polls`), 0, 'Ben polled after he left');
   clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
 });
@@ -1183,4 +1181,26 @@ test('a state whose POST failed is sent again while the page stays online', { ti
   await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
   clean(ana);
   clean(ben, [/status of 500 .*\/\.session\/presence/]);
+});
+
+test('a person with two pages sees neither the caret nor the hold of the other page', { timeout: 300_000 }, async (t) => {
+  const { browser, server, pages: [ana, ben] } = await session(t);
+  const person = await ana.evaluate(`${C}.person`);
+  assert.ok(person, 'the page of Ana has a person id');
+  // a second tab of Ana reads the person id of the first tab from the localStorage of the browser
+  const again = await open(browser, sessionUrl(server.edit), { name: 'Ana', script: `try { localStorage.setItem('beeson-session-person', ${JSON.stringify(person)}); } catch {}` });
+  await converge(server, [ana, ben, again]);
+  assert.equal(await again.evaluate(`${C}.person`), person, 'the second tab is the same person');
+  for (const page of [ana, ben, again]) await show(page, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' typed');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana on the page of Ben');
+  await until(() => again.evaluate(`${C}.presence.filter((x) => x.state).length === 3 && ${el(1, 'p')}.textContent.endsWith('typed')`), 'the state of each page and the text of Ana on the second tab');
+  assert.deepEqual(await again.evaluate(`${P}.resolved().map((r) => r.name)`), ['Ben'], 'the second tab reads the state of Ben only');
+  assert.equal(await again.evaluate(HOLDER(p)), null, 'the text is not held against the person who types in it');
+  assert.equal((await drawn(again)).carets.length, 0, 'no caret is drawn on the second tab');
+  clean(ana);
+  clean(ben);
+  clean(again);
 });

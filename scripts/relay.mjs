@@ -16,9 +16,9 @@
 //   POST /host/<key>               registers the edit command for key, with
 //                                  Authorization: Bearer <secret>. key is 22 to 128 characters of
 //                                  base64url. answers { token }, which every later request of the
-//                                  host carries in x-relay-token beside the secret. 409 while
-//                                  another edit command pulls for key, or had a pull answered in
-//                                  the last 5 s, unless the request carries the token of the session
+//                                  host carries in x-relay-token beside the secret. 409 while the
+//                                  relay holds a session of key, i.e. until 90 s without a pull,
+//                                  unless the request carries the token of the session
 //   DELETE /host/<key>             ends the session of key. a JSON object in the body is the
 //                                  record of the end, which the relay keeps for 24 h and answers
 //                                  with 410 to the guests of key under /<key>/.session/, until
@@ -68,9 +68,6 @@ export const DEFAULTS = {
   // which thus still pass when large answers fill the rest
   reserveBytes: 4 * 1024 * 1024,
   smallBytes: 64 * 1024,
-  // a registration without the token of a session is refused this long after a pull was answered,
-  // since the pulls of a live edit command are all answered at once by a burst of requests
-  answeredMs: 5000,
   // the ends kept with their records, the newest of them
   endedSessions: 256,
   endedMs: 24 * 60 * 60 * 1000,
@@ -179,7 +176,7 @@ function answer(res, status, body = '', headers = {}) {
 export async function startRelay({ port = 0, host, secret, ...options } = {}) {
   if (typeof secret !== 'string' || secret.length < 16) throw new Error('the secret of the relay must have 16 or more characters');
   const limits = { ...DEFAULTS, ...options };
-  // key -> { token, queue, pending, pulls, lastPull, answeredAt, held }. queue holds the requests
+  // key -> { token, queue, pending, pulls, lastPull, held }. queue holds the requests
   // not yet pulled, pending every request that waits for its answer, pulls the waiting pulls, and
   // held the bytes of the bodies of the session
   const sessions = new Map();
@@ -235,15 +232,14 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (action === undefined && req.method === 'POST') {
       if (!authorized(req, null)) return answer(res, 401, 'wrong secret');
       if (!session && sessions.size >= limits.sessions) return answer(res, 503, 'the relay holds too many sessions');
-      // a session whose edit command has a pull waiting is kept by it, e.g. against a copy of its
-      // talk folder. the pulls of a command that died end with its connections, hence it can start again
-      // between two pulls as well, since a pull that ended by its close leaves answeredAt as it was
-      const live = session && (session.pulls.length > 0 || Date.now() - session.answeredAt < limits.answeredMs);
-      if (live && !same(req.headers['x-relay-token'], session.token)) return answer(res, 409, 'this session is already shared by another edit command');
+      // a session is kept by the edit command that has its token, e.g. against a copy of its talk
+      // folder, or against anyone with the secret and the key while the pulls of the host are cut by
+      // the network. a host that lost its token gets the key again once the session is dropped
+      if (session && !same(req.headers['x-relay-token'], session.token)) return answer(res, 409, 'this session is already shared by another edit command');
       const token = randomBytes(16).toString('base64url');
       ended.delete(key);
       if (session) session.token = token;
-      else sessions.set(key, { token, queue: [], pending: new Map(), pulls: [], lastPull: Date.now(), answeredAt: 0, held: 0 });
+      else sessions.set(key, { token, queue: [], pending: new Map(), pulls: [], lastPull: Date.now(), held: 0 });
       return answer(res, 200, { token });
     }
     if (!authorized(req, null)) return answer(res, 401, 'wrong secret');
@@ -272,7 +268,6 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
           clearTimeout(pull.timer);
           session.pulls = session.pulls.filter((p) => p !== pull);
           session.lastPull = Date.now();
-          session.answeredAt = Date.now();
           answer(res, 200, batch.map(({ id, method, path, query, headers, body }) => ({ id, method, path, query, headers, body: body.toString('base64') })));
         },
         timer: setTimeout(() => pull.done([]), limits.pullMs),

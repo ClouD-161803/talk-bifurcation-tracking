@@ -304,17 +304,19 @@ test('an entry has the time of its file to 2 s, and a time outside the years of 
   at('now.txt', new Date(2026, 4, 17, 13, 45, 31));
   at('early.txt', new Date(1975, 0, 1, 12));
   // on Windows, Node.js reads a time from 2106-02-07 on back modulo 2^32 s, hence the late time is
-  // given by stat and not by the disk
+  // given by stat and lstat and not by the disk
   put(talk, 'late.txt', 'late.txt');
-  const { stat } = fsp;
-  fsp.stat = async (file, ...rest) => {
-    const info = await stat(file, ...rest);
-    if (String(file).endsWith('late.txt')) info.mtime = new Date(2200, 5, 15, 10, 20, 30);
-    return info;
-  };
+  const { stat, lstat } = fsp;
+  for (const [name, real] of [['stat', stat], ['lstat', lstat]]) {
+    fsp[name] = async (file, ...rest) => {
+      const info = await real(file, ...rest);
+      if (String(file).endsWith('late.txt')) info.mtime = new Date(2200, 5, 15, 10, 20, 30);
+      return info;
+    };
+  }
   syncBuiltinESMExports();
   t.after(() => {
-    fsp.stat = stat;
+    Object.assign(fsp, { stat, lstat });
     syncBuiltinESMExports();
   });
   const running = await inProcess(t, root, talk);
@@ -880,8 +882,9 @@ test('through the relay, a folder over 64 MB is refused, and a download gives th
 });
 
 // a talk folder of 65,535 empty files takes a few seconds on macOS and Linux, and minutes on Windows.
-// on a busy machine its zip takes over a minute, hence the edit command is given 4 min for each
-// answer. the limit is longer than the hello, the two answers, and the 4 pieces of the zip
+// each call to the file system is held 1 ms, as on a busy disk, where a zip that looked up its files
+// one call after the other took over 4 min. the edit command is given 4 min for each answer, and the
+// limit is longer than the hello, the two answers, and the 4 pieces of the zip
 test('a folder of more files than a zip holds is refused', { skip: !unix, timeout: 900_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
   // with index.html, the folder holds the 65,535 files that a zip holds
@@ -892,6 +895,14 @@ test('a folder of more files than a zip holds is refused', { skip: !unix, timeou
   const running = await inProcess(t, root, talk);
   const { port, key } = running;
   const token = await hello(t, port, key, 'Ann');
+  const calls = ['lstat', 'stat', 'realpath', 'readdir', 'readFile'];
+  const real = Object.fromEntries(calls.map((name) => [name, fsp[name]]));
+  for (const name of calls) fsp[name] = async (...rest) => (await new Promise((done) => setTimeout(done, 1)), real[name](...rest));
+  syncBuiltinESMExports();
+  t.after(() => {
+    Object.assign(fsp, real);
+    syncBuiltinESMExports();
+  });
   const { zip } = await download(port, key, token, 240_000);
   assert.equal(entries(zip).length, 65_535);
   put(talk, 'one more.txt', '');

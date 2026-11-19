@@ -11,8 +11,9 @@ import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
-import { charEdits, edits, fine, mergeEdits } from '../src/editor/merge.ts';
-import { widen } from '../src/session/patch.ts';
+import { edits } from '../src/editor/merge.ts';
+import { mergeTexts, widen } from '../src/session/patch.ts';
+import { moveAnchors } from '../src/session/anchor.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
 
@@ -783,10 +784,10 @@ const MOVES = {
   'back by an undo': [ONE + TWO.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n'), ONE + TWO],
 };
 
-test('a text element that one replica moves while another, which has not received the move, types in it stays in its place with the key, in both orders', () => {
+test('a text element that one replica moves while another, which has not received the move, types in it is moved with the key, in both orders', () => {
   for (const [name, [base, moved]] of Object.entries(MOVES)) {
     const typed = base.replace('Second slide', 'Second slide by Ana');
-    for (const moveFirst of [true, false]) assert.equal(race(base, moved, typed, moveFirst), typed, `moved ${name}, ${moveFirst ? 'move' : 'key'} first`);
+    for (const moveFirst of [true, false]) assert.equal(race(base, moved, typed, moveFirst), moved.replace('Second slide', 'Second slide by Ana'), `moved ${name}, ${moveFirst ? 'move' : 'key'} first`);
   }
 });
 
@@ -814,13 +815,11 @@ test('a move of a text element and a key in another element at once are both tak
   }
 });
 
-test('the merge of the editor keeps a text element that a received text moves, and an unread key in it, once and in its place', () => {
+test('the merge of the editor moves a text element that a received text moves with an unread key in it, and a received key with an unread move', () => {
   for (const [name, [base, moved]] of Object.entries(MOVES)) {
-    const typed = base.replace('Second slide', 'Second slide by Ana');
-    for (const diff of [edits, fine]) {
-      assert.equal(mergeEdits(base, diff(base, typed), diff(base, moved), 'ours', true).text, typed, `moved ${name}, the key unread, by ${diff.name}()`);
-      assert.equal(mergeEdits(base, diff(base, moved), diff(base, typed), 'ours', true).text, typed, `moved ${name}, the move unread, by ${diff.name}()`);
-    }
+    const typed = base.replace('Second slide', 'Second slide by Ana'), want = moved.replace('Second slide', 'Second slide by Ana');
+    assert.equal(mergeTexts(base, moved, typed, true), want, `moved ${name}, the key unread`);
+    assert.equal(mergeTexts(base, typed, moved, true), want, `moved ${name}, the move unread`);
   }
 });
 
@@ -828,11 +827,9 @@ test('the merge of the editor keeps each text of two slides that a received text
   const base = `${ONE}\n${SAME}`, swapped = `${SAME}\n${ONE}`;
   for (const into of ['First slide', 'Second slide']) {
     const typed = base.replace(into, `${into} by Ana`);
-    for (const diff of [edits, fine]) {
-      for (const [ours, all] of [[typed, swapped], [swapped, typed]]) {
-        const text = mergeEdits(base, diff(base, ours), diff(base, all), 'ours', true).text;
-        assert.ok(text === typed || text === swapped.replace(into, `${into} by Ana`), `a key in ${into}, ${ours === typed ? 'the key' : 'the swap'} unread, by ${diff.name}(): ${text}`);
-      }
+    for (const [ours, all] of [[typed, swapped], [swapped, typed]]) {
+      const text = mergeTexts(base, all, ours, true);
+      assert.ok(text === typed || text === swapped.replace(into, `${into} by Ana`), `a key in ${into}, ${ours === typed ? 'the key' : 'the swap'} unread: ${text}`);
     }
   }
 });
@@ -845,8 +842,8 @@ function merges(base, changed, typed) {
   return {
     'change first': race(base, changed, typed, true),
     'key first': race(base, changed, typed, false),
-    'the key unread': mergeEdits(base, edits(base, typed), edits(base, changed), 'ours', true).text,
-    'the change unread': mergeEdits(base, edits(base, changed), edits(base, typed), 'ours', true).text,
+    'the key unread': mergeTexts(base, changed, typed, true),
+    'the change unread': mergeTexts(base, typed, changed, true),
   };
 }
 
@@ -947,16 +944,75 @@ test('a move that also adds a paragraph keeps this paragraph when another replic
   }
 });
 
-test('a move made offline and a key of another person in the moved paragraph are merged after the break by the choice of the dialog', () => {
+// the texts of every order of arrival of the texts of two or three people, and of the merge of the
+// editor of each person with the others unread
+function everyMerge(base, texts) {
+  const out = {};
+  const orders = texts.length === 2 ? [[0, 1], [1, 0]] : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  for (const order of orders) out[`order ${order.join('')}`] = arrive(base, texts, order);
+  texts.forEach((mine, p) => {
+    const rest = texts.filter((_, q) => q !== p);
+    for (const order of rest.length === 1 ? [[0]] : [[0, 1], [1, 0]]) {
+      const others = rest.length === 1 ? rest[0] : arrive(base, rest, order);
+      out[`${p} with the others unread${rest.length > 1 ? ` in order ${order.join('')}` : ''}`] = others && mergeTexts(base, others, mine);
+    }
+  });
+  return out;
+}
+
+const SLIDE = (n) => `<section>\n  <h2>S${n}</h2>\n  <p>S${n} text</p>\n</section>\n`;
+const DECK = (...n) => n.map(SLIDE).join('');
+const PARAS = '<section>\n  <h2>Notes</h2>\n  <p>Para 1</p>\n  <p>Para 2</p>\n  <p>Para 3</p>\n</section>\n<section>\n  <h2>End</h2>\n  <p>Para 4</p>\n</section>\n';
+const typedIn = (text, ...keys) => keys.reduce((t, [at, key]) => t.replace(at, `${at}${key}`), text);
+const TWO_DOWN = PARAS.replace('  <p>Para 2</p>\n', '').replace('  <p>Para 4</p>\n', '  <p>Para 4</p>\n  <p>Para 2</p>\n');
+const BOTH_DOWN = PARAS.replace('  <p>Para 1</p>\n', '').replace('  <p>Para 3</p>\n', '').replace('  <p>Para 4</p>\n', '  <p>Para 4</p>\n  <p>Para 1</p>\n  <p>Para 3</p>\n');
+
+// a move by one person and keys of the others in the moved text, each as the base, the texts of the
+// people, and the text at the end
+const CARRIED = {
+  'a slide moved below two slides, with a key in it': [DECK(1, 2, 3, 4), [DECK(2, 3, 1, 4), typedIn(DECK(1, 2, 3, 4), ['S1 text', ' by Ana'])], typedIn(DECK(2, 3, 1, 4), ['S1 text', ' by Ana'])],
+  'a slide moved to the start, with a key in its heading': [DECK(1, 2, 3, 4), [DECK(3, 1, 2, 4), typedIn(DECK(1, 2, 3, 4), ['<h2>S3', ' by Ana'])], typedIn(DECK(3, 1, 2, 4), ['<h2>S3', ' by Ana'])],
+  'two slides moved at once, with a key in the first': [DECK(1, 2, 3, 4, 5), [DECK(2, 4, 5, 1, 3), typedIn(DECK(1, 2, 3, 4, 5), ['S1 text', ' by Ana'])], typedIn(DECK(2, 4, 5, 1, 3), ['S1 text', ' by Ana'])],
+  'two slides moved at once, with a key in the second': [DECK(1, 2, 3, 4, 5), [DECK(2, 4, 5, 1, 3), typedIn(DECK(1, 2, 3, 4, 5), ['S3 text', ' by Ana'])], typedIn(DECK(2, 4, 5, 1, 3), ['S3 text', ' by Ana'])],
+  'two slides moved at once, with a key in each': [DECK(1, 2, 3, 4, 5), [DECK(2, 4, 5, 1, 3), typedIn(DECK(1, 2, 3, 4, 5), ['S1 text', ' by Ana'], ['S3 text', ' by Ana'])], typedIn(DECK(2, 4, 5, 1, 3), ['S1 text', ' by Ana'], ['S3 text', ' by Ana'])],
+  'a paragraph moved to another slide, with a key in it': [PARAS, [TWO_DOWN, typedIn(PARAS, ['Para 2', ' by Ana'])], typedIn(TWO_DOWN, ['Para 2', ' by Ana'])],
+  'two paragraphs moved at once, with a key in the second': [PARAS, [BOTH_DOWN, typedIn(PARAS, ['Para 3', ' by Ana'])], typedIn(BOTH_DOWN, ['Para 3', ' by Ana'])],
+  'a slide moved by a person who types in it, with a key of another person in another line of it': [DECK(1, 2, 3, 4), [typedIn(DECK(2, 3, 1, 4), ['<h2>S1', ' by Ben']), typedIn(DECK(1, 2, 3, 4), ['S1 text', ' by Ana'])], typedIn(DECK(2, 3, 1, 4), ['<h2>S1', ' by Ben'], ['S1 text', ' by Ana'])],
+  'a slide moved by a person who types in it, with a key of another person in the same line': [DECK(1, 2, 3, 4), [typedIn(DECK(2, 3, 1, 4), ['S1 text', ' by Ben']), typedIn(DECK(1, 2, 3, 4), ['<p>S1', ' Ana'])], typedIn(DECK(2, 3, 1, 4), ['S1 text', ' by Ben'], ['<p>S1', ' Ana'])],
+  'a paragraph moved by a person who types in it, with a key of another person in it': [PARAS, [TWO_DOWN.replace('Para 2', 'Para 2 by Ben'), PARAS.replace('Para 2', 'Para two 2')], TWO_DOWN.replace('Para 2', 'Para two 2 by Ben')],
+  'a slide moved, with keys of two other people in it': [DECK(1, 2, 3, 4), [DECK(2, 3, 1, 4), typedIn(DECK(1, 2, 3, 4), ['S1 text', ' by Ana']), typedIn(DECK(1, 2, 3, 4), ['<h2>S1', ' by Cy'])], typedIn(DECK(2, 3, 1, 4), ['S1 text', ' by Ana'], ['<h2>S1', ' by Cy'])],
+  'two slides moved at once, with keys of two other people in them': [DECK(1, 2, 3, 4, 5), [DECK(2, 4, 5, 1, 3), typedIn(DECK(1, 2, 3, 4, 5), ['S1 text', ' by Ana']), typedIn(DECK(1, 2, 3, 4, 5), ['S3 text', ' by Cy'])], typedIn(DECK(2, 4, 5, 1, 3), ['S1 text', ' by Ana'], ['S3 text', ' by Cy'])],
+};
+
+test('text that one person moves, also several slides or paragraphs at once and also while typing in it, is moved with every key that the others type in it, in every order and in the merge of the editor', () => {
+  const failed = [];
+  for (const [name, [base, texts, want]] of Object.entries(CARRIED)) {
+    for (const [how, text] of Object.entries(everyMerge(base, texts))) if (text !== want) failed.push(`${name}, ${how}: ${JSON.stringify(text)}`);
+  }
+  assert.deepEqual(failed, []);
+});
+
+test('a slide that two people move at once to two places is in the text once, with the key of a third person, in every order and in the merge of the editor', () => {
+  const base = DECK(1, 2, 3, 4), failed = [];
+  for (const texts of [[DECK(2, 1, 3, 4), DECK(2, 3, 4, 1)], [DECK(2, 1, 3, 4), DECK(2, 3, 4, 1), typedIn(base, ['S1 text', ' by Cy'])]]) {
+    for (const [how, text] of Object.entries(everyMerge(base, texts))) {
+      for (const n of [1, 2, 3, 4]) if (times(text ?? '', `<h2>S${n}</h2>`) !== 1) failed.push(`${texts.length} people, ${how}: slide S${n} is in the text ${times(text ?? '', `<h2>S${n}</h2>`)} times`);
+      if (texts.length === 3 && times(text, 'S1 text by Cy') !== 1) failed.push(`${how}: the key is not in the text`);
+    }
+  }
+  assert.deepEqual(failed, []);
+});
+
+test('a move made offline and a key of another person in the moved paragraph are both kept after the break, without a dialog', () => {
   const [base, moved] = MOVES['inside its slide'];
-  const typed = base.replace('Second slide', 'Second slide by Bea');
-  for (const [wins, want] of [['ours', moved], ['theirs', typed]]) {
+  const typed = base.replace('Second slide', 'Second slide by Bea'), want = moved.replace('Second slide', 'Second slide by Bea');
+  for (const wins of ['ours', 'theirs']) {
     for (const whole of [false, true]) {
       const a = new Authority(base, { epoch: 'E' });
       const op = a.submit({ client: 'beaxxxxx', seq: 1, base: 'E.0', patches: diff(base, typed) }, 'B').op;
       const r = new Replica('maxxxxxx', base, 'E.0');
       r.edit(moved);
-      assert.equal(r.conflictsOf([op]).length, 1, `${wins}: the dialog shows a conflict`);
+      assert.equal(r.conflictsOf([op]).length, 0, `${wins}: the dialog shows no conflict`);
       if (whole) r.resync(a.text, 'E.1', undefined, wins);
       else r.catchUp([op], wins);
       const request = r.outgoing();
@@ -1017,6 +1073,14 @@ function timeOf(fn, runs = 5) {
   return best;
 }
 
+// the median of the ratios of the times of slow and fast over runs, each fast run right after a
+// slow one so that a burst of load slows both
+function ratioOf(slow, fast, runs = 9) {
+  const ratios = [];
+  for (let i = 0; i < runs; i++) ratios.push(timeOf(slow, 1) / timeOf(fast, 1));
+  return ratios.sort((x, y) => x - y)[runs >> 1];
+}
+
 test('shift and mergePatches take a time linear in the number of patches, and an operation has at most 2000 patches', () => {
   // n insertions at the even offsets of a text, and n at its odd offsets, which do not conflict
   const at = (n, odd) => Array.from({ length: n }, (_, i) => ({ start: 2 * i + odd, end: 2 * i + odd, text: odd ? 'y' : 'x' }));
@@ -1037,6 +1101,27 @@ test('shift and mergePatches take a time linear in the number of patches, and an
   assert.equal(valid(at(2001, 0), text.length), false);
 });
 
+test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt in a time near that of a version ten operations back', () => {
+  const big = deck.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
+  const a = new Authority(big, { epoch: 'E' });
+  const r = generator(7);
+  const texts = new Map([[0, big]]);
+  for (let i = 1; i <= 1000; i++) {
+    const at = big.indexOf('<!-- x') + 5 + r.int(5 * 1024 * 1024 - 8);
+    a.enter([{ start: at, end: at + (i % 3 === 0 ? 2 : 0), text: `w${i} ` }], 'Ann');
+    if (i === 990) texts.set(990, a.text);
+  }
+  assert.equal(a.oldest, 0);
+  assert.equal(a.textAt(0), texts.get(0));
+  assert.equal(a.textAt(990), texts.get(990));
+  // the time grows with the operations undone only by the cost of their patches, not by a copy of the
+  // text for each. each text is encoded, as the edit command sends it
+  const ratio = () => ratioOf(() => Buffer.byteLength(a.textAt(0)), () => Buffer.byteLength(a.textAt(990)));
+  let k = ratio();
+  for (let tries = 1; tries < 3 && k >= 10; tries++) k = ratio();
+  assert.ok(k < 10, `the oldest version took ${k.toFixed(1)} times as long as a version 10 operations back`);
+});
+
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
   const base = '<section>\n<div class="box" style="left: 10px; top: 4px">A</div>\n</section>\n';
   const a = base.replace('10px', '20px'), b = base.replace('10px', '15px');
@@ -1050,6 +1135,13 @@ test('two values of one attribute set at once conflict, and the last writer wins
   // a character reference is widened whole, and so is a tag
   assert.deepEqual(diff('a &lt; b', 'a &gt; b'), [{ start: 2, end: 6, text: '&gt;' }]);
   assert.deepEqual(diff('<p id=x>t</p>', '<p id=y>t</p>'), [{ start: 0, end: 8, text: '<p id=y>' }]);
+});
+
+test('a removal that ends on a character reference after a bare ampersand keeps the reference whole, hence a key typed after the ampersand does not break it', () => {
+  const base = '<section>\n  <p>R&D &amp; co</p>\n</section>\n';
+  const typed = base.replace('R&D', 'R&XD'), cut = base.replace('R&D &amp;', 'R&amp;');
+  assert.deepEqual(diff(base, cut), [{ start: 16, end: 24, text: '&amp;' }]);
+  for (const merged of [race(base, typed, cut, true), race(base, typed, cut, false), mergeTexts(base, typed, cut), mergeTexts(base, cut, typed)]) assert.match(merged, /&amp; co/);
 });
 
 // the snippets of the edits of the widen test, which open and close tags, raw text, comments, and
@@ -1173,7 +1265,7 @@ test('a replica keeps a format with a key of its own in the word, the removal of
   assert.equal(race(base, at('Second slZide hYere'), at('Second <em>slide</em> here')), at('Second <em>slZide</em> hYere'));
 });
 
-// the edits that fine() finds in the two words interleave without a conflict, e.g. near to plane
+// the edits of characters that the merge finds in the two words interleave without a conflict, e.g. near to plane
 // as ne to pl and r to ne, and near to large as n to l and e to rg
 // the patch of a browser on a line spans from its first change to its last, hence the patches of
 // two fixes of one word conflict, and the finer edits of both are taken
@@ -1205,7 +1297,7 @@ test('two fixes of letters of one word by two browsers at once are both kept, wi
 
 // the patch of theirs spans from slide to here, hence it conflicts with the patch of ours, and the
 // finer edits are taken, since none of them conflicts
-// fine() finds the removal of a line one letter further on when the next line starts with the same
+// the merge finds the removal of a line one letter further on when the next line starts with the same
 // characters. the letter that the other browser removes is then before this edit, and not in it
 test('a line that one browser removes and the first letter of this line that another browser removes at once do not cost a letter of the next line', () => {
   for (const [base, theirs, mine] of [
@@ -1324,9 +1416,10 @@ function editOf(r, d, p, k, kind = r.pick(['key', 'letter', 'add', 'delete', 'mo
     if (!e || touch(e).has(i)) return null;
     return { ...e, kind: e.kind === 'slide' ? 'keyed slide' : 'keyed', mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [...e.want, mark] };
   }
-  if (kind === 'key' || kind === 'letter') {
+  if (kind === 'key' || kind === 'letter' || kind === 'entity' || kind === 'paste') {
     const i = r.pick(texts), m = lines[i].match(TEXT);
-    if (kind === 'key') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [mark] };
+    const typed = kind === 'entity' ? ` R&D &amp; ${mark}` : kind === 'paste' ? ` ${Array.from({ length: 300 }, () => r.pick(['orbit', 'R&amp;D', 'x &lt; y', 'halo'])).join(' ')} ${mark}` : ` ${mark}`;
+    if (kind !== 'letter') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]}${typed}${m[4]}` }, want: [mark] };
     const j = r.int(m[3].length);
     if (m[3].length < 2) return null;
     const line = `${m[1]}${m[3].slice(0, j)}${m[3].slice(j + 1)}${m[4]}`;
@@ -1382,12 +1475,12 @@ function textOf(d, list) {
 }
 
 // a deck and the edits of 2 or 3 people, 1 to 3 each, that touch different lines
-function roundOf(seed) {
+function roundOf(seed, kinds) {
   const r = generator(seed), d = deckOf(r), all = [];
   for (let p = 2 + r.int(2); p > 0; p--) {
     const list = [];
     for (let k = 1 + r.int(3), tries = 0; list.length < k && tries < 20; tries++) {
-      const e = editOf(r, d, all.length, list.length);
+      const e = editOf(r, d, all.length, list.length, kinds && r.pick(kinds));
       if (e && list.every((f) => disjoint(touch(e), touch(f)))) list.push({ ...e, p: all.length });
     }
     all.push(list);
@@ -1429,7 +1522,7 @@ function broken({ d, all, base, texts }) {
   texts.forEach((mine, p) => {
     const rest = texts.filter((_, q) => q !== p);
     const others = rest.length === 1 ? rest[0] : arrive(base, rest, [0, 1]);
-    res[`${p} with the others unread`] = mergeEdits(base, edits(base, mine), edits(base, others), 'ours', true, true).text;
+    res[`${p} with the others unread`] = mergeTexts(base, others, mine);
   });
   const flat = all.flat(), bad = [], starts = [0];
   for (const l of d.lines) starts.push(starts.at(-1) + l.length + d.eol.length);
@@ -1471,22 +1564,15 @@ function broken({ d, all, base, texts }) {
     runs(e.cut).every((r) => list.some((x) => !x.text && x.start === starts[r[0]] && x.end === starts[r.at(-1) + 1]));
   const moved = flat.filter((e) => MOVING.has(e.kind));
   const clean = moved.every((e) => whole(diff(base, texts[e.p]), e) && whole(edits(base, texts[e.p]), e));
-  // the edits of the editor in a session keep as these line edits, which mergeEdits() tells apart,
-  // each move of lines that are once in the base and in the text, with text in each run, where the
-  // edits of its characters are at most 500, and that mergeEdits() reads as a move, i.e. a move of
-  // slides or of a person whose edits are all such moves without a key
-  const once = (e) => runs(e.cut).every((r) => r.some((i) => /(^|>)[^<]*[^\s<]/.test(d.lines[i]))) &&
-    lines(e).every((w) => [base, texts[e.p]].every((t) => trimmed(t).filter((l) => l === w).length === 1)) && charEdits(base, texts[e.p], 500) !== null;
-  if (clean) for (const e of moved) if (once(e) && (e.kind.includes('slide') || all[e.p].every((f) => MOVING.has(f.kind) && f.kind !== 'keyed' && once(f))) && !whole(fine(base, texts[e.p]), e)) bad.push(`the ${e.kind} of person ${e.p} is not kept whole by fine()`);
   // a key in a slide whose lines between its tags no other edit touches is in the text, also when
   // a move is not clean
   const inner = (i) => d.slides.filter((s) => s[0] < i && i < s[0] + s[1] - 1).flatMap((s) => range(s[0] + 1, s[1] - 2));
   const alone = flat.filter((e) => e.kind.startsWith('key') && flat.every((f) => f === e || disjoint(touch(f), new Set(Object.keys(e.mod).flatMap(inner)))));
   for (const [how, text] of Object.entries(res)) {
     if (text === null) bad.push(`${how}: the pages differ`);
-    // three people can end with an element twice, or without it, after two races in a row, a known
-    // limit
-    if (text === null || (texts.length === 3 && how.startsWith('order'))) continue;
+    if (text === null) continue;
+    const torn = text.split(/\r?\n/).find((l) => !/^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l));
+    if (torn !== undefined) bad.push(`${how}: the line ${torn.trim().slice(0, 80)} is torn`);
     for (const e of alone) if (!text.includes(e.want.at(-1))) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${e.want.at(-1)}`);
     if (!clean) continue;
     // a key typed next to a line is not a loss of this line
@@ -1498,13 +1584,174 @@ function broken({ d, all, base, texts }) {
 }
 
 test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command, keep each edit apart from the others and each line of the base that nobody removed, and the edits of the editor keep each move whole', () => {
-  // the line merge of fe435eb2 loses a key or a line of these seeds as well, and a move that is found
-  // in a slide nobody moved loses a key of 1173. 1850 and 2932 lose a key without the gate
-  const known = new Set([35, 89, 291, 1173, 1387]);
   const failed = [];
   for (const seed of [...Array(1500).keys()].map((i) => i + 1).concat(1850, 2932)) {
-    const bad = known.has(seed) ? [] : broken(roundOf(seed));
+    const bad = broken(roundOf(seed));
     if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
   }
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
+});
+
+test('random edits of two or three people with character references, bare ampersands, and long pastes among them keep the same in every order of arrival and in the merge of the editor', () => {
+  const failed = [];
+  for (let seed = 1; seed <= 1000; seed++) {
+    const bad = broken(roundOf(seed, ['key', 'entity', 'paste', 'letter', 'add', 'delete', 'move', 'several', 'slide', 'slides', 'keyed']));
+    if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
+  }
+  assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
+});
+
+// a slide with three equal paragraphs, and an edit of one person: the removal of the paragraph k,
+// or a copy of it put before it. places are the offsets of the text that the editor gives, i.e. the
+// start tag after a removed paragraph and the start tag of a copy
+const EQUAL = ['<section>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Other</p>\n', '</section>\n'];
+function equalEdit(kind, k, lines = EQUAL) {
+  const out = [...lines];
+  if (kind === 'remove') out.splice(1 + k, 1);
+  else out.splice(1 + k, 0, lines[1 + k]);
+  return { text: out.join(''), places: [out.slice(0, 1 + k).join('').length + 2] };
+}
+
+// replicas that each make one edit of base at once, over a network where the answers and the
+// broadcasts of each replica arrive in an order that the seed picks. with typing, the replicas
+// also type a letter after Other at random steps
+function crowd(base, edits, seed, typing = false) {
+  const r = generator(seed);
+  const authority = new Authority(base, { epoch: 'E' });
+  const replicas = edits.map((_, i) => new Replica(`r${i}aaaaaaa`, base, 'E.0'));
+  replicas.forEach((replica, i) => replica.edit(edits[i].text, edits[i].places));
+  const sent = replicas.map(() => []), ops = replicas.map(() => []), answers = replicas.map(() => []);
+  for (let step = 0; step < 2000; step++) {
+    replicas.forEach((replica, i) => {
+      const request = replica.outgoing();
+      if (request) sent[i].push(request);
+    });
+    const choices = replicas.flatMap((_, i) => [sent[i].length && ['submit', i], ops[i].length && ['op', i], answers[i].length && ['answer', i]].filter(Boolean));
+    if (!choices.length) break;
+    const [kind, i] = r.pick(choices);
+    if (typing && step < 100 && r.chance(0.2)) {
+      const j = r.int(replicas.length);
+      replicas[j].edit(replicas[j].mine.replace('Other', `Other${'xyz'[j]}`));
+    }
+    if (kind === 'submit') {
+      const request = sent[i].shift();
+      const { answer, op } = authority.submit(request, replicas[i].client);
+      if (op) ops.forEach((list) => list.push(op));
+      answers[i].push({ request, answer });
+    } else if (kind === 'op') replicas[i].receive(ops[i].shift());
+    else {
+      const { request, answer } = answers[i].shift();
+      replicas[i].answer(request, answer);
+    }
+  }
+  for (const replica of replicas) assert.equal(replica.mine, authority.text, `seed ${seed}: a replica did not converge`);
+  return { text: authority.text, ops: authority.since('E.0') ?? [] };
+}
+
+// the anchors of threads on the start tags at offsets of base, moved over ops as the edit command
+// moves them, with null for a thread whose element was removed
+function follow(base, ops, offsets) {
+  let text = base;
+  const slide = { start: 0, end: '<section>'.length, tag: 'section' };
+  let items = offsets.map((start) => ({ anchor: { start, end: base.indexOf('>', start) + 1, tag: 'p' }, slide }));
+  for (const op of ops) {
+    const after = apply(text, op.patches);
+    items = moveAnchors(text, op.patches, after, items).items;
+    text = after;
+  }
+  return items.map((i) => (i.anchor && i.anchor.tag === 'p' ? i.anchor.start : null));
+}
+
+const starts = (text) => [...text.matchAll(/<p>Same/g)].map((m) => m.index);
+
+test('a thread on an element stays on it when another person removes an equal element before it, or puts an equal copy before it, also on one line and for equal slides', () => {
+  const base = EQUAL.join('');
+  const threads = starts(base);
+  for (const [kind, k, want] of [['remove', 0, [null, 0, 1]], ['remove', 1, [0, null, 1]], ['copy', 0, [1, 2, 3]], ['copy', 1, [0, 2, 3]]]) {
+    const { ops, text } = crowd(base, [equalEdit(kind, k)], 1);
+    const at = starts(text);
+    assert.deepEqual(follow(base, ops, threads), want.map((j) => (j === null ? null : at[j])), `${kind} ${k}`);
+  }
+  const line = '<section><p>Same</p><p>Same</p></section>\n';
+  const one = crowd(line, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
+  assert.deepEqual(follow(line, one.ops, starts(line)), [null, starts(one.text)[0]]);
+  // two elements with the same start tag on one line, which are not equal
+  const tags = '<section><p>A</p><p>Same</p></section>\n';
+  const first = crowd(tags, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
+  assert.deepEqual(follow(tags, first.ops, starts(tags)), starts(first.text));
+  const slides = '<section>\n  <p>Same</p>\n</section>\n<section>\n  <p>Same</p>\n</section>\n';
+  const half = slides.length / 2;
+  const gone = crowd(slides, [{ text: slides.slice(half), places: [0] }], 1);
+  assert.deepEqual(gone.ops.flatMap((op) => op.patches), [{ start: 0, end: half, text: '' }]);
+});
+
+test('two people who remove the same one of three equal elements at once remove it once, and two who remove two equal elements next to each other remove both, in every order of arrival', () => {
+  const base = EQUAL.join('');
+  for (let seed = 1; seed <= 60; seed++) {
+    const same = crowd(base, [equalEdit('remove', 0), equalEdit('remove', 0)], seed);
+    assert.equal(starts(same.text).length, 2, `seed ${seed}: the same element removed by two people`);
+    const next = crowd(base, [equalEdit('remove', 0), equalEdit('remove', 1)], seed);
+    assert.equal(starts(next.text).length, 1, `seed ${seed}: two elements next to each other removed by two people`);
+    assert.deepEqual(follow(base, next.ops, starts(base)), [null, null, starts(next.text)[0]], `seed ${seed}`);
+  }
+});
+
+test('the threads on three equal elements that nobody removes end on their own element through removals and copies of two or three people at once, in every order of arrival', () => {
+  const base = EQUAL.join('');
+  for (let seed = 1; seed <= 1000; seed++) {
+    const r = generator(seed);
+    const people = 2 + r.int(2);
+    const chosen = Array.from({ length: people }, () => [r.pick(['remove', 'copy']), r.int(3)]);
+    const { text, ops } = crowd(base, chosen.map(([kind, k]) => equalEdit(kind, k)), seed, seed % 2 === 0);
+    // the elements in the order of the text: the index in base of each that stays, and -1 for a copy
+    const removed = new Set(chosen.filter(([kind]) => kind === 'remove').map(([, k]) => k));
+    const order = [0, 1, 2].flatMap((k) => [...chosen.filter(([kind, j]) => kind === 'copy' && j === k).map(() => -1), ...(removed.has(k) ? [] : [k])]);
+    const at = starts(text);
+    assert.equal(at.length, order.length, `seed ${seed}: ${JSON.stringify(chosen)} ends with ${at.length} elements`);
+    // the thread of a removed element may attach to a copy put in later, as to an undone removal
+    const kept = [0, 1, 2].filter((k) => !removed.has(k));
+    const moved = follow(base, ops, starts(base));
+    assert.deepEqual(kept.map((k) => moved[k]), kept.map((k) => at[order.indexOf(k)]), `seed ${seed}: ${JSON.stringify(chosen)}`);
+  }
+});
+
+test('a resync keeps one removal when the whole text lacks the element that the page removed, and the difference of the texts places this removal elsewhere', () => {
+  const base = EQUAL.join('');
+  const mine = equalEdit('remove', 0);
+  for (const flight of [false, true]) {
+    const r = new Replica('meaaaaaa', base, 'E.3');
+    r.edit(mine.text, mine.places);
+    if (flight) r.outgoing();
+    assert.equal(r.resync(mine.text, 'F.0'), null, flight ? 'with the operation in flight' : 'with the edit unsent');
+    assert.equal(starts(r.mine).length, 2);
+  }
+});
+
+test('two people who remove the same blank line and put a slide each after it keep both slides on lines of their own, in both orders', () => {
+  const s = (h) => `<section>\n  <h2>${h}</h2>\n</section>\n`;
+  const base = s('One') + '\n' + s('Two'), at = s('One').length;
+  const put = (h) => [{ start: at, end: at + 1, text: '' }, { start: at + 1, end: at + 1, text: s(h) }];
+  for (const [x, y] of [['X', 'Y'], ['Y', 'X']]) {
+    assert.equal(apply(base, mergePatches(put(x), put(y), 'ours', base).patches), s('One') + s(x) + s(y) + s('Two'));
+    assert.equal(mergeTexts(base, s('One') + s(x) + s('Two'), s('One') + s(y) + s('Two')), s('One') + s(x) + s(y) + s('Two'));
+  }
+});
+
+test('a list that one person moves to another slide, below a paragraph that they type in and another person removes, is moved once and whole, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = ['<ul>', '  <li>Data 62</li>', '  <li>Same words 61</li>', '</ul>'];
+  const one = (extra = []) => s('Orbit 1', ['<p>Moon 11</p>', ...extra]), mid = s('Data 2', ['<p>Same words</p>']) + '\n';
+  const base = one() + mid + s('Halo 6', ['<p>Intro 62</p>', ...ul]);
+  const cut = one() + mid + s('Halo 6', ul), moved = one(ul) + mid + s('Halo 6', ['<p>Intro 62 k21</p>']);
+  assert.equal(mergeTexts(base, moved, cut), one(ul) + mid + s('Halo 6', []));
+  assert.equal(mergeTexts(base, cut, moved), moved);
+});
+
+test('a key typed in a slide that another person moves and copies goes with the first copy, in both orders', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n  <p>${p}</p>\n</section>\n`;
+  const [a, b, c, d, e] = [s('Orbit 1', 'Moon 11'), s('Intro 3', 'Moon 31'), s('Data 4', 'Halo 41'), s('Halo 5', 'Data 51'), s('Moon 6', 'Intro 61')];
+  const base = a + b + c + d + e, typed = a + s('Intro 3', 'Moon 31 k01') + c + d + e, moved = a + c + d + b + e + b;
+  const both = a + c + d + s('Intro 3', 'Moon 31 k01') + e + b;
+  assert.equal(mergeTexts(base, typed, moved), both);
+  assert.equal(mergeTexts(base, moved, typed), both);
 });

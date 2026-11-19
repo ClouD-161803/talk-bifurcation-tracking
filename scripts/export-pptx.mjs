@@ -9,25 +9,28 @@
 // the last frame of the recording as its image, the recording over it, which starts with the slide,
 // and a picture of the words of each step over the recording. Each later step that shows the same
 // videos is shown on a click on this PowerPoint slide. Each tycho scene is recorded into an MP4 in
-// scripts/scenes.mjs, and it is placed in the box of its viewer as a video. A video is placed over
-// its image as a PowerPoint video, and it would be restarted on a new PowerPoint slide, hence the
-// steps that show it are stacked on one PowerPoint slide under the video, and each later step is
-// shown on a click. A recording would be restarted as well, hence a step that changes the videos of
+// scripts/scenes.mjs, and it is placed in the box of its viewer as a video. Each surface and each
+// plot is recorded at each step in scripts/animations.mjs, as a loop placed in its box as a video,
+// and a step that changes the stage of a surface plays a clip of the change before the loop. A
+// video is placed over its image as a PowerPoint video, and it would be restarted on a new
+// PowerPoint slide, hence the steps that show it are stacked on one PowerPoint slide under the
+// video, and each later step is shown on a click. A recording would be restarted as well, hence a step that changes the videos of
 // a recorded slide starts a PowerPoint slide whose images show the backdrops complete. Any other
 // step is a PowerPoint slide of its own. With --still, the backdrops are drawn complete, a scene is
-// left in the images as the still of its first frame, and an H.264 encoder is not needed. The notes
-// of a slide are copied to each of its PowerPoint slides, and each item of a list in the notes is a
-// paragraph of its own after a dash.
+// left in the images as the still of its first frame, a surface or a plot as the still of its step,
+// and an H.264 encoder is not needed. The notes of a slide are copied to each of its PowerPoint
+// slides, and each item of a list in the notes is a paragraph of its own after a dash.
 // Keynote opens this file too. The script exits nonzero on a JavaScript error in the page, on a
 // video without an MP4 source, since MP4 is the one format that plays in every version of
-// PowerPoint, and on a backdrop or a scene that is not recorded, e.g. in a browser without an H.264
-// encoder.
+// PowerPoint, and on a backdrop, a scene, a surface, or a plot that is not recorded, e.g. in a
+// browser without an H.264 encoder.
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { deckUrl, launch, printView } from './chrome.mjs';
 import { pptx } from './pptx.mjs';
 import { recorder } from './record.mjs';
 import { recordScenes, showFirstFrames } from './scenes.mjs';
+import { listAnimations, recordAnimation } from './animations.mjs';
 
 const args = process.argv.slice(2);
 const unknown = args.filter((arg) => arg.startsWith('--') && arg !== '--still');
@@ -146,12 +149,29 @@ const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
 const browser = await launch({ wholeFrames: true });
 let failed = false;
 try {
-  // twice the design size, since an image of text is blurred on a display above 1080 lines
-  const page = await browser.newPage({ scale: 2 });
+  // twice the design size, since an image of text is blurred on a display above 1080 lines. a plot
+  // does not move in a browser that prefers reduced motion, and is recorded only with motion
+  const page = await browser.newPage({ scale: 2, motion: true });
   // by default, a .pdf-page of reveal.js is a pixel shorter than its slide, and a picture of 1080 px
   // would then end on the first row of the next page
   await printView(page, deckUrl(deck, 'print-pdf&still&pdfPageHeightOffset=0'));
   const steps = await page.evaluate(listSteps);
+  // each surface and plot of a step is a video in its box, with the text of its look, so that the
+  // steps that show it alike are stacked. a surface whose stage is changed at its step is recorded
+  // from the stage of the step before
+  const shown = still ? [] : await listAnimations(page);
+  let slideIndex = -1;
+  for (const [n, step] of steps.entries()) {
+    if (!step.continues) slideIndex++;
+    step.animations = [];
+    for (const { index, place, key, x, y, width, height } of shown[n] ?? []) {
+      const id = `${slideIndex}.${place} ${key}`;
+      const before = step.continues ? shown[n - 1]?.find((b) => b.place === place) : undefined;
+      const from = before && before.key !== key && key.startsWith('surface ') ? before : null;
+      step.videos.push({ animation: id, x, y, width, height });
+      step.animations.push({ id, index, from: from?.index ?? null, record: from ? `${id} from ${from.key}` : id });
+    }
+  }
   // the recorder fails in a browser without an H.264 encoder, which a deck without a traced
   // backdrop does not need
   const rec = !still && (await page.evaluate(traced)) ? await recorder(browser) : null;
@@ -160,6 +180,20 @@ try {
   const scenes = await recordScenes(browser, deck, sceneBoxes(slides));
   if (scenes.size) console.log(`recorded scenes: ${scenes.size} in ${seconds(Date.now() - start)}`);
   await showFirstFrames(page, scenes);
+  start = Date.now();
+  const animations = new Map();
+  for (const slide of slides) {
+    for (const { record, index, from } of slide.animations) {
+      if (!animations.has(record)) animations.set(record, await recordAnimation(page, index, from));
+    }
+    slide.videos = slide.videos.flatMap((video) => {
+      if (video.animation === undefined) return [video];
+      const { clip, loop } = animations.get(slide.animations.find((a) => a.id === video.animation).record);
+      const box = { x: video.x, y: video.y, width: video.width, height: video.height };
+      return [clip && { ...box, ...clip, muted: true }, loop && { ...box, ...loop, muted: true, after: !!clip }].filter(Boolean);
+    });
+  }
+  if (animations.size) console.log(`recorded surfaces and plots: ${animations.size} in ${seconds(Date.now() - start)}`);
   // a page behind another one, e.g. behind the page of the scenes, is not given animation frames
   await page.send('Page.bringToFront');
   let backdrops = 0, recording = 0;
@@ -188,6 +222,7 @@ try {
         Object.assign(video, scenes.get(video.scene), { muted: true });
         continue;
       }
+      if (video.data) continue;
       video.path = localFile(video);
       const { x, y, width, height } = video;
       video.poster = await page.screenshot({ x, y: slide.offsets.at(-1) + y, width, height, scale: 1 });
@@ -195,7 +230,7 @@ try {
   }
   if (backdrops) console.log(`recorded backdrops: ${backdrops} in ${seconds(recording)}`);
   writeFileSync(output, pptx(slides));
-  const videos = slides.reduce((total, slide) => total + slide.videos.filter((video) => video.scene === undefined).length, 0);
+  const videos = slides.reduce((total, slide) => total + slide.videos.filter((video) => video.path).length, 0);
   console.log(`${output}: ${slides.length} slides for ${steps.length} steps of ${deck}, placed videos: ${videos}`);
   for (const error of page.errors) console.error(`page error: ${error}`);
   if (page.errors.length) failed = true;

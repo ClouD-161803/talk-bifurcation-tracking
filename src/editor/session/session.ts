@@ -11,7 +11,7 @@ import type { Pairing, Rendered } from '../render.ts';
 import type { Source } from '../source.ts';
 import type { Mark } from './caret.ts';
 import type { Applied, Engine, Tracked } from './port.ts';
-import { apply as applyEdits, caretOf, contentRange, edits, elementRange, fine, mapOffset, markOf, mathLookup, mergeEdits, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
+import { apply as applyEdits, caretOf, contentRange, edits, elementRange, mapOffset, markOf, mathLookup, mergeTexts, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
 import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
@@ -90,12 +90,21 @@ export function install(app: App, tracked: Tracked): Engine {
   const reload = (): Applied => ({ reload: true, changed: [] });
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
   const busy = () => !app.history.settled || app.doc.busy;
+  // the places of the last render, and of the text last handed when it is this render, see Rendered
+  let rendered: number[] = [];
+  let places: number[] = [];
   // the text of the deck now, with the edits of the person
-  const current = (): string => (clean ? app.source!.text : app.files.render());
+  const current = (): string => {
+    rendered = [];
+    if (clean) return app.source!.text;
+    const r = renderDeck(app.source!, app.pairing!, mathLookup(), app.tagEdits);
+    rendered = r.places;
+    return r.text;
+  };
   // the text of the deck with the changes held back, which arrived before the edits of the person,
   // hence go first where both insert at one point, as at the authority. an edit of the person equal
   // to one of them is taken once
-  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, fine(behind.shown, deck), fine(behind.shown, behind.want), 'ours', true).text : deck);
+  const virtual = (deck: string): string => (behind ? mergeTexts(behind.shown, behind.want, deck, true) : deck);
 
   app.listen('open', () => {
     clean = ready();
@@ -187,8 +196,8 @@ export function install(app: App, tracked: Tracked): Engine {
     composing = app.hostOf(ev.target);
     // a deck changed in part is not rendered, hence while the history or the document model is busy
     // only the content of the composing element is read, and rest is made at the first read once
-    // both are quiet
-    const on = !!composing && ready();
+    // both are quiet. a page without a client, e.g. one whose session did not start, reads nothing
+    const on = !!composing && ready() && listeners.size > 0;
     const t = on && busy() ? app.pairing!.byLive.get(composing!) : undefined;
     late = t ? { host: composing!, content: renderTextElement(app.source!, t, mathLookup(), app.tagEdits) } : null;
     rest = on && !busy() ? current() : null;
@@ -412,11 +421,11 @@ export function install(app: App, tracked: Tracked): Engine {
     // an edit of the person that the client has not read is kept, and wins at a conflict. the
     // authority orders it after the text, which arrived first. the text was written against from,
     // hence a change of it equal to such an edit is the same key typed by another person
-    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
+    if (text !== null && from !== seen) target = mergeTexts(from, text, seen);
     if (text !== null) handed = text;
     // the text that a page loaded again is to read, which keeps the composing text as an edit of
     // the person
-    const kept = (): string => (bare !== null ? mergeEdits(seen, fine(seen, virtual(deck)), fine(seen, target), 'ours', true).text : target);
+    const kept = (): string => (bare !== null ? mergeTexts(seen, target, virtual(deck), true) : target);
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial(kept());
     // the composing text in the deck, as an edit of rest. the applies go around it, and one before
@@ -548,8 +557,11 @@ export function install(app: App, tracked: Tracked): Engine {
       if (handed !== null && (busy() || applying || queued)) return handed;
       lateRest();
       if (rest !== null && !composition()) rest = null;
-      return (handed = virtual(rest ?? current()));
+      handed = virtual(rest ?? current());
+      places = rest === null && !behind ? rendered : [];
+      return handed;
     },
+    places: () => places,
     copy: () => {
       if (!ready()) throw new Error('no file is open');
       return virtual(current());

@@ -11,7 +11,7 @@ Hard invariants are never traded away for other goals. When a change would break
 2. Great performance on slow machines is always an objective.
 3. The best part is no part. Complexity is never favored when a simpler solution exists.
 <!-- shared:end -->
-4. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-session.js`, `theme/session.js`, and `theme/edit.mjs` are committed.
+4. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-pdf.js`, `theme/editor-session.js`, `theme/session.js`, and `theme/edit.mjs` are committed.
 5. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
 6. Editor saves keep every byte of `index.html` outside the edited text elements.
 7. Nothing in this repository is derived from DyLAN code.
@@ -34,7 +34,6 @@ Hard invariants are never traded away for other goals. When a change would break
 - Do not write `data-moves-on`. It is set by the theme when the deck is started.
 - Someone may have the deck open in the editor while you change `index.html`. The editor then loads your change. At the next save, the unsaved edits of this person are merged into it.
 - When you copy a newer `theme/` into a talk, convert every class and attribute listed under "Avoid" in `GLOSSARY.md` to its new name. The theme reads only the new names.
-- Read PowerPoint files from their XML. Do not script PowerPoint, Keynote, or any other desktop app.
 
 ## Commands
 
@@ -45,7 +44,7 @@ npm run edit                                # the editor in a session, in which 
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
-npm run pptx                                # slides.pptx, one click per step, with recordings of the scenes and the traced backdrops
+npm run pptx                                # slides.pptx, one click per step, with recordings of the scenes, surfaces, plots, and traced backdrops
 npm run pptx -- --still                     # the same file without recordings, for a browser without an H.264 encoder
 ```
 
@@ -90,7 +89,7 @@ PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write 
 
 - Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the PR is merged, not a suggestion.
 <!-- shared:end -->
-- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-session.js`, `theme/session.js`, or `theme/edit.mjs` either. They are compiled and committed on purpose.
+- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-pdf.js`, `theme/editor-session.js`, `theme/session.js`, or `theme/edit.mjs` either. They are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
 
 ## Documentation

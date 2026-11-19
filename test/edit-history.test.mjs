@@ -322,7 +322,7 @@ test('the file is written anew past its size limit, without the old versions, an
   const last = again.history.close();
   texts.push([last.id, again.authority.text]);
   assert.ok(statSync(file).size < size, 'the file is smaller after the rewrite');
-  const kept = texts.slice(3);
+  const kept = [texts[3], ...texts.slice(6)];
   assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8').split('\n')[0]).text, texts[2][1]);
   again.history.stopSync();
@@ -687,6 +687,51 @@ test('the texts set aside are limited per person, and the text of another person
   assert.equal(readdirSync(join(dir, 'aside')).length, 4);
 });
 
+test('a version tagged long ago is kept when the file is written anew, and the old versions around it are not', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const day = 24 * 3600 * 1000;
+  let clock = Date.now() - 100 * day;
+  const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <p>start</p>\n</section>\n</body>'), { now: () => clock });
+  const texts = [];
+  const step = (i) => {
+    replace(authority, /<p>[^<]*<\/p>\n<\/section>\n<\/body>/, `<p>${String.fromCharCode(97 + (i % 26)).repeat(1000)}</p>\n</section>\n</body>`, ANN);
+    texts.push([history.close().id, authority.text]);
+    clock += 1000;
+  };
+  for (let i = 0; i < 6; i++) step(i);
+  history.name(texts[1][0], 'Early');
+  for (let i = 6; i < 40; i++) step(i);
+  clock = Date.now() - 2 * day;
+  for (let i = 40; i < 43; i++) step(i);
+  history.stopSync();
+  const file = join(dir, 'history.jsonl');
+  const size = statSync(file).size;
+  const again = open(dir, authority.text, { maxBytes: size + 100, now: () => clock });
+  replace(again.authority, 'First slide', 'First slide, later', BO);
+  const last = again.history.close();
+  texts.push([last.id, again.authority.text]);
+  assert.ok(statSync(file).size < size / 4, `the file of ${size} bytes is ${statSync(file).size} bytes after the rewrite`);
+  const kept = [texts[1], ...texts.slice(40)];
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
+  again.history.stopSync();
+  const third = open(dir, again.authority.text);
+  assert.equal(third.history.list().versions.at(-1).name, 'Early');
+  for (const [id, text] of kept) assert.equal(third.history.textOf(id), text);
+});
+
+test('the texts set aside take a bounded space in all, also from many people, the oldest removed first', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  let clock = 1_000_000;
+  const { history } = open(dir, DECK, { asideTotal: 1000, now: () => clock++ });
+  const people = Array.from({ length: 30 }, (_, i) => `person${String(i).padStart(16, '0')}xxxxxx`);
+  const ids = people.map((p) => history.setAside('x'.repeat(100), p).id);
+  assert.deepEqual(history.list().aside.map((a) => a.id), ids.slice(-10).reverse());
+  assert.equal(readdirSync(join(dir, 'aside')).length, 10);
+  const again = open(dir, DECK, { asideTotal: 500 });
+  assert.deepEqual(again.history.list().aside.map((a) => a.id), ids.slice(-5).reverse());
+  assert.equal(readdirSync(join(dir, 'aside')).length, 5);
+});
+
 test('names given again and again to one version do not grow history.jsonl without a bound', { timeout: 60_000 }, (t) => {
   const dir = sessionDir(t);
   const file = join(dir, 'history.jsonl');
@@ -933,6 +978,34 @@ test('the texts kept in memory as starting points of a rebuild stay within their
   const bytes = kept.reduce((sum, text) => sum + 2 * text.length, 0);
   assert.ok(kept.length > 0 && bytes <= 4 * 2 * authority.text.length, `${kept.length} texts of ${bytes} bytes`);
   for (const [id, text] of texts) assert.equal(history.textOf(id), text, `the text of version ${id}`);
+  history.stopSync();
+});
+
+// a deck of 5 MB leaves room for four texts in the budget, hence hundreds of versions lie between
+// two of them, which are applied without a copy of the deck for each
+test('the text of a version of a deck of 5 MB hundreds of versions after a kept text is rebuilt in about the time of one 10 versions after it', { timeout: 300_000 }, (t) => {
+  const deck = DECK.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
+  const { authority, history } = open(sessionDir(t), deck, { maxBytes: 1024 * 1024 * 1024 });
+  const ids = [];
+  for (let i = 0; i < 800; i++) {
+    const at = authority.text.indexOf('<!-- x') + 5 + ((i * 7919) % (5 * 1024 * 1024 - 8));
+    authority.enter([{ start: at, end: at, text: `w${i} ` }], ANN);
+    ids.push(history.close().id);
+  }
+  const kept = [...history.checkpoints.keys()];
+  assert.ok(kept.length <= 4 && history.step >= 200, `${kept.length} texts kept, one every ${history.step} versions`);
+  // a version 10 versions after a kept text, and one a whole interval of history.step versions after it,
+  // timed in turn so that a burst of load slows both. the median ratio is measured up to three times
+  const timeOf = (id) => {
+    const start = performance.now();
+    Buffer.byteLength(history.textOf(id));
+    return performance.now() - start;
+  };
+  const near = ids[kept.at(-2) + 10 - 1], far = ids[kept.at(-1) - 2];
+  const ratio = () => Array.from({ length: 9 }, () => timeOf(far) / timeOf(near)).sort((x, y) => x - y)[4];
+  let k = ratio();
+  for (let tries = 1; tries < 3 && k >= 5; tries++) k = ratio();
+  assert.ok(k < 5, `a version ${history.step - 1} versions after a kept text took ${k.toFixed(1)} times as long as one 10 versions after it`);
   history.stopSync();
 });
 
@@ -1440,4 +1513,69 @@ test('a Replace All in slides that a person pasted in the same version takes abo
   let [same, earlier] = [took(false), took(true)];
   if (same > 6 * earlier) [same, earlier] = [Math.min(same, took(false)), Math.max(earlier, took(true))];
   assert.ok(same <= 6 * earlier, `${same.toFixed(1)} ms in the version of the paste, and ${earlier.toFixed(1)} ms in a later version`);
+});
+
+test('a version serves the text that each person removed at the place of the removal, and not a change made and undone', { timeout: 60_000 }, (t) => {
+  const item = '    <li>Item</li>\n';
+  const deck = DECK.replace('First slide', 'First slide. Ann wrote this.').replace('  <p>Second slide</p>\n', `  <p>Second slide</p>\n  <ul>\n${item}${item}  </ul>\n`);
+  const { authority, history } = open(sessionDir(t), deck);
+  replace(authority, ' Ann wrote this.', '', BO);
+  replace(authority, 'Second slide', 'Second', ANN);
+  // Ann removes the first of two equal items, whose removal a diff of the version places at the second
+  const at = authority.text.indexOf(item);
+  authority.enter([{ start: at, end: at + item.length, text: '' }], ANN);
+  replace(authority, '<h2>Two', '<h2>Dos', BO);
+  replace(authority, '<h2>Dos', '<h2>Two', BO);
+  const v = history.close();
+  const text = authority.text;
+  const { removals } = history.get(v.id);
+  assert.deepEqual(removals.map((r) => [r.author, r.text, text.slice(r.at - 8, r.at)]), [
+    [BO, ' Ann wrote this.', 't slide.'],
+    [ANN, ' slide', 'p>Second'],
+    [ANN, item, '\n  <ul>\n'],
+  ]);
+  history.stopSync();
+});
+
+test('the text of every version is right over random operations of several patches of three people and changes from outside', { timeout: 120_000 }, (t) => {
+  let seed = 7;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (n) => Math.floor(rnd() * n);
+  const word = (n) => Array.from({ length: n }, () => 'ab \n<>'[int(6)]).join('');
+  const people = [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy', 'file'];
+  for (let round = 0; round < 300; round++) {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, `<body>\n${'<p>ab ba</p>\n'.repeat(1 + int(6))}</body>\n`);
+    const texts = [];
+    for (let k = 0, n = 2 + int(30); k < n; k++) {
+      const patches = [];
+      for (let at = 0, places = 1 + int(3); places > 0 && at <= authority.text.length; places--) {
+        const start = at + int(authority.text.length + 1 - at);
+        const end = Math.min(authority.text.length, start + int(6));
+        const ins = rnd() < 0.3 ? '' : word(1 + int(5));
+        if (start !== end || ins) patches.push({ start, end, text: ins });
+        at = end + 1;
+      }
+      if (patches.length) authority.enter(patches, people[int(4)]);
+      if (rnd() < 0.2) {
+        const v = history.close();
+        if (v) texts.push([v.id, authority.text]);
+      }
+    }
+    const v = history.close();
+    if (v) texts.push([v.id, authority.text]);
+    for (const [id, text] of texts) {
+      assert.equal(history.textOf(id), text, `round ${round}`);
+      for (const r of history.get(id).removals) assert.ok(r.at >= 0 && r.at <= text.length && r.text.length > 0, `round ${round}`);
+    }
+    history.stopSync();
+    const again = open(dir, authority.text);
+    for (const [id, text] of texts) assert.equal(again.history.textOf(id), text, `round ${round} after a restart`);
+    again.history.stopSync();
+  }
 });

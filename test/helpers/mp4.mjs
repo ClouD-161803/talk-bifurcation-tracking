@@ -58,3 +58,13 @@ export function stream(file) {
     keys: stss ? Array.from({ length: stss.readUInt32BE(4) }, (_, n) => stss.readUInt32BE(8 + 4 * n)) : 'every frame',
   };
 }
+
+// the code points of the colr box of type nclx in the sample entry of an MP4 with one H.264 track,
+// as { primaries, transfer, matrix, fullRange }, or null for a file without one
+export function color(file) {
+  const entry = find(boxes(file), 'moov/trak/mdia/minf/stbl/stsd').body.subarray(8);
+  const colr = boxes(entry, 8 + 78, entry.length).find((b) => b.type === 'colr')?.body;
+  if (!colr) return null;
+  assert.equal(colr.toString('latin1', 0, 4), 'nclx');
+  return { primaries: colr.readUInt16BE(4), transfer: colr.readUInt16BE(6), matrix: colr.readUInt16BE(8), fullRange: colr[10] >> 7 === 1 };
+}

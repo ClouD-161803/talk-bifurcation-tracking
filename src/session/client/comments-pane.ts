@@ -4,10 +4,10 @@
 // and the previous thread, R opens the reply, E resolves or reopens the thread, and U leaves it.
 // every text of a person is written as text, and never as HTML
 
-import { COMMENT_MAX, type Comment } from '../protocol.ts';
+import { COMMENT_MAX, MENTION, type Comment } from '../protocol.ts';
 import type { Client, Connection } from './client.ts';
 import { Badges } from './comments-badges.ts';
-import { Comments, MENTION, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
+import { Comments, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
@@ -493,8 +493,8 @@ class Pane {
         this.nodes.get(t.id)?.focus();
       };
       // Cancel discards the text, and Esc keeps it, as in a draft
-      f = this.field('Reply', 'Reply', async (text, mentions) => {
-        await this.comments.act(t.id, 'reply', { text, mentions });
+      f = this.field('Reply', 'Reply', async (text) => {
+        await this.comments.act(t.id, 'reply', { text });
         // a reply to a thread that another person resolved while it was typed reopens it
         if (this.comments.threads.get(t.id)?.resolved) await this.comments.act(t.id, 'reopen', {});
         this.comments.markRead(t.id);
@@ -517,7 +517,7 @@ class Pane {
   // a field of a comment, with the list of people at an @, Cancel, and a button that sends it. a
   // name picked from the list is a mention, kept as a mark on its @name until a change of the text
   // touches it or a letter follows it, and a name typed by hand is text
-  private field(placeholder: string, sendLabel: string, send: (text: string, mentions: string[]) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }, escape = cancel): Field {
+  private field(placeholder: string, sendLabel: string, send: (text: string) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }, escape = cancel): Field {
     const box = make('div', 'field');
     const area = make('textarea');
     area.placeholder = placeholder;
@@ -553,11 +553,16 @@ class Pane {
     let active = 0;
     let busy = false;
     let over = false;
-    // the text as it is sent, with each mark written as the id of its person
+    // the text as it is sent, with each mark written as the id of its person, and a word joiner
+    // after each @ typed before a brace, so that only a picked name is a mention
     const sent = () => {
-      let text = area.value;
-      for (const m of [...marks].sort((a, b) => b.start - a.start)) text = `${text.slice(0, m.start)}@{${m.person}}${text.slice(m.end)}`;
-      return text.trim();
+      const plain = (s: string) => s.replace(/@\{/g, '@\u2060{');
+      let text = '', at = 0;
+      for (const m of [...marks].sort((a, b) => a.start - b.start)) {
+        text += `${plain(area.value.slice(at, m.start))}@{${m.person}}`;
+        at = m.end;
+      }
+      return (text + plain(area.value.slice(at))).trim();
     };
     const f: Field = {
       box,
@@ -697,11 +702,10 @@ class Pane {
       sync();
       if (go.disabled) return;
       const text = sent();
-      const mentions = [...new Set([...text.matchAll(MENTION)].map((m) => m[1]))];
       busy = true;
       sync();
       try {
-        await send(text, mentions);
+        await send(text);
         f.reset();
       } catch (e) {
         error.textContent = message(e);
@@ -794,11 +798,11 @@ class Pane {
         this.keep();
         this.render();
       };
-      const field = this.field('Comment, or type @ to mention someone', 'Comment', async (text, mentions) => {
+      const field = this.field('Comment, or type @ to mention someone', 'Comment', async (text) => {
         // the tab may be hidden, and render() then did not move the draft
         this.retarget();
         const d = this.draft!;
-        const thread = await this.comments.add(d.el, d.slide, text, mentions);
+        const thread = await this.comments.add(d.el, d.slide, text);
         this.draft = null;
         this.keep();
         this.focused = thread.id;
@@ -840,8 +844,8 @@ class Pane {
       this.render();
       this.nodes.get(t.id)?.focus();
     };
-    const field = this.field('Edit the comment', 'Save', async (value, mentions) => {
-      await this.comments.act(t.id, 'edit', { text: value, mentions, ...(reply ? { reply } : {}) });
+    const field = this.field('Edit the comment', 'Save', async (value) => {
+      await this.comments.act(t.id, 'edit', { text: value, ...(reply ? { reply } : {}) });
       done();
     }, done, { text, marks });
     this.editing = { id: t.id, reply, field };

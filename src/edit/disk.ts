@@ -7,7 +7,7 @@
 // wrote after it. the reads and the writes are done one at a time
 
 import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
-import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { open, readFile, realpath, rename, stat } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
@@ -54,6 +54,10 @@ const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : 
 
 // whether a text ends with the end tag of html and white space, read in its last 256 characters
 const endsHtml = (text: string | Buffer) => /<\/html>\s*$/i.test(typeof text === 'string' ? text.slice(-256) : text.subarray(-256).toString('latin1'));
+
+// whether a text holds the conflict markers that git writes at a merge that it could not finish
+export const hasConflict = (text: string) => /^<{7}(?: |\r?$)/m.test(text) && /^={7}\r?$/m.test(text) && /^>{7}(?: |\r?$)/m.test(text);
+const CONFLICT = 'index.html holds the conflict markers of git. The session keeps the last text without them, and takes the file again once they are resolved';
 
 // the change time is left out, since a rename changes it on some systems
 export const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
@@ -112,7 +116,7 @@ export function setAsideSync(file: string, aside: string, move = true): boolean 
 
 // a step of a task of the disk, i.e. a stat, a resolve, a read, or a write of a file, or a pause. a
 // task is a generator of its steps, hence it is left at a step when the edit command stops
-type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
+type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { syncFolder: string } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
@@ -125,7 +129,35 @@ function perform(step: Step): Promise<unknown> {
   if ('stat' in step) return stat(step.stat).catch(missing);
   if ('resolve' in step) return realpath(step.resolve).catch(() => step.resolve);
   if ('read' in step) return readFile(step.read);
-  return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
+  if ('syncFolder' in step) return syncFolder(step.syncFolder);
+  return writeSynced(step.write, step.bytes, step.mode);
+}
+
+// a file written and synced to the disk, so that a rename over another file after it does not
+// leave an empty file at a power cut
+async function writeSynced(file: string, bytes: Buffer, mode: number | null): Promise<void> {
+  const handle = await open(file, 'w');
+  try {
+    await handle.writeFile(bytes);
+    if (mode !== null) await handle.chmod(mode);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+// the entries of a folder synced to the disk, after a rename in it. a folder cannot be opened on
+// Windows, and some file systems refuse the sync, which is then left out
+async function syncFolder(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const handle = await open(dir, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {}
 }
 
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
@@ -315,6 +347,8 @@ export class Disk {
   private written: string;
   // the text last taken from a write of another program
   private taken: string | null = null;
+  // the signature of a file with conflict markers, which is neither taken nor written over
+  private conflict: string | null = null;
   // the number of operations of the authority in the text written or read last
   private writtenN: number;
   // the failed writes in a row, and the time before which a failed write is not tried again
@@ -486,6 +520,7 @@ export class Disk {
   // another program wrote the file in the meantime
   private *put(): Task<'changed' | void> {
     const text = this.authority.text, n = this.authority.n;
+    if (this.conflict) return;
     if (text === this.written) {
       this.writtenN = n;
       this.onWritten(n, text);
@@ -534,6 +569,7 @@ export class Disk {
       this.retryAt = 0;
       this.onWriteError(null);
     }
+    yield { syncFolder: dirname(this.target) };
   }
 
   // a change of the file that the edit command did not write, or false when the file was still
@@ -592,6 +628,16 @@ export class Disk {
       this.log(`${this.file} was changed into a file that is not valid UTF-8, and the change is left out`);
       this.known = sig;
       return true;
+    }
+    if (hasConflict(read.text) && !hasConflict(this.written)) {
+      if (this.conflict === null) this.log(`${this.file} holds the conflict markers of git, hence it is not taken, and the edits of the session are written into it once the markers are gone`);
+      this.conflict = this.known = sig;
+      this.onWriteError({ message: CONFLICT, unwritten: this.authority.n - this.writtenN });
+      return true;
+    }
+    if (this.conflict !== null) {
+      this.conflict = null;
+      if (!this.failures) this.onWriteError(null);
     }
     // the bytes of the last write or read, as after a touch of the file
     if (read.text === this.written && read.bom === this.bom) {

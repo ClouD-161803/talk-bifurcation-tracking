@@ -6,7 +6,7 @@
 // elements are drawn into it from here, from the marks of the version
 
 import { tokenize, type Token } from '../../editor/tokens.ts';
-import type { AsideInfo, Mark, VersionDetail, VersionInfo } from '../protocol.ts';
+import type { AsideInfo, Mark, Removal, VersionDetail, VersionInfo } from '../protocol.ts';
 import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
@@ -45,6 +45,8 @@ const FRAME_CSS = `
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }
 section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
+del[data-beeson-removed] { color: var(--beeson-removed); text-decoration: line-through; }
+html.beeson-hide-changes del[data-beeson-removed] { display: none; }
 html:not(.beeson-hide-changes) :is([data-beeson-changed].fragment, [data-beeson-changed] .fragment) { opacity: 1 !important; visibility: visible !important; }
 `;
 
@@ -117,13 +119,17 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
   return [...out.values()];
 }
 
-// the ranges of the text nodes of el that the marks add, by author. the text tokens of the range
+// a removed text drawn struck through at a place of a text node, or at the end of an element
+type Struck = { removal: Removal; node: Text | Element; offset: number };
+
+// the ranges of the text nodes of el that the marks add, by author, into out when it is given, and
+// the places of the removals inside el, into struck. the text tokens of the range
 // [start, end) of the element in text are put one to one on its text nodes, in order, hence an
 // element with a script or with math is left out, and so is one whose text nodes do not read as its
 // text tokens, e.g. with a character reference or a carriage return. math is what MathJax finds
 // with theme/mathjax-config.js after the page is drawn: \( and \[, the escapes \\ and \$, an
 // environment, and \ref or \eqref. a dollar or a backslash before a letter is left as written
-function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], out: Map<string, Range[]>): void {
+function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], removals: Removal[], out: Map<string, Range[]> | null, struck: Struck[]): void {
   if (/\\[([\\$]|\\(?:begin|(?:eq)?ref)\b|<(script|math)\b/i.test(text.slice(start, end))) return;
   let lo = 0;
   for (let hi = tokens.length; lo < hi; ) {
@@ -137,6 +143,15 @@ function addedIn(el: Element, text: string, tokens: Token[], start: number, end:
   const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   while (walk.nextNode()) nodes.push(walk.currentNode as Text);
   if (nodes.length !== texts.length || texts.some((t, i) => text.slice(t.start, t.end) !== nodes[i].data)) return;
+  // a removal is drawn in the text node at its place, or at the end of an element without text. the
+  // white space between two tags is left out, since a removed element is named in the bar
+  for (const r of removals) {
+    if (r.at <= start || r.at >= end) continue;
+    const i = texts.findIndex((t, k) => t.start <= r.at && r.at <= t.end && /\S/.test(nodes[k].data));
+    if (i >= 0) struck.push({ removal: r, node: nodes[i], offset: r.at - texts[i].start });
+    else if (!texts.length) struck.push({ removal: r, node: el, offset: 0 });
+  }
+  if (!out) return;
   const mine = marks.filter((m) => m.start < end && start < m.end);
   texts.forEach((t, i) => {
     for (const m of mine) {
@@ -464,6 +479,7 @@ export class Preview {
     const targets = targetsOf(text, this.slides, detail.marks);
     const notes = new Set<number>();
     const added = new Map<string, Range[]>();
+    const struck: Struck[] = [];
     const tone = (author: string) => personOf(this.client, author)?.color ?? 'var(--muted)';
     // without CSS.highlights, e.g. in an older browser, the changed elements are outlined alone
     const css = (w as Window & typeof globalThis).CSS?.highlights ? (w as Window & typeof globalThis) : null;
@@ -477,7 +493,7 @@ export class Preview {
       (el as HTMLElement).style.setProperty('--beeson-changed', tone(t.author));
       // the parser of the page adds or moves a child, e.g. a p that it closes at a ul, hence the nth
       // child of a name is the one of the text only when the page has as many of them
-      if (css && same.length === t.of) addedIn(el, text, tokens, t.start, t.end, detail.marks, added);
+      if (same.length === t.of) addedIn(el, text, tokens, t.start, t.end, detail.marks, detail.removals ?? [], css && added, struck);
       // the notes are not drawn on the slide, hence their change is named in the bar
       if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
@@ -492,6 +508,21 @@ export class Preview {
       probe.remove();
     });
     if (rules) doc.head.appendChild(doc.createElement('style')).textContent = rules;
+    // the removed texts put in after the ranges of the tints, the last first, so that a split of a
+    // text node leaves the places before it as they are. the text of the markup is shown alone
+    for (const s of struck.sort((a, b) => b.removal.at - a.removal.at)) {
+      const del = doc.createElement('del');
+      del.setAttribute('data-beeson-removed', s.removal.author);
+      del.style.setProperty('--beeson-removed', tone(s.removal.author));
+      const who = personOf(this.client, s.removal.author);
+      del.title = who ? `Removed by ${who.name}` : 'Removed in index.html outside the editor';
+      const parsed = doc.createElement('template');
+      parsed.innerHTML = s.removal.text;
+      del.textContent = parsed.content.textContent;
+      if (!del.textContent) continue;
+      if (s.node.nodeType === Node.TEXT_NODE) (s.node as Text).splitText(s.offset).before(del);
+      else (s.node as Element).append(del);
+    }
     if (notes.size && this.versionBar) this.versionBar.notes.textContent = `Notes of ${slidesText([...notes].sort((x, y) => x - y))} changed`;
     // a slide with a changed element first, and of a number without one, a slide of this number
     const marked = (k: number) => targets.some((t) => t.slide === k);

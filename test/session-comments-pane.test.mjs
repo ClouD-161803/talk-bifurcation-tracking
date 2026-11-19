@@ -1141,13 +1141,15 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   await typeKeys(b, '@An');
   await sees(b, `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => li.children[1].textContent)`, ['Ann', 'Annabel']);
   await press(b, 'Enter');
-  await typeKeys(b, 'and @Annabel');
+  // a mention as it is sent, typed by hand, is text as well
+  const annabel = await b.evaluate(`${C}.known.find((p) => p.name === 'Annabel').person`);
+  await typeKeys(b, `@{${annabel}} and @Annabel`);
   await press(b, 'Escape');
-  assert.equal(await b.evaluate('document.activeElement.value'), '@Ann and @Annabel');
+  assert.equal(await b.evaluate('document.activeElement.value'), `@Ann @{${annabel}} and @Annabel`);
   await click(b, `${PANE} .draft .actions .primary`);
   await b.waitFor(`!document.querySelector('${PANE} .draft')`);
   const ann = await a.evaluate(`${C}.person`);
-  assert.deepEqual((await stored(b)).map((c) => [c.text, c.mentions]), [[`@{${ann}} and @Annabel`, [ann]]]);
+  assert.deepEqual((await stored(b)).map((c) => [c.text, c.mentions]), [[`@{${ann}} @\u2060{${annabel}} and @Annabel`, [ann]]]);
   clean(a);
   clean(b);
 });

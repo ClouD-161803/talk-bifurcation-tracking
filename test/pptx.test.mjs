@@ -10,7 +10,8 @@ import { inflateRawSync } from 'node:zlib';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { pptx, zip } from '../scripts/pptx.mjs';
 import { recordScenes } from '../scripts/scenes.mjs';
-import { stream as mp4Stream } from './helpers/mp4.mjs';
+import { listAnimations, recordAnimation } from '../scripts/animations.mjs';
+import { color as mp4Color, stream as mp4Stream } from './helpers/mp4.mjs';
 
 const EMU_PER_PX = 6350;
 
@@ -72,12 +73,13 @@ function assertPackage(parts) {
 }
 
 // the run of the export of a deck, with options before and after the deck and the output, and the
-// parts of its file. with noH264, the export is run in a browser without an H.264 encoder
-function runExport(deck, before = [], after = [], { noH264 = false } = {}) {
+// parts of its file. with noH264, the export is run in a browser without an H.264 encoder, and with
+// reduced, in a browser that prefers reduced motion
+function runExport(deck, before = [], after = [], { noH264 = false, reduced = false } = {}) {
   const folder = mkdtempSync(join(tmpdir(), 'beeson-pptx-'));
   try {
     const output = join(folder, 'deck.pptx');
-    const preload = noH264 ? ['--import', './test/helpers/no-h264.mjs'] : [];
+    const preload = [...(noH264 ? ['--import', './test/helpers/no-h264.mjs'] : []), ...(reduced ? ['--import', './test/helpers/reduced-motion.mjs'] : [])];
     const run = spawnSync(process.execPath, [...preload, 'scripts/export-pptx.mjs', ...before, deck, output, ...after], { encoding: 'utf8' });
     return { run, parts: run.status === 0 ? unzip(readFileSync(output)) : null };
   } finally {
@@ -165,6 +167,23 @@ test('a recording is started first with its slide, muted, and the videos are sta
   ]);
   const once = text(unzip(pptx([recorded({ loop: false })])), 'ppt/slides/slide1.xml');
   assert.ok(once.includes('<p:cMediaNode vol="80000" mute="1"><p:cTn id="') && !once.includes('repeatCount'));
+});
+
+test('a video after another lies under it, which is hidden once it has played, and is started from as far before its start', () => {
+  const clip = { data: Buffer.from([1]), poster: Buffer.from([2]), x: 10, y: 20, width: 30, height: 40, duration: 1400, loop: false, muted: true };
+  const loop = { ...clip, data: Buffer.from([3]), duration: 2000, loop: true, after: true };
+  const slide = text(unzip(pptx([{ name: 'Changed', notes: [], images: [Buffer.from([4]), Buffer.from([5])], videos: [clip, loop] }])), 'ppt/slides/slide1.xml');
+  assert.deepEqual(pictures(slide), [['2', 'Step 1'], ['3', 'Step 2'], ['5', 'Video 5'], ['4', 'Video 4']]);
+  // Keynote reads the delay of an effect from the effect before it, and PowerPoint from the group
+  const effects = [...slide.matchAll(/presetClass="(\w+)"[^>]*nodeType="(\w+)"><p:stCondLst><p:cond delay="(\d+)"\/>[^]*?(?:cmd="([^"]+)"[^]*?)?<p:spTgt spid="(\d+)"/g)]
+    .map((m) => m.slice(1).filter(Boolean));
+  assert.deepEqual(effects, [
+    ['mediacall', 'afterEffect', '0', 'playFrom(0.0)', '4'],
+    ['exit', 'withEffect', '1400', '4'],
+    ['mediacall', 'withEffect', '0', 'playFrom(0.600)', '5'],
+    ['entr', 'clickEffect', '0', '3'],
+  ]);
+  assert.doesNotMatch(slide, /presetClass="entr"[^>]*nodeType="(after|with)Effect"/);
 });
 
 test('a click shows the next picture of the words and hides the one before', () => {
@@ -514,6 +533,116 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 
+// the file of test/pages/animations-record.html, exported once for the tests of its recordings, in a
+// browser that prefers reduced motion, in which the export records them all the same
+let animationsRun;
+const animationsDeck = () => {
+  animationsRun ??= runExport('test/pages/animations-record.html', [], [], { reduced: true });
+  assert.equal(animationsRun.run.status, 0, animationsRun.run.stderr);
+  return animationsRun;
+};
+
+// the videos of PowerPoint slide n, each with the stream of its MP4 and whether it is looped
+function playedOf(parts, n) {
+  const slide = text(parts, `ppt/slides/slide${n}.xml`);
+  const shapes = pictures(slide).filter(([, label]) => label.startsWith('Video')).map(([shape]) => shape);
+  return videosOf(parts, n).map((video, k) => {
+    const node = [...slide.matchAll(/<p:cMediaNode [^>]*><p:cTn id="\d+"([^>]*)>[^]*?<p:spTgt spid="(\d+)"/g)].find((m) => m[2] === shapes[k]);
+    return { ...video, shape: shapes[k], stream: mp4Stream(parts.get(video.recording)), looped: node[1].includes('repeatCount="indefinite"') };
+  });
+}
+
+// the surface turns in 2 s, and a step that changes its stage starts a PowerPoint slide of its
+// own. The loop of the new stage lies under the clip of the change, see the test of pptx() above
+test('a surface is recorded as a loop of one turn in its box, and a step that changes its stage as a clip before the loop', { timeout: 300000 }, () => {
+  const { run, parts } = animationsDeck();
+  assertPackage(parts);
+  assert.match(run.stdout, /recorded surfaces and plots: 5 in \d+\.\d s/);
+  assert.equal(slideCount(parts), 5);
+  assert.deepEqual(kinds(parts, 1), ['Step', 'Video']);
+  const [first] = playedOf(parts, 1);
+  const size = [Math.round(first.width), Math.round(first.height)];
+  assert.deepEqual({ ...first.stream, duration: undefined }, { width: size[0], height: size[1], fps: 24, frames: 48, duration: undefined, keys: [1] });
+  assert.equal(first.looped, true);
+  assert.deepEqual(pngSize(parts.get(first.poster)), size);
+  // the step of the stage and the step after it, which keeps the stage, then the same stage again
+  assert.deepEqual(kinds(parts, 2), ['Step', 'Step', 'Step', 'Video', 'Video']);
+  const [loop, clip] = playedOf(parts, 2);
+  assert.deepEqual([loop.looped, loop.stream.frames, loop.x, loop.y], [true, 48, first.x, first.y]);
+  assert.notEqual(loop.recording, first.recording);
+  // the change lasts 1.4 s, and the clip ends once the surface has settled
+  const { frames } = clip.stream;
+  assert.equal(clip.looped, false);
+  assert.ok(frames >= Math.ceil(1.4 * 24) && frames < 3 * 24, `${frames} frames`);
+  const slide = text(parts, 'ppt/slides/slide2.xml');
+  assert.match(slide, new RegExp(`presetClass="exit"[^>]*nodeType="withEffect"><p:stCondLst><p:cond delay="${Math.round(frames / 24 * 1000)}"/>[^]*?<p:spTgt spid="${clip.shape}"/>`));
+  assert.equal(slide.match(/nodeType="clickEffect"/g).length, 2);
+  // the surface that does not turn is left in the picture of its step
+  assert.deepEqual(kinds(parts, 5), ['Step']);
+});
+
+test('a plot is recorded at each step as a loop of its pass and its hold, at twice the size of its box', { timeout: 300000 }, () => {
+  const { parts } = animationsDeck();
+  const [one] = playedOf(parts, 3);
+  const [two] = playedOf(parts, 4);
+  assert.deepEqual([kinds(parts, 3), kinds(parts, 4)], [['Step', 'Video'], ['Step', 'Video']]);
+  assert.notEqual(one.recording, two.recording);
+  for (const video of [one, two]) {
+    const size = [2 * Math.round(video.width), 2 * Math.round(video.height)];
+    // a pass of 1 s and a hold of 0.5 s
+    assert.deepEqual({ ...video.stream, duration: undefined }, { width: size[0], height: size[1], fps: 30, frames: 45, duration: undefined, keys: [1] });
+    assert.equal(video.looped, true);
+    assert.deepEqual(pngSize(parts.get(video.poster)), size);
+  }
+});
+
+test('the frames of a surface are drawn and encoded in a page at twice the pixel ratio in about the time of the same frames at one', { timeout: 600000 }, async (t) => {
+  const browser = await launch({ wholeFrames: true });
+  t.after(() => browser.close());
+  const record = async (scale) => {
+    const page = await browser.newPage({ scale, motion: true });
+    try {
+      await printView(page, deckUrl('test/pages/animations-record.html', 'print-pdf&still&pdfPageHeightOffset=0'));
+      const [first] = (await listAnimations(page)).flat();
+      assert.ok(first?.key.startsWith('surface '), JSON.stringify(first));
+      const { evaluate } = page;
+      let ms = 0;
+      page.evaluate = async (expression) => {
+        if (!/^__animate\.(step|encode)\(/.test(expression)) return evaluate(expression);
+        const start = performance.now();
+        const result = await evaluate(expression);
+        ms += performance.now() - start;
+        return result;
+      };
+      const { loop } = await recordAnimation(page, first.index);
+      return { ms: Math.round(ms), stream: mp4Stream(loop.data) };
+    } finally {
+      await page.close();
+    }
+  };
+  let ratio = Infinity;
+  for (let n = 0; n < 3 && ratio > 1.5; n++) {
+    const large = await record(2);
+    const small = await record(1);
+    assert.deepEqual(large.stream, small.stream);
+    ratio = large.ms / small.ms;
+    t.diagnostic(`pixel ratio 1: ${small.ms} ms, pixel ratio 2: ${large.ms} ms, ${small.stream.frames} frames`);
+  }
+  assert.ok(ratio <= 1.5, `the frames at the pixel ratio 2 took ${ratio.toFixed(2)} times as long as at 1`);
+});
+
+test('with --still, the surfaces and the plots are the pictures of their steps, and the export needs no H.264 encoder', { timeout: 300000 }, () => {
+  const parts = exportDeck('test/pages/animations-record.html', ['--still'], [], { noH264: true });
+  assertPackage(parts);
+  assert.equal(slideCount(parts), 7);
+  for (let n = 1; n <= 7; n++) assert.deepEqual(kinds(parts, n), ['Step']);
+  assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
+  const { run } = runExport('test/pages/animations-record.html', [], [], { noH264: true });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /H\.264/);
+  assert.match(run.stderr, /--still to keep the surfaces and the plots as stills/);
+});
+
 // the scene of the demo deck is recorded in 83 s on a Mac, and in minutes on a runner of GitHub,
 // above the limit of 120 s of a DevTools call in launch() of scripts/chrome.mjs. The limit of the
 // second browser is a third of the time of the first recording, and twice the time of every call
@@ -643,6 +772,18 @@ test('without an H.264 encoder, the export of a traced backdrop fails and names 
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /H\.264/);
   assert.match(run.stderr, /--still/);
+});
+
+// PowerPoint on the Mac draws a video in limited range 1 level darker near black than the slide
+// around it, e.g. 4 for 5, and a video in full range at the level of the slide. Keynote matches
+// both, and draws the transfer that the file describes, the transfer of sRGB of the slide
+test('every kind of recording is described in its colr box as full range, with the primaries and matrix of BT.709 and the transfer of sRGB', { timeout: 900000 }, () => {
+  const decks = { scenes: sceneDeck(), 'surfaces and plots': animationsDeck().parts, backdrops: recordDeck().parts };
+  for (const [kind, parts] of Object.entries(decks)) {
+    const files = [...parts.keys()].filter((name) => name.endsWith('.mp4'));
+    assert.ok(files.length > 0, kind);
+    for (const name of files) assert.deepEqual(mp4Color(parts.get(name)), { primaries: 1, transfer: 13, matrix: 1, fullRange: true }, `${kind}: ${name}`);
+  }
 });
 
 test('a deck without a scene and without a traced backdrop is exported by a browser without an H.264 encoder', { timeout: 300000 }, () => {

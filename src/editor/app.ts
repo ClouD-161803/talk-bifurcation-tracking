@@ -49,7 +49,7 @@ export type Line = { text: string; warn: boolean; title: string };
 
 // open is emitted after files.open has paired a text with the page, and session at begin() and
 // end() of the session port
-export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open' | 'session';
+export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open' | 'session' | 'sheet';
 
 // a text element paired with the file is editable in place
 export const HOST = '[contenteditable="true"]';

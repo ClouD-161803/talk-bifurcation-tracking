@@ -10,13 +10,14 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/port.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { early, keeps } from './copy.ts';
+import { dropped, early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
 import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type FigureState, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
 import { Sync, type Whole } from './sync.ts';
+import { SHORT, takeSlot } from './slot.ts';
 import { Failure, Transport } from './transport.ts';
 
 // joining: before the first answer of hello. online: the last request was answered. offline: a
@@ -70,6 +71,9 @@ export type Hooks = {
   side?(sync: Sync, whole: Whole | null, ops: AppliedOp[]): Side | Promise<Side> | null;
   // false while text names a file that is not uploaded yet, after which rewrite() is called
   ready?(text: string): boolean;
+  // the paths of the files that text names and that wait for their upload, while the edits that
+  // do not name them are sent
+  held?(text: string): string[];
   // a promise while a reload of the page has to wait, e.g. for the end of Version History
   defer?(): Promise<void> | null;
 };
@@ -194,6 +198,9 @@ export class Client {
   private presenceDue = false;
   private presenceBusy = false;
   private presenceTry = 0;
+  // whether this page polls long, and the release of its lock
+  private long = false;
+  private release = (): void => {};
 
   constructor(handover: Handover) {
     const { app, port, ...shell } = handover;
@@ -469,7 +476,7 @@ export class Client {
           this.dirty = false;
           const text = this.read();
           if (text !== null) {
-            if (sync.edit(text) !== null) stale = true;
+            if (sync.edit(text, this.port.places()) !== null) stale = true;
             this.handed = text;
           }
         }
@@ -632,6 +639,7 @@ export class Client {
       if (this.ended) this.slides().inert = false;
       return;
     }
+    await dropped(this);
     location.reload();
   }
 
@@ -649,8 +657,12 @@ export class Client {
       void this.rejoin();
       return;
     }
-    if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) return;
-    const op = sync.outgoing(this.token);
+    let held: ((text: string) => string[]) | undefined;
+    if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) {
+      held = this.hooks.held;
+      if (!held?.(sync.mine).length) return;
+    }
+    const op = sync.outgoing(this.token, held);
     if (op) void this.send(op);
   }
 
@@ -738,9 +750,11 @@ export class Client {
         continue;
       }
       const generation = this.generation;
+      this.long ||= await takeSlot((release) => (this.release = release));
+      const long = this.long;
       let answer: EventsAnswer;
       try {
-        answer = await this.transport.events(this.token, this.since);
+        answer = await this.transport.events(this.token, this.since, long ? undefined : 0);
       } catch (e) {
         if (this.ended || this.gone || generation !== this.generation) continue;
         this.lostAt ??= Date.now();
@@ -765,6 +779,7 @@ export class Client {
       this.lostAt = null;
       this.bounces = 0;
       await this.take(answer);
+      if (!long) await new Promise((done) => window.setTimeout(done, SHORT));
     }
   }
 
@@ -878,6 +893,7 @@ export class Client {
   private end(ended: Ended): void {
     if (this.ended) return;
     this.ended = ended;
+    this.release();
     this.retry?.finish();
     clearTimeout(this.savingTimer);
     this.saving = false;

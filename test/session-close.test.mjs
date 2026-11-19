@@ -379,7 +379,7 @@ for (const late of [true, false]) {
   });
 }
 
-test('a word of a closed page without a copy reaches index.html when its operation arrives after the next page has joined', { timeout: 300_000 }, async (t) => {
+test('a word of a closed page whose operation is in flight reaches index.html once, also when the operation arrives after the next page has joined', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -399,7 +399,8 @@ test('a word of a closed page without a copy reaches index.html when its operati
   net.holding = null;
   const next = await tab(browser, net.url);
   await converge(server, [next]);
-  assert.deepEqual(await rows(next), [], 'the closed page did not leave a copy');
+  // the copy that the closed page wrote into localStorage is taken over and sent by the next page
+  await next.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
   net.release();
   const want = TALK.replace('<p>First slide</p>', '<p>First slide alone</p>');
   await until(() => server.read() === want, 'the word to reach index.html');
@@ -721,14 +722,20 @@ test('a page whose token is retired while it is open joins again and sends its e
   clean(page, [/status of 404 .*\/\.session\/(presence|events)/]);
 });
 
-// a script for open() that records in window.__puts, for each record that the copy writes, whether
-// it holds the word hidden. IndexedDB does not answer a read while the virtual time is paused
+// a script for open() that records in window.__puts, for each record that the copy writes into
+// IndexedDB or localStorage, whether it holds the word hidden. IndexedDB does not answer a read
+// while the virtual time is paused
 const PUTS = `{
   const put = IDBObjectStore.prototype.put;
   window.__puts = [];
   IDBObjectStore.prototype.put = function (value, key) {
     window.__puts.push(value.mine.includes(' hidden'));
     return put.call(this, value, key);
+  };
+  const set = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (key, value) {
+    if (String(key).startsWith('beeson-session-stash:')) window.__puts.push(value.includes(' hidden'));
+    return set.call(this, key, value);
   };
 }`;
 

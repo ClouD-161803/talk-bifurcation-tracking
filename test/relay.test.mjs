@@ -14,6 +14,8 @@ import { test } from 'node:test';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
 const SECRET = 'the secret of the group for this test';
 
 test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) => {
@@ -466,8 +468,47 @@ test('a registration without the token is refused right after the pulls of the s
   assert.equal(await register(), 409, 'a registration between two pulls takes the session');
   assert.equal(await host.push(item.id, 'deck'), 204, 'the host keeps its token');
   assert.equal((await guest).text, 'deck');
-  // an edit command that died stops pulling, and a new start gets the key once answeredMs passed
-  await until(async () => (await register()) === 200, 'a registration after the end of the pulls');
+});
+
+test('an edit command started again after it was killed gets its session back at once, by the token that it kept', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 5000 });
+  t.after(() => relay.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { args: ['--relay', relay.url], env });
+  const guest = () => fetch(`${relay.url}/${first.key}/index.html`);
+  await until(async () => (await guest()).status === 200, 'the first edit command to register');
+  first.child.kill('SIGKILL');
+  await until(() => first.child.exitCode !== null || first.child.signalCode !== null, 'the edit command to be killed');
+  const second = await startEdit(talk, { args: ['--relay', relay.url], env });
+  t.after(() => stopEdit(second));
+  assert.equal(second.key, first.key);
+  await until(async () => (await guest()).status === 200, 'the second edit command to take the session', 20_000);
+  assert.ok(!second.stderr.includes('already shared'), second.stderr);
+});
+
+test('a registration without the token is refused while the pulls of the host are cut, until the session is dropped for want of pulls', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 3000 });
+  t.after(() => relay.close());
+  const key = 'c'.repeat(22);
+  const host = await fakeHost(relay, key);
+  const register = () => fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } }).then((r) => r.status);
+  // a pull of the host that the network cuts
+  const socket = connect(relay.port, '127.0.0.1');
+  socket.on('error', () => {});
+  socket.write(`POST /host/${key}/pull HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer ${SECRET}\r\nx-relay-token: ${host.token}\r\nContent-Length: 0\r\n\r\n`);
+  await sleep(200);
+  socket.destroy();
+  await sleep(1000);
+  assert.equal(await register(), 409, 'a holder of the secret and the key takes the session of a host whose pulls are cut');
+  // the host comes back with its token and keeps its session
+  const guest = raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
+  const [item] = await host.next();
+  assert.equal(await host.push(item.id, 'deck'), 204);
+  assert.equal((await guest).text, 'deck');
+  // a session without pulls for idleMs is dropped, after which the key is free
+  await until(async () => (await register()) === 200, 'a registration after the session was dropped', 20_000);
 });
 
 test('a page of a session that is not registered says that the host is not running', { timeout: 60_000 }, async (t) => {

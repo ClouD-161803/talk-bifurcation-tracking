@@ -10,7 +10,8 @@ import { setServed } from '../commands/origin.ts';
 import { refreshHeads } from '../history.ts';
 import { mathIn, mathLookup, setContentWithTex } from '../math.ts';
 import { media } from '../media/store.ts';
-import { apply, charEdits, edits, fine, mergeEdits, shared } from '../merge.ts';
+import { apply, charEdits, edits, shared } from '../merge.ts';
+import { mergeTexts } from '../../session/patch.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren } from '../render.ts';
 import { contentRange, decode, elementRange, parseSource, segmentsOf, VOID } from '../source.ts';
@@ -18,10 +19,10 @@ import { stateOf } from '../tags.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
 import { RAW_TEXT, tokenize } from '../tokens.ts';
 import { script } from '../ui/script.ts';
-import { caretOf, mapOffset, markOf, moved, putCaret, textIn } from './caret.ts';
+import { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn } from './caret.ts';
 import type { Host } from './host.ts';
 
-const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
+const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, mergeTexts, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
 // be made to read as the text, after which the client loads the page again
@@ -36,7 +37,8 @@ export type Applied = { reload: boolean; changed: Element[] };
 // its text after the applies, after which the client loads the page again. they get the text that
 // the deck was meant to read, with these edits, when it is known. copy() reads the deck
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
-// rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
+// places() are the offsets of the text last read at which the page put or took off an element, see
+// Rendered of render.ts. rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
 // into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
 // draws the deck again with the tex.js next to it, after the edit command counted a change of it,
 // and rejects when it fails. reloadFigure() loads the output of a TikZ figure again unless the one
@@ -44,13 +46,14 @@ export type Applied = { reload: boolean; changed: Element[] };
 // commands/origin.ts
 export type Port = {
   text(): string;
+  places(): number[];
   copy(): string;
   apply(text: string): Promise<Applied>;
   rebase(): Promise<Applied>;
   onChange(fn: () => void): () => void;
   onReload(fn: (target?: string) => void): () => void;
   offsetOf(el: Element): number | null;
-  elementAt(offset: number): Element | null;
+  elementsAt(): Map<number, Element>;
   begin(): void;
   served(on: boolean): void;
   end(): void;
@@ -70,7 +73,7 @@ export const figureLink = (): FigureLink | null => figures;
 
 // the members of the port from the engine, and reported(), which resolves once every change of the
 // person is reported through onChange, and no apply runs or waits
-export type Engine = Pick<Port, 'text' | 'copy' | 'apply' | 'rebase' | 'onChange' | 'onReload'> & { reported(): Promise<void> };
+export type Engine = Pick<Port, 'text' | 'places' | 'copy' | 'apply' | 'rebase' | 'onChange' | 'onReload'> & { reported(): Promise<void> };
 
 // what the engine takes over at its install. clean holds while the source reads as the deck, and
 // handed is the text last handed to the client, see install of session.ts
@@ -139,17 +142,19 @@ export function install(app: App): Port {
 
   const port: Port = {
     text: absent,
+    places: () => [],
     copy: absent,
     apply: absent,
     rebase: absent,
     onChange: absent,
     onReload: absent,
-    // the element of the page whose start tag is at offset of the text last applied or opened
-    elementAt(offset) {
+    // the elements of the page by the offset of their start tag in the text last applied or opened
+    elementsAt() {
+      const by = new Map<number, Element>();
       const pairing = app.pairing;
-      if (!pairing) return null;
-      for (const map of [pairing.elements, pairing.inner]) for (const [live, s] of map) if (s.source === app.source && s.open?.start === offset && live.isConnected) return live;
-      return null;
+      if (!pairing) return by;
+      for (const map of [pairing.elements, pairing.inner]) for (const [live, s] of map) if (s.source === app.source && s.open && !by.has(s.open.start) && live.isConnected) by.set(s.open.start, live);
+      return by;
     },
     offsetOf(el) {
       const s = app.pairing?.elements.get(el) ?? app.pairing?.inner.get(el);

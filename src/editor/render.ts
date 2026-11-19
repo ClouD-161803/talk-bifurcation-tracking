@@ -354,11 +354,16 @@ export function renderTextElement(source: Source, textEl: TextElement, math: Mat
 }
 
 export type Edit = { start: number; end: number; text: string };
-export type Rendered = { text: string; edits: Edit[]; changed: TextElement[]; warnings: string[] };
+// places are the offsets of text at which the page put an element that the file does not have
+// there, or the element after one that the page took off. a session places its changes there, see
+// placed() of src/session/patch.ts
+export type Rendered = { text: string; edits: Edit[]; changed: TextElement[]; warnings: string[]; places: number[] };
 
 // the elements taken off the page by the document model, see model/doc.ts, whose units are left out
 // of the file. an element taken off the page otherwise, e.g. by a script of the theme, is kept
 export const detached = new WeakSet<Element>();
+
+export const leadsBack = new WeakMap<Element, { parent: Element; lead: string }>();
 
 type Kid = { child: Child; node: SrcNode };
 
@@ -409,6 +414,7 @@ class Renderer {
   readonly edits: Edit[] = [];
   readonly changed: TextElement[] = [];
   readonly warnings: string[] = [];
+  readonly places: number[] = [];
   private readonly liveOf = new Map<SrcEl, Element>();
   private readonly eol: string;
   private step: string | null = null;
@@ -426,7 +432,8 @@ class Renderer {
     this.eol = source.crlf ? '\r\n' : '\n';
   }
 
-  element(s: SrcEl, live: Element | undefined): string {
+  // at is the offset of the output at which the text of s begins, or -1 when it is not known
+  element(s: SrcEl, live: Element | undefined, at = -1): string {
     const text = s.source.text;
     const range = elementRange(s);
     if (!range) return '';
@@ -448,7 +455,7 @@ class Renderer {
     }
     // a text element that the page does not read as the file is copied
     if (isTextElement(s)) return open + verbatim + close;
-    return open + this.content(s, live) + close;
+    return open + this.content(s, live, at < 0 ? -1 : at + open.length) + close;
   }
 
   private open(s: SrcEl, live: Element): string {
@@ -481,31 +488,43 @@ class Renderer {
     return childSpace(s, this.eol, this.stepOf());
   }
 
-  private content(s: SrcEl, live: Element): string {
+  private content(s: SrcEl, live: Element, at: number): string {
     const text = s.source.text;
     const within = unitsWithin(s);
     const units = within?.units ?? [];
     const own = new Map(units.map((u) => [u.el, u]));
     // a unit of the file that is not on the page is kept after the unit of the file before it
-    const kept = new Map<SrcEl | null, Unit[]>();
+    const kept = new Map<SrcEl | null, (Unit & { el: SrcEl })[]>();
+    // the units of the file that follow one taken off the page
+    const afterDropped = new Set<SrcEl>();
     let anchor: SrcEl | null = null;
     let changed = false;
+    let gap = false;
     for (const u of units) {
       const node = this.liveOf.get(u.el);
+      const drop = !!node && node.parentElement !== live && this.dropped(u.el, node);
+      if (gap && !drop) afterDropped.add(u.el);
+      gap = drop;
       if (node?.parentElement === live) anchor = u.el;
-      else if (node && this.dropped(u.el, node)) changed = true;
+      else if (drop) changed = true;
       else kept.set(anchor, [...(kept.get(anchor) ?? []), u]);
     }
     const parts: string[] = [];
+    let length = 0;
     // the white space before the first unit of an element without a start tag is in its parent,
-    // hence the first unit written is written without it, and a unit after it with it
+    // hence the first unit written is written without it, and a unit after it with it. body gets
+    // the offset of the output at which it begins
     const bare = !s.open;
-    const put = (lead: string, rest: string) => {
+    const put = (lead: string, body: (start: number) => string, place = false) => {
       if (bare) lead = parts.length ? lead || this.space(s) : lead.slice(spaceOf(lead).length);
+      const start = at < 0 ? -1 : at + length + lead.length;
+      if (place && start >= 0) this.places.push(start);
+      const rest = body(start);
       parts.push(lead + rest);
+      length += lead.length + rest.length;
     };
     const keep = (key: SrcEl | null) => {
-      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), text.slice(u.range.start, u.end));
+      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), () => text.slice(u.range.start, u.end), afterDropped.has(u.el));
     };
     keep(null);
     const notes: Element[] = [];
@@ -520,7 +539,7 @@ class Renderer {
       if (u) {
         if (units.indexOf(u) < order) changed = true;
         order = units.indexOf(u);
-        put(text.slice(u.lead.start, u.range.start), this.element(m, c) + text.slice(u.range.end, u.end));
+        put(text.slice(u.lead.start, u.range.start), (start) => this.element(m, c, start) + text.slice(u.range.end, u.end), afterDropped.has(u.el));
         keep(m);
         continue;
       }
@@ -530,7 +549,8 @@ class Renderer {
       const mt = m.source.text;
       const lead = mt.slice(home.lead.start, home.range.start);
       const inPlace = isFragmentRoot(m) && m.source.fragment?.home === live;
-      put(inPlace ? lead : placeLead(lead, this.space(s), this.eol), this.element(m, c) + mt.slice(home.range.end, home.end));
+      const back = leadsBack.get(c);
+      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start) + mt.slice(home.range.end, home.end), true);
     }
     let tail = within ? text.slice(within.tail.start, within.tail.end) : '';
     if (!units.length && !tail && parts.length) tail = this.eol + this.indent(s);
@@ -557,8 +577,8 @@ export function renderDeck(source: Source, pairing: Pairing, math: MathLookup, t
   const r = new Renderer(source, pairing, math, tags);
   const range = elementRange(source.slides);
   let text = source.text;
-  if (range && pairing.root) text = text.slice(0, range.start) + r.element(source.slides, pairing.root) + text.slice(range.end);
-  return { text, edits: r.edits, changed: r.changed, warnings: r.warnings };
+  if (range && pairing.root) text = text.slice(0, range.start) + r.element(source.slides, pairing.root, range.start) + text.slice(range.end);
+  return { text, edits: r.edits, changed: r.changed, warnings: r.warnings, places: r.places };
 }
 
 // the text of one element of the page with its edits, and the lead and the end of the marker pair

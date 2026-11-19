@@ -13,9 +13,10 @@ import type { App } from '../app.ts';
 import type { Entry as Step } from '../history.ts';
 import { trapTab } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
+import { edits, merge } from '../merge.ts';
 import { citations, type Store } from './cite.ts';
 import { figurePane } from './figure-pane.ts';
-import { figures } from './figures.ts';
+import { failure, figures } from './figures.ts';
 import type { TexHost, TexSheets, Which } from './install.ts';
 
 const CSS = `
@@ -39,6 +40,7 @@ dialog.beeson-edit-dialog.beeson-edit-tex { width: min(920px, calc(100vw - 32px)
 .beeson-edit-tex .entries code { margin-left: 6px; color: inherit; opacity: 0.7; }
 .beeson-edit-tex .entries .skipped { padding: 5px 8px; color: var(--ed-muted); }
 .beeson-edit-tex p.preview { margin: 0; min-height: 1.45em; color: var(--ed-text); }
+.beeson-edit-tex .row button[hidden] { display: none; }
 @media (max-width: 640px) {
   .beeson-edit-tex .body { grid-template-columns: minmax(0, 1fr); height: auto; }
   .beeson-edit-tex .body > *, .beeson-edit-tex .side { overflow: visible; }
@@ -74,6 +76,17 @@ type MathJaxTex = {
     };
   };
 };
+
+// a save of a session refused by the edit command, since name changed since the sheet read it
+class Refused extends Error {
+  readonly file: string;
+  readonly text: string;
+  constructor(file: string, text: string) {
+    super(`${file} changed since it was read`);
+    this.file = file;
+    this.text = text;
+  }
+}
 
 const listed = (names: string[]): string => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`);
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -126,6 +139,8 @@ function sheets(host: TexHost): TexSheets {
   const app: App = host.app;
   const start = host.start;
   injectStyle('tex', CSS);
+  // in a session, the edit command writes the sources and tex.js, for the host and for a guest
+  const session = (): boolean => !!app.session && !!host.link();
 
   // the files next to the deck by name: the text, null for a file that is not there, and undefined
   // for a file that could not be read
@@ -203,8 +218,12 @@ function sheets(host: TexHost): TexSheets {
 
   async function load(): Promise<void> {
     const [p, b, t] = await Promise.all([SOURCE.preamble, SOURCE.bibliography, 'tex.js'].map(read));
-    text.preamble = saved.preamble = p ?? '';
-    text.bibliography = saved.bibliography = b ?? '';
+    // a source read again keeps the edits of its sheet, whose save then finds the newer text
+    for (const [which, found] of [['preamble', p], ['bibliography', b]] as const) {
+      if (loaded && text[which] !== saved[which]) continue;
+      if (loaded && which === 'bibliography') refind(found ?? '');
+      text[which] = saved[which] = found ?? '';
+    }
     await follow();
     bib = readBibtex(text.bibliography);
     if (typeof t === 'string') known = t;
@@ -248,8 +267,11 @@ function sheets(host: TexHost): TexSheets {
   right.append(slice, preview);
   const row = make('div', 'row');
   const done = make('button', 'primary', 'Done');
-  done.type = 'button';
-  row.append(done);
+  const theirsButton = make('button', '', 'Use Their Text');
+  const mineButton = make('button', '', 'Keep My Text');
+  for (const b of [done, theirsButton, mineButton]) b.type = 'button';
+  theirsButton.hidden = mineButton.hidden = true;
+  row.append(theirsButton, mineButton, done);
   dialog.append(heading, note, pick, body, row);
   dialog.hidden = true;
   document.body.append(dialog);
@@ -262,6 +284,8 @@ function sheets(host: TexHost): TexSheets {
     dialog.hidden = true;
     if (back?.isConnected) back.focus({ preventScroll: true });
     back = null;
+    app.emit('sheet');
+    if (session()) void push();
   };
   done.addEventListener('click', close);
   // the cancel of the file input bubbles up to the sheet, which stays open
@@ -544,7 +568,10 @@ function sheets(host: TexHost): TexSheets {
       fillEntries();
       fillSlice();
     }
-    if (loaded) {
+    theirsButton.hidden = mineButton.hidden = held[shown] === null;
+    if (held[shown] !== null) note.textContent = `Someone else saved ${SOURCE[shown]} since you read it, and your edits clash with theirs. Keep your text, or use theirs.`;
+    else if (said) note.textContent = said;
+    else if (loaded) {
       const unread = unreadNames(unreadFollowed);
       pick.hidden = !(choosing && unread.length);
       note.textContent = [
@@ -583,7 +610,7 @@ function sheets(host: TexHost): TexSheets {
       if (which === 'preamble') source.value = state.text;
       else fillSlice();
     }
-    app.markDirty();
+    dirtied();
     void update();
   }
   function edited(which: Which, next: State): void {
@@ -599,7 +626,7 @@ function sheets(host: TexHost): TexSheets {
       typing = t;
       app.history.push(t.entry);
     }
-    app.markDirty();
+    dirtied();
     soon();
   }
   source.addEventListener('input', () => edited('preamble', { text: source.value, start: -1, end: -1 }));
@@ -614,7 +641,8 @@ function sheets(host: TexHost): TexSheets {
   // from the one next to the deck. tex.js is not written while a file of the preamble is not read
   function pending(deck: string): { out: [string, string][]; why: string } {
     const out: [string, string][] = [];
-    for (const which of ['preamble', 'bibliography'] as Which[]) if (text[which] !== saved[which] && !unreadSource(which)) out.push([SOURCE[which], text[which]]);
+    for (const which of ['preamble', 'bibliography'] as Which[]) if (text[which] !== saved[which] && !unreadSource(which) && held[which] === null) out.push([SOURCE[which], text[which]]);
+    if (session()) return { out, why: '' };
     const s = scan();
     const unread = unreadNames([...s.unread, ...s.wanted]);
     if (unread.length) return { out, why: out.length ? `tex.js was not written, since ${listed(unread)} ${unread.length > 1 ? 'are' : 'is'} not read` : '' };
@@ -625,7 +653,7 @@ function sheets(host: TexHost): TexSheets {
   // the files of the folder of the deck read again before they are written. a source without
   // edits in its sheet and a followed file are taken as they are now, and the sources whose edits
   // would be written over a newer file are returned
-  async function reread(folder: FileSystemDirectoryHandle): Promise<string[]> {
+  async function reread(folder: FileSystemDirectoryHandle): Promise<[Which, string][]> {
     const now = async (name: string): Promise<string | null> => {
       try {
         return await (await (await folder.getFileHandle(name)).getFile()).text();
@@ -633,21 +661,16 @@ function sheets(host: TexHost): TexSheets {
         return null;
       }
     };
-    const kept: string[] = [];
+    const kept: [Which, string][] = [];
     let changed = false;
     for (const which of ['preamble', 'bibliography'] as Which[]) {
       const found = unreadSource(which) ? null : await now(SOURCE[which]);
       if (found === null || found === saved[which]) continue;
       if (text[which] !== saved[which]) {
-        kept.push(SOURCE[which]);
+        kept.push([which, found]);
         continue;
       }
-      // the entry chosen in the Bibliography sheet is found again by its key
-      if (which === 'bibliography') {
-        const key = bib.entries.find((e) => e.start === range.start)?.key;
-        const entry = readBibtex(found).entries.find((e) => key !== undefined && e.key === key);
-        range = entry ? { start: entry.start, end: entry.end } : { start: -1, end: -1 };
-      }
+      if (which === 'bibliography') refind(found);
       text[which] = saved[which] = found;
       files.set(SOURCE[which], found);
       changed = true;
@@ -665,6 +688,12 @@ function sheets(host: TexHost): TexSheets {
     if (changed) await update();
     return kept;
   }
+  // the entry chosen in the Bibliography sheet found again by its key in the text next
+  function refind(next: string): void {
+    const key = bib.entries.find((e) => e.start === range.start)?.key;
+    const entry = readBibtex(next).entries.find((e) => key !== undefined && e.key === key);
+    range = entry ? { start: entry.start, end: entry.end } : { start: -1, end: -1 };
+  }
   function wrote(out: [string, string][]): void {
     for (const [name, value] of out) {
       files.set(name, value);
@@ -673,6 +702,126 @@ function sheets(host: TexHost): TexSheets {
     }
   }
   const sentence = (parts: string[]): string => parts.filter(Boolean).join('. ');
+
+  // the changed sources, and outside a session tex.js, written into folder, or in a session into
+  // the talk folder through the edit command
+  async function write(deck: string, handle: FileSystemFileHandle | null): Promise<string> {
+    if (!loaded) return '';
+    await follow();
+    let { out, why } = pending(deck);
+    if (out.length) {
+      const folder = session() ? talkFolder() : await host.folder(handle!, listed(out.map(([name]) => name)));
+      // the files next to the deck may have been changed since they were read, e.g. by an agent
+      const kept = await reread(folder);
+      ({ out, why } = pending(deck));
+      const names = kept.map(([which]) => SOURCE[which]);
+      if (kept.length && session()) for (const [which, found] of kept) conflict(which, found);
+      else if (kept.length) {
+        out = out.filter(([name]) => name !== 'tex.js' && !names.includes(name));
+        why = `${listed(names)} ${kept.length > 1 ? 'were' : 'was'} changed next to the deck since ${kept.length > 1 ? 'they were' : 'it was'} read, hence ${kept.length > 1 ? 'they' : 'it'} and tex.js were not written: copy your edits, and open the deck again`;
+      }
+      if (session()) ({ out } = pending(deck));
+      for (const [name, value] of out) {
+        const writable = await (await folder.getFileHandle(name, { create: true })).createWritable();
+        await writable.write(value);
+        await writable.close();
+        wrote([[name, value]]);
+      }
+    }
+    return sentence([out.length ? `${listed(out.map(([name]) => name))} written` : '', why]);
+  }
+
+  // the talk folder of a session as a folder of the deck: a file is read with GET, and a source is
+  // written with PUT at the edit command, over the text that its sheet read
+  function talkFolder(): FileSystemDirectoryHandle {
+    const file = (name: string) => ({
+      async getFile() {
+        const found = await fetched(name);
+        if (found === null) throw new DOMException(`${name} is not found`, 'NotFoundError');
+        return { text: async () => found };
+      },
+      async createWritable() {
+        let value = '';
+        const which = (Object.keys(SOURCE) as Which[]).find((w) => SOURCE[w] === name);
+        return {
+          write: async (v: string) => void (value = v),
+          async close() {
+            const r = await fetch(new URL(`.session/source/${name}`, location.href), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: host.link()?.token(), base: which ? saved[which] : '', text: value }) });
+            const answer = { status: r.status, value: await r.json().catch(() => null) };
+            if (r.status === 409) throw new Refused(name, typeof answer.value?.text === 'string' ? answer.value.text : '');
+            if (!r.ok) throw failure(answer);
+          },
+        };
+      },
+    });
+    return { getFileHandle: async (name: string) => file(name) } as unknown as FileSystemDirectoryHandle;
+  }
+
+  // in a session, a source is saved after a pause in its edits, at the close of its sheet, and at
+  // once for a paper added to the bibliography. a source whose save clashed with the text of
+  // another person is held until the person keeps their text or takes the other
+  const held: Record<Which, string | null> = { preamble: null, bibliography: null };
+  // the note of the last save of a session, e.g. its failure
+  let said = '';
+  let saveTimer = 0;
+  let saving: Promise<void> = Promise.resolve();
+  function dirtied(): void {
+    if (!session()) return app.markDirty();
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => void push(), PAUSE);
+  }
+  function push(): Promise<void> {
+    window.clearTimeout(saveTimer);
+    return (saving = saving.then(async () => {
+      for (let tries = 0; tries < 3; tries++) {
+        try {
+          await write(deckText(), null);
+          if (said.startsWith('Could not save')) said = '';
+          break;
+        } catch (e) {
+          const which = (Object.keys(SOURCE) as Which[]).find((w) => e instanceof Refused && SOURCE[w] === e.file);
+          if (!which || !(e instanceof Refused)) {
+            said = `Could not save: ${e instanceof Error ? e.message : String(e)}`;
+            break;
+          }
+          conflict(which, e.text);
+        }
+      }
+      fill();
+    }));
+  }
+  // the text of another person saved since the sheet read the source, merged with the edits of the
+  // sheet. edits that clash with it hold the source
+  function conflict(which: Which, theirs: string): void {
+    const base = saved[which];
+    const merged = merge(base, edits(base, text[which]), theirs, 'theirs');
+    saved[which] = theirs;
+    files.set(SOURCE[which], theirs);
+    if (merged && !merged.conflicts.length) {
+      if (which === 'bibliography') refind(merged.text);
+      text[which] = merged.text;
+      said = `Someone else saved ${SOURCE[which]} since you read it, and your edits are merged into their text.`;
+    } else held[which] = theirs;
+    typing = null;
+    if (shown === which && which === 'preamble') source.value = text.preamble;
+    void update();
+  }
+  theirsButton.addEventListener('click', () => {
+    const which = shown;
+    const theirs = held[which];
+    if (theirs === null) return;
+    held[which] = null;
+    const before = stateOf(which);
+    if (which === 'bibliography') refind(theirs);
+    const after = { text: theirs, ...(which === 'bibliography' ? range : { start: -1, end: -1 }) };
+    put(which, after);
+    app.history.push({ label: LABEL[which], undo: () => put(which, before), redo: () => put(which, after) });
+  });
+  mineButton.addEventListener('click', () => {
+    held[shown] = null;
+    said = '';
+    void push();
+  });
 
   // the store as the list of the bibliography reads it. an entry pasted into the list is added to
   // references.bib at once, so that its reference is drawn before the sheet reads the text again
@@ -700,6 +849,7 @@ function sheets(host: TexHost): TexSheets {
       put('bibliography', after);
       bib = readBibtex(text.bibliography);
       app.history.push({ label: 'Insert Citation', undo: () => put('bibliography', before), redo: () => put('bibliography', after) });
+      if (session()) void push();
     },
   };
 
@@ -714,6 +864,7 @@ function sheets(host: TexHost): TexSheets {
         dialog.hidden = false;
         dialog.showModal();
       }
+      app.emit('sheet');
       done.focus({ preventScroll: true });
       if (!loaded) {
         source.readOnly = slice.readOnly = true;
@@ -741,28 +892,7 @@ function sheets(host: TexHost): TexSheets {
       }
       return loaded;
     },
-    async write(deck, handle) {
-      if (!loaded) return '';
-      await follow();
-      let { out, why } = pending(deck);
-      if (out.length) {
-        const folder = await host.folder(handle, listed(out.map(([name]) => name)));
-        // the files next to the deck may have been changed since they were read, e.g. by an agent
-        const kept = await reread(folder);
-        ({ out, why } = pending(deck));
-        if (kept.length) {
-          out = out.filter(([name]) => name !== 'tex.js' && !kept.includes(name));
-          why = `${listed(kept)} ${kept.length > 1 ? 'were' : 'was'} changed next to the deck since ${kept.length > 1 ? 'they were' : 'it was'} read, hence ${kept.length > 1 ? 'they' : 'it'} and tex.js were not written: copy your edits, and open the deck again`;
-        }
-        for (const [name, value] of out) {
-          const writable = await (await folder.getFileHandle(name, { create: true })).createWritable();
-          await writable.write(value);
-          await writable.close();
-        }
-        wrote(out);
-      }
-      return sentence([out.length ? `${listed(out.map(([name]) => name))} written` : '', why]);
-    },
+    write,
     download(deck) {
       if (!loaded) return '';
       const { out, why } = pending(deck);
@@ -780,6 +910,7 @@ function sheets(host: TexHost): TexSheets {
       return sentence([out.length ? `Put ${listed(out.map(([name]) => name))} next to it` : '', why]);
     },
     dirty: () => loaded && (text.preamble !== saved.preamble || text.bibliography !== saved.bibliography),
+    showing: () => (dialog.open ? { which: shown, dialog } : null),
     redraw,
     ...citations(store),
     ...figures(host),

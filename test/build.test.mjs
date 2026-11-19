@@ -25,7 +25,7 @@ test('the theme is built in a folder with a space in its name', (t) => {
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
   // a talk runs the compiled files, hence each must be built from the current source
-  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/editor-session.js', 'theme/edit.mjs', 'theme/session.js']) {
+  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/editor-pdf.js', 'theme/editor-session.js', 'theme/edit.mjs', 'theme/session.js']) {
     assert.ok(readFileSync(join(root, file), 'utf8') === readFileSync(resolve(file), 'utf8'), `${file} is not built from the current source, run npm run build`);
   }
 });
@@ -127,7 +127,7 @@ test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', ()
 });
 
 // the client is loaded at each ?edit&session, beside theme/editor.js
-test('theme/session.js is under 288 kB', () => {
+test('theme/session.js is under 298 kB', () => {
   const size = statSync(resolve('theme/session.js')).size;
-  assert.ok(size < 288 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 298 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
 });
