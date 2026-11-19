@@ -29,7 +29,7 @@ function go(app: App, to: (at: number, count: number) => number): void {
 function gotoField(app: App): () => void {
   injectStyle('goto', CSS);
   const box = make('div', 'beeson-edit-goto');
-  const input = make('input', 'jump-to-slide-input');
+  const input = make('input');
   input.type = 'text';
   input.inputMode = 'numeric';
   input.setAttribute('aria-label', 'Slide number');

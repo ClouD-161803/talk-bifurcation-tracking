@@ -126,7 +126,7 @@ for (const platform of PLATFORMS) {
     const page = await keysPage(browser, platform);
     await blur(page);
     await press(page, 'G');
-    assert.equal(await page.evaluate('document.activeElement.className'), 'jump-to-slide-input');
+    assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-goto input')`), true);
     await type(page, '5');
     await press(page, 'Enter');
     assert.equal(await slide(page), 4);
@@ -135,7 +135,7 @@ for (const platform of PLATFORMS) {
     const row = `document.querySelectorAll('.beeson-edit-nav .row')[4]`;
     await page.evaluate(`${row}.focus()`);
     await press(page, 'G');
-    assert.equal(await page.evaluate('document.activeElement.className'), 'jump-to-slide-input');
+    assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-goto input')`), true);
     await press(page, 'Escape');
     assert.equal(await page.evaluate(`document.activeElement === ${row}`), true);
     // a plain key on a button of the bars is left to the button
@@ -145,7 +145,7 @@ for (const platform of PLATFORMS) {
     await blur(page);
     if (platform === 'mac') {
       await press(page, 'Ctrl+Mod+G');
-      assert.equal(await page.evaluate('document.activeElement.className'), 'jump-to-slide-input');
+      assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-goto input')`), true);
       await type(page, '99');
       await press(page, 'Enter');
       assert.equal(await slide(page), 16);

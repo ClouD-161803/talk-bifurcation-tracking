@@ -579,9 +579,9 @@ test('the list of the slides at the left jumps to a slide, and G jumps to a slid
   assert.equal((await box()).display, 'flex');
   // G of reveal.js asks for a number
   await page.evaluate(`document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', keyCode: 71, which: 71, bubbles: true, cancelable: true }))`);
-  assert.equal(await page.evaluate(`document.activeElement.className`), 'jump-to-slide-input');
-  await page.evaluate(`(() => { const i = document.querySelector('.jump-to-slide-input'); i.value = '11'; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await page.evaluate(`document.querySelector('.jump-to-slide-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))`);
+  assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-goto input')`), true);
+  await page.evaluate(`(() => { const i = document.querySelector('.beeson-edit-goto input'); i.value = '11'; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await page.evaluate(`document.querySelector('.beeson-edit-goto input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))`);
   await sleep(300);
   assert.equal(await page.evaluate('Reveal.getIndices().h'), 10);
   assert.equal((await rows())[10][3], 'true');
