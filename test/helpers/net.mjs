@@ -1,16 +1,3 @@
-// a script for open() of client.mjs that holds, cuts, changes, or answers the requests of a page by
-// rule and logs every request, e.g. to keep an operation in flight or to answer a hello with 400
-
-/**
- * Wraps fetch before the scripts of the page run, with window.__net. rule(part, action, options)
- * adds a rule for the requests whose url includes part, of options.method when given, for
- * options.times requests: hold keeps a request until release(part) sends it or cut(part) fails it,
- * late sends it at once and keeps its answer until release(part), cut fails it at once, answer
- * answers it with options.status, options.body, and options.type, and edit sends it with its JSON
- * body changed by the function options.edit. clear() drops the rules, drop(part) fails the requests
- * in flight, e.g. a long poll, and log holds the url, the method, the time, and the status of the
- * answer of every request.
- */
 export const NET = `{
   const fetched = window.fetch;
   const rules = [];
@@ -66,7 +53,6 @@ export const NET = `{
     return new Promise((done, fail) => {
       const h = { url, method, go: () => send().then(done, fail), fail: () => fail(new TypeError('Failed to fetch')) };
       held.push(h);
-      // the timeout of the transport aborts a held request as it would a slow one
       init?.signal?.addEventListener('abort', () => {
         if (!held.includes(h)) return;
         held.splice(held.indexOf(h), 1);
@@ -76,10 +62,6 @@ export const NET = `{
   };
 }`;
 
-/**
- * A script for open() that counts in window.__answers the answers of the polls of a page, each one
- * task after its text is read, i.e. after the client took or dropped it.
- */
 export const ANSWERS = `{
   const text = Response.prototype.text;
   window.__answers = 0;

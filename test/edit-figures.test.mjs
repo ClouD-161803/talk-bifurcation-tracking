@@ -1,7 +1,3 @@
-// tests of the watcher of the TikZ figures in the edit command, with a compiler that does not run
-// TeX. the polls are called by the tests, with a stable time of 0 ms, hence a change is taken at
-// the second poll
-
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +11,6 @@ const deck = (...tags) => `<!doctype html><html><body><div class="reveal"><div c
 const DRAWING = '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}\n';
 const TOOLS = { latex: '/nonexistent/latex', dvisvgm: '/nonexistent/dvisvgm' };
 
-// a talk folder with the files of files, removed after the test
 function folder(t, files = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'slides figures-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -32,8 +27,6 @@ function folder(t, files = {}) {
   return { dir, write, read };
 }
 
-// the output of a compile of source in the box, as compileFigure gives it, with the files of the
-// talk that the source names as inputs, or errors for a source that holds FAIL
 function output(dir, name, source, box) {
   const inputs = [...source.matchAll(/\{(figures\/[\w-]+\.csv)\}/g)].map((m) => m[1]);
   if (source.includes('FAIL')) return { errors: [{ file: `figures/${name}.tex`, line: 1, message: 'Undefined control sequence' }], inputs };
@@ -41,7 +34,6 @@ function output(dir, name, source, box) {
   return { figure, text: figureScript(name, figure) };
 }
 
-// a compiler that counts its compiles, and holds each one of a name in hold until it is let go
 function compiler() {
   const calls = [];
   const held = new Map();
@@ -85,7 +77,6 @@ test('at the start each missing or stale figure is compiled once and written, an
   const { w, c, seen } = watcher(f, html);
   await w.idle();
   assert.deepEqual(c.calls.map((call) => call.name).sort(), ['a', 'b']);
-  // a figure shown twice is compiled in the box of its first tag
   assert.deepEqual(c.calls.find((call) => call.name === 'a').box, box);
   for (const name of ['a', 'b']) assert.equal(f.read(`figures/${name}.js`), output(f.dir, name, f.read(`figures/${name}.tex`), box).text);
   assert.deepEqual(readdirSync(join(f.dir, 'figures')).filter((name) => name.startsWith('.')), [], 'a temporary file is left');
@@ -140,14 +131,12 @@ test('after a failed compile the errors are told, the last good output is kept, 
   assert.ok(w.state().compiled.a);
   for (let i = 0; i < 3; i++) await twoPolls(w);
   assert.equal(c.calls.length, 2, 'the same failing inputs are compiled again');
-  // a change of the box is compiled again, and so is a new file of the figures folder, once
   w.written(deck(tag('a', 300, 300)));
   await w.idle();
   assert.equal(c.calls.length, 3);
   f.write('figures/new.csv', '0 0\n');
   for (let i = 0; i < 3; i++) await twoPolls(w);
   assert.equal(c.calls.length, 4);
-  // a fixed source clears the errors
   f.write('figures/a.tex', DRAWING);
   await twoPolls(w);
   assert.equal(c.calls.length, 5);
@@ -168,7 +157,6 @@ test('a figure without a source or with an invalid name is not compiled, and is 
   assert.equal(w.state().uncompiled, 0);
   assert.deepEqual(Object.keys(w.state().outputs).sort(), ['a', 'lost']);
   assert.equal(w.state().outputs.lost, null);
-  // a source added on disk is compiled
   f.write('figures/lost.tex', DRAWING);
   await twoPolls(w);
   assert.deepEqual(c.calls.map((call) => call.name), ['a', 'lost']);
@@ -182,7 +170,6 @@ test('an output written by another program is told with its hash, and an output 
   await w.idle();
   const changes = seen.changes;
   const box = { width: 600, height: 400 };
-  // a source and its output pulled by git, where npm run tex compiled them
   const pulled = `${DRAWING}% pulled\n`;
   f.write('figures/a.tex', pulled);
   f.write('figures/a.js', output(f.dir, 'a', pulled, box).text);
@@ -206,8 +193,6 @@ test('an output written again with the same size and time, as within one tick of
   const { w, c } = watcher(f, deck(tag('a')));
   await w.idle();
   assert.equal(c.calls.length, 1);
-  // the time of the file system is set to one recent second for both writes, hence the size, the
-  // time, and the inode of figures/a.js do not change
   const file = join(f.dir, 'figures', 'a.js');
   const second = Math.floor(Date.now() / 1000);
   utimesSync(file, second, second);
@@ -233,9 +218,7 @@ test('a preview is compiled before the stale figures and writes nothing, and a n
   const second = w.preview('page-1', 'a', `${DRAWING}% 2\n`, { width: 100, height: 100 });
   const other = w.preview('page-2', 'b', `${DRAWING}% other\n`, { width: 100, height: 100 });
   const third = w.preview('page-1', 'a', `${DRAWING}% 3\n`, { width: 100, height: 100 });
-  // b is made stale while the first preview runs, and it waits for the previews
   f.write('figures/b.tex', `${DRAWING}% changed\n`);
-  // the polls do not wait for the compile that is held
   for (let i = 0; i < 2; i++) {
     w.poll();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -248,7 +231,6 @@ test('a preview is compiled before the stale figures and writes nothing, and a n
     c.calls.map((call) => `${call.name}${call.source.slice(DRAWING.length).trim()}`),
     ['a% 1', 'b% other', 'a% 3', 'b% changed'],
   );
-  // the first preview ran when a newer one of its page came, and it was stopped
   assert.deepEqual(answers[0], { superseded: true });
   assert.equal(answers[2].figure.hash, output(f.dir, 'a', `${DRAWING}% 3\n`, { width: 100, height: 100 }).figure.hash);
   assert.equal(f.read('figures/a.tex'), DRAWING);
@@ -271,12 +253,9 @@ test('without latex or dvisvgm nothing is compiled, and the state tells it', asy
 });
 
 test('a figure whose preamble changes during its compile is compiled again', async (t) => {
-  // a stale output, hence the list of the files of figures/ does not change at the write
   const f = folder(t, { 'figures/a.tex': DRAWING, 'preamble.tex': 'one\n' });
   f.write('figures/a.js', output(f.dir, 'a', `${DRAWING}% old\n`, { width: 600, height: 400 }).text);
   const read = [];
-  // a compile that hashes the preamble that it read at its start, as compileFigure does, while the
-  // preamble is changed during the first compile
   const compile = async ({ dir, name, source, box }) => {
     const texts = { preamble: readFileSync(join(dir, 'preamble.tex'), 'utf8') };
     read.push(texts.preamble);
@@ -295,7 +274,6 @@ test('a figure whose preamble changes during its compile is compiled again', asy
 test('a stop ends the compile that runs, and a newer preview of a page ends the preview of this page that runs', async (t) => {
   const f = folder(t, { 'figures/a.tex': DRAWING });
   const signals = [];
-  // a compile that ends only when its signal is aborted
   const compile = ({ name, signal }) => {
     signals.push(signal);
     return new Promise((done) => signal.addEventListener('abort', () => done({ errors: [{ file: null, line: null, message: 'stopped' }] }), { once: true }));
@@ -311,7 +289,6 @@ test('a stop ends the compile that runs, and a newer preview of a page ends the 
   assert.equal(signals[0].aborted, true);
   await new Promise((done) => setTimeout(done, 20));
   assert.equal(signals.length, 2);
-  // the stop ends the compile of the second preview at once
   const stop = w.stop();
   assert.deepEqual(await second, { superseded: true });
   await stop;

@@ -1,8 +1,3 @@
-// the routes of the TikZ figures of the edit command: a preview of a source that is not saved, the
-// write of a source against the text it was edited from, the write of a data file, the state of
-// the figures in hello and in the events, and the refusal of a guest, since only the host changes a
-// TikZ figure. a test that runs TeX is skipped where latex or dvisvgm is not installed
-
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,7 +11,6 @@ const WITHOUT_TEX = !tools.latex || !tools.dvisvgm ? 'latex or dvisvgm is not in
 const DECK = '<!doctype html>\n<html>\n<body>\n<section>\n  <h2>Orbit</h2>\n  <div class="tikz" data-figure="orbit" style="width: 600px; height: 400px"></div>\n</section>\n</body>\n</html>\n';
 const DRAWING = '\\begin{tikzpicture}\n\\draw (0,0) -- (2,1);\n\\end{tikzpicture}\n';
 
-// an edit command on a talk folder with DECK, with TeX looked up in texbin, and a page of it
 async function session(t, { texbin, files = {} } = {}) {
   const { root, talk, config } = talkFolder(t, DECK);
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -51,7 +45,6 @@ test('a source is written only over the text that it was edited from, and a new 
   assert.equal(changed.json().text, `${DRAWING}% by hand\n`);
   assert.equal((await s.send('figures/source', { name: 'orbit', source: edited, base: `${DRAWING}% by hand\n` })).status, 200);
   assert.equal(s.read('figures/orbit.tex'), edited);
-  // a new figure is named from its stem, without the name of a source or an output
   writeFileSync(join(s.talk, 'figures', 'plot.js'), '');
   for (const [stem, name] of [
     ['Orbit', 'orbit-2'],
@@ -71,11 +64,9 @@ test('a source is written only over the text that it was edited from, and a new 
   assert.equal((await post(s.edit.port, s.api('figures/source'), { token: 'n'.repeat(22), name: 'orbit', source: DRAWING, base: null })).status, 404);
   assert.equal((await raw(s.edit.port, 'GET', s.api('figures/source'))).status, 405);
   assert.deepEqual(temporary(s.talk), []);
-  // a source is read fresh from the edit command
   const served = await raw(s.edit.port, 'GET', `${s.edit.base}figures/orbit.tex`);
   assert.equal(served.text, edited);
   assert.match(served.headers['cache-control'], /no-cache|no-store/);
-  // the figure that has a source now is not compiled without TeX
   assert.equal((await post(s.edit.port, s.api('hello'), { name: 'Bo' })).json().figures.uncompiled, 1);
   assert.equal((await s.send('figures/preview', { name: 'orbit', source: DRAWING, box: { width: 600, height: 400 } })).status, 503);
 });
@@ -128,8 +119,6 @@ test('a preview is compiled without a write, and a saved source is compiled into
   assert.equal(again.figures.outputs.orbit, state.outputs.orbit);
 });
 
-// TeX reads and writes every file that the account of the host may, hence a source written by a
-// guest could read a file of the host, e.g. through \special{dvisvgm:raw}
 test('only the host changes a TikZ figure, and every route of the figures refuses a guest', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t, DECK);
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -161,7 +150,6 @@ test('only the host changes a TikZ figure, and every route of the figures refuse
 
 test('a source saved with a byte-order mark is written over the text that a page read from it, and keeps its mark', async (t) => {
   const s = await session(t, { files: { 'figures/orbit.tex': `﻿${DRAWING}` } });
-  // fetch().text() of a page drops the mark
   const read = await (await fetch(`http://127.0.0.1:${s.edit.port}${s.edit.base}figures/orbit.tex`)).text();
   assert.equal(read, DRAWING);
   const edited = DRAWING.replace('2,1', '3,1');
@@ -178,7 +166,6 @@ test('a stop of the edit command ends a compile that runs, and the command ends 
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(talk, 'figures'));
   writeFileSync(join(talk, 'figures', 'orbit.tex'), DRAWING);
-  // a latex that does not end, with the id of each of its runs in pids
   const bin = join(root, 'texlive');
   const pids = join(root, 'pids');
   mkdirSync(bin);
