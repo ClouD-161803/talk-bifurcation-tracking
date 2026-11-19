@@ -1,9 +1,3 @@
-// the nodes of the page through an apply of the synchronous editor, see src/editor/session/apply.ts:
-// a change outside the slides is a reload, an element whose text did not change keeps its node
-// when it is moved, the TyCHO viewer is never made again for a change elsewhere, the current slide
-// is kept, a large apply right after an open is made in full, and a change of a text node with a
-// character reference is written into the node
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -15,16 +9,13 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// the slides of text, each from its start tag to its end tag, which start a line in test-deck.html
 const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
 const slideWith = (text, heading) => {
   const s = sectionsOf(text).find((s) => s.includes(`<h2>${heading}`) || s.includes(`<h1>${heading}`));
   assert.ok(s, `the slide ${heading} is in the text`);
   return s;
 };
-// text with the slide of heading taken out, together with the line break after it
 const without = (text, heading) => text.replace(`${slideWith(text, heading)}\n`, '');
-// text with the slide of heading put before the slide of target
 const moveBefore = (text, heading, target) => {
   const s = slideWith(text, heading);
   const rest = without(text, heading);
@@ -47,7 +38,6 @@ test('a change in the head or in a script of the file is a reload, and the deck 
   await applied(b, b.source, 'head');
   const tycho = slideWith(b.source, 'Embedding TyCHO');
   const script = tycho.slice(tycho.indexOf('<script'), tycho.indexOf('</script>'));
-  // one character of the scene in base64, after the start tag of its script
   const at = script.indexOf('>') + 20;
   const changed = once(b.source, script, `${script.slice(0, at)}${script[at] === 'A' ? 'B' : 'A'}${script.slice(at + 1)}`);
   assert.equal((await applyOn(b, changed)).reload, true);
@@ -129,7 +119,6 @@ test('the current slide is kept when a slide is put or taken before it, and a cu
 test('a large apply right after an open makes the deck read as the text in full', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
-  // the slides in the reverse order, with a slide taken, a slide put, and texts changed on others
   const sections = sectionsOf(b.source);
   const first = b.source.indexOf(sections[0]);
   const last = b.source.indexOf(sections.at(-1)) + sections.at(-1).length;
@@ -168,8 +157,6 @@ test('a TikZ figure placed by an apply is drawn in a deck without MathJax', asyn
   await applied(b, placed, 'placed');
 });
 
-// the timers of the check of the port after an apply, held until window.__checks() runs them, and
-// the loads of the page through onReload counted in window.__reloads
 const HOLD_CHECKS = `(() => {
   const set = window.setTimeout.bind(window);
   const clear = window.clearTimeout.bind(window);

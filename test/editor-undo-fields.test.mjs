@@ -1,6 +1,3 @@
-// Undo and Redo with a value typed into a field of the inspector, which enter the value first, and
-// other fixes of the same rounds
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,17 +5,10 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { center, click, clickText, drag, press, type } from './helpers/editor.mjs';
 
-// regression tests of R17.6 on both platforms. Edit > Undo with a value typed into a field of the
-// inspector enters the value as an entry of its own and undoes it, as the Undo of the toolbar does
-// (6e, N29), and the Undo of the toolbar keeps the focus in the field (N32). the report of an
-// overlap comes back after an undo of a drag (N20), and it names three kinds of figures (N13,
-// N22). the well Slide Layout draws Content, Narrow as its tile does (N55), and the dialog of
-// PowerPoint... names the attached file and leaves out a folder that it does not know (N42)
 describe('Edit > Undo with a typed value', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // slide 5 of the demo deck, with a heading, a paragraph, a list of three items, and a figure
   const FIGURES = 4;
   const SLIDE = '.reveal .slides > section.present';
   const IMG = `${SLIDE} figure.figure-box img.for-dark`;
@@ -64,7 +54,6 @@ describe('Edit > Undo with a typed value', () => {
     return page;
   }
 
-  // the item label of the menu bar named bar, chosen by trusted clicks
   async function choose(page, bar, label) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)})`));
     await wait(page, 200);
@@ -74,8 +63,6 @@ describe('Edit > Undo with a typed value', () => {
     await wait(page, 400);
   }
 
-  // the figure of slide 5 moved by one press of the right arrow key, with the Arrange pane open and
-  // the focus in W. text is the file after the move
   async function moved(t, platform) {
     const page = await load(t, platform);
     await clickText(page, await center(page, IMG));
@@ -98,13 +85,10 @@ describe('Edit > Undo with a typed value', () => {
     await wait(page);
   }
 
-  // each field with the value typed into it and the label of the entry that this value enters
   const FIELDS = [['x', '300', 'Position'], ['width', '400', 'Size'], ['angle', '15', 'Rotate']];
 
   for (const platform of PLATFORMS) {
     for (const [id, value, entry] of FIELDS) {
-      // 6e and N29: Edit > Undo undid the Move and kept 300 in X, and the next Tab wrote 300 as a
-      // new entry, which took the redo of the Move away
       test(`Edit > Undo with ${value} typed into ${id} enters the value and undoes it, and keeps the Move (${platform})`, async (t) => {
         const { page, text } = await moved(t, platform);
         const shown = await fieldValue(page, id);
@@ -140,7 +124,6 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N32: the focus moved to the body, and the next Tab selected the heading of the slide
     test(`the Undo of the toolbar after a step of Angle by the up arrow key keeps the focus in Angle (${platform})`, async (t) => {
       const { page, text } = await moved(t, platform);
       await click(page, await center(page, '#beeson-edit-num-angle'));
@@ -158,8 +141,6 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N20: the style of the list was 'translate: 0px 20px' at the check and 'translate: 0px 20px;'
-    // after the undo, hence the report stayed '1 text is under a picture'
     test(`after Wide, an undo of a drag of the list brings the report of its items back (${platform})`, async (t) => {
       const page = await load(t, platform);
       await exec(page, 'slide.layout.wide');
@@ -184,10 +165,8 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N22: a picture, a table, and a QR code over texts read '4 texts are under 3 figures'
     test(`the report names a picture, a table, and a QR code over texts by their kinds (${platform})`, async (t) => {
       const page = await load(t, platform);
-      // a new table is put off the words where it can be, hence it is moved over the list
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
       await wait(page);
       await exec(page, 'arrange.setPosition', { x: 200, y: 560 });
@@ -207,8 +186,6 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N13: two tables and a plot over texts read '5 texts are under 3 figures'. a deck plot is named in
-    // editor-r20-1, since a plot is not inserted by the editor
     test(`the report names two tables and a QR code over texts by their kinds and counts (${platform})`, async (t) => {
       const page = await load(t, platform);
       for (const [id, arg, x, y] of [['insert.table', { rows: 3, columns: 3 }, 200, 250], ['insert.table', { rows: 3, columns: 3 }, 200, 560], ['insert.qr', undefined, 900, 300]]) {
@@ -230,7 +207,6 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N55: the well drew Content, Narrow as an inset block at 31, 6 with 28 by 24 of its 64 by 36
     test(`the well Slide Layout draws the backdrop of Content, Narrow as its tile does (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: LAYOUTS, slide: 4 });
       const well = await page.evaluate(`(() => {
@@ -241,8 +217,6 @@ describe('Edit > Undo with a typed value', () => {
       return { name, boxes };
     })()`);
       assert.equal(well.name, 'Content, Narrow');
-      // the tile draws the backdrop at 920, 0 with 1000 by 1080 in slide px, i.e. at 30.7, 0 with
-      // 33.3 by 36 in the units of the sketch, which is cut at its frame from 0.5 to 63.5
       const boxes = well.boxes.filter(([x]) => x > 20);
       assert.ok(boxes.length >= 1, `the well does not draw the backdrop: ${js(well.boxes)}`);
       const left = Math.min(...boxes.map((b) => b[0]));
@@ -255,8 +229,6 @@ describe('Edit > Undo with a typed value', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // N42: over HTTP at the root, the dialog read 'run in the folder of the deck, i.e. /', and it
-    // named index.html after the deck was saved into another file
     test(`the card of PowerPoint... names the attached file and leaves out the folder of an address (${platform})`, async (t) => {
       const page = await load(t, platform);
       await page.evaluate(`(async () => {
@@ -266,7 +238,6 @@ describe('Edit > Undo with a typed value', () => {
       await window.BeesonEditor.save();
       return true;
     })()`);
-      // the dialog is open until it is closed, hence the command is not awaited
       await page.evaluate(`void window.BeesonEditor.exec('file.export.pptx'); true`);
       await wait(page);
       const shown = await page.evaluate(`(() => { const d = document.querySelector('dialog.beeson-edit-dialog.pptx'); return d && d.open ? { text: d.textContent, code: d.querySelector('code')?.textContent ?? null } : null; })()`);
@@ -280,15 +251,10 @@ describe('Edit > Undo with a typed value', () => {
   }
 });
 
-// regression tests of R19.5 on both platforms. Redo with a value typed into a field of the
-// inspector redoes the entry that it names, and the redone value replaces the typed one (D10). an
-// undo with the focus in Start at keeps the focus there (D11), and an undo refuses a Start at
-// that is not whole, as Tab and Return do, and leaves the file unchanged (D12)
 describe('Redo with a value typed into a field', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // slide 5 of the demo deck, with a heading, a paragraph, a list of three items, and a figure
   const FIGURES = 4;
   const SLIDE = '.reveal .slides > section.present';
   const IMG = `${SLIDE} figure.figure-box img.for-dark`;
@@ -334,7 +300,6 @@ describe('Redo with a value typed into a field', () => {
     return page;
   }
 
-  // the item label of the menu bar named bar, chosen by trusted clicks
   async function choose(page, bar, label) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)})`));
     await wait(page, 200);
@@ -344,8 +309,6 @@ describe('Redo with a value typed into a field', () => {
     await wait(page, 400);
   }
 
-  // the figure of slide 5 moved by one press of the right arrow key, with the Arrange pane open and
-  // the focus in W. text is the file after the move
   async function moved(t, platform) {
     const page = await load(t, platform);
     await click(page, await center(page, IMG));
@@ -373,7 +336,6 @@ describe('Redo with a value typed into a field', () => {
   const startFocused = (page) => page.evaluate(`document.activeElement === document.querySelector(${js(START)}) && document.activeElement.isConnected`);
   const startValue = (page) => page.evaluate(`document.querySelector(${js(START)})?.value ?? null`);
 
-  // the Undo or the Redo of the toolbar, or the item of the Edit menu that reads label
   async function step(page, how, label) {
     if (how === 'toolbar') {
       await click(page, await center(page, `[data-command="edit.${label.startsWith('Undo') ? 'undo' : 'redo'}"]`));
@@ -381,8 +343,6 @@ describe('Redo with a value typed into a field', () => {
     } else await choose(page, 'Edit', label);
   }
 
-  // the first list item of slide 5 made a numbered list, with the Text tab of the inspector open.
-  // list is the file with this list
   async function numbered(t, platform) {
     const page = await load(t, platform);
     const at = await rect(page, `(() => { const li = Reveal.getCurrentSlide().querySelector(':scope ul > li'); const n = [...li.childNodes].find((c) => c.nodeType === 3 && c.data.trim()); const r = document.createRange(); r.setStart(n, 2); r.setEnd(n, 3); return r; })()`);
@@ -405,7 +365,6 @@ describe('Redo with a value typed into a field', () => {
 
   for (const platform of PLATFORMS) {
     for (const how of ['menu', 'toolbar']) {
-      // D10: the typed 300 was entered as Position, which cleared the redo, hence the Move was lost
       test(`Redo of the ${how} with 300 typed into X redoes the Move and keeps the focus in X (${platform})`, async (t) => {
         const { page, text } = await moved(t, platform);
         const x = await fieldValue(page, 'x');
@@ -425,13 +384,11 @@ describe('Redo with a value typed into a field', () => {
         assert.deepEqual(errors(page), []);
       });
 
-      // D11: the undo selected the list, the pane was built again, and the focus fell to the body
       test(`Undo of the ${how} with the focus in Start at keeps the focus there (${platform})`, async (t) => {
         const { page, list } = await numbered(t, platform);
         await type(page, '4');
         if (how === 'toolbar') await press(page, 'Enter');
         await wait(page, 400);
-        // without Return, the undo enters 4 first and undoes it
         if (how === 'toolbar') assert.match(await olTag(page), /start="4"/);
         await step(page, how, (await labels(page))[0]);
         assert.equal(await render(page), list);
@@ -441,7 +398,6 @@ describe('Redo with a value typed into a field', () => {
         assert.deepEqual(errors(page), []);
       });
 
-      // D12: the undo entered 2.5 as 3 and undid it, and the redo then wrote start="3"
       test(`Undo of the ${how} refuses 2.5 typed into Start at and leaves the file unchanged (${platform})`, async (t) => {
         const { page, list } = await numbered(t, platform);
         const before = await labels(page);
@@ -458,8 +414,6 @@ describe('Redo with a value typed into a field', () => {
   }
 });
 
-// regression tests of R20.9 on both platforms, for the findings F3, F20, F4, F5, F11, and F21 of the
-// final review of round 7 on the text, the keys, and the fields of the editor
 describe('redo, cut, and Mod+D in text and fields', () => {
   const DECK = 'test-deck.html';
   const PAGE = 'test/pages/editor-r20-9.html';
@@ -503,7 +457,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
     return page;
   }
 
-  // selects the characters from to to of the first text node under within that holds needle
   const select = (page, needle, from, to, within = SLIDE) => page.evaluate(`(() => {
   const w = document.createTreeWalker(document.querySelector(${js(within)}), NodeFilter.SHOW_TEXT);
   for (let n = w.nextNode(); n; n = w.nextNode()) {
@@ -517,8 +470,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
 })()`);
   const nested = (text) => (text.match(/<ol start="3">[\s\S]*?<\/ol>/) ?? ['?'])[0].replace(/\s+/g, ' ');
 
-  // F3: Return in a nested item, its undo, its redo, and a typed k. the k goes to the start of the
-  // second part, or into the second new empty item when the whole item was selected
   for (const platform of PLATFORMS) {
     for (const [name, needle, from, to, want] of [
       ['a caret after Nes', 'Nested one', 3, 3, '<li>Nes</li> <li>kted one</li>'],
@@ -549,7 +500,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
   const focused = (page) => page.evaluate(`(() => { const a = document.activeElement; return a ? a.localName + (a.id ? '#' + a.id : '') : null; })()`);
   const findItem = `(l) => [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && (i.querySelector('.label')?.firstChild?.textContent ?? '').startsWith(l))`;
 
-  // the item of the menu bar named bar whose label starts with label, chosen by trusted clicks
   async function choose(page, bar, label) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)})`));
     await wait(page, 200);
@@ -558,8 +508,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
     await click(page, at);
   }
 
-  // F20: Redo Duplicate with 300 typed into X redoes the duplicate, and the typed value gives way,
-  // since the redone entry selects the copy. the original figure is not moved
   for (const platform of PLATFORMS) {
     for (const how of ['toolbar', 'menu']) {
       test(`F20 ${platform}: Redo Duplicate from the ${how} with a value typed into X does not move the original`, async (t) => {
@@ -599,8 +547,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
   const MOD = { mac: 4, other: 2 };
   const line = (text, start) => text.slice(text.indexOf(start), text.indexOf('</p>', text.indexOf(start)) + 4);
 
-  // a key with the modifier of the platform and with the editing command of a real keyboard, which
-  // press() does not send
   async function chord(page, platform, key, command) {
     const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: MOD[platform], commands: [command] };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
@@ -608,8 +554,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
     await wait(page);
   }
 
-  // F4: the italic taken off the whole text of <em>styles </em>, or off styles alone, does not leave
-  // an element around the space
   for (const platform of PLATFORMS) {
     for (const [how, to] of [['Mod+I', 7], ['text.italic', 7], ['text.clear', 7], ['Mod+I', 6]]) {
       test(`F4 ${platform}: ${how} over ${to === 7 ? 'styles with its space' : 'styles'} in an em takes the italic off without an em around the space`, async (t) => {
@@ -628,8 +572,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
     }
   }
 
-  // F5: a cut of a word that is the whole text of an em or a strong leaves one space between the
-  // words around it
   for (const platform of PLATFORMS) {
     for (const how of ['Mod+X', 'menu']) {
       for (const [needle, start, want] of [['word', '<p>See', '<p>See the here.</p>'], ['big', '<p>Call', '<p>Call the fox, now.</p>']]) {
@@ -655,7 +597,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
 
   const LI = `document.querySelector('${SLIDE} li')`;
 
-  // the caret after the fourth character of the first item of slide 3 of the demo deck
   async function caretInItem(t, platform) {
     const page = await load(t, platform, { slide: 2 });
     await click(page, await page.evaluate(`(() => { const r = ${LI}.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`));
@@ -665,8 +606,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
   }
   const keyed = (page) => page.evaluate(`({ active: document.activeElement === ${LI}, undo: window.BeesonEditor.state('edit.undo').label, dialogs: [...document.querySelectorAll('dialog[open]')].length, find: !!document.querySelector('.beeson-find:not([hidden]), .beeson-edit-find:not([hidden])') })`);
 
-  // F11: on a Mac, Control with a letter in a text is left to the text, as a key of macOS, e.g.
-  // Control-D deletes forward, and it does not run the command of Command with the letter
   for (const key of ['Ctrl+D', 'Ctrl+K', 'Ctrl+F', 'Ctrl+B']) {
     test(`F11 mac: ${key} with the caret in a text does not run a command`, async (t) => {
       const page = await caretInItem(t, 'mac');
@@ -678,8 +617,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
     });
   }
 
-  // Mod+D in a text still duplicates the block of the caret, i.e. Command-D on a Mac and Control-D
-  // elsewhere
   for (const platform of PLATFORMS) {
     test(`F11 ${platform}: Mod+D with the caret in a text duplicates its block`, async (t) => {
       const page = await caretInItem(t, platform);
@@ -692,8 +629,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
 
   const tab = (page, name) => rect(page, `[...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === ${js(name)})`);
 
-  // F21: Export of the paragraph of slide 5 made bold, X of the Arrange pane focused, and the bold
-  // undone from the toolbar or with Mod+Z. the Text pane then acts on the paragraph
   for (const platform of PLATFORMS) {
     for (const how of ['toolbar', 'Mod+Z']) {
       test(`F21 ${platform}: an undo from ${how} with the focus in X leaves Bold and the tones enabled`, async (t) => {
@@ -701,7 +636,6 @@ describe('redo, cut, and Mod+D in text and fields', () => {
         const word = await rect(page, `(() => { const p = Reveal.getCurrentSlide().querySelector(':scope > p'); const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) { const i = n.data.indexOf('Export'); if (i >= 0) { const r = document.createRange(); r.setStart(n, i + 1); r.setEnd(n, i + 2); return r; } } return null; })()`);
         await click(page, word, { count: 2 });
         await wait(page);
-        // a double click takes the space after the word on Windows, and not on the Mac
         assert.match(await page.evaluate('getSelection().toString()'), /^Export ?$/);
         await press(page, 'Mod+B');
         await wait(page, 400);
