@@ -38,7 +38,7 @@ Hard invariants are never traded away for other goals. When a change would break
 ## Commands
 
 ```sh
-npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles of theme/: beeson.js, editor.js, editor-tex.js, editor-session.js, session.js, and edit.mjs
+npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles of theme/
 npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html, and the TikZ and PDF figures
 npm run edit                                # the editor in a session, in which several people edit the deck at once
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
@@ -48,7 +48,7 @@ npm run pptx                                # slides.pptx, one click per step, w
 npm run pptx -- --still                     # the same file without recordings, for a browser without an H.264 encoder
 ```
 
-In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js and Chrome, not `npm ci`. `npm run edit` needs only Node.js 20 or later.
+In a talk, `npm run pdf` and `npm run pptx` need only Node.js and Chrome, not `npm ci`. `npm run check` and `npm run tex` need Node.js 22.18 or later, as described under Tooling in `REFERENCE.md`. `npm run edit` needs only Node.js 20 or later.
 
 ## Before you hand work over
 
