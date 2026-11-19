@@ -1291,3 +1291,9 @@ test('a hello that names the client id of another page, or a value that is not a
   const op = await call('op', { token: ann.token, seq: 1, base: ann.v, patches: [{ start: 0, end: 0, text: '<!-- Ann -->' }] });
   assert.equal(op.ok, true);
 });
+
+test('Edit.cmd is checked out with CRLF line ends, since cmd.exe misreads the labels of a batch file with LF', () => {
+  const lines = text(join(import.meta.dirname, '..', 'Edit.cmd')).split('\n').slice(0, -1);
+  assert.ok(lines.length > 1);
+  assert.deepEqual(lines.filter((line) => !line.endsWith('\r')), []);
+});
