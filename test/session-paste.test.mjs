@@ -17,7 +17,7 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { C, clean, converge, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, render, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, PDF, QUERY, copySlide, openDeck, pasteSlides, pasted, render, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
 import { post } from './helpers/session.mjs';
@@ -94,6 +94,25 @@ test('a picture over the limit of a session is not added by a paste, and the lat
   assert.match(after, /<img src="figs\/orbit\.png"/);
   assert.deepEqual(media(server), ['clip.mp4', 'clip.png', 'shared.png']);
   assert.ok(message.includes('figs/orbit.png was not copied: orbit.png is larger than 16 MB, the largest file that can be sent to the others.'), message);
+  clean(ann, [PROBED]);
+});
+
+test('a PDF figure pasted into a session carries its PDF into media/, and data-pdf names it beside a PDF of the same name', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  mkdirSync(join(server.talk, 'media'), { recursive: true });
+  writeFileSync(join(server.talk, 'media/plot.pdf'), '%PDF-1.4 another PDF of the talk');
+  const a = await deckA(browser, server);
+  const text = await copySlide(a, PDF);
+  await a.close();
+  const ann = await open(browser, sessionUrl(server.edit));
+  await pasteSlides(ann, 'One', text);
+  await pasted(ann);
+  const after = await converge(server, [ann]);
+  assert.equal((after.match(/data-pdf="media\/plot-2\.pdf"/g) ?? []).length, 2, after);
+  assert.deepEqual(media(server), ['plot-2.pdf', 'plot-dark.png', 'plot-light.png', 'plot.pdf']);
+  assert.deepEqual(readFileSync(join(server.talk, 'media/plot-2.pdf')), readFileSync(resolve(DIR, 'a/figs/plot.pdf')));
   clean(ann, [PROBED]);
 });
 
