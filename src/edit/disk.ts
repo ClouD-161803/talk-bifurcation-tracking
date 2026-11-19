@@ -587,11 +587,12 @@ export class Disk {
     const every = Math.max(1, Math.ceil((reach * Math.max(1, length)) / KEPT_CHARS));
     const kept = new Map<number, string[]>();
     const bounds: Rank[] = [];
-    let best = null as { rank: Rank; lines: string[] } | null, over = false;
-    const consider = (steps: number, at: string[]) => {
-      const size = measure(at, mine, Math.min(best?.rank.lines ?? MAX_LINES, MAX_LINES));
+    type Candidate = { rank: Rank; lines: string[] };
+    let best: Candidate | null = null, over = false;
+    const better = (current: Candidate | null, steps: number, at: string[]): Candidate | null => {
+      const size = measure(at, mine, Math.min(current?.rank.lines ?? MAX_LINES, MAX_LINES));
       const rank = size && { ...size, steps };
-      if (rank && (!best || order(rank, best.rank) < 0)) best = { rank, lines: at };
+      return rank && (!current || order(rank, current.rank) < 0) ? { rank, lines: at } : current;
     };
     for (let steps = 0; ; steps++) {
       if (steps) {
@@ -602,7 +603,7 @@ export class Disk {
       if (distance === 0 && length === theirs.length && lines.join('\n') === theirs) return theirs;
       bounds.push({ lines: distance, chars: Math.abs(length - theirs.length), steps });
       if (steps % every === 0) kept.set(steps, lines);
-      if (steps === 0) consider(0, lines);
+      if (steps === 0) best = better(best, 0, lines);
       if (steps === reach) break;
       yield* breathe();
       if ((over = performance.now() >= deadline)) break;
@@ -619,7 +620,7 @@ export class Disk {
     bounds.sort(order);
     for (const bound of bounds) {
       if (over || (best && order(bound, best.rank) > 0) || bound.lines > MAX_LINES) break;
-      if (bound.steps) consider(bound.steps, yield* rebuild(bound.steps));
+      if (bound.steps) best = better(best, bound.steps, yield* rebuild(bound.steps));
       yield* breathe();
       over = performance.now() >= deadline;
     }
