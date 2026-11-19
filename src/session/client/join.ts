@@ -154,7 +154,7 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
   let claim = false;
   try {
     claim = !!name && sessionStorage.getItem(CLAIM) === nameKey(name);
-    sessionStorage.setItem(CLAIM, '');
+    sessionStorage.removeItem(CLAIM);
   } catch {}
   for (;;) {
     if (!name) name = await askName(client, error);
