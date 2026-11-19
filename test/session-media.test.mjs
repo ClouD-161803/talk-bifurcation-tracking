@@ -351,8 +351,7 @@ test('a PDF that is dropped, or chosen with Replace…, is written into media/ w
   assert.deepEqual(media(server), ['figure-dark.png', 'figure-light.png', 'figure.pdf']);
   assert.deepEqual(states(server), ['current', 'current']);
 
-  // the same PDF chosen with Replace… for a picture is named media/figure-2.pdf by the page, and
-  // the edit command answers with the file of the same bytes
+  // the same PDF chosen with Replace… for a picture is named media/figure-2.pdf by the page
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
   await ann.waitFor(`${IMAGES} === 3`);
@@ -361,9 +360,9 @@ test('a PDF that is dropped, or chosen with Replace…, is written into media/ w
   assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), 'taken');
   await until(() => pdfsOf(server.read())[0].length === 2, 'the PDF figure on slide One in index.html', 30_000);
   text = await converge(server, [ann]);
-  assert.deepEqual(pdfsOf(text), [['media/figure.pdf', 'media/figure.pdf'], ['media/figure.pdf', 'media/figure.pdf']]);
-  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].map((i) => i.getAttribute('data-pdf'))`), Array(4).fill('media/figure.pdf'));
-  assert.ok(!media(server).some((n) => /\.pdf$/.test(n) && n !== 'figure.pdf'), media(server).join(' '));
+  assert.deepEqual(pdfsOf(text), [['media/figure-2.pdf', 'media/figure-2.pdf'], ['media/figure.pdf', 'media/figure.pdf']]);
+  assert.deepEqual(sources(text)[0], ['media/figure-2-dark.png', 'media/figure-2-light.png']);
+  assert.ok(disk(server, 'media/figure-2.pdf').equals(readFileSync(PDF)));
   assert.deepEqual(states(server), Array(4).fill('current'));
   clean(ann);
 });
@@ -434,7 +433,8 @@ test('two pages that add PDFs of the same name at once each keep their own PDF a
   assert.ok(disk(server, two[0]).equals(blue), `${two[0]} is the PDF of Ben`);
   const renders = sources(text);
   assert.equal(new Set([...renders[0], ...renders[1]]).size, 4, renders.flat().join(' '));
-  for (const [i, pdf] of [one[0], two[0]].entries()) for (const r of renders[i]) assert.ok(r.startsWith(pdf.replace(/\.pdf$/, '-')), `${r} is a render of ${pdf}`);
+  // a render is named after its PDF, without a second suffix
+  for (const [i, pdf] of [one[0], two[0]].entries()) assert.deepEqual(renders[i], ['dark', 'light'].map((m) => pdf.replace(/\.pdf$/, `-${m}.png`)));
   assert.deepEqual(states(server), Array(4).fill('current'));
   clean(ann);
   clean(ben);
