@@ -163,8 +163,8 @@ export function previewOf(app: App, slide: Element): Plan | null {
   return next && { kind: transitionOf(app, slide) ?? 'fade', from: slide, to: next };
 }
 
-const FADE_MS = 400;
-const PUSH_MS = 800;
+const THEME_FADE_MS = 400;
+const REVEAL_SLIDE_MS = 800;
 const HOLD_MS = 350;
 
 const PREVIEW_CSS = `
@@ -242,7 +242,7 @@ export function preview(app: App, slide: Element): Promise<void> {
     window.addEventListener('pointerdown', stop, true);
     window.addEventListener('keydown', key, true);
     const later = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
-    const ms = plan.kind === 'magic' ? magicMs() : plan.kind === 'none' ? 0 : plan.kind === 'push' ? PUSH_MS : FADE_MS;
+    const ms = plan.kind === 'magic' ? magicMs() : plan.kind === 'none' ? 0 : plan.kind === 'push' ? REVEAL_SLIDE_MS : THEME_FADE_MS;
     later(HOLD_MS, () => {
       layer.dataset.phase = 'play';
       if (plan.kind === 'magic' && from) {
