@@ -10,10 +10,12 @@
 // an operation that fails while the poll is answered, which does not open the dialog of the conflicts
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { launch as launchDriver } from '../scripts/webdriver.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
@@ -889,3 +891,82 @@ test('an operation that fails while the poll of its page is answered does not op
   clean(ann);
   clean(ben);
 });
+
+// a word typed offline in Chrome, whose page is closed before copy.ts writes it into IndexedDB
+test('a word typed offline right before the page is closed reaches index.html at the next join', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const probe = await probeOf(browser, server);
+  await converge(server, [a]);
+  await goOffline(a);
+  await edit(a, 0, 'p', ' one');
+  const id = await copied(a, '<p>First slide one</p>');
+  await type(a, ' two');
+  await a.waitFor(`${TEXT}.includes('<p>First slide one two</p>')`);
+  await a.close();
+  await released(probe, id);
+  const again = await tab(browser, url);
+  assert.equal(await converge(server, [again]), TALK.replace('<p>First slide</p>', '<p>First slide one two</p>'));
+  clean(again);
+});
+
+const geckodriver = !!process.env.GECKOWEBDRIVER || !spawnSync('geckodriver', ['--version']).error;
+for (const [name, skip] of [
+  ['safari', process.platform !== 'darwin' && 'Safari runs on a Mac only'],
+  ['firefox', !geckodriver && 'geckodriver is not installed'],
+]) {
+  for (const left of ['closed', 'left for another address in the same tab']) {
+    test(`a word typed offline in ${name} right before the page is ${left} reaches index.html at the next join`, { timeout: 180_000, skip }, async (t) => {
+      const driver = await launchDriver(name);
+      t.after(() => driver.close());
+      const server = await talk(t);
+      const url = sessionUrl(server.edit);
+      const page = driver.newPage();
+      await page.goto(`${server.edit.url}theme/beeson.css`);
+      await page.evaluate(`(localStorage.setItem('beeson-session-name', 'Ann'), true)`);
+      const first = await driver.session('GET', '/window');
+      const { handle } = await driver.session('POST', '/window/new', { type: 'tab' });
+      await driver.session('POST', '/window', { handle });
+      await page.goto(url);
+      await page.waitFor(ONLINE, 60_000);
+      // the requests of the page under .session/ fail from now on, as in tab() of helpers/offline.mjs
+      await page.evaluate(`(() => {
+        const fetched = window.fetch;
+        window.fetch = function (input, init) {
+          const url = input instanceof Request ? input.url : String(input);
+          return url.includes('/.session/') ? Promise.reject(new TypeError('Failed to fetch')) : fetched.call(this, input, init);
+        };
+        ${C}.tryNow();
+        return true;
+      })()`);
+      const keys = (text) => driver.session('POST', '/actions', { actions: [{ type: 'key', id: 'keys', actions: [...text].flatMap((c) => [{ type: 'keyDown', value: c }, { type: 'keyUp', value: c }]) }] });
+      assert.equal(await page.evaluate(`(() => {
+        const p = ${el(0, 'p')};
+        p.focus();
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        r.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(r);
+        return document.activeElement === p;
+      })()`), true);
+      await keys(' one');
+      await page.waitFor(`${STATE} === 'Offline. Changes on slide 1 are kept in this browser'`, 30_000);
+      await keys(' two');
+      await page.waitFor(`${TEXT}.includes('<p>First slide one two</p>')`);
+      if (left === 'closed') {
+        await driver.session('DELETE', '/window');
+        await driver.session('POST', '/window', { handle: first });
+      } else {
+        await page.close();
+      }
+      await page.goto(url);
+      await page.waitFor(`${ONLINE} && ${C}.acked() && ${TEXT}.includes('<p>First slide one')`, 60_000);
+      await until(() => server.read().includes('<p>First slide one'), 'the copy to reach index.html');
+      assert.equal(server.read(), TALK.replace('<p>First slide</p>', '<p>First slide one two</p>'));
+    });
+  }
+}

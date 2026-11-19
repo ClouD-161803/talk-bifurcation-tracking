@@ -26,6 +26,10 @@ const GONE = 60_000;
 const OPEN_WAIT = 3000;
 // a copy whose edits are older than this in ms is deleted at a join, with its pictures
 const OLD = 30 * 86_400_000;
+// the prefix of the key in localStorage of a copy written synchronously when the page is hidden or
+// closed, since Safari aborts a write into IndexedDB that starts then. the next join moves it into
+// IndexedDB, without the pictures, which stay in the record of IndexedDB
+const STASH = 'beeson-session-stash:';
 
 type Kept = { path: string; blob: Blob };
 // made is the time of the last change of mine, missing in a record of an older client. tokens are
@@ -68,6 +72,8 @@ type State = {
   retire: Token[];
   // the delete of the record of the page once its edits are acknowledged, until it commits
   dropping: Promise<unknown> | null;
+  // the time of the copy of the page in localStorage, or 0
+  stashedAt: number;
 };
 
 const states = new WeakMap<Client, State>();
@@ -115,6 +121,44 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   });
 }
 
+// a copy in localStorage, whose mine is written as the part of it between the longest start and
+// end that it shares with base, since the quota of localStorage is a few MB
+type Stash = Omit<Row, 'mine' | 'files'> & { from: number; to: number; text: string };
+
+function stashOf(row: Omit<Row, 'files'>): Stash {
+  const { mine, ...rest } = row;
+  const n = Math.min(row.base.length, mine.length);
+  let from = 0;
+  while (from < n && row.base.charCodeAt(from) === mine.charCodeAt(from)) from++;
+  let end = 0;
+  while (end < n - from && row.base.charCodeAt(row.base.length - 1 - end) === mine.charCodeAt(mine.length - 1 - end)) end++;
+  return { ...rest, from, to: row.base.length - end, text: mine.slice(from, mine.length - end) };
+}
+
+// the copies in localStorage of the pages of the origin
+function stashes(): Row[] {
+  const rows: Row[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(STASH)) continue;
+      const { from, to, text, ...row } = JSON.parse(localStorage.getItem(k) as string) as Stash;
+      rows.push({ ...row, mine: row.base.slice(0, from) + text + row.base.slice(to), files: [] });
+    }
+  } catch {
+    // a copy that cannot be read is left
+  }
+  return rows;
+}
+
+function unstash(id: string): void {
+  try {
+    localStorage.removeItem(STASH + id);
+  } catch {
+    // localStorage is blocked
+  }
+}
+
 // whether the page of a record is gone, with the locks read once
 async function goneOf(): Promise<(row: Row) => boolean> {
   const l = locks();
@@ -156,7 +200,7 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[]; made: number } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [], dropping: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [], dropping: null, stashedAt: 0 };
     states.set(client, st);
   }
   return st;
@@ -231,10 +275,21 @@ export async function restore(client: Client): Promise<Copy | null> {
   try {
     // one transaction, which another page that loads at the same moment waits for, hence this page
     // finds the records taken by the other gone
+    const stashed = stashes().filter((r) => r.id !== st.id && r.beat < at && gone(r));
     await run('readwrite', (s) => {
       const q = s.getAll();
       q.onsuccess = () => {
-        const dead = (q.result as Row[]).filter((r) => r.id !== st.id && r.beat < at && gone(r));
+        const all = q.result as Row[];
+        // a copy in localStorage replaces the record of its page that is older, and keeps its pictures
+        for (const r of stashed) {
+          const i = all.findIndex((x) => x.id === r.id);
+          if (i >= 0 && all[i].beat >= r.beat) continue;
+          const row = { ...r, files: all[i]?.files ?? [] };
+          if (i >= 0) all[i] = row;
+          else all.push(row);
+          s.put(row);
+        }
+        const dead = all.filter((r) => r.id !== st.id && r.beat < at && gone(r));
         const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
         // the edit command retires at most 16 tokens of a hello, hence a record that would make more
         // waits for the next load
@@ -256,6 +311,7 @@ export async function restore(client: Client): Promise<Copy | null> {
       };
     });
     st.kept = copy;
+    for (const r of stashed) unstash(r.id);
   } catch {
     st.unavailable = true;
   }
@@ -363,7 +419,7 @@ export function keptLine(client: Client): string | null {
 
 // whether this browser keeps the edits of the page that are not acknowledged, for its next visit.
 // while it cannot, or until a record with the newest of them is written, the browser asks before
-// the page unloads, since the write that hide() starts at pagehide is aborted with the page. kept
+// the page unloads, since the copy that hide() writes into localStorage may be over its quota. kept
 // is set only by a write that succeeded, and never by a write of a record without edits, which
 // cannot undo an edit that the edit command may hold. a record of the same text at an older version
 // does not undo the Undo that the edit command applied since, e.g. after a Redo of it. a write that
@@ -388,8 +444,10 @@ export function restoredLine(client: Client): string | null {
 
 export function install(client: Client): void {
   const st = stateOf(client);
-  // the lock is held while the page lives, and a new page reads it to tell that this one is not gone
-  void locks()?.request(lockOf(st.id), () => new Promise<void>(() => {})).catch(() => {});
+  // the lock is held until the page is hidden for good, and a new page reads it to tell that this one
+  // is not gone. Safari keeps a page that is left in its cache with its locks
+  let release = (): void => {};
+  void locks()?.request(lockOf(st.id), () => new Promise<void>((done) => (release = done))).catch(() => {});
 
   // whether other pages read the locks to tell that this page lives, rather than its heartbeat
   let locked = false;
@@ -423,6 +481,11 @@ export function install(client: Client): void {
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
     run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made, tokens: tokensOf(client, st) } satisfies Row)).then(
       () => {
+        // a copy in localStorage that is older than this record is not needed
+        if (st.stashedAt && t > st.stashedAt) {
+          st.stashedAt = 0;
+          unstash(st.id);
+        }
         // the writes commit in order, hence an older record is replaced by this one
         const kept = st.last === s && s.mine !== s.base ? s : null;
         if (!st.unavailable && kept === st.kept) return;
@@ -456,6 +519,8 @@ export function install(client: Client): void {
   };
 
   const drop = (): void => {
+    if (st.stashedAt) unstash(st.id);
+    st.stashedAt = 0;
     st.stored = false;
     st.kept = null;
     st.last = null;
@@ -511,10 +576,23 @@ export function install(client: Client): void {
     }
     update();
   });
+  // a copy that IndexedDB does not hold yet is written into localStorage, which a page that is closed
+  // keeps also in Safari
   const hide = (): void => {
-    if (!client.ended && !client.acked() && current(client, st)) write(true);
+    const s = current(client, st);
+    if (client.ended || client.acked() || !s || keeps(client)) return;
+    const t = Date.now();
+    try {
+      localStorage.setItem(STASH + st.id, JSON.stringify(stashOf({ id: st.id, key: key(), ...s, beat: t, made: s.mine === st.madeOf ? st.made : t, tokens: tokensOf(client, st) })));
+      st.stashedAt = t;
+    } catch {
+      // over the quota of localStorage, the edits are kept only by the question before the unload
+    }
   };
-  window.addEventListener('pagehide', hide);
+  window.addEventListener('pagehide', () => {
+    hide();
+    release();
+  });
   // on window, hence after the client has read and sent the keys at the same event on document
   window.addEventListener('visibilitychange', () => {
     if (document.hidden) hide();
