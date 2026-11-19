@@ -44,6 +44,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
   uv run --project ../tycho/code python demo/broucke.py
   uv run --project ../tycho/code --with scipy python demo/tycho-scene.py index.html
   ```
+- The clips of the demo deck are exported with tycho, as described in its CONTRIBUTING.md.
 
 ## Verifying
 
