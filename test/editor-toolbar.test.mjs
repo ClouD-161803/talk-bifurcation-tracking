@@ -377,8 +377,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       if (answer === 'save') {
         assert.equal(await shown(), true, 'the show is not opened');
         // the save is written to the file asynchronously, and it may end after 300 ms on a slow runner
-        await page.waitFor('window.BeesonEditor.status().dirty === false').catch(() => {});
-        assert.equal(await page.evaluate('window.BeesonEditor.status().dirty'), false, 'the deck is not saved');
+        await page.waitFor('window.BeesonEditor.status().dirty === false').catch(() => assert.fail('the deck is not saved'));
       } else assert.equal(await shown(), false);
       assert.deepEqual(errors(page), []);
     });
