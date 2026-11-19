@@ -157,8 +157,11 @@ export type VersionInfo = {
   restored?: string;
   start?: true;
 };
+// a text that a version removed, at its place in the text of the version, and the person id of who
+// removed it
+export type Removal = { at: number; text: string; author: string };
 // GET history/<id>?token=
-export type VersionDetail = VersionInfo & { marks: Mark[] };
+export type VersionDetail = VersionInfo & { marks: Mark[]; removals: Removal[] };
 // a text that a person set aside at a conflict, so that it is not lost. author is a person id
 export type AsideInfo = { id: string; time: number; author: string };
 // GET history?token=. rev grows with every change of the list of versions or of the texts set aside

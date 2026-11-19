@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, applyEach, byWords, copy, diff } from '../session/patch.ts';
-import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Removal, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
@@ -47,7 +47,7 @@ export type HistoryOptions = {
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
 // first and last are times of clock, since and time of now
-// ops are the patches of the operations of a version of people as one operation of the text of the version before
+// ops are the patches of the operations of the version as one operation of the text of the version before
 type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
@@ -58,6 +58,8 @@ const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.htm
 // a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
 // once more than CHECKPOINTS are kept or their budget in bytes is passed
 const STEP = 50;
+// the longest removed text in characters that a version serves for its preview
+const REMOVAL_MAX = 4096;
 const CHECKPOINTS = 64;
 
 // the new ranges of the patches of an operation in the text after it
@@ -210,15 +212,11 @@ function touches(marks: Mark[], p: Patch): boolean {
 }
 
 // the marks of a version kept to the ranges that the version changed, since a change made and
-// undone in one version is not a change of it. a range without a mark is given to the author of
-// the nearest mark that was left out, as when the diff of the version places a change at another
-// equal line, and to author when no mark was left out
+// undone in one version is not a change of it. a range without a mark is given to author
 function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   const ranges = rangesOf(patches);
   const out: Mark[] = [];
-  const dropped: Mark[] = [];
   for (const m of marks) {
-    const n = out.length;
     // the ends of the ranges do not decrease, hence the ranges that meet m follow one another
     for (let k = first(ranges.length, (i) => ranges[i].end >= m.start); k < ranges.length && ranges[k].start <= m.end; k++) {
       const r = ranges[k];
@@ -229,23 +227,8 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
         out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
       }
     }
-    if (out.length === n) dropped.push(m);
   }
   const kept = tidy(out);
-  dropped.sort((a, b) => a.start - b.start);
-  // the index of the dropped mark that reaches furthest among the first i + 1
-  const furthest: number[] = [];
-  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
-  const gap = (m: Mark, r: Range) => Math.max(0, m.start - r.end, r.start - m.end);
-  // of the dropped marks that start at or before r the nearest reaches furthest, and of those after
-  // it the nearest starts first
-  const nearest = (r: Range): string => {
-    const i = first(dropped.length, (k) => dropped[k].start > r.start);
-    const before = i > 0 ? dropped[furthest[i - 1]] : null;
-    const after = i < dropped.length ? dropped[i] : null;
-    if (before && (!after || gap(before, r) <= gap(after, r))) return before.author;
-    return after?.author ?? author;
-  };
   // a range is held by a mark that starts before its end, or at its place when it is empty, and
   // reaches into it. reach is the furthest end of those marks
   const added: Mark[] = [];
@@ -255,10 +238,33 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
     const empty = r.start === r.end;
     while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
     if (empty ? reach >= r.start : reach > r.start) continue;
-    added.push({ start: r.start, end: r.end, author: nearest(r) });
+    added.push({ start: r.start, end: r.end, author });
     reach = Math.max(reach, r.end);
   }
   return added.length ? tidy([...kept, ...added]) : kept;
+}
+
+// the operation ops of the text before as patches of what each changed, found by a diff of the text
+// that it replaces and the text that it writes. the diff of the whole texts could place a change at
+// another equal text
+const refined = (before: string, ops: Patch[]): Patch[] => ops.flatMap((p) => diff(before.slice(p.start, p.end), p.text).map((q) => ({ start: p.start + q.start, end: p.start + q.end, text: q.text })));
+
+// the texts that the patches of a version removed, at their places in the text after it, each given
+// to the author of a mark at its place. a removal longer than REMOVAL_MAX is left out
+function removalsOf(before: string, patches: Patch[], marks: Mark[], author: string): Removal[] {
+  const out: Removal[] = [];
+  let delta = 0;
+  let k = 0;
+  for (const p of patches) {
+    const at = p.start + delta;
+    delta += p.text.length - (p.end - p.start);
+    if (p.end === p.start || p.end - p.start > REMOVAL_MAX) continue;
+    const end = at + p.text.length;
+    while (k < marks.length && marks[k].end < at) k++;
+    const m = marks[k];
+    out.push({ at, text: before.slice(p.start, p.end), author: m && m.start <= end ? m.author : author });
+  }
+  return out;
 }
 
 // patches whose texts are copied, since a slice of a text keeps the whole text in memory
@@ -426,8 +432,11 @@ export class History {
   }
 
   get(id: unknown): VersionDetail | null {
-    const v = this.find(id);
-    return v ? { ...info(v), marks: v.marks } : null;
+    const i = this.indexOf(id);
+    if (i < 0) return null;
+    const v = this.versions[i];
+    const removals = v.patches.some((p) => p.end > p.start) ? removalsOf(this.textAt(i - 1), v.patches, v.marks, v.authors.length === 1 ? v.authors[0] : '') : [];
+    return { ...info(v), marks: v.marks, removals };
   }
 
   // the text of the deck at version id, or null for an unknown id
@@ -554,7 +563,7 @@ export class History {
       if (open) this.writeAll();
       return null;
     }
-    const patches = copied(diff(this.lastText, text));
+    const patches = copied(open ? refined(this.lastText, open.ops) : diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
     if (restored) v.restored = restored;
@@ -651,7 +660,7 @@ export class History {
       this.append({ kind: 'open', author: op.author });
     }
     open.marks = moveMarks(open.marks, op.patches, op.author);
-    if (op.author !== AUTHOR) open.ops = compose(open.ops, op.patches);
+    open.ops = compose(open.ops, op.patches);
     this.arm();
   }
 

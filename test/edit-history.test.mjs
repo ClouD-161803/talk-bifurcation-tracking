@@ -1514,3 +1514,68 @@ test('a Replace All in slides that a person pasted in the same version takes abo
   if (same > 6 * earlier) [same, earlier] = [Math.min(same, took(false)), Math.max(earlier, took(true))];
   assert.ok(same <= 6 * earlier, `${same.toFixed(1)} ms in the version of the paste, and ${earlier.toFixed(1)} ms in a later version`);
 });
+
+test('a version serves the text that each person removed at the place of the removal, and not a change made and undone', { timeout: 60_000 }, (t) => {
+  const item = '    <li>Item</li>\n';
+  const deck = DECK.replace('First slide', 'First slide. Ann wrote this.').replace('  <p>Second slide</p>\n', `  <p>Second slide</p>\n  <ul>\n${item}${item}  </ul>\n`);
+  const { authority, history } = open(sessionDir(t), deck);
+  replace(authority, ' Ann wrote this.', '', BO);
+  replace(authority, 'Second slide', 'Second', ANN);
+  // Ann removes the first of two equal items, whose removal a diff of the version places at the second
+  const at = authority.text.indexOf(item);
+  authority.enter([{ start: at, end: at + item.length, text: '' }], ANN);
+  replace(authority, '<h2>Two', '<h2>Dos', BO);
+  replace(authority, '<h2>Dos', '<h2>Two', BO);
+  const v = history.close();
+  const text = authority.text;
+  const { removals } = history.get(v.id);
+  assert.deepEqual(removals.map((r) => [r.author, r.text, text.slice(r.at - 8, r.at)]), [
+    [BO, ' Ann wrote this.', 't slide.'],
+    [ANN, ' slide', 'p>Second'],
+    [ANN, item, '\n  <ul>\n'],
+  ]);
+  history.stopSync();
+});
+
+test('the text of every version is right over random operations of several patches of three people and changes from outside', { timeout: 120_000 }, (t) => {
+  let seed = 7;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (n) => Math.floor(rnd() * n);
+  const word = (n) => Array.from({ length: n }, () => 'ab \n<>'[int(6)]).join('');
+  const people = [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy', 'file'];
+  for (let round = 0; round < 300; round++) {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, `<body>\n${'<p>ab ba</p>\n'.repeat(1 + int(6))}</body>\n`);
+    const texts = [];
+    for (let k = 0, n = 2 + int(30); k < n; k++) {
+      const patches = [];
+      for (let at = 0, places = 1 + int(3); places > 0 && at <= authority.text.length; places--) {
+        const start = at + int(authority.text.length + 1 - at);
+        const end = Math.min(authority.text.length, start + int(6));
+        const ins = rnd() < 0.3 ? '' : word(1 + int(5));
+        if (start !== end || ins) patches.push({ start, end, text: ins });
+        at = end + 1;
+      }
+      if (patches.length) authority.enter(patches, people[int(4)]);
+      if (rnd() < 0.2) {
+        const v = history.close();
+        if (v) texts.push([v.id, authority.text]);
+      }
+    }
+    const v = history.close();
+    if (v) texts.push([v.id, authority.text]);
+    for (const [id, text] of texts) {
+      assert.equal(history.textOf(id), text, `round ${round}`);
+      for (const r of history.get(id).removals) assert.ok(r.at >= 0 && r.at <= text.length && r.text.length > 0, `round ${round}`);
+    }
+    history.stopSync();
+    const again = open(dir, authority.text);
+    for (const [id, text] of texts) assert.equal(again.history.textOf(id), text, `round ${round} after a restart`);
+    again.history.stopSync();
+  }
+});

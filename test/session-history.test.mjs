@@ -1506,6 +1506,43 @@ test('Show changes tints the characters that each person added to a changed text
   clean(ben);
 });
 
+test('the preview of a version shows a sentence that a person removed struck through in the tone of this person, named in its tooltip, and Show changes takes it off', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'p'));
+  await typeKeys(ann, '. Ann wrote this.');
+  await converge(server, [ann, ben]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Typed' })`);
+  await leave(ann);
+  await show(ben, 'One');
+  await ben.waitFor(`${HOLDER(el(0, 'p'))} === null`);
+  await caretAtEnd(ben, el(0, 'p'));
+  await press(ben, 'Backspace', ' Ann wrote this.'.length);
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<p>First slide.</p>'));
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Removed' })`);
+  await openPane(ann);
+  const doc = `${FRAME}.contentDocument`;
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Removed')`);
+  await ann.waitFor(`!!${doc}?.querySelector('del[data-beeson-removed]')`, 30_000);
+  const struck = await ann.evaluate(`(() => {
+    const d = ${doc};
+    const del = d.querySelector('del[data-beeson-removed]');
+    const s = d.defaultView.getComputedStyle(del);
+    return { p: del.parentElement.textContent, text: del.textContent, title: del.title, color: s.color, line: s.textDecorationLine, count: d.querySelectorAll('del[data-beeson-removed]').length };
+  })()`);
+  assert.deepEqual(struck, { p: 'First slide. Ann wrote this.', text: ' Ann wrote this.', title: 'Removed by Ben', color: await ann.evaluate(toneIn(doc, await ben.evaluate(`${C}.color`))), line: 'line-through', count: 1 });
+  await tapOrClick(ann, `document.querySelector('${BAR} label.changes input')`);
+  await ann.waitFor(`${doc}.querySelector('del[data-beeson-removed]').getClientRects().length === 0`);
+  clean(ann);
+  clean(ben);
+});
+
 // the tints and the outlines of the preview of a version per case, each of which replaces the case
 // slide of the one before. a case is a slide with the words that its marks cover, by their
 // occurrence after the heading. each tinted range is written with its text, its element, and its
