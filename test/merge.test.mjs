@@ -855,6 +855,8 @@ test('a word put in at once and a word typed key by key at one point each stay w
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   // the page of the person who typed the space reads the word of the other after the space
   assert.deepEqual(diff(wrap('Second slide '), wrap('Second slide A0a ')), [{ start: wrap('Second slide').indexOf('</p>'), end: wrap('Second slide').indexOf('</p>'), text: ' A0a' }]);
+  // a word put in before another word keeps the space after it, as it was typed
+  assert.deepEqual(diff(wrap('First slide'), wrap('First great slide')), [{ start: wrap('First slide').indexOf('slide'), end: wrap('First slide').indexOf('slide'), text: 'great ' }]);
   for (const [theirs, ours] of [['Second slide A0a ', 'Second slide B0b'], ['Second slide B0b', 'Second slide A0a ']]) {
     assert.equal(mergeTexts(wrap('Second slide '), wrap(theirs), wrap(ours)), wrap('Second slide A0a B0b'));
   }

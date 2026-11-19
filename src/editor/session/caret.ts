@@ -72,11 +72,12 @@ export function runsOf(before: string, after: string): Edit[] {
     const [head, tail] = shared(before, after);
     runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
   }
-  // an insertion that ends with a space after a space starts with this space instead, as the merge
-  // reads it, hence a caret after the space goes after a word that another person put in there
+  // an insertion that ends with a space after a space, and before no letter, starts with this space
+  // instead, as the merge reads it, hence a caret after the space goes after a word that another
+  // person put in there
   runs = runs.map((r, i) => {
     const c = before.charAt(r.start - 1);
-    if (r.start !== r.end || !/[ \u00a0]/.test(c) || !r.text.endsWith(c) || /^\s/.test(r.text) || runs![i - 1]?.end === r.start) return r;
+    if (r.start !== r.end || !/[ \u00a0]/.test(c) || !r.text.endsWith(c) || /^\s/.test(r.text) || WORD.test(before.charAt(r.start)) || runs![i - 1]?.end === r.start) return r;
     return { start: r.start - 1, end: r.start - 1, text: c + r.text.slice(0, -1) };
   });
   const letter = (i: number) => WORD.test(before.charAt(i));

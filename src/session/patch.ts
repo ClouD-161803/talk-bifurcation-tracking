@@ -565,11 +565,12 @@ export function diff(base: string, text: string): Patch[] {
   const found = changes(base, text);
   const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
   const patches = lines.flatMap((p) => (p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]));
-  // an insertion that ends with a space after a space starts with this space instead, e.g. a word put
-  // in after a space that another person typed, as runsOf() reads it
+  // an insertion that ends with a space after a space, and before no letter, starts with this space
+  // instead, e.g. a word put in at the end of a paragraph after a space that another person typed, as
+  // runsOf() reads it. a word put in before another word keeps the space after it
   return widen(base, cap(base, patches)).map((p, i, all) => {
     const c = base[p.start - 1] ?? '', at = p.start - 1;
-    return p.start < p.end || c !== ' ' || !p.text.endsWith(c) || spaced(p.text) || all[i - 1]?.end === p.start ? p : { start: at, end: at, text: c + p.text.slice(0, -1) };
+    return p.start < p.end || c !== ' ' || !p.text.endsWith(c) || spaced(p.text) || goesOn(base[p.start]) || all[i - 1]?.end === p.start ? p : { start: at, end: at, text: c + p.text.slice(0, -1) };
   });
 }
 
