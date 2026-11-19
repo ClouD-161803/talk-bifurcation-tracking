@@ -150,6 +150,7 @@ uniform float uAlpha;
 uniform vec3 uGroove;
 uniform vec3 uLight;
 uniform vec2 uGrid;
+uniform float uLine;
 varying vec3 vNormal;
 varying vec2 vXY;
 varying float vZ;
@@ -161,7 +162,7 @@ void main() {
   vec3 c = mix(ramp(uRampA, uRangeA), ramp(uRampB, uRangeB), uTone);
   c *= 0.58 + 0.42 * abs(dot(normalize(vNormal), uLight));
   vec2 q = vXY / uGrid;
-  vec2 a = abs(fract(q - 0.5) - 0.5) / max(fwidth(q), vec2(1e-4));
+  vec2 a = abs(fract(q - 0.5) - 0.5) / (max(fwidth(q), vec2(1e-4)) * uLine);
   c = mix(c, uGroove, 0.45 * (1.0 - min(min(a.x, a.y), 1.0)));
   gl_FragColor = vec4(c, uAlpha);
 }`;
@@ -390,6 +391,7 @@ export class Surface {
   private dragging: () => boolean;
   private W = 0;
   private H = 0;
+  private line = 1;
   private w = 0;
   private h = 0;
 
@@ -532,6 +534,7 @@ export class Surface {
       uGroove: { value: this.groove },
       uLight: { value: new THREE.Vector3(-0.45, -0.35, 0.82).normalize() },
       uGrid: { value: new THREE.Vector2(cell, cell) },
+      uLine: { value: this.line },
     };
     const material = (colorWrite: boolean) => new THREE.ShaderMaterial({
       vertexShader: SURFACE_VERTEX,
@@ -878,13 +881,14 @@ export class Surface {
     };
   }
 
-  /** Sizes the canvas from the box of the element on the screen, and draws. */
-  fit(): void {
+  /** Sizes the canvas from the box of the element on the screen at the pixel ratio dpr, that of the screen by default, and draws the grid lines as thin as at the pixel ratio lines. */
+  fit(dpr = devicePixelRatio || 1, lines = dpr): void {
     // the slide is scaled with a transform in reveal.js, hence the canvas is sized from the screen
     // rectangle and the labels are placed in the pixels of the slide
-    const r = this.el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    const r = this.el.getBoundingClientRect();
     const w = this.el.offsetWidth, h = this.el.offsetHeight;
     if (!r.width || !r.height || !w || !h) return;
+    this.line = dpr / lines;
     this.W = Math.max(1, Math.round(r.width * dpr));
     this.H = Math.max(1, Math.round(r.height * dpr));
     this.w = w;
@@ -972,6 +976,7 @@ export class Surface {
       const u = s.mesh.material.uniforms;
       u.uMix.value = this.mix;
       u.uTone.value = s.tone;
+      u.uLine.value = this.line;
       u.uAlpha.value = s.shown.alpha;
       s.group.position.z = s.shown.lift;
       s.group.visible = s.shown.alpha > 0;

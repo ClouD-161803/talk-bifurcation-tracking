@@ -10,6 +10,7 @@ import { inflateRawSync } from 'node:zlib';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { pptx, zip } from '../scripts/pptx.mjs';
 import { recordScenes } from '../scripts/scenes.mjs';
+import { listAnimations, recordAnimation } from '../scripts/animations.mjs';
 import { color as mp4Color, stream as mp4Stream } from './helpers/mp4.mjs';
 
 const EMU_PER_PX = 6350;
@@ -593,6 +594,41 @@ test('a plot is recorded at each step as a loop of its pass and its hold, at twi
     assert.equal(video.looped, true);
     assert.deepEqual(pngSize(parts.get(video.poster)), size);
   }
+});
+
+test('the frames of a surface are drawn and encoded in a page at twice the pixel ratio in about the time of the same frames at one', { timeout: 600000 }, async (t) => {
+  const browser = await launch({ wholeFrames: true });
+  t.after(() => browser.close());
+  const record = async (scale) => {
+    const page = await browser.newPage({ scale, motion: true });
+    try {
+      await printView(page, deckUrl('test/pages/animations-record.html', 'print-pdf&still&pdfPageHeightOffset=0'));
+      const [first] = (await listAnimations(page)).flat();
+      assert.ok(first?.key.startsWith('surface '), JSON.stringify(first));
+      const { evaluate } = page;
+      let ms = 0;
+      page.evaluate = async (expression) => {
+        if (!/^__animate\.(step|encode)\(/.test(expression)) return evaluate(expression);
+        const start = performance.now();
+        const result = await evaluate(expression);
+        ms += performance.now() - start;
+        return result;
+      };
+      const { loop } = await recordAnimation(page, first.index);
+      return { ms: Math.round(ms), stream: mp4Stream(loop.data) };
+    } finally {
+      await page.close();
+    }
+  };
+  let ratio = Infinity;
+  for (let n = 0; n < 3 && ratio > 1.5; n++) {
+    const large = await record(2);
+    const small = await record(1);
+    assert.deepEqual(large.stream, small.stream);
+    ratio = large.ms / small.ms;
+    t.diagnostic(`pixel ratio 1: ${small.ms} ms, pixel ratio 2: ${large.ms} ms, ${small.stream.frames} frames`);
+  }
+  assert.ok(ratio <= 1.5, `the frames at the pixel ratio 2 took ${ratio.toFixed(2)} times as long as at 1`);
 });
 
 test('with --still, the surfaces and the plots are the pictures of their steps, and the export needs no H.264 encoder', { timeout: 300000 }, () => {

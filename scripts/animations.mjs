@@ -2,7 +2,8 @@
 // export, where each step of a slide is a .pdf-page with its own surface or plot at the state of the
 // step. The clock of the page is stepped from here, as in scripts/record.mjs, hence each frame is
 // drawn at its time whatever it costs. A frame of a surface is composed in the page from the
-// picture of its box without it, its canvas, and a picture of each of its labels, taken once and
+// picture of its box without it, its canvas, drawn at the size of the video and not at the pixel
+// ratio of the page, and a picture of each of its labels, taken once and
 // placed and faded as the surface places them. A plot is drawn as SVG and HTML, hence each of its
 // frames is a picture of its box taken by Chrome. The frames are encoded with the WebCodecs
 // VideoEncoder of Chrome, and the MP4 file is written by scripts/mp4.mjs.
@@ -188,6 +189,7 @@ const HELPER = `window.__animate ??= (() => {
       clock.install();
       let turn = 0, period = 0, once = false, offset = 0;
       if (surface) {
+        surface.fit(config.width / box.width, devicePixelRatio);
         turn = surface.view().written.turn;
         if (from !== null) {
           const before = fragments(all()[from]).map((f) => f.classList.contains('visible'));
@@ -281,7 +283,7 @@ const HELPER = `window.__animate ??= (() => {
       const s = state;
       for (const v of [s?.video, s?.done]) if (v && v.encoder.state !== 'closed') v.encoder.close();
       // the camera is put back at the angles of the attributes of the surface
-      if (s?.surface) { s.surface.stop(); s.surface.sync(false); s.surface.configure(); }
+      if (s?.surface) { s.surface.fit(); s.surface.stop(); s.surface.sync(false); s.surface.configure(); }
       if (s?.plot) { s.plot.leave(); s.plot.still(); }
       clock.remove();
       state = null;
