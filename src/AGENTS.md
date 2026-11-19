@@ -6,7 +6,9 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 - Each bundle of `theme/` is compiled by `build.mjs` from an entry point under `src/`. `theme/editor-tex.js` is loaded when a sheet or the bibliography list is first opened, `theme/editor-pdf.js` with `theme/vendor/pdfjs/pdf.js` at the first PDF and by `npm run tex`, and `theme/editor-session.js` when a page starts or joins a session. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`. Nothing of the editor is loaded in decks opened without `edit`.
+- Decks are opened as files, and from a file a module script, a worker, and a fetch of a file next to the deck do not work. Hence each library and each generated file loaded by a deck, e.g. `tex.js`, `figures/name.js`, and the trajectories of a backdrop, is a classic script.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`. The editor is loaded from this file at each `edit`.
+- The budget of `theme/editor.js` is set to catch a library bundled by mistake. Do not shorten code to fit it.
 - Keep `theme/session.js` and `theme/edit.mjs` under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
 - Let `theme/session.js` reach the editor only through `src/session/client/handover.ts`. From `src/editor/`, import only `merge.ts`, `tokens.ts`, and types. Any other module would be a second copy with separate state, and `build.mjs` fails on it.
 - Let the engine of the port reach the editor only through `src/editor/session/host.ts`. Import a module of the editor into `session.ts`, `apply.ts`, or `tree.ts` only with `import type`. `theme/editor-session.js` may not share any module with `theme/editor.js`, and `build.mjs` fails on one.
@@ -21,6 +23,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 - Do not take design decisions that tie a feature to Chrome or to any one browser.
 - Do not make users reach for a terminal. Whatever a talk needs from a command is written by the editor as well, e.g. `tex.js` from `npm run tex`.
+- Record the videos of the PowerPoint export as H.264 in MP4, the one video format that every version of PowerPoint can play.
 
 ## Theme
 
@@ -110,3 +113,6 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - A page opened from `file:` cannot download a file, and `crypto.subtle` is missing outside a secure context.
 - In Chrome, a space typed at the end of a text becomes a no-break space, and a character typed at the end of an inline element is put into this element. A space after the caret at the start of a text is dropped, and `selectionchange` is held back while keys come quickly.
 - reveal.js marks only the fragments of the slide that it starts on. Its highlight plugin replaces the elements of a code box, hence code is colored in the editor with the CSS Custom Highlight API.
+- WebDriver cannot read the console of Safari, and pages from file URLs are refused in Safari. Phones and pixel ratios are emulated only in Chrome. On a Mac, enable safaridriver once with `sudo safaridriver --enable`.
+- Firefox on Android reports a fine pointer on a screen with a stylus. Hence a rule for touch screens also matches `hover: none`.
+- In a PDF from Chrome, the page tree, the objects of the pages, and the dictionaries of the images are not compressed. Hence the scripts and the tests read them as text.
