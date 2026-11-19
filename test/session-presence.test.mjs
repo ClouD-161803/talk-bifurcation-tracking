@@ -998,6 +998,7 @@ test('after Leave Session and after the end of the session, no element stays hel
   await ben.waitFor(`(() => {
     if (__net.log.findLast((l) => l.url.includes('/.session/events'))?.status !== null) return false;
     window.__before = window.__answers;
+    window.__polls = __net.count('/.session/events');
     ${C}.leave();
     return true;
   })()`);
@@ -1021,7 +1022,8 @@ test('after Leave Session and after the end of the session, no element stays hel
   }
   clean(ana);
   // a poll that Ben sent just before his bye may reach the edit command after it, and is then
-  // answered 404
+  // answered 404, but no poll is sent after it
+  assert.equal(await ben.evaluate(`__net.count('/.session/events') - window.__polls`), 0, 'Ben polled after he left');
   clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
 });

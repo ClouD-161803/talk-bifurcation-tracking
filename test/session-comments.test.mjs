@@ -11,7 +11,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { center, click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
-import { NET } from './helpers/net.mjs';
+import { ANSWERS, NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -142,12 +142,12 @@ async function comment(page, text, how = 'key') {
   return label;
 }
 
-async function pair(t, names = ['Ann', 'Ben']) {
+async function pair(t, names = ['Ann', 'Ben'], script = '') {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const pages = [];
-  for (const name of names) pages.push(await open(browser, sessionUrl(server.edit), { name }));
+  for (const name of names) pages.push(await open(browser, sessionUrl(server.edit), { name, script }));
   await converge(server, pages);
   return { browser, server, pages };
 }
@@ -513,7 +513,7 @@ const SENDS = `[...document.querySelectorAll('${PANE} :is(.draft .actions .prima
 
 for (const from of ['online', 'offline']) {
   test(`once the session has ended ${from}, the Comment command is disabled, and the controls that send say that it has ended`, { timeout: 300_000 }, async (t) => {
-    const { server, pages: [a] } = await pair(t, ['Ann']);
+    const { server, pages: [a] } = await pair(t, ['Ann'], `${NET}\n${ANSWERS}`);
     await show(a, 'One');
     await click(a, '.reveal .slides > section:nth-child(1) p');
     await comment(a, 'Before the end');
@@ -527,12 +527,15 @@ for (const from of ['online', 'offline']) {
       await a.waitFor(`/^Offline/.test(${STATE})`);
       await sees(a, SENDS, [['Comment', true, OFFLINE], ['Resolve', true, OFFLINE], ['Thread actions', true, OFFLINE], ['Reply', true, OFFLINE]]);
     }
-    await a.evaluate(`${C}.leave()`);
+    await a.evaluate(`window.__before = window.__answers, window.__polls = __net.count('/.session/events'), ${C}.leave(), true`);
     await a.waitFor(`${C}.connection === 'ended'`);
+    // online, the poll in flight is answered after the bye
+    if (from === 'online') await a.waitFor(`window.__answers > window.__before`);
     assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
     await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
     // a poll that the page sent just before its bye may reach the edit command after it, and is
-    // then answered 404
+    // then answered 404, but no poll is sent after it
+    assert.equal(await a.evaluate(`__net.count('/.session/events') - window.__polls`), 0, 'the page polled after it left');
     clean(a, from === 'offline' ? REFUSED : [/status of 404 .*\/\.session\/events\?/]);
   });
 }
