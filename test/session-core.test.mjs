@@ -1746,3 +1746,12 @@ test('a list that one person moves to another slide, below a paragraph that they
   assert.equal(mergeTexts(base, moved, cut), one(ul) + mid + s('Halo 6', []));
   assert.equal(mergeTexts(base, cut, moved), moved);
 });
+
+test('a key typed in a slide that another person moves and copies goes with the first copy, in both orders', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n  <p>${p}</p>\n</section>\n`;
+  const [a, b, c, d, e] = [s('Orbit 1', 'Moon 11'), s('Intro 3', 'Moon 31'), s('Data 4', 'Halo 41'), s('Halo 5', 'Data 51'), s('Moon 6', 'Intro 61')];
+  const base = a + b + c + d + e, typed = a + s('Intro 3', 'Moon 31 k01') + c + d + e, moved = a + c + d + b + e + b;
+  const both = a + c + d + s('Intro 3', 'Moon 31 k01') + e + b;
+  assert.equal(mergeTexts(base, typed, moved), both);
+  assert.equal(mergeTexts(base, moved, typed), both);
+});

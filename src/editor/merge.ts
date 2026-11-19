@@ -360,11 +360,12 @@ function turn(base: string, e: Edit): Edit {
   return e;
 }
 
-// the moves of list. a removal and an insertion whose lines are equal once trimmed are a move, and
-// lines that two removals or two insertions hold are never moved, since it is not known which one
-// moved. a removal, or a run of them, and an insertion that keeps more than half of its words in
-// their order, and not the words of another removal, are a move as well, e.g. a slide that the
-// mover also types in, when the tags of both are whole, unless fuzzy is false
+// the moves of list. a removal and an insertion whose lines are equal once trimmed are a move.
+// lines that two removals hold are never moved, since it is not known which one moved, and of two
+// insertions of them the first is the move, the other a copy. a removal, or a run of them, and an
+// insertion that keeps more than half of its words in their order, and not the words of another
+// removal, are a move as well, e.g. a slide that the mover also types in, when the tags of both are
+// whole, unless fuzzy is false
 const found = new WeakMap<Edit[], Move[]>();
 
 function movesIn(base: string, list: Edit[], fuzzy = true): Move[] {
@@ -378,7 +379,7 @@ function movesIn(base: string, list: Edit[], fuzzy = true): Move[] {
     was.set(e, x);
     const w = !e.text && e.end > e.start && (base[e.start - 1] ?? '\n') + base[e.end - 1] === '\n\n', by = w ? cut : put;
     const t = flat(w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : '');
-    if (WORDED.test(t) || (t.includes('\n') && balanced(t))) by.set(t, by.has(t) ? null : e);
+    if (WORDED.test(t) || (t.includes('\n') && balanced(t))) by.set(t, by.has(t) ? (by === put ? by.get(t)! : null) : e);
   }
   const of = (cuts: Edit[], put: Edit): Move => ({ cuts, put, was: [...cuts, put].map((e) => was.get(e)!) });
   const out: Move[] = [], used = new Set<Edit>();
