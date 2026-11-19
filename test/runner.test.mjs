@@ -196,7 +196,7 @@ test('the test job is not ended before the second run of a test file that reache
 
 test('the test step of the check workflow is the test command with the shard of its job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
-  const step = /^ +- run: (node .* scripts\/test\.mjs .*)$/m.exec(workflow)?.[1];
+  const step = /^ +(?:- )?run: (node .* scripts\/test\.mjs .*)$/m.exec(workflow)?.[1];
   const shards = /^ +shard: \[([\d, ]+)\]$/m.exec(workflow)?.[1].split(',').map(Number);
   assert.deepEqual(shards, shards?.map((_, k) => k + 1), 'the shards of the matrix are not 1 to their number');
   assert.equal(step?.replace(` --shard=\${{ matrix.shard }}/${shards.length}`, ''), command);
