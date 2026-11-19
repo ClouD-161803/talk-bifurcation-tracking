@@ -8,6 +8,7 @@ import { connect, createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { startRelay } from '../scripts/relay.mjs';
+import { GAP } from '../src/edit/people.ts';
 import { DECK, EDIT, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const text = (file) => readFileSync(file, 'utf8');
@@ -1145,7 +1146,6 @@ test('a page that said bye is not brought back by a poll or a presence that arri
 });
 
 test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
-  const GAP = 100;
   const ANSWERS = 4;
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
