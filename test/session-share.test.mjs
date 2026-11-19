@@ -537,7 +537,7 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
     window.__lists = 0;
     window.__segmenters = 0;
     ${C}.on('people', () => window.__answers++);
-    new MutationObserver((records) => (window.__lists += records.length)).observe(document.querySelector('${SHARE} ul.people'), { childList: true });
+    (window.__observer = new MutationObserver((records) => (window.__lists += records.length))).observe(document.querySelector('${SHARE} ul.people'), { childList: true });
     const Segmenter = Intl.Segmenter;
     if (Segmenter) Intl.Segmenter = new Proxy(Segmenter, { construct: (target, args, next) => (window.__segmenters++, Reflect.construct(target, args, next)) });
   })()`);
@@ -546,9 +546,7 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
     assert.equal((await post(server.edit.port, api('presence'), { token: cy.token, state: { n: i } })).status, 200);
     await ann.waitFor(`window.__answers > ${before}`);
   }
-  // a macrotask lets the observer take the last records
-  await ann.evaluate('new Promise((done) => setTimeout(done, 0))');
-  const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists, segmenters: window.__segmenters })');
+  const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists + window.__observer.takeRecords().length, segmenters: window.__segmenters })');
   assert.ok(lists <= answers, `${lists} rebuilds of the list for ${answers} answers`);
   assert.ok(segmenters <= 1, `${segmenters} Intl.Segmenter built for ${answers} answers`);
   clean(ann);
