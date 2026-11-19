@@ -1239,7 +1239,7 @@ test('Save and Saving… wait for the answer and the broadcast of every operatio
   await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
   await page.waitFor(`window.__saved`);
   assert.equal(await converge(server, [page]), saved);
-  clean(page, REFUSED);
+  clean(page);
 });
 
 const LAST_POLL = `__net.log.filter((l) => l.url.includes('/.session/events')).at(-1)`;
@@ -1261,8 +1261,8 @@ test('an idle page polls from the version of the last answer, hence the edit com
   const v = (await raw(server.edit.port, 'GET', `${new URL(server.edit.url).pathname}index.html?edit&session`)).headers['x-session-version'];
   assert.match(v, /\.[1-9]\d*$/);
   await b.waitFor(`((l) => l.url.endsWith('since=' + ${JSON.stringify(v)}) && l.status === null)(${LAST_POLL})`);
-  clean(a, REFUSED);
-  clean(b, REFUSED);
+  clean(a);
+  clean(b);
 });
 
 test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, async (t) => {
@@ -1306,7 +1306,7 @@ test('an operation answered 503 is sent again at the reconnect, and reaches inde
   }
   assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide again</p>'));
   assert.equal(await page.evaluate(`${C}.blocked`), false);
-  clean(page, REFUSED);
+  clean(page);
 });
 
 test('a hello that the edit command refuses opens the join dialog with its message, and the name typed then joins', { timeout: 120_000 }, async (t) => {
@@ -1325,7 +1325,7 @@ test('a hello that the edit command refuses opens the join dialog with its messa
   await page.waitFor(ONLINE);
   assert.deepEqual(await page.evaluate(`[${C}.name, !!document.querySelector('dialog.beeson-session-join[open]'), __net.count('/.session/hello')]`), ['Ada', false, 2]);
   await converge(server, [page]);
-  clean(page, REFUSED);
+  clean(page);
 });
 
 test('a page that does not read as its text after an apply loads again, and sends nothing of the deck it read', { timeout: 120_000 }, async (t) => {
@@ -1347,8 +1347,8 @@ test('a page that does not read as its text after an apply loads again, and send
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide by Ann</p>'));
   assert.deepEqual(await b.evaluate(`[${el(0, 'p')}.textContent, ${el(1, 'p')}.textContent]`), ['First slide by Ann', 'Second slide']);
   assert.equal(await loads(b), 2);
-  clean(a, REFUSED);
-  clean(b, REFUSED);
+  clean(a);
+  clean(b);
 });
 
 test('the answer of a poll that arrives after Leave Session is not taken', { timeout: 120_000 }, async (t) => {
@@ -1377,6 +1377,6 @@ test('the answer of a poll that arrives after Leave Session is not taken', { tim
   })()`);
   await ben.waitFor(`window.__answers > window.__before`);
   assert.deepEqual(await ben.evaluate(`window.__events`), [], 'the client took an answer after Leave Session');
-  clean(ann, REFUSED);
-  clean(ben, REFUSED);
+  clean(ann);
+  clean(ben);
 });

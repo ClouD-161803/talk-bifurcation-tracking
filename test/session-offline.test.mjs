@@ -581,7 +581,7 @@ test('the next page retires the tokens of the closed pages of the copies that it
   await probe.waitFor(`(${ROWS}).then((r) => r.map((x) => x.id).join() === 'd')`);
   const late = async (page) => (await call('op', { token: page.token, seq: 1, base: page.v, patches: [{ start: 0, end: 0, text: '<!-- late -->' }] })).reason ?? 'ok';
   assert.deepEqual([await late(a), await late(b)], ['unknown', 'unknown']);
-  clean(c, REFUSED);
+  clean(c);
 });
 
 const EARLIER = `(() => {
