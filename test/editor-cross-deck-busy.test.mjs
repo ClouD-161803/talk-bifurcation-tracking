@@ -1,8 +1,3 @@
-// while the files of a paste from another deck are read, the page is inert behind a dialog with
-// Stop, hence the entry of the history of the paste does not take an edit made meanwhile. Stop
-// pastes the slides without the files not kept by then, and it is not taken before the dialog is
-// drawn. a server holds the answer for the image of deck A until the test lets it go
-
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
@@ -41,8 +36,6 @@ const deck = async (file) => {
   return file === B ? withMacrosOfA(page) : page;
 };
 
-// the image of deck A held by the server while the slide with the files is pasted into deck B,
-// after before is run in the page of deck B. it returns once opened holds there
 async function heldPaste(t, before = 'true', opened = OPEN) {
   const a = await deck(A);
   t.after(() => a.close());
@@ -62,7 +55,6 @@ async function heldPaste(t, before = 'true', opened = OPEN) {
 
 test('the page is inert behind a dialog while the files are read, and one undo takes back the paste', async (t) => {
   const { a, b } = await heldPaste(t);
-  // the focus is in the dialog, which makes the region of the editor the dialog
   assert.equal(await b.evaluate(`!!document.activeElement?.closest('${BUSY}[open]')`), true);
   assert.equal(await b.evaluate(`document.querySelector('${BUSY} h3').textContent`), 'Copying the files of the paste…');
   await press(b, 'Backspace');
@@ -89,9 +81,6 @@ test('Stop pastes the slide without the files not read by then, and does not ask
   assert.match((await status(b)).message, /figs\/orbit\.png\b.*not copied/);
 });
 
-// Stop is clicked in the page as the dialog opens, since the dialog may be drawn before a click
-// of the test arrives. with busy, the page first computes for busy ms without a frame, as a slow
-// machine does, hence the dialog is still not drawn at the click
 const EARLY = (busy) => `(() => {
   window.__early = 0;
   new MutationObserver(() => {

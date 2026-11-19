@@ -1,14 +1,8 @@
-// helpers of the tests of the session of the synchronous editor, see src/editor/session/
-
 import assert from 'node:assert/strict';
 import { editorPage } from './editor.mjs';
 
 export const E = 'window.BeesonEditor';
 
-/**
- * The editor on test-deck.html in a session, with the engine of the port loaded and the changes of
- * the person counted in window.__changes by onChange of the port.
- */
 export async function sessionPage(browser, options = {}) {
   const page = await editorPage(browser, options);
   await page.evaluate(`(async () => {
@@ -20,13 +14,10 @@ export async function sessionPage(browser, options = {}) {
   return page;
 }
 
-// a page of a test with two pages in front, since a page behind does not draw frames
 export const front = (page) => page.send('Page.bringToFront');
 
-// two animation frames of the page
 export const frame = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
 
-/** The slide whose heading starts with heading shown, once reveal.js has made it the current slide. */
 export async function showSlide(page, heading) {
   const found = await page.evaluate(`(() => {
     const s = [...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h1, h2')?.textContent.startsWith(${JSON.stringify(heading)}));
@@ -41,9 +32,7 @@ export async function showSlide(page, heading) {
   await frame(page);
 }
 
-/** The caret put at the end of the text element of expression, with the focus in it. */
 export async function caretAtEnd(page, expression) {
-  // true, or what the page held when the focus did not go to the text element
   const state = await page.evaluate(`(() => {
     const host = ${expression};
     if (!host) return 'not found';
@@ -67,13 +56,11 @@ export async function caretAtEnd(page, expression) {
   assert.equal(state, true, `the caret is in ${expression}, and the page holds ${JSON.stringify(state)}`);
 }
 
-/** The apply of text on page, with its reload flag and the tags of the elements it changed. */
 export async function applyOn(page, text) {
   await front(page);
   return page.evaluate(`${E}.loadSession().then(() => ${E}.apply(${JSON.stringify(text)})).then((r) => ({ reload: r.reload, changed: r.changed.map((el) => el.localName) }))`);
 }
 
-/** Asserts that page renders as text, with zero problems, no unsaved change, and an empty history. */
 export async function applied(page, text, label = '') {
   const got = await page.evaluate(`({ text: ${E}.render(), status: ${E}.status() })`);
   if (got.text !== text) {
@@ -87,9 +74,6 @@ export async function applied(page, text, label = '') {
   assert.equal(got.status.redo, false, `${label}: an entry to redo`);
 }
 
-// a function of the page that describes each slide as a tree of its elements, each with its tag,
-// the classes of the file, and its style, and of its text, without the elements, the classes, and
-// the styles that the theme and reveal.js make at run time, and with each formula as math
 export const VIEW = `(() => {
   const RUNTIME = /^(beeson-|hl-|plot-)/;
   const STATE = new Set(['visible', 'current-fragment', 'present', 'past', 'future', 'disabled', 'enabled', 'stack']);
@@ -98,8 +82,6 @@ export const VIEW = `(() => {
   const walk = (el) => {
     if (el.localName === 'mjx-container') return 'math';
     const classes = [...el.classList].filter((c) => !RUNTIME.test(c) && !STATE.has(c)).sort();
-    // the declarations of the style, which a page writes with or without a semicolon at the end.
-    // the theme places a label of a backdrop or a surface when it draws it
     const style = el.localName === 'section' || !el.style || el.matches('.backdrop > .label, .surface > .label') ? '' : [...el.style].sort().map((p) => p + ': ' + el.style.getPropertyValue(p) + (el.style.getPropertyPriority(p) ? ' !important' : '')).join('; ');
     const out = [el.localName + classes.map((c) => '.' + c).join('') + (style ? '[' + style + ']' : '')];
     let text = '';

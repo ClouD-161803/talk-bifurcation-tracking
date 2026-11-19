@@ -1,10 +1,3 @@
-// the source that Insert > TikZ Figure > From Data writes from the header of a CSV file, and that
-// the TikZ Figure pane reads and writes again: one curve per column after the first, each a part
-// with a label at its end. the columns are taken by their index, hence a source compiles whatever
-// the names in the header, apart from a { that TeX reads as the start of a group, which is refused.
-// a source read and written again is the same text, and a source that the writer would not write
-// is not read. a test that runs TeX is skipped without latex and dvisvgm
-
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,18 +25,14 @@ const DECAY = `% From Data: the TikZ Figure pane of the editor reads and writes 
 test('From Data writes one curve per column after the first, each a part with a label at its end in a color of the style', () => {
   assert.deepEqual(headerOf('\uFEFFt, x,"y pos"\r\n0,1,2\r\n'), ['t', 'x', 'y pos']);
   assert.deepEqual(headerOf('\n\nt,x\n'), ['t', 'x']);
-  // a name in quotes may hold a comma, and a doubled quote is a quote
   assert.deepEqual(headerOf('t,"a,b", "say ""hi""" ,y\n'), ['t', 'a,b', 'say "hi"', 'y']);
   const figure = fromHeader('figures/decay.csv', ['t', 'x', 'y pos']);
   assert.equal(writeFigure(figure), DECAY);
   assert.deepEqual(figure.curves.map((c) => [c.part, c.column, c.color, c.kind, c.label]), [['x', 1, 'data1', 'line', 'x'], ['y-pos', 2, 'data2', 'line', 'y pos']]);
-  // a label is TeX, hence a special character of a column is escaped in the label alone, and two
-  // columns of the same part name get two parts
   const odd = fromHeader('figures/odd.csv', ['time_s', 'a_b', 'A B', 'a-b', '%']);
   assert.deepEqual(odd.curves.map((c) => [c.part, c.label]), [['a_b', 'a\\_b'], ['a-b', 'A B'], ['a-b-2', 'a-b'], ['curve', '\\%']]);
   assert.equal(odd.x, 0);
   assert.equal(odd.axes.x.label, 'time\\_s');
-  // the colors go round data1 to data8
   assert.equal(fromHeader('figures/many.csv', Array.from({ length: 10 }, (_, i) => `c${i}`)).curves.at(-1).color, 'data1');
 });
 
@@ -65,7 +54,6 @@ test('a source of From Data is read and written again as the same text, with eve
     assert.equal(writeFigure(read), text);
     if (variant.curves.length) assert.deepEqual(read, variant.labels === 'none' ? { ...variant, curves: variant.curves.map((c) => ({ ...c, label: '' })) } : variant);
   }
-  // a label is kept on one line
   assert.equal(readFigure(writeFigure({ ...figure, axes: { ...figure.axes, x: { ...figure.axes.x, label: 'two\nlines' } } })).axes.x.label, 'two lines');
 });
 

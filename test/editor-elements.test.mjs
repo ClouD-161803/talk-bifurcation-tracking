@@ -1,9 +1,3 @@
-// the operations on the elements of a slide, driven with trusted input on either platform: cut,
-// copy, paste, and duplicate of the selected elements, the copy by a drag with the copy modifier,
-// and the Insert commands for a text box, a formula, a code box, a QR code, and a footnote. after
-// each edit an undo gives the file byte for byte, a redo gives the edit, and a save is opened
-// again without problems
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -13,7 +7,6 @@ import { byteExact, center, click, drag, press, saveAndReopen, selectFigure, typ
 
 const LAYOUTS_DECK = 'test/pages/editor-layouts.html';
 const FIGURE = '<figure class="figure-box">';
-// the index of the slide of the equations in index.html, without a figure box or a footnote
 const EQUATIONS = 3;
 
 let browser;
@@ -32,8 +25,6 @@ const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFr
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-// the editor on a deck served over HTTP, where a save is written into the origin private file
-// system
 async function open(platform, deck = 'test-deck.html') {
   const page = await browser.newPage();
   await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
@@ -46,16 +37,12 @@ async function open(platform, deck = 'test-deck.html') {
   return page;
 }
 
-// the slide of index h shown, or the slide of the first element matched by selector
 async function show(page, at) {
   const h = typeof at === 'number' ? at : await page.evaluate(`Reveal.getIndices(document.querySelector(${JSON.stringify(at)}).closest('section')).h`);
   await page.evaluate(`Reveal.slide(${h})`);
   await sleep(150);
 }
 
-// a copy or a cut event, as the browser sends it for the keys of the system, with a clipboard of the
-// page, since the clipboard of the system is shared with the other tests run at the same time. the
-// text put on it is kept in window.clipped
 const clipEvent = (page, type) =>
   page.evaluate(`(() => {
     const data = new DataTransfer();
@@ -63,7 +50,6 @@ const clipEvent = (page, type) =>
     window.clipped = data.getData('text/plain');
   })()`);
 
-// a paste event with text, as the browser sends it for ⌘V or Ctrl+V on the canvas
 const pasteText = (page, text) =>
   page.evaluate(`(() => {
     const data = new DataTransfer();
@@ -74,7 +60,6 @@ const pasteText = (page, text) =>
 const figureText = (source) => source.slice(source.indexOf(FIGURE), source.indexOf('</figure>') + '</figure>'.length);
 const withTranslate = (text, t) => text.replace(FIGURE, `<figure class="figure-box" style="translate: ${t}">`);
 
-// the edited text, the file after the undos, the edit after the redos, and a save opened again
 let saves = 0;
 async function roundTrip(page, undos = 1) {
   const edited = await render(page);
@@ -103,7 +88,6 @@ for (const platform of ['mac', 'other']) {
     await settle(page);
     const fig = figureText(page.source);
     assert.equal(await render(page), page.source.replace(fig, `${fig}\n  ${withTranslate(fig, '20px 20px')}`));
-    // the copy is selected, and a second paste is put 20 px further
     assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present figure.figure-box').length`), 2);
     await pasteText(page, clipped);
     await settle(page);
@@ -157,8 +141,6 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await render(page), page.source.replace(fig, `${fig}\n  ${withTranslate(fig, '20px 20px')}`));
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Duplicate');
     await roundTrip(page);
-    // a paragraph, selected by its border, is put after itself and drawn 20 px off itself by an
-    // offset, and the list after it, placed with translate, is kept at its place
     await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
     await show(page, '.reveal .slides figure.figure-box');
     const p = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > p').getBoundingClientRect(); return { x: r.right + 3, y: (r.top + r.bottom) / 2 }; })()`);
@@ -178,7 +160,6 @@ for (const platform of ['mac', 'other']) {
     await selectFigure(page, '.reveal section.present figure.figure-box img.for-dark');
     const scale = await page.evaluate('Reveal.getScale()');
     await drag(page, '.reveal section.present figure.figure-box img.for-dark', { dx: -200 * scale, dy: 100 * scale, modifiers: copyKey, hold: true });
-    // during the drag the figure stays at its place, and the readout names the copy
     const during = await page.evaluate(`({ standin: !!document.querySelector('.beeson-standin'), copying: document.documentElement.classList.contains('beeson-copying'), readout: document.querySelector('.beeson-offset')?.textContent ?? '' })`);
     assert.deepEqual({ standin: during.standin, copying: during.copying }, { standin: true, copying: true });
     assert.match(during.readout, /^Copy/);
@@ -222,7 +203,6 @@ test('a Ctrl-click on a selected figure with edit-platform=other deselects it wi
   await byteExact(page);
 });
 
-// the text of the slide whose heading is h2 in text
 const slideOf = (text, h2) => {
   const at = text.indexOf(h2);
   return text.slice(text.lastIndexOf('<section', at), text.indexOf('</section>', at));
@@ -237,9 +217,7 @@ test('a text box is a p after the last block of the column, with the caret in it
   const pending = await page.evaluate(`(() => { const a = document.activeElement; return { tag: a.localName, prompt: getComputedStyle(a, '::before').content, after: a.previousElementSibling.localName, editable: a.isContentEditable }; })()`);
   assert.deepEqual(pending, { tag: 'p', prompt: '"Click to add text"', after: 'ul', editable: true });
   assert.equal(await render(page), page.source, 'the empty text box is written');
-  // the empty box is an entry of the history
   assert.equal((await settle(page)).undo, true);
-  // Esc leaves it, and it is written as an empty p in the entry of its insert, which an undo takes off
   await press(page, 'Escape');
   await settle(page);
   assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-pending').length`), 0);
@@ -251,8 +229,6 @@ test('a text box is a p after the last block of the column, with the caret in it
   await typeKeys(page, 'A new text box');
   await settle(page);
   const ul = page.source.slice(page.source.indexOf('<ul style="translate: 0px 20px">'), page.source.indexOf('</ul>', page.source.indexOf('<ul style="translate: 0px 20px">')) + 5);
-  // the box is moved down with the list above it, by the 20 px of its translate, and it is kept
-  // where its empty box was drawn, 24 px under the list rather than the 14 px of the theme
   assert.equal(await render(page), page.source.replace(ul, `${ul}\n  <p style="translate: 0px 30px">A new text box</p>`));
   assert.equal(await page.evaluate(`document.activeElement.textContent`), 'A new text box');
   await roundTrip(page, 2);
@@ -272,7 +248,6 @@ test('a text box is put into the text column of each layout', async (t) => {
     parents[where[0]] = where[1];
   }
   assert.deepEqual(parents, { title: 'section', section: 'sec', content: 'section', narrow: 'section', wide: 'section', figure: 'section', split: 'text-column', closing: 'section' });
-  // the insert of each box and its first input
   await roundTrip(page, 2 * count);
 });
 
@@ -317,7 +292,6 @@ test('a code box and a footnote are written at the first input, and a QR code is
   assert.equal(await page.evaluate(`getComputedStyle(document.activeElement, '::before').content`), '"Click to add code"');
   await type(page, 'x = 1');
   await settle(page);
-  // the slide is full to its bottom margin, hence the box is written with the offset that centers it
   assert.match(slideOf(await render(page), h2), /<pre style="translate: -?\d+px -?\d+px"><code class="language-python">x = 1<\/code><\/pre>\n  <aside/, 'the code box is not after the last block');
   await press(page, 'Escape');
   await page.evaluate(`window.BeesonEditor.exec('insert.footnote')`);
@@ -325,18 +299,15 @@ test('a code box and a footnote are written at the first input, and a QR code is
   await type(page, 'A note');
   await settle(page);
   assert.ok(slideOf(await render(page), h2).includes('<div class="foot">A note</div>\n  <aside'), 'the footnote is not before the notes');
-  // a second Footnote puts the caret into the one of the slide
   await press(page, 'Escape');
   await page.evaluate(`window.BeesonEditor.exec('insert.footnote')`);
   assert.equal(await page.evaluate(`document.activeElement.className`), 'foot');
   await press(page, 'Escape');
   await page.evaluate(`window.BeesonEditor.exec('insert.qr')`);
   await settle(page);
-  // the column is full, hence the QR code is centered on the slide
   assert.match(slideOf(await render(page), h2), /<pre style="translate: -?\d+px -?\d+px"><code class="language-python">x = 1<\/code><\/pre>\n  <div class="qr" data-qr="https:\/\/example.com" style="translate: -?\d+px -?\d+px"><\/div>/, 'the QR code is not after the last block');
   assert.equal(await page.evaluate(`!!document.querySelector('.reveal section.present .qr svg')`), true, 'the QR code is not drawn');
   assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.duplicate').enabled`), true);
-  // the insert and the first input of the code box and of the footnote, and the QR code
   await roundTrip(page, 5);
 });
 
@@ -344,7 +315,6 @@ test('a QR code is put into an empty zone', async (t) => {
   const page = await open('mac', LAYOUTS_DECK);
   t.after(() => page.close?.());
   await show(page, '.reveal .slides .split .figure-box video');
-  // the figure box of the split slide, emptied of its video
   await page.evaluate(`window.BeesonEditor.doc.remove(document.querySelector('.reveal section.present .figure-box video'))`);
   page.source = await render(page);
   await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
@@ -355,14 +325,12 @@ test('a QR code is put into an empty zone', async (t) => {
   await roundTrip(page);
 });
 
-// the frames of the selection shown on the page
 const framedCount = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden && f.getBoundingClientRect().width).length`);
 
 test('a press on the pasteboard around the slide clears the selection, and a drag from it draws a marquee', async (t) => {
   const page = await open('mac');
   t.after(() => page.close?.());
   await show(page, '.reveal .slides figure.figure-box');
-  // a point of the pasteboard halfway between the left edge of the canvas cell and the slide
   const board = await page.evaluate(`(() => {
     const cell = document.querySelector('.beeson-edit-canvas').getBoundingClientRect();
     const slide = document.querySelector('.reveal').getBoundingClientRect();
@@ -373,7 +341,6 @@ test('a press on the pasteboard around the slide clears the selection, and a dra
   assert.equal(await framedCount(page), 1);
   await click(page, board);
   assert.equal(await framedCount(page), 0, 'a press on the pasteboard keeps the selection');
-  // a marquee from the pasteboard to the middle of the list touches the paragraph and the list
   const ul = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > ul').getBoundingClientRect(); return { x: r.left + 40, y: r.top + 10 }; })()`);
   const p = await page.evaluate(`document.querySelector('.reveal section.present > p').getBoundingClientRect().top`);
   const from = { x: board.x, y: p - 4 };

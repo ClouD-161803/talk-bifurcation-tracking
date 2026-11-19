@@ -1,6 +1,3 @@
-// the end of the show played by Present or by Presenter View, past the last step or by quick keys
-// and clicks, the slide that the editor shows after it, and a typed slide number in the show
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,9 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
 
-// regression tests of R13.8 on both platforms: the transition of a slide kept at Duplicate Slide,
-// the caption of a figure kept when Caption is turned off and on, the end of the show played by
-// Present past its last slide, and a typed slide number read in one way by the two shows
 describe('the end of Present past its last slide', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -32,7 +26,6 @@ describe('the end of Present past its last slide', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)})`).then(() => frames(page));
 
-  // the editor on slide n of a deck, served over HTTP
   async function load(t, platform, n = 0, deck = 'test-deck.html') {
     const text = readFileSync(deck, 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -51,15 +44,12 @@ describe('the end of Present past its last slide', () => {
     return page;
   }
 
-  // the transition by which the show leaves slide n, as the Transition submenu checks it
   const transitionAt = async (page, n) => {
     await page.evaluate(`Reveal.slide(${n})`);
     await frames(page);
     return page.evaluate(`['none', 'fade', 'magic'].filter((k) => window.BeesonEditor.state('slide.transition.' + k).checked)`);
   };
 
-  // finding tour-history-save 1: the copy took the data-transition that encodes the transition into
-  // the original, which changed the transition out of the original
   for (const platform of PLATFORMS) {
     test(`Duplicate Slide keeps the transition of the original and gives it to the copy (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -82,11 +72,8 @@ describe('the end of Present past its last slide', () => {
     });
   }
 
-  // the center of the Caption switch of the Image pane
   const switchAt = (page) => page.evaluate(`(() => { const l = [...document.querySelectorAll('.beeson-edit-inspector label')].find((l) => l.textContent.trim() === 'Caption'); const r = l.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // finding r12-4-insert-layout-media 2: Caption turned off and on lost the text of the caption, and
-  // wrote an empty figcaption into the file
   for (const platform of PLATFORMS) {
     test(`Caption turned off and on again puts back the caption with its text (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -116,7 +103,6 @@ describe('the end of Present past its last slide', () => {
       assert.match(await render(page), /<p class="caption">x<\/p>\s*<\/div>/);
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
-      // an empty caption is taken off when the caret leaves it
       await selectFigure(page, 'video.for-light');
       await exec(page, 'figure.caption');
       await page.evaluate('document.activeElement.blur()');
@@ -138,7 +124,6 @@ describe('the end of Present past its last slide', () => {
       const shown = `!!document.querySelector('figure > figcaption')`;
       assert.equal(await page.evaluate(shown), true, 'the switch does not show a caption');
       await byteExact(page);
-      // the caret is in the caption, which Caption turns off again
       await exec(page, 'figure.caption');
       assert.equal(await page.evaluate(shown), false, 'Caption does not take the empty caption off');
       assert.equal((await page.evaluate(`window.BeesonEditor.state('figure.caption')`)).checked, false);
@@ -152,7 +137,6 @@ describe('the end of Present past its last slide', () => {
     });
   }
 
-  // the frame of the show played by Present, and its slide and step
   const SHOW = `document.querySelector('.beeson-edit-show iframe')?.contentWindow`;
   const showReady = `(() => { try { const w = ${SHOW}; return !!w?.Reveal?.isReady() && (!w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false)); } catch { return false; } })()`;
   async function present(t, platform, n) {
@@ -163,7 +147,6 @@ describe('the end of Present past its last slide', () => {
     return page;
   }
 
-  // finding r12-9-show 1: the show played by Present stayed at the closing slide at every key forward
   for (const platform of PLATFORMS) {
     test(`the show played by Present returns to the editor at a move forward past its last slide (${platform})`, async (t) => {
       for (const key of ['ArrowRight', 'Enter', 'Space', 'PageDown', 'n']) {
@@ -197,7 +180,6 @@ describe('the end of Present past its last slide', () => {
     });
   }
 
-  // a deck opened by itself keeps the keys of reveal.js at its last slide
   test('a deck opened by itself stays at its last slide at a key forward', async (t) => {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -210,7 +192,6 @@ describe('the end of Present past its last slide', () => {
     assert.deepEqual(errors(page), []);
   });
 
-  // the presenter display of the editor, opened by Alt+Return
   const DISPLAY = 'dialog.beeson-edit-presenter[open]';
   async function display(t, platform, n) {
     const page = await load(t, platform, n);
@@ -222,8 +203,6 @@ describe('the end of Present past its last slide', () => {
   }
   const slideOf = (page) => page.evaluate(`(() => { const m = document.querySelector(${js(DISPLAY)}).textContent.match(/Slide (\\d+) of/); return m ? Number(m[1]) : null; })()`);
 
-  // finding r12-9-show 2: a number typed in the presenter display was kept after other keys, and a
-  // number out of range was read differently by the two shows
   for (const platform of PLATFORMS) {
     test(`the presenter display drops a typed number at another key, and a number out of range goes to the first or the last slide (${platform})`, async (t) => {
       const page = await display(t, platform, 5);
@@ -254,13 +233,10 @@ describe('the end of Present past its last slide', () => {
     });
   }
 
-  // the center on the screen of the first shown element matched by selector
   const centerOf = (page, selector) => page.evaluate(`(() => { const r = [...Reveal.getCurrentSlide().querySelectorAll(${js(selector)})].map((e) => e.getBoundingClientRect()).find((r) => r.width); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const rotorShown = (page) => page.evaluate(`(() => { const g = document.querySelector('.beeson-rotor'); return !!g && getComputedStyle(g).display !== 'none' && g.getBoundingClientRect().width > 0; })()`);
 
-  // finding r12-5-select-arrange 2: in a selection of a group and another element, the rotate handle
-  // was missing, and a typed Angle turned each member of the group about its own center
   for (const platform of PLATFORMS) {
     test(`a group in a selection of several elements is turned as one object about its center (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -273,7 +249,6 @@ describe('the end of Present past its last slide', () => {
       assert.equal(await rotorShown(page), true, 'the selection does not have a rotate handle');
       const grouped = await render(page);
       const before = { p: await centerOf(page, 'p'), img: await centerOf(page, 'img.for-light'), h2: await centerOf(page, 'h2') };
-      // a drag of the rotate handle turns the group as one object, and the heading in place
       await drag(page, '.beeson-rotor', { dx: 120, dy: 60 });
       await frames(page);
       const dragged = { p: await centerOf(page, 'p'), img: await centerOf(page, 'img.for-light'), h2: await centerOf(page, 'h2') };
@@ -288,7 +263,6 @@ describe('the end of Present past its last slide', () => {
       assert.ok(Math.abs(gap(now.p, now.img) - gap(before.p, before.img)) < 2, 'the members of the group are moved apart');
       assert.ok(gap(now.p, before.p) > 20, 'the group is not turned about its center');
       assert.ok(gap(now.h2, before.h2) < 2, 'the heading is not turned about its own center');
-      // the line from the paragraph to the picture is turned by 20 degrees
       const angle = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
       assert.ok(Math.abs(angle(now.p, now.img) - angle(before.p, before.img) - 20) < 1.5, 'the group is not turned by the angle');
       const turned = await render(page);
@@ -302,14 +276,12 @@ describe('the end of Present past its last slide', () => {
     });
   }
 
-  // a trusted Mod+key with the editing command of the browser, e.g. paste
   async function command(page, platform, key, name) {
     const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: platform === 'mac' ? 4 : 2 };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: [name] });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   }
 
-  // a point on the last character of the item of slide 3 whose text is drawn on two lines
   const endOf = (page) => page.evaluate(`(() => {
   const li = [...Reveal.getCurrentSlide().querySelectorAll('li')].find((e) => e.textContent.includes('Two elements with the same index'));
   const node = li.lastChild, end = node.data.trimEnd().length;
@@ -320,7 +292,6 @@ describe('the end of Present past its last slide', () => {
   return { x: b.left + 1, y: b.top + b.height / 2 };
 })()`);
 
-  // finding r12-6-text-lists 4: a paste of several lines into a list item was one item with br breaks
   for (const platform of PLATFORMS) {
     test(`a paste of several lines into a list item makes an item of each line (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -341,7 +312,6 @@ describe('the end of Present past its last slide', () => {
       await byteExact(page);
       await page.evaluate('window.BeesonEditor.redo()');
       assert.equal(await render(page), text);
-      // Paste of the Edit menu makes the same items
       await page.evaluate('window.BeesonEditor.undo()');
       await clickText(page, await endOf(page));
       await press(page, 'End');
@@ -354,8 +324,6 @@ describe('the end of Present past its last slide', () => {
   }
 });
 
-// regression tests of R19.2 on both platforms: the slide of the editor after a show that is ended
-// from the tab of Presenter View or from the speaker view by keys or clicks in quick succession
 describe('the slide shown after a show ends', () => {
   const PLATFORMS = ['mac', 'other'];
   const LAST = 12;
@@ -377,8 +345,6 @@ describe('the slide shown after a show ends', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
-  // the editor on slide n of the demo deck, served over HTTP, with every window that it opens kept
-  // in window.__shows
   async function load(t, platform, n = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -409,14 +375,10 @@ describe('the slide shown after a show ends', () => {
     return page;
   }
 
-  // the speaker view that s opens in the window w is kept in window.__speakerKept of the page
   const SPEAKER = 'window.__speakerKept';
   const CURRENT = `${SPEAKER}?.document.querySelector('#current-slide iframe')?.contentWindow`;
   const keepSpeaker = (w) => `(() => { const w = ${w}; const real = w.open; w.open = function (...a) { const v = real.apply(w, a); window.__speakerKept = v; return v; }; return true; })()`;
 
-  // clickIn clicks the primary button on the heading of the current slide of the deck in the window
-  // w. scripts/chrome.mjs does not send input to the speaker view or to a tab, hence the events of
-  // the click are dispatched in them
   const clickIn = (w) => `(() => {
   const w = ${w};
   const el = w.Reveal.getCurrentSlide().querySelector('h1, h2') ?? w.Reveal.getCurrentSlide();
@@ -436,15 +398,9 @@ describe('the slide shown after a show ends', () => {
     await sleep(1200);
   }
 
-  // toStepEnd moves the deck in the window w to the last step of slide n
   const toStepEnd = (w, n) => `(() => { const R = ${w}.Reveal; R.slide(${n}); while (R.availableFragments().next) R.nextFragment(); return R.availableFragments().next === false; })()`;
-  // twice gives the window w two forward keys or two clicks at once, the first onto the last slide
-  // and the second past its last step
   const twice = (w, how) => `(() => { for (let i = 0; i < 2; i++) ${how === 'click' ? clickIn(w) : keyIn(w, 'ArrowRight', 39)}; return true; })()`;
 
-  // D3: Presenter View ended from its tab left the editor on the slide before the last one when the
-  // last two keys or clicks came before the next poll of the display, which ignored the state that
-  // the tab posts with its end
   const DISPLAY = `!!document.querySelector('dialog.beeson-edit-presenter[open]')`;
   for (const platform of PLATFORMS) {
     test(`Presenter View ended by two quick keys or clicks in its tab leaves the editor on the last slide (${platform})`, async (t) => {
@@ -465,14 +421,10 @@ describe('the slide shown after a show ends', () => {
     });
   }
 
-  // D4: Present ended from the speaker view left the editor on an earlier slide when the keys came
-  // less than 500 ms apart, since the show posted its own state, which the speaker view updates
-  // after a delay, in place of the state of the speaker view
   for (const platform of PLATFORMS) {
     test(`Present ended by two quick keys or clicks in the speaker view leaves the editor on the slide that the speaker view showed last (${platform})`, async (t) => {
       for (const how of ['key', 'click']) {
         const page = await present(t, platform, LAST - 1);
-        // the speaker view sets the show to the state of its frame when it connects
         await openSpeaker(page, SHOW);
         assert.equal(await page.evaluate(toStepEnd(SHOW, LAST - 1)), true);
         assert.ok(await within(page, `(() => { try { const R = ${CURRENT}.Reveal; return R.getIndices().h === ${LAST - 1} && !R.availableFragments().next; } catch { return false; } })()`, 3000), 'the speaker view is not at the last step of slide 12');

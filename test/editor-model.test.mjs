@@ -1,8 +1,3 @@
-// the document model of the editor in headless Chrome. each structural edit made through
-// window.BeesonEditor.doc is written into the text of the file. after an undo, the text is the file
-// byte for byte, and after a redo it has the edit again. the text of a save is opened again and
-// paired with zero problems
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -10,7 +5,6 @@ import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 
 const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
 
-// the editor on a deck, opened with the text of its file
 async function editorPage(browser, file = 'test-deck.html') {
   const text = readFileSync(file, 'utf8');
   const page = await browser.newPage();
@@ -21,8 +15,6 @@ async function editorPage(browser, file = 'test-deck.html') {
   return { page, text, status };
 }
 
-// defect 4 of the save model: reveal.js removed a slide with data-visibility="hidden" from the page
-// without showHiddenSlides, and its blocks were then problems
 test('a deck with a hidden slide pairs with zero problems, and its hidden slide is edited', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -35,22 +27,18 @@ test('a deck with a hidden slide pairs with zero problems, and its hidden slide 
   assert.deepEqual(page.errors, []);
 });
 
-// defect 5 of the save model: the start tag of an element inside a block was copied from the file,
-// hence a change of its class on the page, e.g. by a restore of the typing in the block, was lost
 test('a changed class of a span inside a block is written, and the classes of the theme are not', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const { page, text, status } = await editorPage(browser);
   assert.deepEqual(status.problems, []);
   const span = `[...document.querySelectorAll('.reveal span')].find((s) => s.textContent === 'Coriolis terms')`;
-  // the span is colored at a step, hence hl-target is put on it at run time
   assert.equal(await page.evaluate(`${span}.classList.contains('hl-target')`), true);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), text);
   await page.evaluate(`${span}.classList.add('small')`);
   const before = '<span class="coriolis">Coriolis terms</span>';
   assert.equal(text.split(before).length, 2);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), text.replace(before, '<span class="coriolis small">Coriolis terms</span>'));
-  // a span made anew, as by a restore of the content of its block, is written with its own class
   await page.evaluate(`${span}.outerHTML = '<span class="potential">Coriolis terms</span>'`);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), text.replace(before, '<span class="potential">Coriolis terms</span>'));
   await page.evaluate(`${span}.className = 'coriolis'`);
@@ -71,8 +59,6 @@ test('a class of the file that starts with hl- is kept when its text element is 
   assert.deepEqual(page.errors, []);
 });
 
-// the units of the content of the element whose start tag is at open in text, as ranges with the
-// start of the lead, the element, and the end of the unit
 async function unitsAt(text, open) {
   const { tokenize } = await import('../src/editor/tokens.ts');
   const { childrenIn, unitsOf } = await import('../src/editor/model/units.ts');
@@ -92,7 +78,6 @@ async function unitsAt(text, open) {
 
 const E = 'window.BeesonEditor';
 
-// a and b equal, with the first difference shown in place of the whole text
 function same(a, b, label) {
   if (a === b) return;
   let i = 0;
@@ -100,11 +85,8 @@ function same(a, b, label) {
   assert.fail(`${label}: the texts differ at ${i}\n  actual: ${JSON.stringify(a.slice(Math.max(0, i - 80), i + 120))}\n  expected: ${JSON.stringify(b.slice(Math.max(0, i - 80), i + 120))}`);
 }
 const render = (page) => page.evaluate(`${E}.render()`);
-// the slide of the page with index n, counted from 0 in the file
 const slide = (n) => `document.querySelectorAll('.reveal .slides > section')[${n}]`;
 
-// one edit: the text after it, after an undo and a redo, and after a save, an open of the saved
-// text with zero problems, and an undo. the file is then opened again
 async function check(page, text, edit, expected, label) {
   await page.evaluate(`(async () => { ${edit} })()`);
   same(await render(page), expected, label);
@@ -217,8 +199,6 @@ test('a moved section slide fills the running heads again', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-// a list is not a block, hence it was kept in its first slide while it was inside a slide taken off
-// the page
 test('an element moved into a slide that is then deleted is written in neither slide', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -237,8 +217,6 @@ test('an element moved into a slide that is then deleted is written in neither s
   assert.deepEqual(page.errors, []);
 });
 
-// an attribute, a class, or a declaration removed by an edit and saved was put back at the end of
-// its tag by the undo, since the saved file no longer has its place
 test('an undo after a save puts a removed attribute, class, and declaration back in place', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());

@@ -1,16 +1,10 @@
-// a reader of the boxes of an MP4 file, for the tests of the MP4 writer and of the recordings in the
-// PowerPoint export
-
 import assert from 'node:assert/strict';
 
-// the boxes from at to end, as a list of { type, start, size, body, children }, where body is the
-// part after the header. the children are read for the containers in CONTAINERS alone
 const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'dinf', 'stbl']);
 export function boxes(file, at = 0, end = file.length) {
   const out = [];
   while (at < end) {
     let size = file.readUInt32BE(at), head = 8;
-    // a size of 1 is followed by a size of 64 bits
     if (size === 1) [size, head] = [Number(file.readBigUInt64BE(at + 8)), 16];
     const type = file.toString('latin1', at + 4, at + 8);
     assert.ok(size >= head && at + size <= end, `box ${type} of size ${size} at ${at} runs past its parent`);
@@ -21,8 +15,6 @@ export function boxes(file, at = 0, end = file.length) {
   return out;
 }
 
-// the box at a path of types, e.g. find(tree, 'moov/trak/mdia/mdhd'), or with optional set
-// undefined for a box that is missing
 export function find(tree, path, { optional = false } = {}) {
   let found;
   for (const type of path.split('/')) {
@@ -34,8 +26,6 @@ export function find(tree, path, { optional = false } = {}) {
   return found;
 }
 
-// the size in px, the frames per second, the count of frames, the duration in s, and the numbers
-// of the key frames of an MP4 with one H.264 track, read from the boxes of its sample table
 export function stream(file) {
   const tree = boxes(file);
   const table = (type, options) => find(tree, `moov/trak/mdia/minf/stbl/${type}`, options)?.body;
@@ -47,7 +37,6 @@ export function stream(file) {
   const runs = Array.from({ length: stts.readUInt32BE(4) }, (_, n) => [stts.readUInt32BE(8 + 8 * n), stts.readUInt32BE(12 + 8 * n)]);
   assert.equal(new Set(runs.map(([, delta]) => delta)).size, 1, 'every frame lasts as long');
   const frames = runs.reduce((total, [count]) => total + count, 0);
-  // without a stss box, every frame is a key frame
   const stss = table('stss', { optional: true });
   return {
     width: stsd.readUInt16BE(40),
@@ -59,8 +48,6 @@ export function stream(file) {
   };
 }
 
-// the code points of the colr box of type nclx in the sample entry of an MP4 with one H.264 track,
-// as { primaries, transfer, matrix, fullRange }, or null for a file without one
 export function color(file) {
   const entry = find(boxes(file), 'moov/trak/mdia/minf/stbl/stsd').body.subarray(8);
   const colr = boxes(entry, 8 + 78, entry.length).find((b) => b.type === 'colr')?.body;

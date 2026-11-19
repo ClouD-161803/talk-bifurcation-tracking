@@ -1,8 +1,3 @@
-// the typing around a citation on test/pages/tex-sheets/index.html, and its entries of the history.
-// a space and a word typed after a new citation at the end of a paragraph are put after it (#66),
-// every Undo after a pause changes the text (#67), and a cut in a theorem or across a citation is
-// an entry of its own, labeled Cut (#68)
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -36,7 +31,6 @@ const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') &
 const PARA = (words) => `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith(${js(words)}))`;
 const html = (page, words) => page.evaluate(`${PARA(words)}.innerHTML`);
 
-// the editor on the slide titled title
 async function open(t, title) {
   const page = await browser.newPage();
   t.after(() => page.close());
@@ -50,7 +44,6 @@ async function open(t, title) {
   return page;
 }
 
-// the caret at the end of the paragraph that starts with words
 async function caretAfter(page, words) {
   await page.evaluate(`(() => {
     const p = ${PARA(words)};
@@ -65,13 +58,11 @@ async function caretAfter(page, words) {
   await page.waitFor(`document.activeElement === ${PARA(words)}`);
 }
 
-// the list of the bibliography opened by \cite{ typed at the caret
 async function openList(page) {
   await type(page, ' \\cite{');
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
 }
 
-// a trusted ⌘X, which Chrome runs as its command cut
 async function cut(page) {
   const base = { key: 'x', code: 'KeyX', windowsVirtualKeyCode: 88, modifiers: 4 };
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: ['cut'] });
@@ -125,8 +116,6 @@ test('an Undo after a key and Backspace typed after a pause takes back the typin
   assert.deepEqual(errors(page), []);
 });
 
-// test/pages/editor-r29-1.html with a line on its third slide from its shape to the right edge of
-// its table, which sits in the flow under a paragraph
 const R29 = 'test/pages/editor-r29-1.html';
 const GLUED = readFileSync(R29, 'utf8')
   .replaceAll('"../../theme/', '"theme/')
@@ -171,7 +160,6 @@ test('words that move an attached line, taken back by one Backspace, leave the l
   assert.deepEqual(errors(page), []);
 });
 
-// the slide, the start of the paragraph typed into, and the range cut after the typing
 for (const [title, words, select] of [
   ['Theorems', 'A theorem', `(p) => { const n = p.lastChild; const r = document.createRange(); r.setStart(n, n.data.length - 3); r.setEnd(n, n.data.length); return r; }`],
   ['Citations', 'A heteroclinic', `(p) => { const r = document.createRange(); r.setStart(p.firstChild, p.firstChild.data.indexOf('orbits')); r.setEnd(p.lastChild, p.lastChild.data.length); return r; }`],

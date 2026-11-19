@@ -1,8 +1,3 @@
-// the origin of a copy in the editor. after the mark, a copy of slides and a copy of elements name
-// the address of the deck, the version of its theme, and the macros that the copied text uses. they
-// are named in a comment that a dash of a macro cannot close early. a text without the origin, as
-// an older editor copies it, is pasted into another deck as before, with its paths as they were
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -20,7 +15,6 @@ after(async () => {
   server?.close();
 });
 
-// the origin written after the mark of a text of the clipboard, or null without it
 function originOf(text) {
   const m = text.match(/^<!--beeson-->\r?\n<!--beeson-origin (.*?)-->/s);
   return m ? { raw: m[1], ...JSON.parse(m[1]) } : null;
@@ -38,7 +32,6 @@ test('a copy of slides and a copy of elements name the deck, its theme, and the 
   assert.ok(origin, `the copy of the slide does not name its origin: ${slides.slice(0, 120)}`);
   assert.equal(origin.deck, deck);
   assert.equal(origin.version, version);
-  // orb is used on the slide, half in the body of orb, and dash on the slide, and unused is not
   assert.deepEqual(
     [...origin.macros].sort((a, b) => a.name.localeCompare(b.name)),
     [
@@ -48,7 +41,6 @@ test('a copy of slides and a copy of elements name the deck, its theme, and the 
     ],
   );
   assert.ok(!origin.raw.includes('--'), 'the dash of a macro would close the comment of the origin');
-  // the slide follows the origin, as it is written into the file
   assert.ok(slides.endsWith(sectionOf(page.source, FILES)));
 
   const figure = await copyFigure(page, FILES, 'img[src$="orbit.png"]');
@@ -69,7 +61,6 @@ test('a text without the origin is pasted into another deck with its paths as th
   await pasted(page);
   const first = sectionOf(page.source, FIRST_B);
   assert.equal(await render(page), page.source.replace(first, `${first}\n    ${slide}`));
-  // nothing was asked of deck A
   const asked = await page.evaluate(`performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('/cross-deck/a/'))`);
   assert.deepEqual(asked, []);
   assert.deepEqual(errors(page), []);

@@ -1,6 +1,3 @@
-// the Object List: its rows, the selection, the padlocks, the drag of a row by layers, the group
-// rows, the search field, and the rows that follow the image of the mode shown
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,10 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, drag, editorPage, press, saveAndReopen } from './helpers/editor.mjs';
 
-// regression tests of R10.2 on both platforms with trusted input: the object list of
-// navigator/objects.ts, the Text pane for several text blocks, the arrowheads of the marks of equal
-// gaps, and the guides written into data-guides. after each edit of the file the text is checked
-// when rendered, byte for byte after an undo, again after a redo, and after a save and an open
 describe('the rows and selection of the Object List', () => {
   const PLATFORMS = ['mac', 'other'];
   const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -42,14 +35,11 @@ describe('the rows and selection of the Object List', () => {
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.tagName.toLowerCase())`);
   const active = (page) => page.evaluate(`document.activeElement.closest(${js(OBJECTS)}) ? 'list:' + document.activeElement.textContent : document.activeElement.tagName`);
-  // the rows of the object list as level, name, and selection, e.g. '1 Formula *'
   const rows = (page) =>
     page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.getAttribute('aria-level') + ' ' + r.querySelector('.name').textContent + (r.getAttribute('aria-selected') === 'true' ? ' *' : ''))`);
   const rowBox = (page, n) =>
     page.evaluate(`(() => { const r = document.querySelectorAll(${js(ROW)})[${n}].getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2, top: r.top, bottom: r.bottom }; })()`);
 
-  // the editor on slide n of the deck of layouts, served over HTTP, with the storage of the browser
-  // cleared, or holding the items of storage
   async function load(t, platform, n = MATH, storage = {}) {
     const page = await browser.newPage();
     t.after(() => page.close().catch(() => {}));
@@ -67,8 +57,6 @@ describe('the rows and selection of the Object List', () => {
     return page;
   }
 
-  // the checks after an edit whose rendered text is edited: the text before it after an undo, the
-  // same text after a redo, and a save and an open without problems
   async function checkEdit(page, edited, base = page.source) {
     assert.notEqual(edited, base);
     await undo(page);
@@ -131,14 +119,12 @@ describe('the rows and selection of the Object List', () => {
       assert.deepEqual((await selected(page)).sort(), ['figure', 'p']);
       await click(page, `${ROW}:nth-child(1)`, { modifiers: 'Mod' });
       assert.deepEqual(await selected(page), ['p']);
-      // the row clicked last is the current row of the arrow keys
       await press(page, 'ArrowDown');
       assert.deepEqual(await selected(page), ['ol']);
       await press(page, 'Shift+ArrowDown');
       assert.deepEqual((await selected(page)).sort(), ['ol', 'p']);
       await click(page, `${ROW}:nth-child(6)`, { modifiers: 'Shift' });
       assert.deepEqual((await selected(page)).sort(), ['h2', 'ol', 'p']);
-      // a selection made on the canvas is shown in the list at once
       await press(page, 'Escape');
       await click(page, '.reveal .slides section.present figure.figure-box img');
       assert.deepEqual(await selected(page), ['figure']);
@@ -163,19 +149,16 @@ describe('the rows and selection of the Object List', () => {
     test(`${platform}: a drag of a row moves its object by the layers of Bring Forward and Send Backward, and a row that cannot move is not dragged`, async (t) => {
       const page = await load(t, platform);
       await openList(page, platform);
-      // the list, an element in the flow, is sent behind the other blocks by a z-index under 0
       const list = await rowBox(page, 1);
       const last = await rowBox(page, 5);
       await drag(page, { x: list.x, y: list.y }, { dy: last.bottom - 2 - list.y, steps: 8 });
       assert.equal(await render(page), page.source.replace('<ol>', '<ol style="position: relative; z-index: -1">'));
       await undo(page);
       assert.equal(await render(page), page.source);
-      // the heading at the back of the list cannot move further back, and its row is not dragged
       const back = await rowBox(page, 5);
       await drag(page, { x: back.x, y: back.y }, { dy: back.bottom - 2 - back.y, steps: 8 });
       assert.equal(await render(page), page.source);
       assert.equal((await page.evaluate('window.BeesonEditor.status()')).undo, false);
-      // the heading is brought in front of the figure by a z-index, which does not move it in the file
       const heading = await rowBox(page, 5);
       const first = await rowBox(page, 0);
       await drag(page, { x: heading.x, y: heading.y }, { dy: first.top + 2 - heading.y, steps: 8 });
@@ -184,13 +167,10 @@ describe('the rows and selection of the Object List', () => {
       assert.equal((await rows(page))[0], '1 Text: Math, an ordered list, and a zone *');
       await undo(page);
       assert.equal(await render(page), page.source);
-      // a nudge makes the lead-in a layer, which the figure is then dragged behind
       await click(page, `${ROW}:nth-child(5)`);
       await press(page, 'Escape');
       await press(page, 'ArrowRight');
       const nudged = await render(page);
-      // the rows are in the order of the drawing, with the layers over the other blocks. the list,
-      // whose items are positioned, is drawn with the layers, over the lead-in written before it
       assert.deepEqual((await rows(page)).slice(0, 3), ['1 Figure: A caption under a zone.', '1 Text: A first step A final step', '1 Text: The lead-in of a display *']);
       const from = await rowBox(page, 0);
       const to = await rowBox(page, 2);
@@ -245,8 +225,6 @@ describe('the rows and selection of the Object List', () => {
     });
   }
 
-  // the inspector as its tabs, the paragraph style, and the controls of the Text pane that are on or
-  // mixed, e.g. 'text.bold=mixed'
   const inspector = (page) =>
     page.evaluate(`({
     tabs: [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].map((t) => t.textContent + (t.getAttribute('aria-selected') === 'true' ? '*' : '')),
@@ -255,7 +233,6 @@ describe('the rows and selection of the Object List', () => {
   })`);
 
   for (const platform of PLATFORMS) {
-    // the lead-in alone in the accent and bold, then the lead-in and the heading selected
     async function mixedBlocks(t) {
       const page = await load(t, platform);
       await openList(page, platform);
@@ -298,7 +275,6 @@ describe('the rows and selection of the Object List', () => {
       await click(page, `${ROW}:nth-child(6)`, { modifiers: 'Mod' });
       await click(page, `${ROW}:nth-child(2)`, { modifiers: 'Mod' });
       assert.deepEqual((await inspector(page)).on, ['text.tone.text=true', 'text.align.left=true', 'text.list.none=mixed', 'text.list.ol=mixed']);
-      // a formula among them leaves Arrange alone
       await click(page, `${ROW}:nth-child(4)`, { modifiers: 'Mod' });
       assert.deepEqual((await inspector(page)).tabs, []);
       await byteExact(page);
@@ -311,8 +287,6 @@ describe('the rows and selection of the Object List', () => {
       const page = await load(t, platform);
       await openList(page, platform);
       await click(page, `${ROW}:nth-child(4)`);
-      // the formula is moved down, then dragged by its handle back to the middle between the lead-in
-      // and the paragraph under it
       const handle = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       const middle = await page.evaluate(`(() => {
       const s = document.querySelector('.reveal .slides section.present');
@@ -341,12 +315,10 @@ describe('the rows and selection of the Object List', () => {
     });
   }
 
-  // the guides drawn on the canvas, as [axis, place in slide px]
   const drawnGuides = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-hand-guide')].filter((g) => !g.hidden && !g.classList.contains('off')).map((g) => [g.dataset.axis, Number(g.dataset.at)]).sort()`);
   const MATH_TAG = '<section>\n  <h2>Math, an ordered list, and a zone</h2>';
   const GUIDES_KEY = `beeson-edit-guides:/${LAYOUTS}`;
-  // the guides are shown with the rulers
   const RULERS = { 'beeson-edit-rulers': '1' };
 
   for (const platform of PLATFORMS) {
@@ -360,7 +332,6 @@ describe('the rows and selection of the Object List', () => {
       assert.deepEqual(await drawnGuides(page), [['x', 300], ['y', 500]]);
       const edited = await render(page);
       assert.equal(edited, page.source.replace(MATH_TAG, MATH_TAG.replace('<section>', '<section data-guides="x300 y500">')));
-      // the guides of the slide are no longer in the storage, and those of the next slide are kept
       const kept = JSON.parse(await page.evaluate(`localStorage.getItem(${js(GUIDES_KEY)})`));
       assert.deepEqual([kept[MATH], kept[MATH + 1]], [{ x: [], y: [] }, { x: [], y: [200] }]);
       await undo(page);
@@ -369,7 +340,6 @@ describe('the rows and selection of the Object List', () => {
       assert.deepEqual(JSON.parse(await page.evaluate(`localStorage.getItem(${js(GUIDES_KEY)})`))[MATH], { x: [300], y: [] });
       await checkEdit(page, edited, page.source);
       assert.deepEqual(await drawnGuides(page), [['x', 300], ['y', 500]]);
-      // the guides of the next slide, still in the storage, are shown there
       await page.evaluate(`Reveal.slide(${MATH + 1})`);
       await frames(page);
       assert.deepEqual(await drawnGuides(page), [['y', 200]]);
@@ -397,9 +367,6 @@ describe('the rows and selection of the Object List', () => {
   }
 });
 
-// regression tests of R11.3 on both platforms with trusted input: the drag of a group row of the
-// object list, checked when rendered, after each undo and redo, and after a save and an open of the
-// saved text
 describe('the drag of a group row', () => {
   const GROUPS = 'test/pages/editor-r11-3.html';
   const PLATFORMS = ['mac', 'other'];
@@ -424,8 +391,6 @@ describe('the drag of a group row', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the browser cleared and the
-  // Format pane shown
   async function load(t, platform, { deck = GROUPS, n = 0 } = {}) {
     const page = await browser.newPage();
     t.after(() => page.close().catch(() => {}));
@@ -455,7 +420,6 @@ describe('the drag of a group row', () => {
   const OBJECTS = '.beeson-edit-objects';
   const ROW = `${OBJECTS} .row`;
   const LIST_KEY = { mac: 'Mod+Shift+L', other: 'Alt+F10' };
-  // the rows of the object list as level, name, and selection, e.g. '1 Group *'
   const rows = (page) =>
     page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.getAttribute('aria-level') + ' ' + r.querySelector('.name').textContent + (r.getAttribute('aria-selected') === 'true' ? ' *' : ''))`);
   const rowBox = (page, n) =>
@@ -465,7 +429,6 @@ describe('the drag of a group row', () => {
     const end = GROUPED.indexOf(`<figcaption class="caption">${name}</figcaption>\n      </figure>`);
     return GROUPED.slice(GROUPED.lastIndexOf('      <figure', end), GROUPED.indexOf('</figure>', end) + '</figure>\n'.length);
   };
-  // the deck of groups with its figures in the order of names, from back to front
   const ordered = (...names) => {
     const first = GROUPED.indexOf(figure('A'));
     const last = GROUPED.indexOf(figure('C')) + figure('C').length;
@@ -473,14 +436,11 @@ describe('the drag of a group row', () => {
   };
 
   for (const platform of PLATFORMS) {
-    // a group row could not be dragged. it now moves its members in the order of the layers as one
-    // object, and they keep their order among themselves
     test(`a group row is dragged as one object, whose members keep their order, as one entry (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: GROUPS, n: 0 });
       await press(page, LIST_KEY[platform]);
       await frames(page);
       assert.deepEqual(await rows(page), ['1 Group', '2 Figure: C', '2 Figure: A', '1 Figure: B', '1 Text: A group around a figure']);
-      // the group behind B: C passes B, and A stays behind C
       let from = await rowBox(page, 0);
       let to = await rowBox(page, 3);
       await drag(page, { x: from.x, y: from.y }, { dy: to.bottom - 2 - from.y, steps: 8 });
@@ -489,7 +449,6 @@ describe('the drag of a group row', () => {
       const behind = ordered('A', 'C', 'B');
       assert.equal(await render(page), behind);
       assert.equal((await state(page, 'edit.undo')).label, 'Undo Reorder');
-      // the group in front of B again: both members pass B, in their order
       from = await rowBox(page, 1);
       to = await rowBox(page, 0);
       await drag(page, { x: from.x, y: from.y }, { dy: to.top + 2 - from.y, steps: 8 });
@@ -511,9 +470,6 @@ describe('the drag of a group row', () => {
   }
 });
 
-// regression tests of R12.8 on both platforms with trusted input: the keys of the Arrange menu in
-// the Object List, and the drop line of a row dragged in the Object List. after each edit of the
-// file the text is checked byte for byte after an undo and again after a redo
 describe('Arrange keys and the drop line of rows', () => {
   const DECK = 'test-deck.html';
   const PLATFORMS = ['mac', 'other'];
@@ -539,7 +495,6 @@ describe('Arrange keys and the drop line of rows', () => {
     await frames(page);
   };
 
-  // the editor on slide n, counted from 0, of deck, served over HTTP with the storage cleared
   async function load(t, platform, { deck = DECK, n = 0 } = {}) {
     const page = await browser.newPage();
     t.after(() => page.close().catch(() => {}));
@@ -564,7 +519,6 @@ describe('Arrange keys and the drop line of rows', () => {
   const OBJECTS = '.beeson-edit-objects';
   const ROW = `${OBJECTS} .row`;
   const LIST_KEY = { mac: 'Mod+Shift+L', other: 'Alt+F10' };
-  // the rows of the object list as level, name, and selection, e.g. '1 Group *'
   const rows = (page) =>
     page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.getAttribute('aria-level') + ' ' + r.querySelector('.name').textContent + (r.getAttribute('aria-selected') === 'true' ? ' *' : ''))`);
   const rowBox = (page, n) =>
@@ -575,8 +529,6 @@ describe('Arrange keys and the drop line of rows', () => {
   };
 
   for (const platform of PLATFORMS) {
-    // plots-objects-outline-4: in Keynote's object list and PowerPoint's Selection Pane, the keys of
-    // the Arrange menu act on the rows chosen. they did nothing while a row had the focus
     test(`the keys of Group, Lock, and Send Backward act on the rows chosen in the Object List (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
       await press(page, LIST_KEY[platform]);
@@ -601,7 +553,6 @@ describe('Arrange keys and the drop line of rows', () => {
       assert.equal(await render(page), grouped);
       await undoKey(page);
       await settle(page);
-      // the figure alone, locked, then sent backward, from its focused row
       await click(page, await rowBox(page, 0));
       await press(page, KEYS[platform].lock);
       await settle(page);
@@ -625,9 +576,6 @@ describe('Arrange keys and the drop line of rows', () => {
   const dropLine = (page) => page.evaluate(`(() => { const d = document.querySelector('${OBJECTS} .drop'); return d && !d.hidden ? d.getBoundingClientRect().top + 1 : null; })()`);
 
   for (const platform of PLATFORMS) {
-    // plots-objects-outline-5: the drop line of a row drag marked a gap past the layers that the
-    // figure can pass, and the figure stopped short of it. the line now stops at the last gap that
-    // Send to Back reaches, and the row lands at the line
     test(`the drop line of a row drag in the Object List stops where the object can go (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
       await press(page, LIST_KEY[platform]);
@@ -637,7 +585,6 @@ describe('Arrange keys and the drop line of rows', () => {
       const from = await rowBox(page, 0);
       const last = await rowBox(page, 3);
       await drag(page, { x: from.x, y: from.y }, { dy: last.bottom + 10 - from.y, steps: 8, hold: true });
-      // the figure passes the texts in the flow, hence Send to Back reaches the bottom of the list
       const line = await dropLine(page);
       assert.ok(line !== null && Math.abs(line - last.bottom) <= 2, `the drop line is at ${line}, not at the bottom of row 3 (${last.bottom})`);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x, y: last.bottom + 10, button: 'left', clickCount: 1 });
@@ -648,8 +595,6 @@ describe('Arrange keys and the drop line of rows', () => {
       await undoKey(page);
       await settle(page);
       await byteExact(page);
-      // the heading in the flow, which Bring to Front puts over the figure by a z-index since R13.1,
-      // shows its drop line at the top of the list and lands there
       const h2 = await rowBox(page, 3);
       await drag(page, { x: h2.x, y: h2.y }, { dy: from.top + 2 - h2.y, steps: 8, hold: true });
       const top = await dropLine(page);
@@ -666,11 +611,6 @@ describe('Arrange keys and the drop line of rows', () => {
   }
 });
 
-// the Steps pane and the Object List, R35.2, on both platforms. after a flip of the mode, the rows
-// of a dark and light pair of pictures in the section are bound to the twin that is shown. a folded
-// group row of the Object List selects and locks the members that its group has now, after a
-// Delete, an undo, a Duplicate of a member, and Arrange > Group. a picture selected across a flip
-// keeps its rows marked, while the selection holds the hidden twin
 describe('rows of a pair follow the shown picture', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r35-2.html';
@@ -693,12 +633,9 @@ describe('rows of a pair follow the shown picture', () => {
     return page;
   }
 
-  // the selection, each element named by its class or its words, and marked when it is hidden or
-  // out of the page
   const SELECTION = `window.BeesonEditor.selection().map((e) => (e.localName === 'img' ? 'img.' + e.className.split(' ')[0] : e.textContent.trim()) + (!e.isConnected ? ' (detached)' : e.getClientRects().length ? '' : ' (hidden)'))`;
   const selection = async (page) => { await frames(page); return page.evaluate(SELECTION); };
 
-  // the center of the row of the Object List with the name, or of the part of this row
   const objectRow = (page, name, part = null) => page.evaluate(`(() => {
   const r = [...document.querySelectorAll('.beeson-edit-objects .row')].find((r) => r.querySelector('.name').textContent === ${JSON.stringify(name)});
   if (!r) return null;
@@ -707,7 +644,6 @@ describe('rows of a pair follow the shown picture', () => {
 })()`);
   const objectRows = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row')].map((r) => r.getAttribute('aria-level') + ':' + r.querySelector('.name').textContent + (r.getAttribute('aria-expanded') ? ' [' + r.getAttribute('aria-expanded') + ']' : ''))`);
 
-  // the words of the row of the picture pair in the Steps pane, and the point at its center
   const STEP_ROW = `[...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.textContent.includes('A figure'))`;
   const stepRow = (page) => page.evaluate(`(() => {
   const r = ${STEP_ROW};
@@ -716,11 +652,9 @@ describe('rows of a pair follow the shown picture', () => {
   return { text: r.querySelector('.body').textContent, x: b.left + b.width * 0.6, y: b.top + b.height / 2 };
 })()`);
 
-  // a press with Mod at a point of a row. on a Mac host, a trusted press with Ctrl also opens the
-  // menu of a right click, hence it is dispatched there for the platform other
   async function modPress(page, at) {
-    const ctrl = process.platform === 'darwin' && (await page.evaluate(`new URLSearchParams(location.search).get('edit-platform')`)) === 'other';
-    if (!ctrl) await click(page, at, { modifiers: 'Mod' });
+    const ctrlIsRightClick = process.platform === 'darwin' && (await page.evaluate(`new URLSearchParams(location.search).get('edit-platform')`)) === 'other';
+    if (!ctrlIsRightClick) await click(page, at, { modifiers: 'Mod' });
     else {
       await page.evaluate(`(() => {
       const el = document.elementFromPoint(${at.x}, ${at.y});
@@ -731,8 +665,6 @@ describe('rows of a pair follow the shown picture', () => {
     await frames(page);
   }
 
-  // the picture that is shown, the marked rows of the two lists, whether the fields of the step are
-  // shown, and the picture at which the number of the step is drawn
   const MARKED = `({
   shown: [...document.querySelectorAll('section.present img')].filter((i) => i.getClientRects().length).map((i) => 'img.' + i.className.split(' ')[0]),
   steps: [...document.querySelectorAll('.beeson-edit-side .rows .row.selected')].map((r) => r.querySelector('.body').textContent),
@@ -741,8 +673,6 @@ describe('rows of a pair follow the shown picture', () => {
   badge: [...document.querySelectorAll('.beeson-badge')].map((b) => b.owner?.localName === 'img' ? 'img.' + b.owner.className.split(' ')[0] : null).filter(Boolean),
 })`;
 
-  // asserts that each way to the picture pair reaches the twin that is shown, and that its Steps row
-  // reads the alt of this twin
   async function pairBound(page, twin, alt) {
     await frames(page);
     await click(page, await objectRow(page, 'Image'));
@@ -763,7 +693,6 @@ describe('rows of a pair follow the shown picture', () => {
     await click(page, at);
     assert.deepEqual(await selection(page), [twin], 'the Steps row selects the hidden twin');
     await press(page, 'Escape');
-    // a click on the picture on the slide marks its rows and shows the fields Start, Delay, and Effect
     await click(page, { x: 100, y: 950 });
     await click(page, 'section.present img');
     assert.deepEqual(await selection(page), [twin]);
@@ -775,22 +704,18 @@ describe('rows of a pair follow the shown picture', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // the pair of slide 1 has one alt, hence the words of its Steps row stay the same at a flip, and
-    // the pair of slide 3 has two alts
     for (const [slide, dark, light] of [[0, 'A figure', 'A figure'], [2, 'A figure, dark', 'A figure, light']]) {
       test(`the rows of the Steps pane and of the Object List follow the twin shown after a flip of the mode, on slide ${slide + 1} (${platform})`, async () => {
         const page = await deckPage(platform, slide);
         await exec(page, 'view.steps');
         await frames(page);
         await pairBound(page, 'img.for-dark', dark);
-        // D flips the mode while the hidden twin of the next mode is selected
         await press(page, 'Escape');
         await click(page, 'section.present img');
         await press(page, 'D');
         await frames(page);
         assert.equal(await page.evaluate('document.documentElement.dataset.theme'), 'light');
         await pairBound(page, 'img.for-light', light);
-        // View > Slide in Dark Mode flips it back, with the selection cleared
         await press(page, 'Escape');
         await exec(page, 'view.slideDark');
         await frames(page);
@@ -805,7 +730,6 @@ describe('rows of a pair follow the shown picture', () => {
         await frames(page);
         await click(page, { x: 100, y: 950 });
         await click(page, 'section.present img');
-        // D and then View > Slide in Dark Mode, each while the picture stays selected
         for (const [flip, theme, twin, alt] of [['D', 'light', 'img.for-light', light], ['view.slideDark', 'dark', 'img.for-dark', dark]]) {
           if (flip === 'D') await press(page, 'D');
           else await exec(page, flip);
@@ -841,7 +765,6 @@ describe('rows of a pair follow the shown picture', () => {
           assert.deepEqual(await selection(page), [], `a Mod+click on the marked row of the ${list} keeps the picture selected`);
           const marked = await page.evaluate(MARKED);
           assert.deepEqual([marked.steps.length, marked.objects.length], [0, 0], `rows stay marked after the Mod+click in the ${list}`);
-          // a second Mod+click selects the twin that is shown
           await modPress(page, await row());
           const now = await selection(page);
           assert.equal(now.length, 1, `a second Mod+click in the ${list} selects ${JSON.stringify(now)}`);
@@ -866,7 +789,6 @@ describe('rows of a pair follow the shown picture', () => {
       await click(page, await objectRow(page, 'Group', '.lock'));
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelectorAll('section.present .shape[data-locked]').length`), 2);
-      // the undo of the lock and of the Delete brings the file back
       await press(page, 'Mod+Z');
       await press(page, 'Mod+Z');
       await frames(page);
@@ -882,7 +804,6 @@ describe('rows of a pair follow the shown picture', () => {
       await click(page, await objectRow(page, 'Group', '.twist'));
       await exec(page, 'edit.duplicate');
       await frames(page);
-      // the copy of a lone member is put outside the group, by copiedGroups of model/groups.ts
       const group = await page.evaluate(`[...document.querySelectorAll('section.present .shape')].map((s) => s.getAttribute('data-group'))`);
       assert.deepEqual(group, ['g1', 'g1', 'g1', null, null]);
       assert.deepEqual(await objectRows(page), ['1:Rectangle: Delta', '1:Rectangle: Gamma', '1:Group [false]', '1:Text: A paragraph.', '1:Text: Groups']);
@@ -894,15 +815,12 @@ describe('rows of a pair follow the shown picture', () => {
       assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row')].find((r) => r.querySelector('.name').textContent === 'Group').querySelector('.lock').getAttribute('aria-pressed')`), 'true');
       await press(page, 'Mod+Z');
       await frames(page);
-      // Arrange > Group of the folded group and Delta puts both in a new group, under which the
-      // folded row keeps its three members
       await click(page, await objectRow(page, 'Group'));
       await click(page, await objectRow(page, 'Rectangle: Delta'), { modifiers: 'Shift' });
       assert.deepEqual(await selection(page), ['Alpha', 'Beta', 'Gamma', 'Delta']);
       await exec(page, 'arrange.group');
       await frames(page);
       assert.deepEqual(await objectRows(page), ['1:Group [true]', '2:Rectangle: Delta', '2:Group [false]', '1:Rectangle: Gamma', '1:Text: A paragraph.', '1:Text: Groups']);
-      // the folded row of g1, under the row of the new group
       const inner = (part) => page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-objects .row')].filter((r) => r.querySelector('.name').textContent === 'Group')[1]; const b = (${part ? `r.querySelector('${part}')` : 'r'}).getBoundingClientRect(); return { x: b.left + b.width * ${part ? 0.5 : 0.6}, y: b.top + b.height / 2 }; })()`);
       await click(page, await inner());
       assert.deepEqual(await selection(page), ['Alpha', 'Beta', 'Gamma']);
@@ -911,7 +829,6 @@ describe('rows of a pair follow the shown picture', () => {
       assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('section.present .shape')].map((s) => s.hasAttribute('data-locked'))`), [true, true, true, false, false]);
       await press(page, 'Mod+Z');
       await frames(page);
-      // the undo of the Group and of the Duplicate leaves the folded row with the three members
       await press(page, 'Mod+Z');
       await press(page, 'Mod+Z');
       await frames(page);
@@ -924,7 +841,6 @@ describe('rows of a pair follow the shown picture', () => {
       await press(page, 'Mod+Z');
       await press(page, 'Mod+Shift+Z');
       await frames(page);
-      // the rendered text, opened again, has the three locks and every block paired
       const text = await page.evaluate('window.BeesonEditor.render()');
       assert.equal((text.match(/data-locked/g) ?? []).length, 3);
       assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(text)})`)).problems, []);

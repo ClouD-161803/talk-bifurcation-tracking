@@ -1,7 +1,3 @@
-// the classes, attributes, and declarations of the focus, the late steps, the flies, and the plot
-// steps in the editor: a move keeps them in the file, the scope rule of src/editor/model/scope.ts
-// takes them as written by the theme, and the Steps pane names them
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

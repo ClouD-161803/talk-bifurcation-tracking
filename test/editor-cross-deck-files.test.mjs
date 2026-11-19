@@ -1,9 +1,3 @@
-// the files of slides and elements pasted from the editor of deck A into the editor of deck B, both
-// on one local server. each file named by a relative src, poster, or data-trajectories is read from
-// deck A and kept as new media of deck B under a free name. a file that deck B has at the same path
-// with the same bytes is not copied. the paste with its files is one entry of the history, and a
-// save writes the files into media/. a paste inside one deck keeps its paths
-
 import assert from 'node:assert/strict';
 import { statSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -28,11 +22,8 @@ const deck = async (file) => {
   return file === B ? withMacrosOfA(page) : page;
 };
 
-// deck B names media/orbit.png, and has media/clip.png on the disk without naming it, hence both
-// names are taken. it has figs/shared.png with the bytes of deck A, and figs/orbit.png with others
 const CARRIED = (text) => text.replace('src="figs/orbit.png"', 'src="media/orbit-2.png"').replace('src="figs/clip.mp4"', 'src="media/clip.mp4"').replace('poster="figs/clip.png"', 'poster="media/clip-2.png"');
 
-// the images and videos under the slide headed title on deck B, once each is loaded or failed
 async function loaded(page, title) {
   const media = `[...[...document.querySelectorAll('.reveal .slides > section')].find((x) => x.querySelector('h2')?.textContent.trim() === ${JSON.stringify(title)})?.querySelectorAll('img, video') ?? []]`;
   await page.waitFor(`${media}.length > 0 && ${media}.every((m) => (m.localName === 'img' ? m.complete : m.readyState >= 1 || m.error))`, 20000);
@@ -51,10 +42,8 @@ test('slides pasted from another deck carry their files into media, in one entry
   const first = sectionOf(b.source, FIRST_B);
   const edited = b.source.replace(first, `${first}\n    ${section}`);
   assert.equal(await render(b), edited);
-  // the new files are shown from object URLs, and the shared figure from the disk of deck B
   assert.deepEqual(await loaded(b, FILES), [['blob:', true], ['blob:', true], ['figs/', true]]);
   assert.match(await b.evaluate(`document.querySelector('video[poster^="blob:"]')?.poster ?? ''`), /^blob:/);
-  // the paste and its files are one entry of the history
   await b.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(b), b.source);
   assert.equal((await status(b)).undo, false);
@@ -97,7 +86,6 @@ test('a backdrop pasted from another deck carries its trajectory file and says w
   assert.deepEqual(saved.files, { 'path.js': size('data/path.js') });
 });
 
-// deck B has media/plot.pdf with other bytes, hence the PDF is renamed as a picture would be
 test('a PDF figure pasted from another deck carries its PDF, and data-pdf names it', async (t) => {
   const a = await deck(A);
   t.after(() => a.close());
@@ -132,8 +120,6 @@ test('a file whose path has a malformed escape is carried under a safe name', as
   const text = (await copySlide(a, FILES)).replace('src="figs/shared.png"', 'src="figs/100%.png"');
   const b = await deck(B);
   t.after(() => b.close());
-  // the test server does not answer a path that it cannot decode, hence the page answers it, with
-  // a file in deck A and none in deck B
   await b.evaluate(`(() => { const f = window.fetch; window.fetch = (u, o) => (/\\/figs\\/100%/.test(String(u)) ? Promise.resolve(String(u).includes('/a/') ? new Response('png') : new Response('', { status: 404 })) : f(u, o)); return true; })()`);
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
@@ -151,7 +137,6 @@ test('a second paste of the same slide names the files that the first paste carr
     await pasted(b);
   }
   const out = await render(b);
-  // the second paste is given a fresh id for its paragraph, hence only its files are compared
   const named = CARRIED(sectionOf(a.source, FILES)).match(/(src|poster)="media\/[^"]*"/g).join(' ');
   assert.equal(out.match(/(src|poster)="media\/[^"]*"/g).join(' '), `${named} ${named} src="media/orbit.png"`);
   const saved = await b.evaluate(SAVE_INTO('twice'));
@@ -161,7 +146,6 @@ test('a second paste of the same slide names the files that the first paste carr
 test('a file that the first deck has not saved yet is listed as not copied', async (t) => {
   const a = await deck(A);
   t.after(() => a.close());
-  // a picture added in deck A and not saved is named under media/, which its server does not have
   const text = (await copySlide(a, FILES)).replace('src="figs/shared.png"', 'src="media/unsaved.png"');
   const b = await deck(B);
   t.after(() => b.close());
@@ -179,7 +163,6 @@ test('a deck at the root of a server is named by its address in the note', async
   const text = (await copySlide(a, FILES)).replace(/("deck":")[^"]*"/, `$1${root.origin}/index.html"`);
   const b = await deck(B);
   t.after(() => b.close());
-  // the browser refuses the read from another port, and the dialog is not shown without a picker
   await b.evaluate(`window.showDirectoryPicker = undefined; true`);
   await b.evaluate(POINTER('touch'));
   await pasteSlides(b, FIRST_B, text);

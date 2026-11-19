@@ -1,7 +1,3 @@
-// a seeded run of 200 random edits of the document model on the demo deck, with a save about every
-// 25 edits, i.e. the text written and opened again in place. each save pairs with zero problems,
-// and after every edit is undone the text is the file byte for byte
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -10,7 +6,6 @@ import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 const SEED = 20261110;
 const EDITS = 200;
 
-// the run, in the page. the random numbers are those of mulberry32 from the seed
 const run = (seed, edits) => `(async () => {
   const E = window.BeesonEditor;
   const doc = E.doc;

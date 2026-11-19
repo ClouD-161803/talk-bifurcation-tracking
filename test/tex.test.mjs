@@ -140,7 +140,19 @@ test('npm run tex works on a deck without a preamble and without a bibliography'
 });
 
 test('npm run tex turns the theme/macros.js of an older talk into a preamble.tex, once', (t) => {
-  const macros = readFileSync(resolve('test/pages/macros-of-an-older-talk.js'), 'utf8');
+  const macros = [
+    String.raw`// TeX macros of a deck, read in theme/mathjax-config.js, hence this file is loaded first. each`,
+    String.raw`// value is a replacement string, or [replacement, number of arguments]`,
+    String.raw`window.beesonMacros = {`,
+    String.raw`  vb: ['\\boldsymbol{#1}', 1],`,
+    String.raw`  // upright d with the spacing of an operator, as in \int f(x) \dd x`,
+    String.raw`  dd: '\\mathop{}\\!\\mathrm{d}',`,
+    String.raw`  R: '\\mathbb{R}',`,
+    String.raw`  // a libration point, as in \LL{1}`,
+    String.raw`  LL: ['\\mathcal{L}_{#1}', 1],`,
+    String.raw`};`,
+    '',
+  ].join('\n');
   const root = folder(t, {
     'index.html': page('<section><p>\\(\\vb{x} \\in \\R^3\\)</p></section>', '<script src="theme/macros.js"></script>'),
     'theme/macros.js': macros,

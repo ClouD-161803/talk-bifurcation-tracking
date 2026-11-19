@@ -1,8 +1,3 @@
-// the file of the deck followed while the editor is open, on a copy of the demo deck that a test
-// changes on disk, as an agent or a git pull does: the page is loaded again after a change without
-// unsaved edits, a save merges the edits into a changed file, a dialog asks at a conflict, and the
-// file is written again without a picker after a reload of the editor
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,8 +8,6 @@ import { serve } from '../scripts/webdriver.mjs';
 
 const deckText = readFileSync('test-deck.html', 'utf8');
 const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
-// the page after a reload of its own, which a test marks before with window.__before. the editor is
-// ready once the message and the marks of the reload are shown, after its file is read again
 const reloaded = '!window.__before && !!window.BeesonEditor && window.BeesonEditor.ready.then(() => window.BeesonEditor.status().texts > 0)';
 
 function replaced(oldText, newText) {
@@ -22,22 +15,18 @@ function replaced(oldText, newText) {
   return deckText.replace(oldText, newText);
 }
 
-// polls an expression across a navigation that the page starts itself
 async function until(page, expression, timeout = 15000) {
   const start = Date.now();
   for (;;) {
     try {
       if (await page.evaluate(expression)) return;
     } catch {
-      // the document is being replaced
     }
     if (Date.now() - start > timeout) throw new Error(`timed out waiting for ${expression}`);
     await new Promise((done) => setTimeout(done, 50));
   }
 }
 
-// a copy of the deck in a temporary folder, served with writes. the other files of the repository
-// are linked
 async function servedCopy(t) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-deck-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -59,8 +48,6 @@ async function servedCopy(t) {
   return { page, file, edit, disk: () => readFileSync(file, 'utf8') };
 }
 
-// a stand-in of a file handle of index.html, read from the server and written with a PUT, since a
-// headless browser cannot be given a handle of a file on disk
 const SERVED_HANDLE = `({
   name: 'index.html',
   getFile: async () => {
@@ -97,7 +84,6 @@ test('a save merges the edits into a file changed meanwhile, and loads the page 
   const theirs = await page.evaluate(slideOf('Equations are first class citizens'));
   await page.evaluate(typeH2('Show your steps one at a time', 'Steps, by hand'));
   edit('<h2>Equations are first class citizens</h2>', '<h2>Equations, by an agent</h2>');
-  // the change is named while the edits are not saved, and the page is not loaded again
   await until(page, 'window.BeesonEditor.status().stale !== null');
   let s = await page.evaluate('window.BeesonEditor.status()');
   assert.deepEqual([s.dirty, s.stale, s.changed], [true, [theirs], [theirs]]);
@@ -135,7 +121,6 @@ test('a save of a text that the file changed too asks which to keep, and Cancel 
   await until(page, `${card} === null && !document.querySelector('.reveal .slides').inert`);
   assert.equal(disk(), both);
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
-  // Keep mine writes the edit of the page, and keeps the other change of the file
   void page.evaluate('window.__before = true; window.BeesonEditor.save()');
   await until(page, `${card} !== null`);
   await press('Keep mine');
@@ -146,7 +131,6 @@ test('a save of a text that the file changed too asks which to keep, and Cancel 
 
 test('after a reload of the editor, the file of the deck is written again without a picker', async (t) => {
   const { page, edit } = await servedCopy(t);
-  // the file of the handle stands for the served file, and both are changed, the served one first
   await page.evaluate(`(async () => {
     const root = await navigator.storage.getDirectory();
     window.BeesonEditor.attach(await root.getFileHandle('kept.html', { create: true }));
@@ -171,8 +155,6 @@ test('after a reload of the editor, the file of the deck is written again withou
 
 test('a file read while it is written is read again until it is whole, and the changed slide is still marked', async (t) => {
   const { page, edit } = await servedCopy(t);
-  // the first read of the changed file gives its first 40 percent, as a read during a write that is
-  // not atomic, e.g. on Windows. the file is followed through this handle once it is saved into
   await page.evaluate(`window.BeesonEditor.attach({
     name: 'index.html',
     getFile: async () => ({

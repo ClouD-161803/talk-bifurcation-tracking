@@ -1,6 +1,3 @@
-// the units of a container, the text of new slides and elements, and the scope rule, all without
-// a browser
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -9,7 +6,6 @@ import { childrenIn, eolOf, indentAt, placeLead, spaceOf, unitsOf } from '../src
 import { ELEMENT_KINDS, LAYOUTS, elementText, layoutText, textStyle } from '../src/editor/model/templates.ts';
 import { attributeProblem, declarationProblem, editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 
-// the units of the content of the first element of the text
 function unitsIn(text) {
   const tokens = tokenize(text);
   const open = tokens.find((t) => t.type === 'start');
@@ -139,12 +135,10 @@ test('the scope rule allows the writes of AGENTS.md and names the others', () =>
   assert.deepEqual(editProblems('p', attrs, { classes: { mine: true }, attrs: { title: 'x' }, style: { color: 'red' } }, theme), ['the class mine', 'the attribute title', 'the declaration color']);
   assert.equal(declarationProblem('img', [], 'width', '40%'), null);
   assert.equal(declarationProblem('div', ['qr'], 'width', '300px'), null);
-  // a text block takes a width in px from its grips, and an image or a video a height as well
   assert.equal(declarationProblem('p', [], 'width', '300px'), null);
   assert.match(declarationProblem('p', [], 'width', '40%'), /width/);
   assert.equal(declarationProblem('img', [], 'height', '300px'), null);
   assert.match(declarationProblem('div', ['qr'], 'height', '300px'), /height/);
-  // a shape is placed and sized in its style, in px
   assert.equal(declarationProblem('div', ['shape', 'ellipse'], 'width', '300px'), null);
   assert.equal(declarationProblem('div', ['shape'], 'height', '160px'), null);
   assert.match(declarationProblem('div', ['shape'], 'height', '40%'), /height 40% on a shape/);

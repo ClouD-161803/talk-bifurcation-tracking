@@ -1,8 +1,3 @@
-// regression tests of R17.3 on both platforms: the show played by Present does not move by itself
-// once s opens the speaker view, a click in the speaker view and in the tab of Presenter View at
-// the last step ends the show, and the status bar does not number a hidden slide past the slides
-// of the show
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -30,8 +25,6 @@ const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const within = (page, expression, timeout) => page.waitFor(expression, timeout).then(() => true, () => false);
 
-// the editor on slide n of the demo deck, served over HTTP, with every window that it opens kept
-// in window.__shows
 async function load(t, platform, n = 0) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close().catch(() => {}));
@@ -54,7 +47,6 @@ const TAB = 'window.__shows?.at(-1)';
 const ready = (w) => `(() => { try { const w = ${w}; return !!w?.Reveal?.isReady() && (!w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false)); } catch { return false; } })()`;
 const stageGone = `!document.querySelector('.beeson-edit-show')`;
 const at = (page, w) => page.evaluate(`(() => { const i = ${w}.Reveal.getIndices(); return \`\${i.h}/\${i.v}/\${i.f ?? -1}\`; })()`);
-// toEnd moves the deck in the window w to the last step of its last slide
 const toEnd = (w) => `(() => { const R = ${w}.Reveal; R.slide(R.getHorizontalSlides().length - 1); while (R.availableFragments().next) R.nextFragment(); return R.isLastSlide(); })()`;
 const atEnd = (w) => `(() => { try { const R = ${w}.Reveal; return R.isLastSlide() && !R.availableFragments().next; } catch { return false; } })()`;
 
@@ -66,14 +58,10 @@ async function present(t, platform, n) {
   return page;
 }
 
-// the speaker view that s opens in the window w is kept in window.__speakerKept of the page
 const SPEAKER = 'window.__speakerKept';
 const CURRENT = `${SPEAKER}?.document.querySelector('#current-slide iframe')?.contentWindow`;
 const keepSpeaker = (w) => `(() => { const w = ${w}; const real = w.open; w.open = function (...a) { const v = real.apply(w, a); window.__speakerKept = v; return v; }; return true; })()`;
 
-// clickIn clicks the primary button on the heading of the current slide of the deck in the window
-// w. scripts/chrome.mjs does not send input to the speaker view or to a tab, hence the events of
-// the click are dispatched in them
 const clickIn = (w) => `(() => {
   const w = ${w};
   const el = w.Reveal.getCurrentSlide().querySelector('h1, h2') ?? w.Reveal.getCurrentSlide();
@@ -93,8 +81,6 @@ async function openSpeaker(page, w) {
   await sleep(1200);
 }
 
-// N33: once s opened the speaker view, the show moved forward by itself about every 500 ms, since
-// the frame of the upcoming slide took postMessageEvents from the address of the show
 for (const platform of PLATFORMS) {
   test(`the show played by Present stays at its step once s opens the speaker view, and the editor follows it (${platform})`, async (t) => {
     const page = await present(t, platform, 3);
@@ -106,7 +92,6 @@ for (const platform of PLATFORMS) {
       await sleep(400);
     }
     assert.deepEqual(seen, seen.map(() => start), 'the show moves without input after s');
-    // the show still posts its events to the editor, which follows its slide
     await page.evaluate(`(() => { window.__events = []; window.addEventListener('message', (e) => { try { const m = JSON.parse(e.data); if (m.namespace === 'reveal') window.__events.push(m.eventName + ' ' + m.state.indexh); } catch {} }); return true; })()`);
     await page.evaluate(`${SHOW}.Reveal.slide(6)`);
     assert.ok(await within(page, `window.__events.includes('slidechanged 6')`, 3000), 'the show does not post its slide to the editor');
@@ -121,8 +106,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// requirement 7e: a click, or a key forward, in the current slide of the speaker view at the last
-// step of the show did nothing
 for (const platform of PLATFORMS) {
   test(`a click or a key forward in the speaker view at the last step ends the show played by Present (${platform})`, async (t) => {
     for (const how of ['click', 'ArrowRight']) {
@@ -149,8 +132,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// N34: in the show of Presenter View, played in a tab of its own, clicks at the last step did not
-// end the show, while they end the show of Present
 const DISPLAY = `!!document.querySelector('dialog.beeson-edit-presenter[open]')`;
 for (const platform of PLATFORMS) {
   test(`a click in the tab of Presenter View at the last step ends the show and the presenter display (${platform})`, async (t) => {
@@ -185,9 +166,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// N35: the status bar read "Slide 12 of 11, hidden" for a hidden slide after the last shown slide.
-// a hidden slide is now read by the shown slide before it, without a number of its own, as the
-// navigator draws it as the bar of a skipped slide of Keynote
 const COUNT = `document.querySelector('.beeson-edit-bottom .count').textContent`;
 for (const platform of PLATFORMS) {
   test(`the status bar does not number a hidden slide past the slides of the show (${platform})`, async (t) => {

@@ -1,9 +1,3 @@
-// the Code pane of the Format tab with trusted input on either platform: the language of a code
-// box written as its class language-* and colored again at once, the numbers of its lines, and its
-// line steps in data-line-numbers, typed into a field or edited in the list of the groups. after
-// each edit an undo gives the file byte for byte, a redo gives the edit, and a save is opened again
-// without problems. a new code box gets a language and is colored
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -33,7 +27,6 @@ after(async () => {
   server?.close();
 });
 
-// the editor on index.html with the Format tab shown, on the slide of its code box
 async function open(t, platform) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close());
@@ -49,7 +42,6 @@ async function open(t, platform) {
   return page;
 }
 
-// a point in line n of the code box, counted from 1, at its start or at its end
 const linePoint = (page, n, end = false) => page.evaluate(`(() => {
   const code = document.querySelector('.reveal section.present pre > code');
   const text = code.textContent;
@@ -66,7 +58,6 @@ const linePoint = (page, n, end = false) => page.evaluate(`(() => {
   return { x: ${end} ? box.right - 1 : box.left + 1, y: box.top + box.height / 2 };
 })()`);
 
-// the count of the ranges of a highlight of the painter, e.g. keyword
 const ranges = (page, name) => page.evaluate(`CSS.highlights.get(${JSON.stringify(`beeson-code-${name}`)})?.size ?? 0`);
 const pane = (page) => page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane ?? null`);
 const language = (page) => page.evaluate(`document.querySelector('${PANEL} .ed-lang .value').textContent`);
@@ -105,7 +96,6 @@ for (const platform of PLATFORMS) {
   test(`the language of a code box is chosen in the Code pane and colored again at once on ${platform}`, async (t) => {
     const page = await open(t, platform);
     const source = page.source;
-    // the box is colored in the editor without a change of its DOM
     assert.ok((await ranges(page, 'keyword')) > 3, 'the keywords of the box are not colored');
     const dom = await page.evaluate(`document.querySelector('.reveal section.present pre').innerHTML`);
     await clickText(page, await linePoint(page, 2));
@@ -127,7 +117,6 @@ for (const platform of PLATFORMS) {
     await press(page, 'Mod+Z');
     await frames(page);
     assert.ok((await ranges(page, 'keyword')) > 3, 'the box is not colored again after an undo');
-    // a language of the submenu of every language
     await clickText(page, `${PANEL} .ed-lang`);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     const sub = await page.evaluate(`(() => { const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === 'All Languages'); const r = item.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -150,7 +139,6 @@ for (const platform of PLATFORMS) {
     await clickText(page, await linePoint(page, 1));
     await frames(page);
     assert.deepEqual(await groups(page), ['Lines 1–3 · With the slide', 'Line 4 · Step 1', 'Lines 5–7 · Step 2', 'Lines 8–9 · Step 3']);
-    // the field takes the groups separated by bars
     await clickText(page, `${PANEL} input[name="line-steps"]`);
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '1-2 | 4');
@@ -159,7 +147,6 @@ for (const platform of PLATFORMS) {
     const typed = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|4'));
     assert.equal(await rendered(page), typed);
     assert.deepEqual(await groups(page), ['Lines 1–2 · With the slide', 'Line 4 · Step 1']);
-    // a group that is not lines is refused, and the file is kept
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '1-|x');
     await press(page, 'Enter');
@@ -168,7 +155,6 @@ for (const platform of PLATFORMS) {
     assert.match((await page.evaluate('window.BeesonEditor.status()')).message, /not a group of lines/);
     await press(page, 'Escape');
     await undoRedo(page, platform, source, typed);
-    // the lines selected in the box by a drag become the next group
     const from = await linePoint(page, 5);
     const to = await linePoint(page, 6, true);
     await clickText(page, from);
@@ -180,7 +166,6 @@ for (const platform of PLATFORMS) {
     const added = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|4|5-6'));
     assert.equal(await rendered(page), added);
     assert.deepEqual(await groups(page), ['Lines 1–2 · With the slide', 'Line 4 · Step 1', 'Lines 5–6 · Step 2']);
-    // a group pointed at dims the other lines, and its button removes it
     const row = await page.evaluate(`(() => { const r = document.querySelectorAll('${PANEL} .ed-groups li')[1].getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: row.x, y: row.y });
     await frames(page);
@@ -190,7 +175,6 @@ for (const platform of PLATFORMS) {
     const removed = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|5-6'));
     assert.equal(await rendered(page), removed);
     await undoRedo(page, platform, added, removed);
-    // without groups, the numbers of the lines are a switch
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '');
     await press(page, 'Backspace');
@@ -203,7 +187,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const bare = source.replace(CODE, CODE.replace(' data-line-numbers="1-3|4|5-7|8-9"', ''));
     assert.equal(await rendered(page), bare);
-    // the focus is still in the field, as after Enter in any field of the inspector
     await press(page, 'Escape');
     await undoRedo(page, platform, numbered, bare);
     assert.deepEqual(newProblems(page, bare), []);

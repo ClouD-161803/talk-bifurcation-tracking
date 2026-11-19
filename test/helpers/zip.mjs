@@ -1,12 +1,8 @@
-// reads a zip that the edit command wrote, and unzips one as a guest does
-
 import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-// without zlib.crc32, which early Node 20 does not have, so that the tests of the routes can be run
-// there by hand. the workflow check runs them on one version of Node.js
 const TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -19,11 +15,6 @@ export function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-// the entries of zip in the order of its central directory. each has the name, the bytes, the
-// method (0 stored, 8 deflated), the mode of Unix, and the time in the zone of this machine, which
-// a zip keeps to 2 s. it throws when the zip is not one that every unzip reads: an entry whose
-// header differs from the directory, whose CRC-32 or size is wrong, or that does not follow the
-// entry before it
 export function entries(zip) {
   const end = zip.length - 22;
   if (end < 0 || zip.readUInt32LE(end) !== 0x06054b50) throw new Error('the zip does not end with the end record');
@@ -64,9 +55,6 @@ export function entries(zip) {
   return out;
 }
 
-// the zip in file unzipped into dir by the tool of the system, as a guest unzips it: unzip on macOS
-// and Linux, and tar on Windows. without one, the entries are written by entries() above. it
-// returns the tool
 export function unzipTo(file, zip, dir) {
   mkdirSync(dir, { recursive: true });
   const tools = process.platform === 'win32' ? [['tar', ['-xf', file, '-C', dir]]] : [['unzip', ['-q', file, '-d', dir]]];
