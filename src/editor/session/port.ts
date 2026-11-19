@@ -50,7 +50,7 @@ export type Port = {
   onChange(fn: () => void): () => void;
   onReload(fn: (target?: string) => void): () => void;
   offsetOf(el: Element): number | null;
-  elementAt(offset: number): Element | null;
+  elementsAt(): Map<number, Element>;
   begin(): void;
   served(on: boolean): void;
   end(): void;
@@ -144,12 +144,13 @@ export function install(app: App): Port {
     rebase: absent,
     onChange: absent,
     onReload: absent,
-    // the element of the page whose start tag is at offset of the text last applied or opened
-    elementAt(offset) {
+    // the elements of the page by the offset of their start tag in the text last applied or opened
+    elementsAt() {
+      const by = new Map<number, Element>();
       const pairing = app.pairing;
-      if (!pairing) return null;
-      for (const map of [pairing.elements, pairing.inner]) for (const [live, s] of map) if (s.source === app.source && s.open?.start === offset && live.isConnected) return live;
-      return null;
+      if (!pairing) return by;
+      for (const map of [pairing.elements, pairing.inner]) for (const [live, s] of map) if (s.source === app.source && s.open && !by.has(s.open.start) && live.isConnected) by.set(s.open.start, live);
+      return by;
     },
     offsetOf(el) {
       const s = app.pairing?.elements.get(el) ?? app.pairing?.inner.get(el);

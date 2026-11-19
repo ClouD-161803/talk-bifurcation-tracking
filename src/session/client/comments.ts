@@ -354,6 +354,8 @@ export class Comments {
     }
     const slides = this.slidesOf(text);
     const places = new Map<string, Place>();
+    let by: Map<number, Element> | null = null;
+    const find = (a: Anchor) => this.find(a, (by ??= this.client.port.elementsAt()));
     threads.forEach((t, i) => {
       const was = this.rereading ? c?.places.get(t.id) : undefined;
       if (was && (was.el ?? was.slide)?.isConnected) {
@@ -361,8 +363,8 @@ export class Comments {
         return;
       }
       const a = items[i];
-      const el = a.anchor && !onSlide(t) && !a.removed ? this.find(a.anchor) : null;
-      const slide = (a.slide && this.find(a.slide)) || el?.closest('.reveal .slides section') || null;
+      const el = a.anchor && !onSlide(t) && !a.removed ? find(a.anchor) : null;
+      const slide = (a.slide && find(a.slide)) || el?.closest('.reveal .slides section') || null;
       const at = a.slide ?? a.anchor;
       places.set(t.id, { el, slide, number: slide && at ? slideAt(slides, at.start)?.number ?? null : null });
     });
@@ -370,8 +372,8 @@ export class Comments {
     return places;
   }
 
-  private find(a: Anchor): Element | null {
-    const el = this.client.port.elementAt(a.start);
+  private find(a: Anchor, by = this.client.port.elementsAt()): Element | null {
+    const el = by.get(a.start) ?? null;
     return el && el.localName.toLowerCase() === a.tag ? el : null;
   }
 
