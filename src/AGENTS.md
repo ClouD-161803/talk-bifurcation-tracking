@@ -93,6 +93,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Open pages with `motion: true` in tests of animations. Reduced motion is set on the Windows and macOS runners.
 - Type the keys of one history entry with `typeKeys` or `type` of `test/helpers/editor.mjs`. Two keys more than a second apart are two entries.
 - Bound a time by the same time on a smaller case, not by a number of milliseconds. Measure a time over its bound again before the test fails.
+- Send a key, or read a time, within a delay of the page on the virtual time of Chrome, which is not advanced during a stall of the machine. Advance virtual time by one budget at a time.
 - Give each test a limit longer than the sum of the waits inside it. Keep each read of a page under a minute on a runner, or give the browser a longer limit with `launch({ timeout })`.
 - When the target may be moved between the read of its place and the click, click again until the state is reached.
 - After a click that loads the page again, wait for the new page with `page.waitFor`. Catch the error "Inspected target navigated or closed" of the click. It is the answer of Chrome to a read in flight at the reload.
@@ -112,6 +113,8 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Text is laid out differently on each system. The sans-serif face of Linux is wider, and a caption there may be placed 1 px lower. On Windows, the space after a word is part of the selection of a double-click.
 - A touch sent with `Input.dispatchTouchEvent` on a grip may be given by Chrome to the text element beside it. Make the pointer events of a touch on a grip in the page.
 - IndexedDB does not answer a read while the virtual time of Chrome is paused.
+- Under the policy `advance` of virtual time without a budget, the 1 s interval of reveal.js is run back to back, and virtual time is advanced by days each second.
+- Under virtual time, a reading of `performance.now()` may be off by 0.1 ms, whereas `Date.now()` is advanced by each whole budget. Animation frames are not drawn while virtual time is paused.
 - reveal.js blurs the focus when a page is shown again. In a test of a session, do not bring another page to the front, and send the edits of the other person over HTTP instead.
 - reveal.js answers `isReady()` one timer before `.reveal` is given the class `ready`, and an Esc in between opens its overview. Wait for `.reveal.ready` before you send a key.
 - A crash of a page may cancel the keepalive requests of the other pages of its renderer. In a test of a crash, send these requests by hand.
