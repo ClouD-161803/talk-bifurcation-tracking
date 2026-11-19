@@ -146,6 +146,26 @@ describe('keys typed right after an insert', () => {
       assert.deepEqual(page.errors, []);
     });
 
+    test(`every key typed back to back after Insert > Formula in a text, after a click of the Formula button, reaches the TeX field of its inline formula on ${platform}`, async () => {
+      const page = await editor(platform, 2);
+      const P = '.reveal section.present > p:not(.small)';
+      const before = await page.evaluate(`document.querySelector(${JSON.stringify(P)}).textContent`);
+      await clickText(page, P);
+      await press(page, 'End');
+      await frames(page);
+      const { x, y } = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-top [data-command="insert.formula"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await Promise.all([
+        page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 }),
+        page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }),
+        burst(page, 'abc d'),
+      ]);
+      await until(page, `document.querySelector('.beeson-math textarea')?.value === 'abc d'`);
+      const field = await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); return f && { value: f.value, focused: f === document.activeElement }; })()`);
+      assert.deepEqual(field, { value: 'abc d', focused: true });
+      assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(P)}).textContent`), before);
+      assert.deepEqual(page.errors, []);
+    });
+
     test(`every key typed while Insert > Formula writes its formula reaches its TeX field on ${platform}`, async () => {
       const page = await editor(platform, 5);
       const source = page.source;
