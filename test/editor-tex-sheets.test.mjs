@@ -147,7 +147,7 @@ test('File > Preamble… lists the definitions of preamble.tex and of the files 
   assert.deepEqual(await rows(page, '[data-kind]'), ['theorem Theorem, plain, numbered']);
   const skipped = await rows(page, '.skipped');
   assert.equal(skipped.length, 1);
-  assert.match(skipped[0], /^preamble\.tex:4 \\usepackage\{tikz\} MathJax does not have an extension for the package tikz$/);
+  assert.match(skipped[0], /^preamble\.tex:2 \\usepackage\{tikz\} MathJax does not have an extension for the package tikz$/);
   assert.deepEqual(await rows(page, '[data-unread]'), []);
   assert.deepEqual(errors(page), []);
 });
