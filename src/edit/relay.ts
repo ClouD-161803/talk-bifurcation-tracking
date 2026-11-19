@@ -87,14 +87,23 @@ export class RelayLink {
   private fileSlots = FILE_ANSWERS;
   private fileQueue: (() => void)[] = [];
   private log: (message: string) => void;
+  // the token of the session kept in .session/relay.json with the relay and the folder, so that
+  // an edit command started again after it was killed gets its session back, which the relay keeps
+  // for 90 s from everyone without the token. a copy of the talk folder is in another folder
+  private kept: { file: string; folder: string } | null;
 
-  constructor(relay: string, secret: string, key: string, handle: (request: Request) => Promise<Response>, log: (message: string) => void) {
+  constructor(relay: string, secret: string, key: string, handle: (request: Request) => Promise<Response>, log: (message: string) => void, kept: { file: string; folder: string } | null = null) {
     this.relay = relay;
     this.secret = secret;
     this.key = key;
     this.handle = handle;
     this.log = log;
     this.link = `${relay}/${key}/index.html?edit&session`;
+    this.kept = kept;
+    try {
+      const saved = kept && JSON.parse(readFileSync(kept.file, 'utf8'));
+      if (saved?.relay === relay && saved.folder === kept!.folder && typeof saved.token === 'string') this.token = saved.token;
+    } catch {}
   }
 
   // false once stopped, or once another edit command took the key
@@ -135,6 +144,11 @@ export class RelayLink {
         const { token } = (await response.json()) as { token?: unknown };
         if (typeof token !== 'string') throw new Error('the relay did not give a token');
         this.token = token;
+        if (this.kept) {
+          try {
+            writeFileSync(this.kept.file, JSON.stringify({ relay: this.relay, folder: this.kept.folder, token }), { mode: 0o600 });
+          } catch {}
+        }
       } finally {
         this.registering = null;
       }

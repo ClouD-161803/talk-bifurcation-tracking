@@ -356,7 +356,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     await relay?.stop();
     relay = null;
     if (closed) throw new Error('the edit command is stopping');
-    const next = new RelayLink(address, secret, key, handle, log);
+    const next = new RelayLink(address, secret, key, handle, log, { file: join(root, '.session', 'relay.json'), folder: root });
     await next.start();
     if (closed) {
       await next.stop();
