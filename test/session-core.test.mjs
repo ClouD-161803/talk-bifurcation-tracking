@@ -1736,3 +1736,13 @@ test('two people who remove the same blank line and put a slide each after it ke
     assert.equal(mergeTexts(base, s('One') + s(x) + s('Two'), s('One') + s(y) + s('Two')), s('One') + s(x) + s(y) + s('Two'));
   }
 });
+
+test('a list that one person moves to another slide, below a paragraph that they type in and another person removes, is moved once and whole, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = ['<ul>', '  <li>Data 62</li>', '  <li>Same words 61</li>', '</ul>'];
+  const one = (extra = []) => s('Orbit 1', ['<p>Moon 11</p>', ...extra]), mid = s('Data 2', ['<p>Same words</p>']) + '\n';
+  const base = one() + mid + s('Halo 6', ['<p>Intro 62</p>', ...ul]);
+  const cut = one() + mid + s('Halo 6', ul), moved = one(ul) + mid + s('Halo 6', ['<p>Intro 62 k21</p>']);
+  assert.equal(mergeTexts(base, moved, cut), one(ul) + mid + s('Halo 6', []));
+  assert.equal(mergeTexts(base, cut, moved), moved);
+});

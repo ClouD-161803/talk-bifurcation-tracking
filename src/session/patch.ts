@@ -220,7 +220,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
   if (undone || gone) return { patches: mergePatches(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
   // the lines of the patches that conflict, each merged by its characters with every patch of both
-  // sides on it when the characters do not conflict
+  // sides on it when the characters do not conflict. the lines end where a removal of whole lines
+  // ends, unless its side puts as many lines there
   const runs: Patch[] = [];
   if (base !== undefined && nested) {
     const all = [...theirs, ...ours];
@@ -231,7 +232,7 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
       if (lines.length && lines[lines.length - 1][1] >= a) continue;
       for (let wider = true; wider; ) {
         a = a && base.lastIndexOf('\n', a - 1) + 1;
-        b = base.indexOf('\n', b);
+        if (base[b - 1] !== '\n' || b === a || [theirs, ours].some((l) => l.some((p) => p.end === b && l.some((q) => q.start === b && q.end === b && base.slice(p.start, b).split('\n').length === q.text.split('\n').length)))) b = base.indexOf('\n', b);
         if (b < 0) b = base.length;
         wider = false;
         for (const p of all) if (into(p, a, b) && (p.start < a || p.end > b)) [a, b, wider] = [Math.min(a, p.start), Math.max(b, p.end), true];

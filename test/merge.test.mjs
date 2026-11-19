@@ -971,7 +971,7 @@ test('the removal of a long paragraph that holds most of the text, next to a let
 test('a paragraph that one person removes while another types a character reference at its end and removes the paragraph after it gives whole lines, in both orders', () => {
   const x = '    <p>Moon 42</p>\n    <p>Orbit 41</p>\n  </section>\n', base = `<section>\n  <h2>Halo 4</h2>\n${x}`;
   const typed = base.replace('Moon 42', 'Moon 42 R&D &amp; k20').replace('    <p>Orbit 41</p>\n', ''), gone = base.replace('    <p>Moon 42</p>\n', '');
-  assert.equal(mergeTexts(base, typed, gone), gone);
+  assert.equal(mergeTexts(base, typed, gone), gone.replace('    <p>Orbit 41</p>\n', ''));
   assert.equal(mergeTexts(base, gone, typed), typed);
 });
 
