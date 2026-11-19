@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inflateSync } from 'node:zlib';
 import { numberOf, sortOrder } from '../src/editor/table.ts';
 import { attributeProblem, editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, contrast, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { decodePng } from './helpers/png.mjs';
 
 describe('rows of a new table, and Sort', () => {
   const DECK = 'test-deck.html';
@@ -297,31 +297,8 @@ describe('rows of a new table, and Sort', () => {
   const pressed = (page) => page.evaluate(`[...document.querySelectorAll('${BAR} .modes button')].map((b) => b.title + ' ' + b.getAttribute('aria-pressed'))`);
   const handleAt = (page, name) => rect(page, `.beeson-mask-window i[data-handle=${name}]`);
 
-  function decodePng(png) {
-    let at = 8, width = 0, channels = 4;
-    const data = [];
-    while (at < png.length) {
-      const length = png.readUInt32BE(at), kind = png.toString('ascii', at + 4, at + 8), body = png.subarray(at + 8, at + 8 + length);
-      if (kind === 'IHDR') ({ width, channels } = { width: body.readUInt32BE(0), channels: body[9] === 6 ? 4 : 3 });
-      if (kind === 'IDAT') data.push(body);
-      at += 12 + length;
-    }
-    const raw = inflateSync(Buffer.concat(data)), stride = width * channels, height = raw.length / (stride + 1), px = Buffer.alloc(height * stride);
-    for (let y = 0; y < height; y++) {
-      const filter = raw[y * (stride + 1)];
-      for (let x = 0; x < stride; x++) {
-        const a = x >= channels ? px[y * stride + x - channels] : 0, b = y ? px[(y - 1) * stride + x] : 0;
-        const c = x >= channels && y ? px[(y - 1) * stride + x - channels] : 0;
-        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
-        const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-        px[y * stride + x] = raw[y * (stride + 1) + 1 + x] + [0, a, b, (a + b) >> 1, paeth][filter];
-      }
-    }
-    return px;
-  }
-
   function differ(a, b) {
-    const [x, y] = [decodePng(a), decodePng(b)];
+    const [x, y] = [decodePng(a).px, decodePng(b).px];
     assert.equal(x.length, y.length);
     let sum = 0;
     for (let i = 0; i < x.length; i++) sum += Math.abs(x[i] - y[i]);
