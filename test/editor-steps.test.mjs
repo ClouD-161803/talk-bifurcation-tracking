@@ -1115,7 +1115,7 @@ describe('center, ghost, Dim, and lines as steps', () => {
     await page.goto(`${server.origin}/${DECK}`);
     await page.waitFor(deckSettled);
     await page.evaluate(`(() => { const [a, b] = document.querySelectorAll('.slides > section'); a.dataset.transition = 'fade-in slide-out'; b.dataset.transition = 'slide-in fade-out'; })()`);
-    await sleep(1000);
+    await page.waitFor(`document.querySelectorAll('.slides > section')[1].getAnimations().length === 0`);
     const seen = await page.evaluate(`new Promise((done) => {
     const left = document.querySelector('.reveal .slides').getBoundingClientRect().left;
     const out = [];
