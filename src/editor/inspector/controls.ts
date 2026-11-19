@@ -243,7 +243,7 @@ export function button(app: App, run: Run, item: Item): Control {
 
 // a checkbox of a switch command, e.g. White Figure on an image. checked is given for a command that is
 // not a switch, e.g. Hide Slide
-export function checkbox(app: App, run: Run, command: string, text: string, checked?: () => boolean): Control {
+export function checkbox(app: App, run: Run, command: string, text: string, checked?: () => boolean, arg?: unknown): Control {
   const el = make('label', 'ed-check');
   const input = make('input');
   input.type = 'checkbox';
@@ -254,7 +254,7 @@ export function checkbox(app: App, run: Run, command: string, text: string, chec
   // is synced once the click is over, for a command that does not refresh the pane
   el.addEventListener('click', (ev) => {
     ev.preventDefault();
-    if (!input.disabled) void Promise.resolve(run(command)).then(() => setTimeout(sync));
+    if (!input.disabled) void Promise.resolve(run(command, arg)).then(() => setTimeout(sync));
   });
   const sync = () => {
     const s = stateOf(app, command);

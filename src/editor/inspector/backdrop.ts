@@ -131,12 +131,5 @@ export function backdropPane(app: App, run: Run): Control[] {
 
 // a checkbox of the label of a point, checked while the backdrop has it
 function labelBox(app: App, run: Run, el: HTMLElement | null, at: string, name: string): Control {
-  const c = checkbox(app, run, 'backdrop.label', name, () => !!el && [...el.querySelectorAll(':scope > .label')].some((l) => l.getAttribute('data-at') === at));
-  // the command is run with the point, which checkbox() does not pass
-  c.el.addEventListener('click', (ev) => {
-    ev.stopImmediatePropagation();
-    ev.preventDefault();
-    if (!c.el.classList.contains('off')) void Promise.resolve(run('backdrop.label', { at, el })).then(() => setTimeout(c.sync));
-  }, true);
-  return c;
+  return checkbox(app, run, 'backdrop.label', name, () => !!el && [...el.querySelectorAll(':scope > .label')].some((l) => l.getAttribute('data-at') === at), { at, el });
 }
