@@ -499,10 +499,27 @@ test('a finger that leaves the band upward does not show another slide or step',
   // a slide with steps left, which a swipe upward would show
   await page.evaluate('Reveal.slide(3)');
   const before = await page.evaluate('Reveal.getIndices()');
+  // the pointer events and each open and close of the band, by their time in the page. the band is
+  // closed by the move above it
+  await page.evaluate(`(() => {
+    const r = window.record = { events: [], closed: false };
+    const t0 = performance.now();
+    const add = (text) => r.events.push(\`\${Math.round(performance.now() - t0)} ms \${text}\`);
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) addEventListener(type, (e) => add(\`\${type} of a \${e.pointerType} at y \${Math.round(e.clientY)}\`), true);
+    const reveal = document.querySelector('.reveal');
+    new MutationObserver(() => {
+      const open = reveal.classList.contains('scrubbing');
+      add(open ? 'open' : 'closed');
+      r.closed = !open && r.events.some((e) => e.includes('pointermove of a touch at y 250'));
+    }).observe(reveal, { attributeFilter: ['class'] });
+    return true;
+  })()`);
+  const record = () => page.evaluate('window.record.events.join(", ")');
+  assert.equal(await page.evaluate(scrubbing), false, 'the band is open before the finger is down');
   await finger('touchStart', 600, 375);
   await page.waitFor(scrubbing);
   await finger('touchMove', 600, 250);
-  assert.equal(await page.evaluate(scrubbing), false);
+  await page.waitFor('window.record.closed', 5000).catch(async () => assert.fail(`the band is not closed by the move: ${await record()}`));
   await finger('touchMove', 500, 250);
   await finger('touchEnd');
   await page.evaluate(`new Promise((done) => setTimeout(done, 1000))`);
