@@ -536,49 +536,37 @@ test('with --still, the surfaces and the plots are the pictures of their steps, 
   assert.match(run.stderr, /--still to keep the surfaces and the plots as stills/);
 });
 
-test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 1200000 }, async (t) => {
+test('a scene is recorded in DevTools calls that each span less than a third of its frames', { timeout: 600000 }, async (t) => {
   const boxes = new Map([['0', { width: 300, height: 400, name: 'A long recorded scene' }]]);
-  const timed = async (options) => {
-    const browser = await launch(options);
-    let started;
+  const browser = await launch();
+  t.after(() => browser.close());
+  const spanned = (expression) => `(async () => {
+    const done = () => window.beesonRecording?.done ?? 0;
+    const from = done();
     try {
-      const start = Date.now();
-      const { newPage } = browser;
-      browser.newPage = async (...args) => {
-        const page = await newPage(...args);
-        const { evaluate } = page;
-        page.evaluate = (expression) => {
-          if (started === undefined && expression.includes('exportVideo')) started = Date.now();
-          return evaluate(expression);
-        };
-        return page;
-      };
-      const [recording] = (await recordScenes(browser, 'test/pages/scene-long.html', boxes)).values();
-      return { recording, load: started - start, record: Date.now() - started };
-    } catch (error) {
-      error.loading = started === undefined;
-      throw error;
+      return await (0, eval)(${JSON.stringify(expression)});
     } finally {
-      await browser.close();
+      (window.spans ??= []).push(done() - from);
     }
+  })()`;
+  const spans = [];
+  const { newPage } = browser;
+  browser.newPage = async (...args) => {
+    const page = await newPage(...args);
+    const { evaluate, waitFor, close } = page;
+    page.evaluate = (expression) => evaluate(spanned(expression));
+    page.waitFor = (expression, timeout) => waitFor(spanned(expression), timeout);
+    page.close = async () => {
+      spans.push(...await evaluate('window.spans'));
+      await close();
+    };
+    return page;
   };
-  let first, second, late;
-  for (let n = 0; !second; n++) {
-    first = await timed();
-    const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
-    t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
-    if (timeout > first.record / 2 && late) throw late;
-    if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
-    second = await timed({ timeout }).catch((error) => {
-      if (n >= 2 || !/^Chrome did not answer/.test(error.message)) throw error;
-      if (!error.loading) late = error;
-      t.diagnostic(`a call is not answered within ${timeout} ms, and the pair is recorded again`);
-    });
-  }
-  t.diagnostic(`load ${second.load} ms, recording ${second.record} ms`);
-  const stream = { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] };
-  assert.deepEqual(mp4Stream(first.recording.data), stream);
-  assert.deepEqual(mp4Stream(second.recording.data), stream);
+  const [recording] = (await recordScenes(browser, 'test/pages/scene-long.html', boxes)).values();
+  const stream = mp4Stream(recording.data);
+  assert.deepEqual(stream, { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] });
+  t.diagnostic(`${spans.length} calls, which span ${Math.max(...spans)} frames at most`);
+  assert.ok(Math.max(...spans) < stream.frames / 3, `a call spans ${Math.max(...spans)} of ${stream.frames} frames`);
 });
 
 let recordRun, recordStill;

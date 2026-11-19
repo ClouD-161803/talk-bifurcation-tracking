@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { isDeepStrictEqual } from 'node:util';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { press } from './helpers/editor.mjs';
 
@@ -29,22 +28,29 @@ const STATE = `({
 })`;
 const state = (page) => page.evaluate(STATE);
 
+const onVirtualTime = new WeakSet();
+
+async function wait(page, ms) {
+  if (!onVirtualTime.has(page)) return sleep(ms);
+  const end = await page.evaluate(`Date.now() + ${ms}`);
+  await page.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget: ms });
+  await page.waitFor(`Date.now() >= ${end}`);
+}
+
 async function inDelay(t, keys, at) {
-  for (let n = 0; ; n++) {
-    const page = await open(t);
-    await page.evaluate(`window.addEventListener('keydown', () => (window.keys ??= []).push(${STATE}), true)`);
-    await keys(page);
-    const seen = (await page.evaluate('window.keys')).at(-1);
-    if (isDeepStrictEqual(seen, at)) return page;
-    assert.ok(n < 2, `the last key reaches the page at ${JSON.stringify(seen)} in three tries, and not during the delay at ${JSON.stringify(at)}`);
-    t.diagnostic(`the last key reaches the page late, at ${JSON.stringify(seen)}, and is sent again`);
-  }
+  const page = await open(t);
+  await page.evaluate(`window.addEventListener('keydown', () => (window.keys ??= []).push(${STATE}), true)`);
+  await page.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+  onVirtualTime.add(page);
+  await keys(page);
+  assert.deepEqual((await page.evaluate('window.keys')).at(-1), at);
+  return page;
 }
 
 async function settled(page) {
   let now = await state(page);
   for (;;) {
-    await sleep(QUIET);
+    await wait(page, QUIET);
     const next = await state(page);
     if (JSON.stringify(next) === JSON.stringify(now)) return now;
     now = next;
@@ -192,26 +198,18 @@ test('a slide whose last step moves on by a delay keeps the look of its last ste
 });
 
 test('a key that does not move the deck leaves the running delay alone', async (t) => {
-  for (let n = 0; ; n++) {
-    const page = await inDelay(t, async (page) => {
-      await page.evaluate(`(() => {
-        window.times = {};
-        Reveal.on('fragmentshown', (ev) => { for (const f of ev.fragments) window.times[f.textContent] = performance.now(); });
-        document.addEventListener('keydown', (ev) => { if (ev.key === 'd') window.times.key = performance.now(); }, true);
-      })()`);
-      await page.evaluate('Reveal.slide(6)');
-      await settled(page);
-      await press(page, 'ArrowRight');
-      await sleep(500);
-      await press(page, 'D');
-    }, { slide: 6, shown: ['Slow'] });
-    await page.waitFor(`'Slow timed' in window.times`, 5000);
-    const times = await page.evaluate('window.times');
-    assert.deepEqual(page.errors, []);
-    const key = times.key - times.Slow;
-    const shown = times['Slow timed'] - times.key;
-    if (key > 200 && shown < 1000) break;
-    assert.ok(n < 2, `in three tries, the timed step is shown ${Math.round(shown)} ms after the key, with the key ${Math.round(key)} ms after the start of the delay`);
-    t.diagnostic(`the timed step is shown ${Math.round(shown)} ms after the key, with the key ${Math.round(key)} ms after the start of the delay, and is measured again`);
-  }
+  const page = await inDelay(t, async (page) => {
+    await page.evaluate(`(() => {
+      window.times = {};
+      Reveal.on('fragmentshown', (ev) => { for (const f of ev.fragments) window.times[f.textContent] = Date.now(); });
+    })()`);
+    await page.evaluate('Reveal.slide(6)');
+    await press(page, 'ArrowRight');
+    await wait(page, 500);
+    await press(page, 'D');
+  }, { slide: 6, shown: ['Slow'] });
+  await wait(page, 2000);
+  const times = await page.evaluate('window.times');
+  assert.equal(times['Slow timed'] - times.Slow, 1000);
+  assert.deepEqual(page.errors, []);
 });
