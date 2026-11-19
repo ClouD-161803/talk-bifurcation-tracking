@@ -1,19 +1,11 @@
-# Matplotlib style for figures in the light mode of the Beeson slides. Load it with
-# plt.style.use('styles/beeson-light.mplstyle'). The backgrounds are transparent, hence the slide
-# is visible behind the figure, and line widths are 1.8 times the defaults of Matplotlib.
-
 figure.facecolor: none
 axes.facecolor: none
 savefig.facecolor: none
 savefig.transparent: True
 savefig.dpi: 200
 figure.figsize: 8, 4.5
-# with constrained layout, the labels of 18 pt text are fitted inside the figure at its set size
 figure.constrained_layout.use: True
 
-# Computer Modern, as on the slides. cmr10, which is included in Matplotlib, is used where Latin
-# Modern Roman is not installed. cmr10 does not have a minus sign, hence the tick labels are set
-# as math
 font.family: serif
 font.serif: Latin Modern Roman, cmr10, DejaVu Serif
 mathtext.fontset: cm
@@ -42,5 +34,4 @@ axes.spines.top: False
 axes.spines.right: False
 legend.frameon: False
 
-# the Okabe–Ito palette for color vision deficiency, with the text color in place of black
 axes.prop_cycle: cycler('color', ['E69F00', '56B4E9', '009E73', 'F0E442', '0072B2', 'D55E00', 'CC79A7', '141413'])
