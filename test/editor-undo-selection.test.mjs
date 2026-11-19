@@ -420,7 +420,6 @@ describe('the selection after an undo frames another element', () => {
 });
 
 describe('undo of a resize, move, or turn', () => {
-  const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const PLATFORMS = ['mac', 'other'];
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const MULTI = 'test/pages/editor-multi.html';
@@ -443,17 +442,15 @@ describe('undo of a resize, move, or turn', () => {
 
   let last = null;
 
-  async function editor(platform, { deck = LAYOUTS, n = MATH, keep = false, close = true, mode = 'dark' } = {}) {
-    if (close) await last?.close().catch(() => {});
+  async function editor(platform, { deck = LAYOUTS, n = MATH, mode = 'dark' } = {}) {
+    await last?.close().catch(() => {});
     const page = await browser.newPage();
     last = page;
     await page.send('Page.bringToFront');
     const url = `${server.origin}/${deck}?edit&still&edit-platform=${platform}`;
     await page.goto(url);
-    if (!keep) {
-      await page.evaluate('localStorage.clear()');
-      await page.goto(url);
-    }
+    await page.evaluate('localStorage.clear()');
+    await page.goto(url);
     await page.waitFor(deckSettled);
     await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
     await page.evaluate(`document.documentElement.dataset.theme = '${mode}'`);
@@ -660,34 +657,6 @@ describe('undo of a resize, move, or turn', () => {
         await byteExact(page);
         assert.deepEqual(errors(page), []);
       }
-    });
-
-    test(`${platform}: a page that has not changed its guides does not write the guides it read at its start over those of a newer session`, async () => {
-      const key = `beeson-edit-guides:/${LAYOUTS}`;
-      const stored = async (page) => (await page.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(key)}) ?? '[]')`))[MATH] ?? { x: [], y: [] };
-      const older = await editor(platform);
-      const count = await older.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
-      const legacy = Array.from({ length: count }, (_, i) => ({ x: i === MATH ? [640] : [], y: [] }));
-      await older.evaluate(`localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(JSON.stringify(legacy))})`);
-      await older.evaluate(`localStorage.setItem('beeson-edit-rulers', '1')`);
-      const first = await editor(platform, { keep: true });
-      const newer = await editor(platform, { keep: true, close: false });
-      await exec(newer, 'view.guides.add', { y: [300] });
-      await frames(newer);
-      assert.ok((await render(newer)).includes('data-guides="x640 y300"'));
-      assert.deepEqual(await stored(newer), { x: [], y: [] });
-      await first.send('Page.bringToFront');
-      await first.evaluate(`window.BeesonEditor.open(${JSON.stringify(first.source)})`);
-      await frames(first);
-      await exec(first, 'insert.text');
-      await frames(first);
-      await sleep(100);
-      assert.deepEqual(await stored(first), { x: [], y: [] }, 'the first page writes over the guides of the newer session');
-      await first.goto('about:blank');
-      await sleep(100);
-      assert.deepEqual(await stored(newer), { x: [], y: [] }, 'a page that is left writes over the guides of the newer session');
-      await first.close();
-      assert.deepEqual(errors(newer), []);
     });
   }
 

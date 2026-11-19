@@ -7,7 +7,6 @@ export type Guides = { x: number[]; y: number[] };
 
 const GRAB = 4;
 const CLIP = 'beeson-edit-guides-copied';
-const keyOf = () => `beeson-edit-guides:${location.pathname}`;
 
 const CSS = `
 .beeson-guides { position: fixed; inset: 0; z-index: 50; pointer-events: none; clip-path: var(--ed-cell-clip, none); }
@@ -61,66 +60,14 @@ export function install(app: App): void {
   const root = document.documentElement;
 
   const shown = () => app.commands.get('view.rulers')?.checked?.(app) === true;
-  const kept = new WeakMap<Element, Guides>();
-  const sections = () => [...app.slides().querySelectorAll(':scope > section')];
-  let seeded = false;
-  let order: Element[] = [];
-  const seed = () => {
-    seeded = true;
-    const saved = read<Partial<Guides>[]>(keyOf(), []);
-    order = sections();
-    order.forEach((s, i) => kept.set(s, clean(saved[i])));
-  };
-  const of = (slide: Element | null): Guides => {
-    if (!seeded) seed();
-    if (!slide) return empty();
-    const attr = slide.getAttribute('data-guides');
-    if (attr !== null) return parse(attr);
-    let g = kept.get(slide);
-    if (!g) {
-      g = empty();
-      kept.set(slide, g);
-    }
-    return g;
-  };
-  const persist = () => {
-    of(null);
-    order = sections();
-    const all = order.map((s) => kept.get(s) ?? empty());
-    const text = all.some((g) => g.x.length || g.y.length) ? JSON.stringify(all) : null;
-    if (text !== stored(keyOf())) store(keyOf(), text);
-  };
-  const duplicate = app.doc.duplicate.bind(app.doc);
-  app.doc.duplicate = async (el) => {
-    const source = el.parentElement === app.slides() && el.matches('section') && !el.hasAttribute('data-guides') ? of(el) : null;
-    const copy = await duplicate(el);
-    if (source) {
-      kept.set(copy, clean(source));
-      persist();
-    }
-    return copy;
-  };
+  const of = (slide: Element | null): Guides => (slide ? parse(slide.getAttribute('data-guides') ?? '') : empty());
   const setOf = (slide: Element, g: Guides) => {
     const text = format(clean(g));
-    const old = kept.get(slide);
-    const legacy = !!old && old.x.length + old.y.length > 0;
-    if (!legacy && text === (slide.getAttribute('data-guides') ?? '')) {
+    if (text === (slide.getAttribute('data-guides') ?? '')) {
       draw();
       return;
     }
-    const keep = (on: Guides) => {
-      kept.set(slide, on);
-      persist();
-      draw();
-      app.invalidate('layout');
-    };
-    void app.history.transact('Guides', () => {
-      if (legacy && old) {
-        keep(empty());
-        app.history.push({ label: 'Guides', undo: () => keep(old), redo: () => keep(empty()) });
-      }
-      app.doc.setTag(slide, { attrs: { 'data-guides': text || null } }, 'guides');
-    }).catch((e) => app.fail(e));
+    void app.history.transact('Guides', () => app.doc.setTag(slide, { attrs: { 'data-guides': text || null } }, 'guides')).catch((e) => app.fail(e));
     draw();
     app.invalidate('layout');
   };
@@ -250,10 +197,6 @@ export function install(app: App): void {
 
   app.listen('resize', draw);
   app.onRefresh(['content', 'slide', 'layout', 'structure'], draw);
-  app.onRefresh(['structure'], () => {
-    const now = sections();
-    if (app.state === 'loaded' && seeded && (now.length !== order.length || now.some((s, i) => s !== order[i]))) persist();
-  });
 
   const has = (a: App) => {
     const g = of(a.current());
