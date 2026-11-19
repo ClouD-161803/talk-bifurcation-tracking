@@ -1,6 +1,3 @@
-// the dot of unread comments on the Comments button against the title bar of the editor, read from
-// the computed styles in Chrome in both modes, at rest and under hover
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -12,8 +9,6 @@ const PANE = '.beeson-edit-inspector .panel.comments';
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const BUTTON = `document.querySelector('.beeson-session-comments')`;
 
-// the color of the dot as rgba(), with the opacity of the dot and of its ancestors folded into its
-// alpha, and its ground, i.e. the button composited over the title bar
 const DOT = `(() => {
   const d = ${BUTTON}.querySelector('.count.dot');
   if (!d || !d.getClientRects().length) return null;

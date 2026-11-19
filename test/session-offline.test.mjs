@@ -1,14 +1,3 @@
-// the offline path of the client of a session in Chrome: the slides of the edits that wait, named
-// in the save state and in the dialog of the end, the copy of the edits in IndexedDB that a page
-// opened again sends, with the version in the log and after a restart of the edit command, two
-// tabs that keep their copies apart, IndexedDB blocked, the dialog of the conflicts at a reconnect
-// with each of its buttons, and the pictures uploaded into media/ before the operation that names
-// them. the regression tests at the end cover the save state before the first copy, edits typed
-// before hello is answered, two copies that conflict, a copy of an earlier session, the dialog of
-// the conflicts at a join, after a removed slide, and after a close by the browser, the parse of
-// the deck for this dialog, the pictures of a copy, a first open of IndexedDB that answers late, and
-// an operation that fails while the poll is answered, which does not open the dialog of the conflicts
-
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, truncateSync, writeFileSync } from 'node:fs';
@@ -25,12 +14,8 @@ import { post, raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const IMAGE = resolve('demo/figure-light.png');
-// a request to an edit command that is not running fails in the console of the page, the first
-// poll after a restart is answered 404, since the token is of the edit command before, and a
-// request after End session through the relay is answered 410
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
-// the characters from to to of the first text node of the text element of expression selected
 async function select(page, expression, from, to) {
   const ok = await page.evaluate(`(() => {
     const host = ${expression};
@@ -50,7 +35,6 @@ test('the save state names the slides of the edits that wait, and the dialog of 
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
   const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
   const { port, key } = server.edit;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
@@ -60,8 +44,6 @@ test('the save state names the slides of the edits that wait, and the dialog of 
 
   await guest.evaluate('window.__blockOps = true');
   await edit(guest, 1, 'p', ' by Ben');
-  // the button Try now is shown only while a reconnect waits, and not during a try, hence the
-  // save state and the button are awaited together
   await guest.waitFor(`${STATE} === 'Offline. Changes on slide 2 are kept in this browser' && ${ACTION} === 'Try now'`);
   await edit(guest, 0, 'p', ' too');
   await guest.waitFor(`${STATE} === 'Offline. Changes on slides 1 and 2 are kept in this browser'`);
@@ -87,7 +69,6 @@ test('an edit made offline in a page that is closed reaches index.html at the ne
   await goOffline(a);
   await edit(a, 0, 'p', ' offline');
   const id = await copied(a, '<p>First slide offline</p>');
-  // the log of the edit command goes on meanwhile
   await edit(ben, 1, 'p', ' by Ben');
   await until(() => server.read().includes('Second slide by Ben'), 'the edit of Ben to reach the file');
   await a.close();
@@ -110,7 +91,6 @@ test('an edit made offline in a page that is closed reaches index.html after a r
   const { port } = server.edit;
   const url = sessionUrl(server.edit);
   const a = await tab(browser, url);
-  // a page of the same origin, which reads the locks after the page of the copy is closed
   const probe = await browser.newPage({ width: 640, height: 480 });
   await probe.goto(`${server.edit.url}index.html`);
   await converge(server, [a]);
@@ -153,7 +133,6 @@ test('two tabs of one browser keep their copies apart, and a new page takes over
   assert.ok(!kept.find((r) => r.id === idA).mine.includes('in tab B'), 'the copy of tab A holds the edit of tab B');
   assert.ok(!kept.find((r) => r.id === idB).mine.includes('in tab A'), 'the copy of tab B holds the edit of tab A');
 
-  // both tabs are open, hence a new page sends neither copy
   const c = await tab(browser, url);
   assert.equal(await converge(server, [c]), TALK);
   assert.deepEqual((await rows(c)).map((r) => r.id).sort(), [idA, idB].sort());
@@ -176,7 +155,6 @@ test('a page without IndexedDB edits offline, says that its changes cannot be ke
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // as in a private window of a browser that refuses IndexedDB
   const script = `IDBFactory.prototype.open = function () { throw new DOMException('The operation is insecure.', 'SecurityError'); };`;
   const page = await tab(browser, sessionUrl(server.edit), { script });
   await converge(server, [page]);
@@ -194,7 +172,6 @@ test('a page whose first open of IndexedDB answers after the wait for it keeps i
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // as on a crowded machine, the first open of the database of the copies answers after 3.5 s
   const script = `{
     const open = IDBFactory.prototype.open;
     let first = true;
@@ -219,9 +196,6 @@ test('a page whose first open of IndexedDB answers after the wait for it keeps i
   clean(page);
 });
 
-// Ann edits two texts offline, and Ben replaces the same word of one of them and changes another
-// text meanwhile. Ann comes back after more than 5 s, and the dialog of the conflicts lists the text
-// that both changed
 async function conflicted(t, browser) {
   const server = await talk(t);
   const url = sessionUrl(server.edit);
@@ -247,7 +221,6 @@ async function conflicted(t, browser) {
     items: ['Slide 1: “Opening slide”'],
     buttons: ['Download my version', 'Keep theirs', 'Keep mine'],
   });
-  // the deck keeps the version of Ann while the dialog is open, also after Esc
   await ann.evaluate(`document.querySelector('dialog.beeson-session-conflicts[open]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
   assert.ok(await ann.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]') && ${TEXT}.includes('<p>Opening slide</p>')`));
   return { server, ann, ben };
@@ -307,7 +280,6 @@ test('a picture dropped by one page is uploaded into media/ before the operation
   await converge(server, [ann, ben]);
   const bytes = readFileSync(IMAGE);
 
-  // while Ben is in the session, the page of Ann names a new file uniquely to itself
   const UNIQUE = /src="(media\/figure-light-[0-9a-z]{4}\.png)"/g;
   let first;
 
@@ -341,7 +313,6 @@ test('a picture dropped by one page is uploaded into media/ before the operation
     await ann.evaluate('window.__failMedia = true');
     await show(ann, 'One');
     await dropFiles(ann, [IMAGE]);
-    // the name of the file is unique to the page while another page is in the session
     await ann.waitFor(`/^Could not send media\\/figure-light-[0-9a-z]{4}\\.png\\. Try again$/.test(${STATE})`);
     assert.equal(await ann.evaluate(ACTION), 'Try again');
     assert.equal(server.read(), before);
@@ -368,8 +339,6 @@ test('a picture dropped by one page is uploaded into media/ before the operation
   clean(ben);
 });
 
-// a page of the origin of the edit command without the editor, which reads the locks of a page
-// after it is closed and plants copies in IndexedDB
 async function probeOf(browser, server) {
   const probe = await browser.newPage({ width: 640, height: 480 });
   await probe.goto(`${server.edit.url}index.html`);
@@ -390,7 +359,6 @@ test('the save state says that an edit made offline is kept only once a copy hol
   const kept = await rows(a);
   assert.equal(kept.length, 1, 'a copy is in IndexedDB once the save state says that the changes are kept');
   assert.ok(kept[0].mine.includes('<p>First slide before a crash</p>'));
-  // a crash runs no listener of pagehide
   a.send('Page.crash').catch(() => {});
   await released(probe, kept[0].id);
   const again = await tab(browser, url);
@@ -403,7 +371,6 @@ test('an edit typed after a load that takes over a copy, before hello is answere
   t.after(() => browser.close());
   const server = await talk(t);
   const url = sessionUrl(server.edit);
-  // the requests under .session/ fail from the load on while sessionStorage says so
   const a = await tab(browser, url, { script: `if (sessionStorage.getItem('__offline')) window.__offline = true;` });
   await converge(server, [a]);
   await a.evaluate(`sessionStorage.setItem('__offline', '1')`);
@@ -436,7 +403,6 @@ test('a word typed after a load that takes over a copy, before hello is answered
   await a.evaluate('window.__old = true');
   await a.send('Page.reload');
   await a.waitFor(`!window.__old && window.BeesonSession?.client?.()?.connection === 'offline'`);
-  // the page shows the deck without the copy until its hello is answered
   await edit(a, 0, 'p', ' TOKH2');
   await a.waitFor(`(${ROWS}).then((rows) => rows.length === 1 && rows[0].mine.includes('<p>First slide TOKH1 TOKH2</p>'))`);
   await a.evaluate(`sessionStorage.removeItem('__offline')`);
@@ -485,7 +451,6 @@ test('the copies of two closed tabs that changed the same text are both sent, th
   clean(c);
 });
 
-// the copy of the tab closed first is sent first, and the other is merged into the deck with the dialog
 for (const [older, choice] of [['key', 'Keep theirs'], ['move', 'Keep mine']]) {
   test(`a slide moved in one closed tab and typed in by the other is in the deck once with the key when the ${older} is sent first and the page keeps ${choice === 'Keep mine' ? 'the other copy' : 'it'}`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
@@ -529,7 +494,6 @@ for (const [older, choice] of [['key', 'Keep theirs'], ['move', 'Keep mine']]) {
   });
 }
 
-// the copies of the origin of a page in IndexedDB, as { id, key }
 const ALL = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
@@ -542,8 +506,6 @@ const ALL = `new Promise((done) => {
   };
 })`;
 
-// a copy of a page that is gone put into IndexedDB, under the address of the page of the editor
-// unless row gives a key. row is the source of an object
 const plant = (page, row) =>
   page.evaluate(`new Promise((done, fail) => {
     const r = indexedDB.open('beeson-session', 1);
@@ -562,7 +524,6 @@ test('the next page retires the tokens of the closed pages of the copies that it
   t.after(() => browser.close());
   const server = await talk(t);
   const call = async (route, body) => (await post(server.edit.port, `${server.edit.base}.session/${route}`, body)).json();
-  // three closed pages, whose operations may still be on their way
   const [a, b, d] = [await call('hello', { name: 'Xa' }), await call('hello', { name: 'Xb' }), await call('hello', { name: 'Xd' })];
   const probe = await probeOf(browser, server);
   const now = Date.now();
@@ -571,7 +532,6 @@ test('the next page retires the tokens of the closed pages of the copies that it
   await plant(probe, row('b', 'First slide', 'TOKTB slide', now - 1, b.token));
   const c = await tab(browser, sessionUrl(server.edit), { script: 'window.__blockOps = true' });
   await plant(probe, row('d', '<li>Beta</li>', '<li>Beta by D</li>', now, d.token));
-  // an older client does not keep its token in the record
   await plant(probe, JSON.stringify({ id: 'e', base: TALK, v: a.v, mine: TALK.replace('<li>Alpha</li>', '<li>Alpha by E</li>'), beat: now, made: now }));
   await c.evaluate(`(window.__blockOps = false, ${C}.tryNow(), true)`);
   await front(c);
@@ -599,7 +559,6 @@ test('a copy of an earlier session is added to a deck that changed since only wh
   const server = await talk(t);
   const url = sessionUrl(server.edit);
   const probe = await probeOf(browser, server);
-  // the deck of the earlier session, whose first slide index.html no longer has
   const base = TALK.replace('<p>First slide</p>', '<p>Earlier first slide</p>');
   const mine = base.replace('<li>Beta</li>', '<li>Beta TOKOLD</li>');
   const row = (id, beat, extra = '') => `{ id: ${JSON.stringify(id)}, base: ${JSON.stringify(base)}, v: 'earlier.3', mine: ${JSON.stringify(mine)}, beat: ${beat}${extra} }`;
@@ -722,10 +681,8 @@ test('a dialog of the conflicts that the browser closes keeps the version of the
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const { server, ann, ben } = await conflicted(t, browser);
-  // as Chrome on Android closes a dialog at a second back gesture, with a cancel event that cannot be canceled
   await ann.evaluate(`(document.querySelector('dialog.beeson-session-conflicts[open]').close(), true)`);
   assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Opening slide</p>'));
-  // the text of the list, since Ben holds the paragraph that he edited last
   await edit(ann, 1, 'li', ' later');
   assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Opening slide</p>').replace('<li>Alpha by Ann</li>', '<li>Alpha by Ann later</li>'));
   clean(ann);
@@ -738,8 +695,6 @@ test('the slide of each text of the dialog of the conflicts is found with one pa
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit));
   await page.evaluate(`(window.__deck = ${JSON.stringify(readFileSync(resolve('test-deck.html'), 'utf8'))}, true)`);
-  // a call on a new text parses it, and the same call on the same text again is measured against
-  // it. a parser that is warm is measured, by a call on another text first
   const measure = () =>
     page.evaluate(`(() => {
       const at = (text, i) => ${C}.shell.slidesAt(text, [{ start: 1000 * i, end: 1000 * i + 10, text: '' }]);
@@ -757,7 +712,6 @@ test('the slide of each text of the dialog of the conflicts is found with one pa
   clean(page);
 });
 
-// the paths of the files of the copies of the address of a page in IndexedDB
 const FILES = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
@@ -820,9 +774,6 @@ test('a guest offline while the host ends the session is shown the end once onli
   clean(guest, REFUSED);
 });
 
-// Ctrl+C in the terminal of the host reaches the same handler as SIGTERM. the relay kept a record
-// of the end only after End session, hence a guest who missed the end read that the edit command
-// of the host is not running, at every reconnect
 test('a guest offline while the host stops the edit command is shown the end once online', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
@@ -872,8 +823,6 @@ test('an operation that fails while the poll of its page is answered does not op
   const ann = await tab(browser, url);
   const ben = await open(browser, url, { name: 'Ben' });
   await converge(server, [ann, ben]);
-  // the operations of Ann fail, while her poll waits at the edit command, which has no news for it.
-  // window.__offAt is the time at which Ann was last taken offline
   await ann.evaluate(`(${C}.on('state', () => (window.__offAt = ${C}.connection === 'offline' ? (window.__offAt ?? Date.now()) : null)), true)`);
   await ann.evaluate('window.__blockOps = true');
   await show(ann, 'One');
@@ -892,7 +841,6 @@ test('an operation that fails while the poll of its page is answered does not op
   clean(ben);
 });
 
-// a word typed offline in Chrome, whose page is closed before copy.ts writes it into IndexedDB
 test('a word typed offline right before the page is closed reaches index.html at the next join', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -932,7 +880,6 @@ for (const [name, skip] of [
       await driver.session('POST', '/window', { handle });
       await page.goto(url);
       await page.waitFor(ONLINE, 60_000);
-      // the requests of the page under .session/ fail from now on, as in tab() of helpers/offline.mjs
       await page.evaluate(`(() => {
         const fetched = window.fetch;
         window.fetch = function (input, init) {

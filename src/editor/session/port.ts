@@ -1,9 +1,3 @@
-// the port of the synchronous editor, through which the client of a session reads the deck as the
-// text of its file, is told of each change by the person, and makes the deck read as a new text,
-// e.g. the text with the edits of another person. the port is made at the start of every edit
-// page. its members that read and apply the text are those of the engine in session.ts, which is
-// installed only once a page starts or joins a session
-
 import type { FigureState } from '../../session/protocol.ts';
 import type { App } from '../app.ts';
 import { setServed } from '../commands/origin.ts';
@@ -23,26 +17,8 @@ import type { Host } from './host.ts';
 
 const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
-// what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
-// be made to read as the text, after which the client loads the page again
 export type Applied = { reload: boolean; changed: Element[] };
 
-// the client reads text() inside a listener of onChange or after an apply has resolved, and writes
-// the text of each apply against the text last handed to it, i.e. the text it last read or passed
-// to apply. at a reload, apply leaves the deck as it was, and it rejects when it changed the deck in
-// part, with an error whose target is the text of the apply with the edits of the person that the
-// client has not read. an edit of the person that the client has not read is kept through every
-// apply, and onChange is called after it. the listeners of onReload are called when the page does not read as
-// its text after the applies, after which the client loads the page again. they get the text that
-// the deck was meant to read, with these edits, when it is known. copy() reads the deck
-// with the edits of the person at any time, and leaves the text handed to the client as it is.
-// places() are the offsets of the text last read at which the page put or took off an element, see
-// Rendered of render.ts. rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
-// into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
-// draws the deck again with the tex.js next to it, after the edit command counted a change of it,
-// and rejects when it fails. reloadFigure() loads the output of a TikZ figure again unless the one
-// loaded has hash, and draws the figure again, see reloadFigure of src/tikz.ts. served() tells whether an edit command serves the page, see
-// commands/origin.ts
 export type Port = {
   text(): string;
   places(): number[];
@@ -63,19 +39,12 @@ export type Port = {
   figures(link: FigureLink): void;
 };
 
-// the TikZ figures of a session, which the client gives at its start: the state that the edit
-// command told last, the token of the page for the routes figures/, a listener of each state, and
-// whether the page is the host, since only the host changes a figure
 export type FigureLink = { state(): FigureState | null; token(): string; on(fn: (state: FigureState) => void): void; host(): boolean };
 let figures: FigureLink | null = null;
 export const figureLink = (): FigureLink | null => figures;
 
-// the members of the port from the engine, and reported(), which resolves once every change of the
-// person is reported through onChange, and no apply runs or waits
 export type Engine = Pick<Port, 'text' | 'places' | 'copy' | 'apply' | 'rebase' | 'onChange' | 'onReload'> & { reported(): Promise<void> };
 
-// what the engine takes over at its install. clean holds while the source reads as the deck, and
-// handed is the text last handed to the client, see install of session.ts
 export type Tracked = { clean: boolean; handed: string | null };
 
 declare global {
@@ -86,9 +55,6 @@ declare global {
 
 let load: () => Promise<Port | null> = () => Promise.resolve(null);
 
-// the engine of theme/editor-session.js loaded and installed once into the port of install, which
-// resolves with the port, or with null when the script does not load, does not define its entry,
-// or throws
 export const loadEngine = (): Promise<Port | null> => load();
 
 export function install(app: App): Port {
@@ -96,9 +62,6 @@ export function install(app: App): Port {
   let status: string | null = null;
   let saver: () => Promise<void> | void = () => {};
   let engine: Engine | null = null;
-  // tracked is kept from the start of the page until the engine is installed. on a page in a session
-  // the engine is installed before the deck is opened, and on a page that loads the engine with
-  // BeesonEditor.loadSession the deck is opened before it
   const tracked: Tracked = { clean: false, handed: null };
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
   const busy = () => !app.history.settled || app.doc.busy;
@@ -110,7 +73,6 @@ export function install(app: App): Port {
   });
   const changed = (): void => {
     if (engine) return;
-    // the note of a command is shown in the state line until the next edit of the person
     if (active && app.note) {
       app.note = null;
       app.report();
@@ -147,7 +109,6 @@ export function install(app: App): Port {
     rebase: absent,
     onChange: absent,
     onReload: absent,
-    // the elements of the page by the offset of their start tag in the text last applied or opened
     elementsAt() {
       const by = new Map<number, Element>();
       const pairing = app.pairing;
@@ -163,7 +124,6 @@ export function install(app: App): Port {
     begin() {
       if (active) return;
       active = true;
-      // a note from before the session is not shown in it
       app.note = null;
       app.session = session;
       app.emit('session');
@@ -207,7 +167,6 @@ export function install(app: App): Port {
           Object.assign(port, members);
           return port;
         } catch (e) {
-          // the dialog does not tell a file that threw from a missing one, hence its error is reported
           console.error(e);
           return null;
         }

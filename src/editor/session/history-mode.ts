@@ -1,7 +1,3 @@
-// the Version History mode of a session, whose pane is drawn by theme/session.js: File > Version
-// History with its key, the chrome made inert, and the commands, pastes, and drops of the person
-// refused while the mode is on, so that the deck changes only by the applies of the others
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import type { HistoryShell } from '../../session/client/handover.ts';
@@ -9,8 +5,6 @@ import type { HistoryShell } from '../../session/client/handover.ts';
 let on = false;
 let esc: (() => void) | null = null;
 
-// added when editor.js is evaluated, hence before the listeners of the installs, e.g. the keys of
-// commands.ts and the drop of media/drop.ts
 const refuse = (ev: Event) => {
   if (!on || ev.target instanceof HTMLInputElement) return;
   ev.preventDefault();
@@ -24,7 +18,6 @@ window.addEventListener('keydown', (ev) => {
   esc();
 }, true);
 
-// the commands that run in the mode
 const FREE = ['file.history', 'file.save'];
 
 export function historyShell(app: App): HistoryShell {

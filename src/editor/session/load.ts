@@ -1,8 +1,3 @@
-// the loader of theme/session.js, the client of the synchronous editor, which is fetched from the
-// folder of editor.js only with session in the address, together with the engine of the port. the
-// client is handed the port and a few parts of the shell in one call, see
-// src/session/client/handover.ts
-
 import type { App } from '../app.ts';
 import type { Entry } from '../../session/client/handover.ts';
 import { turnersOf } from '../canvas/drag.ts';
@@ -22,14 +17,9 @@ import { hooks, type Shape } from './presence.ts';
 import { slideHooks } from './slides.ts';
 import { loadEngine, type Port } from './port.ts';
 
-// starts the load of session.js, and returns the start of the session, which resolves with false
-// when the page is opened without a session
 export function load(app: App, port: Port): () => Promise<boolean> {
   if (!new URLSearchParams(location.search).has('session')) return async () => false;
-  // a client that the page defined before editor.js ran is taken as it is, as the tests of the
-  // session mode do, which need the mode without an edit command
   const given = (window as { BeesonSession?: Entry }).BeesonSession;
-  // an edit command never serves a page at file:, which hence names its own address in a copy
   if (!given && location.protocol === 'file:') {
     port.served(false);
     return async () => false;
@@ -38,7 +28,6 @@ export function load(app: App, port: Port): () => Promise<boolean> {
   const engine = loadEngine();
   return async () => {
     const [entry, installed] = await Promise.all([loaded, engine]);
-    // the page does not edit the deck without the session, whose edits would not reach the others
     if (!entry || !installed) {
       const failed = [!entry && 'theme/session.js', !installed && 'theme/editor-session.js'].filter(Boolean).join(' and ');
       void new Dialog({ title: 'The session could not start', text: `${failed} could not be loaded. Load the page again to join the session.`, buttons: [{ label: 'Load again', value: 'reload', primary: true }], dismissable: false, onButton: () => location.reload() }).open('reload');
@@ -49,8 +38,6 @@ export function load(app: App, port: Port): () => Promise<boolean> {
   };
 }
 
-// the groups among els, each framed as frames.ts frames a group selected with other objects, at
-// the angle of its first member, in fractions of the slide as the shapes of presence.ts
 function groups(app: App, els: Element[]): { els: Element[]; shape: Shape }[] {
   const ids = new Map<string, Element[]>();
   for (const el of els) {
