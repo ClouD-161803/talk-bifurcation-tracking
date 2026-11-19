@@ -136,7 +136,9 @@ export async function openFormula(page, selector) {
   await press(page, 'Enter');
 }
 
-export async function press(page, keys, { count = 1, command } = {}) {
+export async function press(page, keys, options = {}) {
+  if (typeof options !== 'object') throw new Error(`press() takes { count, command }, not ${options}`);
+  const { count = 1, command } = options;
   const names = keys.split(/\+(?=.)/);
   const name = names.pop();
   for (const m of names) if (m !== 'Mod' && !(m in BITS)) throw new Error(`the modifier ${m} is not known to press()`);

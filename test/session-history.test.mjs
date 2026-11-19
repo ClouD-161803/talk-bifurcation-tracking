@@ -1417,7 +1417,7 @@ test('the preview of a version shows a sentence that a person removed struck thr
   await show(ben, 'One');
   await ben.waitFor(`${HOLDER(el(0, 'p'))} === null`);
   await caretAtEnd(ben, el(0, 'p'));
-  await press(ben, 'Backspace', ' Ann wrote this.'.length);
+  await press(ben, 'Backspace', { count: ' Ann wrote this.'.length });
   await converge(server, [ann, ben]);
   assert.ok(server.read().includes('<p>First slide.</p>'));
   await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Removed' })`);
