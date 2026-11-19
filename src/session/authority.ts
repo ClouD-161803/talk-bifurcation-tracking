@@ -1,38 +1,26 @@
-// the authority of a session, kept by the edit command: it alone orders the operations, and it
-// holds the text, the version, and the log of the operations applied lately. an operation of an
-// older version is moved over each logged operation after its base, and refused whole when one of
-// its patches conflicts with one of them
-
 import type { AppliedOp, OpAnswer, OpRequest, Patch, RefusalReason, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
 import { apply, applyEach, checksum, copy, invert, shift, valid } from './patch.ts';
 
 type Entry = {
   op: AppliedOp;
-  // the patches that turn the text after op back into the text before it
   inverse: Patch[];
   lengthBefore: number;
   bytes: number;
 };
 
 export type Submission = { answer: OpAnswer; op?: AppliedOp };
-// an answer kept against a repeat of its request, with the base and a checksum of the patches of
-// the request
 type Kept = { answer: OpAnswer; base: unknown; patches: string };
 export type Observer = (op: AppliedOp, text: string) => void;
 
 export type AuthorityOptions = {
   epoch?: string;
-  // the log keeps at most maxOps operations, and at most about maxBytes of patch text
   maxOps?: number;
   maxBytes?: number;
   now?: () => number;
-  // the table of the text that the authority starts from, as read from .session/applied.json
   applied?: [string, number][];
 };
 
-// the answers kept per client, against which a repeated (client, seq) is answered again, for the
-// clients seen last
 const ANSWERS_PER_CLIENT = 32;
 const CLIENTS = 1024;
 
@@ -54,9 +42,6 @@ export class Authority {
   private answers = new Map<string, Map<number, Kept>>();
   private observers = new Set<Observer>();
   private seqOf = new Map<string, number>();
-  // the table: the seq of the last operation of each client in the text written last, oldest
-  // first, which survives a restart. the last operation of a client applied since is kept apart
-  // with the n of its version until a write reaches it
   private kept: Map<string, number>;
   private unwritten = new Map<string, { seq: number; n: number }>();
 
@@ -74,24 +59,20 @@ export class Authority {
     return formatVersion(this.epoch, this.n);
   }
 
-  // the oldest version whose text can be rebuilt and whose later operations are in the log
   get oldest(): number {
     return this.n - this.log.length;
   }
 
-  // the n of a version of this epoch that the log reaches, or null
   reach(v: Version): number | null {
     const at = parseVersion(v);
     return at && at.epoch === this.epoch && at.n >= this.oldest && at.n <= this.n ? at.n : null;
   }
 
-  // the operations applied after version v, or null when v is not reached by the log
   since(v: Version): AppliedOp[] | null {
     const n = this.reach(v);
     return n === null ? null : this.log.slice(this.log.length - (this.n - n)).map((e) => e.op);
   }
 
-  // the text at version n of this epoch, rebuilt from the inverses of the log, or null
   textAt(n: number): string | null {
     if (n === this.n) return this.text;
     if (!Number.isInteger(n) || n < this.oldest || n > this.n) return null;
@@ -100,16 +81,10 @@ export class Authority {
     return applyEach(this.text, inverses);
   }
 
-  // the seq of the last operation of client that the text holds, or undefined when the client is not
-  // known. a page asks for it after a restart, since its operation in flight may have been applied
-  // although its answer was lost
   applied(client: string): number | undefined {
     return this.unwritten.get(client)?.seq ?? this.kept.get(client);
   }
 
-  // the text of version n of this epoch is in index.html. returns true when the table changed. the
-  // last operation of a client after n leaves the seq of the client in the table older than the
-  // file, hence a page repeats an operation rather than losing it
   written(n: number): boolean {
     let changed = false;
     for (const [client, last] of this.unwritten) {
@@ -123,25 +98,20 @@ export class Authority {
     return changed;
   }
 
-  // the table as [client, seq] pairs, oldest first
   table(): [string, number][] {
     return [...this.kept];
   }
 
-  // calls fn with each applied operation and the text after it, until the returned function is called
   observe(fn: Observer): () => void {
     this.observers.add(fn);
     return () => this.observers.delete(fn);
   }
 
-  // an operation of a browser, of the person author
   submit(request: OpRequest, author: string): Submission {
     const { client, seq } = request ?? ({} as OpRequest);
     if (typeof client !== 'string' || !Number.isSafeInteger(seq) || seq < 1) return { answer: this.refuse('invalid') };
     const patches = checksum(JSON.stringify(request.patches) ?? '');
     const earlier = this.answers.get(client)?.get(seq);
-    // a repeat of a request is answered again, and another request under a used seq is refused,
-    // e.g. of a page that loaded again with its client id and started its seq anew
     if (earlier) return { answer: earlier.base === request.base && earlier.patches === patches ? earlier.answer : this.refuse('invalid') };
     const known = this.answers.get(client);
     if (known && known.size >= ANSWERS_PER_CLIENT && seq < Math.min(...known.keys())) return { answer: this.refuse('stale') };
@@ -160,7 +130,6 @@ export class Authority {
     return submission;
   }
 
-  // patches of the current text, entered as an operation of author, e.g. a change of the file
   enter(patches: Patch[], author: string): Submission {
     const seq = (this.seqOf.get(author) ?? 0) + 1;
     this.seqOf.set(author, seq);
@@ -178,11 +147,9 @@ export class Authority {
     const first = this.log.length - (this.n - at.n);
     const length = at.n === this.n ? this.text.length : this.log[first].lengthBefore;
     if (!valid(request.patches, length)) return { answer: this.refuse('invalid') };
-    // the texts are copied, since those of a change of the file are cut from a whole new text
     let patches: Patch[] | null = request.patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
     for (let i = first; i < this.log.length && patches; i++) patches = shift(patches, this.log[i].op.patches, true);
     if (!patches) return { answer: this.refuse('conflict') };
-    // a cut between the two halves of a surrogate pair is found on the text that it is applied to
     if (!valid(patches, this.text.length, this.text)) return { answer: this.refuse('invalid') };
     patches = patches.filter((p) => p.start !== p.end || p.text !== '');
     const inverse = invert(this.text, patches);

@@ -1,17 +1,6 @@
-// the badges of the comments on the canvas and the counts on the rows of the navigator. a badge holds
-// the count of the open threads of an element, 4 px outside its upper right corner, or 18 px while
-// the element is selected or holds the caret, so that the grips of its frame stay free, or of a
-// slide, inside its upper right corner, and it is filled violet while one of them is unread. a badge
-// whose area of a tap would meet the one of a badge above it is drawn below it, and the badge of a
-// turned element is outside its own upper right corner. the boxes of the elements are read in one
-// requestAnimationFrame after a change of the deck, of the slide, or of the threads, and they are
-// kept in px of the slide. a scroll or a zoom then moves the badges by the origin and the scale of
-// the stage alone, without reading the box of any element
-
 import type { Comments } from './comments.ts';
 import { make, style } from './dom.ts';
 
-// the reach in px of the area around a badge that takes a tap, which two badges do not share
 const TAP = 7;
 
 const CSS = `
@@ -30,7 +19,6 @@ html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav
 const KEY = 'beeson-comment-badges';
 const H = 20;
 
-// out is the outward diagonal of the upper right corner of a turned element, of length 1
 type Box = { target: Element; slide: boolean; selected: boolean; x: number; y: number; w: number; out: [number, number] | null; badge: HTMLButtonElement };
 
 export class Badges {
@@ -47,9 +35,7 @@ export class Badges {
     style('badges', CSS);
     try {
       this.shown = localStorage.getItem(KEY) !== '0';
-    } catch {
-      // a page without storage shows the badges
-    }
+    } catch {}
     this.layer.hidden = !this.shown;
     document.body.append(this.layer);
     const app = comments.client.app;
@@ -65,9 +51,7 @@ export class Badges {
     this.layer.hidden = !this.shown;
     try {
       localStorage.setItem(KEY, this.shown ? '1' : '0');
-    } catch {
-      // kept for this page only
-    }
+    } catch {}
     this.schedule();
   }
 
@@ -79,7 +63,6 @@ export class Badges {
     });
   }
 
-  // the open threads of each element and slide, with the unread among them
   private groups(): Map<Element, { n: number; unread: boolean; slide: boolean }> {
     const places = this.comments.places();
     const groups = new Map<Element, { n: number; unread: boolean; slide: boolean }>();
@@ -100,9 +83,7 @@ export class Badges {
     this.counts(groups);
     const app = this.comments.client.app;
     const current = app.current();
-    // the mode of Version History shows another version of the deck, without the badges
     const here = current ? [...groups].filter(([target]) => current.contains(target)) : [];
-    // the origin of the stage is a read of layout, which a drag on a slide without threads does not make
     if (!this.shown || !here.length || app.state !== 'loaded' || document.documentElement.classList.contains('beeson-history')) {
       this.layer.replaceChildren();
       this.boxes = [];
@@ -114,7 +95,6 @@ export class Badges {
     for (const [target, g] of here) {
       const r = target.getBoundingClientRect();
       if (!r.width && !r.height) continue;
-      // the upper right corner of a turned element is its own and not that of its bounding box
       const deg = target instanceof HTMLElement ? parseFloat(target.style.rotate) || 0 : 0;
       let x = r.right;
       let y = r.top;
@@ -134,7 +114,6 @@ export class Badges {
       badge.title = label;
       badge.classList.toggle('unread', g.unread);
       badge.classList.toggle('slide', g.slide);
-      // the text element of the caret is framed with its grips too, see caretElement() of frames.ts
       const sel = app.selection;
       const selected = sel.kind === 'elements' ? sel.has(target) : sel.kind === 'text' && target.contains(sel.items[0]);
       boxes.push({ target, slide: g.slide, selected, x: (x - origin.x) / scale, y: (y - origin.y) / scale, w: 20 + 7 * (String(g.n).length - 1), out, badge });
@@ -156,7 +135,6 @@ export class Badges {
     return b;
   }
 
-  // the badges moved to the stage as it is now, inside the viewport of the canvas
   private place(): void {
     if (!this.boxes.length) return;
     const stage = this.comments.client.app.stage;
@@ -166,19 +144,14 @@ export class Badges {
       const gap = b.selected ? 18 : 4;
       let left = b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + gap;
       let top = b.slide ? o.y + b.y * s + 6 : o.y + b.y * s - 4 - H;
-      // the badge of a turned element is centered on the outward diagonal of its corner, as far out
-      // as the upright badge is at 0 degrees and clear of the element at every angle
       if (b.out) {
         const [dx, dy] = b.out;
         const far = gap * Math.SQRT2 + (Math.abs(dx) * b.w + Math.abs(dy) * H) / 2;
         left = o.x + b.x * s + dx * far - b.w / 2;
         top = o.y + b.y * s + dy * far - H / 2;
       }
-      // moved into the viewport first, so that the overlaps are read on the places drawn
       return { b, left: Math.max(v.left + 2, Math.min(left, v.right - b.w - 2)), top: Math.max(v.top + 2, Math.min(top, bottom)) };
     });
-    // a badge whose area of a tap meets the one of a badge placed above it is pushed down below
-    // it, and not past the bottom of the viewport, where it may then meet another
     const gap = 2 * TAP;
     at.sort((p, q) => p.top - q.top);
     for (let k = 0; k < at.length; k++) {
@@ -193,7 +166,6 @@ export class Badges {
     }
   }
 
-  // the count of the open threads of each slide on its row of the navigator
   private counts(groups: Map<Element, { n: number; unread: boolean }>): void {
     const per = new Map<Element, { n: number; unread: boolean }>();
     for (const [target, g] of groups) {

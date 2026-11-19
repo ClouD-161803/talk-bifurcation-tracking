@@ -1,10 +1,3 @@
-// the Version History pane of a session. File > Version History, its key, or the menu of the save
-// state puts the editor into a mode, in which the pane takes the place of the inspector and the
-// rest of the chrome is inert, see src/editor/session/history-mode.ts. the list holds Current
-// version, the versions newest first under day headings, and the texts set aside. a click on a
-// version or on a text set aside shows it in a preview over the canvas, see preview.ts, from which
-// the person restores, names, or downloads it. the applies of the others go on under the mode
-
 import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type HistoryAnswer, type Restored, type RestoreAnswer, type Version, type VersionInfo } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
@@ -15,9 +8,7 @@ import { Preview } from './preview.ts';
 import { addStateItem } from './state.ts';
 import { mountToasts, toast } from './toast.ts';
 
-// unnamed versions closer than FOLD ms fold under the newest of them
 const FOLD = 30 * 60_000;
-// the longest wait in ms for the apply of a restore before the mode ends
 const RESTORE_WAIT = 5000;
 
 const STYLE = `
@@ -33,13 +24,10 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 @media (max-width: 599.98px) {
   html.beeson-editor.beeson-history { --ed-insp-col: 0px; }
   html.beeson-editor body > .beeson-session-history { position: fixed; left: 0; right: 0; bottom: 28px; height: 55vh; height: 55dvh; z-index: 70; border-left: 0; border-top: 1px solid var(--ed-line); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
-  /* the slide of the canvas is fitted to the room above the sheet, which covers the notes */
   html.beeson-editor.beeson-history:has(body > .beeson-session-history:not(.peek)) .beeson-edit-canvas { margin-bottom: max(0px, calc(55vh - var(--ed-notes-row))); margin-bottom: max(0px, calc(55dvh - var(--ed-notes-row))); }
-  /* while a version is previewed, the sheet shrinks to the row of the version and Versions */
   html.beeson-editor body > .beeson-session-history.peek { height: auto; max-height: 55vh; max-height: 55dvh; padding-bottom: 6px; }
   .beeson-session-history.peek > :not(.head, .rows), .beeson-session-history.peek .rows > :not(.row[aria-current="true"], .folded), .beeson-session-history.peek .folded > :not([aria-current="true"]) { display: none; }
   .beeson-session-history.peek .show-list { display: block; }
-  /* a toast is above the sheet at its full height */
   html.beeson-history .beeson-session-toast { bottom: calc(55vh + 36px); bottom: calc(55dvh + 36px); }
 }
 .beeson-session-history .show-list { display: none; min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); white-space: nowrap; }
@@ -80,8 +68,6 @@ let opener: ((aside?: string) => void) | null = null;
 const dayKey = (t: number) => new Date(t).toDateString();
 const keyOf = (s: Selected) => (s.kind === 'current' ? 'current' : `${s.kind}:${s.id}`);
 
-// the children of parent made nodes, in order, with each node that is in place left alone, since a
-// node moved or written again loses the focus and is read again by a screen reader
 function place(parent: Element, nodes: Node[]): void {
   const want = new Set(nodes);
   for (const c of [...parent.childNodes]) if (!want.has(c)) c.remove();
@@ -92,8 +78,6 @@ function place(parent: Element, nodes: Node[]): void {
   }
 }
 
-// the versions in groups: a named version and the start of the history alone, and unnamed versions
-// closer than FOLD under the newest of them, which do not cross a day
 export function foldsOf(versions: VersionInfo[]): { head: VersionInfo; rest: VersionInfo[] }[] {
   const out: { head: VersionInfo; rest: VersionInfo[] }[] = [];
   for (const v of versions) {
@@ -105,9 +89,6 @@ export function foldsOf(versions: VersionInfo[]): { head: VersionInfo; rest: Ver
   return out;
 }
 
-// a text set aside at a conflict, so that it is not lost, with reason shown in a toast that leads
-// to it under Set aside in Version History. rejects when the page is not in a session or the edit
-// command refused the text
 export async function setAside(text: string, reason: string): Promise<AsideInfo> {
   const client = current;
   if (!client?.token) throw new Error('The page is not in a session');
@@ -133,18 +114,14 @@ export function install(client: Client): void {
   let loading: Promise<void> | null = null;
   let on = false;
   let selected: Selected = { kind: 'current' };
-  // the sheet of a phone shows the chosen version alone, until Versions is pressed
   let peek = false;
   const opened = new Set<string>();
   let back: Element | null = null;
-  // the time of the version last shown in the preview, which a toast names when it is merged
   let shownTime: number | null = null;
   let midnight = 0;
   let naming = false;
-  // a reload of the page deferred until the mode ends, see hooks.defer below
   let release: (() => void) | null = null;
   let deferred: Promise<void> | null = null;
-  // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string | null }>();
   const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
   const heads = new Map<string, HTMLElement>();
@@ -185,7 +162,6 @@ export function install(client: Client): void {
     asideHead = make('h3', 'aside-head', 'Set aside');
     asideList = make('div', 'rows aside-list');
     el.append(head, label, list, asideHead, asideList);
-    // a drop on the pane is not a drop on the deck
     el.addEventListener('dragover', (ev) => ev.preventDefault());
     (shell.inspector ?? document.body.lastElementChild)?.after(el);
     return el;
@@ -193,7 +169,6 @@ export function install(client: Client): void {
 
   async function load(): Promise<void> {
     if (loading) return loading;
-    // a read that fails is made again when stale is set meanwhile, e.g. by the hello of a reconnect
     loading = (async () => {
       while (stale) {
         stale = false;
@@ -212,7 +187,6 @@ export function install(client: Client): void {
 
   const isSelected = (s: Selected) => selected.kind === s.kind && (s.kind === 'current' || (selected as { id: string }).id === s.id);
 
-  // the row of select, written again only when sig, what it shows, changed
   function row(className: string, select: Selected, sig: string, parts: () => (Node | string)[]): HTMLButtonElement {
     const id = keyOf(select);
     let r = rows.get(id);
@@ -263,8 +237,6 @@ export function install(client: Client): void {
     return h;
   }
 
-  // the button and the rows of a fold, kept by its oldest version, which a newer version that joins
-  // it does not change. its rows are made only while it is open
   function foldOf(fold: { rest: VersionInfo[] }): Node[] {
     const key = fold.rest[fold.rest.length - 1]!.id;
     if (selected.kind === 'version' && fold.rest.some((v) => v.id === (selected as { id: string }).id)) opened.add(key);
@@ -289,7 +261,6 @@ export function install(client: Client): void {
     return [f.button, f.inner];
   }
 
-  // the first node of the pane in view and its top, which stays in place when nodes above it change
   function anchorOf(): { el: Element; top: number } | null {
     if (!pane || pane.scrollTop <= 0) return null;
     const top = pane.getBoundingClientRect().top;
@@ -304,7 +275,6 @@ export function install(client: Client): void {
     if (!pane || !on) return;
     const active = document.activeElement instanceof HTMLElement && pane.contains(document.activeElement) ? document.activeElement : null;
     const anchor = anchorOf();
-    // a version or a text set aside that a new answer does not hold, e.g. after a compaction
     let merged: number | null = null;
     let lost = false;
     if (answer && selected.kind !== 'current') {
@@ -348,7 +318,6 @@ export function install(client: Client): void {
     for (const [map, prefix] of [[rows, ''], [folds, 'fold:'], [heads, 'day:'], [notes, 'note:']] as const) {
       for (const k of map.keys()) if (!used.has(prefix + k)) map.delete(k);
     }
-    // a control of the list that was moved has lost the focus
     const id = active?.dataset.id;
     if (active && id && document.activeElement !== active) pane.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.focus();
     if (anchor?.el.isConnected) pane.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
@@ -383,7 +352,6 @@ export function install(client: Client): void {
     render();
   }
 
-  // the list drawn again at each local midnight while the pane is open, for its day headings
   function arm(): void {
     clearTimeout(midnight);
     const now = new Date();
@@ -404,13 +372,10 @@ export function install(client: Client): void {
     if (!on) {
       on = true;
       back = document.activeElement;
-      // a control removed by its own click, e.g. the button of a toast, leaves the focus on body
       if (!(back instanceof HTMLElement) || back === document.body || back.closest('.beeson-session-toast')) back = document.querySelector('.beeson-session-state');
       if (!aside) selected = { kind: 'current' };
       pane.hidden = false;
-      // a caret left in the inert deck would keep the text held against the others
       getSelection()?.removeAllRanges();
-      // the person stops following in this mode, and the others see the mode in the pill of following
       stopFollowing();
       presenceOf(client)?.set({ mode: 'history' });
       shell.setMode(true, close);
@@ -418,7 +383,6 @@ export function install(client: Client): void {
       arm();
     }
     render();
-    // the selected row, which the sheet of a phone shows alone
     pane.querySelector<HTMLElement>('.row[aria-current="true"]')?.focus();
     void load();
   }
@@ -443,8 +407,6 @@ export function install(client: Client): void {
     void d.open('ok').then(() => d.el.remove());
   }
 
-  // the name of the newest version when the deck has not changed since, which a name of Current
-  // version replaces, or an empty text
   async function newestName(): Promise<string> {
     const v = answer?.versions[0];
     const snap = client.snapshot();
@@ -493,8 +455,6 @@ export function install(client: Client): void {
       className: 'beeson-session-history-dialog',
     });
     const save = d.buttons.get('save')!;
-    // a name is counted in characters as the edit command keeps it. an empty name takes the name of a
-    // version off, and under Current version it does nothing
     const update = () => {
       const n = Array.from(input.value.replace(/\s+/g, ' ').trim()).length;
       const over = n > VERSION_NAME_MAX;
@@ -528,7 +488,6 @@ export function install(client: Client): void {
     }
   }
 
-  // resolves once the deck holds the operation of a restore, at version v of the answer
   function reached(v: Version, text: string | null): Promise<void> {
     const want = parseVersion(v);
     return new Promise((done) => {
@@ -580,7 +539,6 @@ export function install(client: Client): void {
   shell.onCommand(() => open());
   opener = open;
   addStateItem({ label: 'Version History', run: () => open() });
-  // a reload that an apply needs waits for the end of the mode, which Current version says
   client.hooks.defer = () => {
     if (!on) return null;
     if (!deferred) {
