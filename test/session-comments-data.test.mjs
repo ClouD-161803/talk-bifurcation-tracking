@@ -207,6 +207,7 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   await type(a, ' held');
   await a.evaluate('window.__goOne()');
   await a.waitFor(`window.__held.length === 1 && ${C}.base.text.split('<p>TBD</p>').length === 3`);
+  await b.waitFor(`${C}.base.text.split('<p>TBD</p>').length === 3`);
   await show(b, 'One');
   const want = await until(async () => {
     const got = await b.evaluate(TWIN_BADGES);
