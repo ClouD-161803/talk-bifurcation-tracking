@@ -28,6 +28,10 @@ const JSON_MAX = 16 * 1024 * 1024;
 export const MEDIA_MAX = 64 * 1024 * 1024;
 // the largest upload of a page that does not run on the machine of the host
 export const GUEST_MEDIA_MAX = 16 * 1024 * 1024;
+// the most new files that the pages of one run upload into media/, and their most bytes in all,
+// smaller in the tests, so that a page cannot fill the disk of the host
+const UPLOADS_MAX = Number(process.env.SLIDES_UPLOADS_MAX) || 1000;
+const UPLOADS_MAX_BYTES = Number(process.env.SLIDES_UPLOADS_MAX_BYTES) || 2048 * 1024 * 1024;
 // the types of IMAGE_EXT and VIDEO_EXT in src/editor/media/store.ts, the PDF of a PDF figure, and json
 const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'pdf', 'json']);
 // the time in ms within which the edit command of a lock must answer, shorter in the tests
@@ -437,6 +441,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return { status: 200, headers: { 'Content-Type': 'application/zip', 'Cache-Control': 'no-store' }, body: piece(held.zip, at, ZIP_PIECE) };
   }
 
+  // the files and bytes uploaded in this run, counted before each write
+  const uploads = { files: 0, bytes: 0 };
   async function media(name: string, request: Request): Promise<Response> {
     if (request.method !== 'PUT') return error(405, 'PUT');
     const client = people.clientOf(new URLSearchParams(request.query).get('token'));
@@ -457,14 +463,27 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const same = await sameFile(real, clean, request.body.length, hash);
       if (same) return json(200, { path: `media/${same}` });
     }
+    if (uploads.files >= UPLOADS_MAX) return error(413, `the session took ${UPLOADS_MAX} new files already, the most that it takes until the host starts it again`);
+    if (uploads.bytes + request.body.length > UPLOADS_MAX_BYTES) return error(413, `the session took ${Math.round(uploads.bytes / MB)} MB of new files already, and it takes at most ${Math.round(UPLOADS_MAX_BYTES / MB)} MB until the host starts it again`);
+    uploads.files++;
+    uploads.bytes += request.body.length;
     const dot = clean.lastIndexOf('.');
-    for (let i = 1; i < 1000; i++) {
-      const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
-      try {
-        await writeFile(join(real, candidate), request.body, { flag: 'wx' });
-        return json(200, { path: `media/${candidate}` });
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    let kept = false;
+    try {
+      for (let i = 1; i < 1000; i++) {
+        const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
+        try {
+          await writeFile(join(real, candidate), request.body, { flag: 'wx' });
+          kept = true;
+          return json(200, { path: `media/${candidate}` });
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        }
+      }
+    } finally {
+      if (!kept) {
+        uploads.files--;
+        uploads.bytes -= request.body.length;
       }
     }
     return error(409, 'too many files of this name');
