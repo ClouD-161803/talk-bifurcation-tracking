@@ -1,6 +1,3 @@
-// a formula as an object of the slide with its element menu, the TeX popover and the formula sheet
-// with their keys, and the sheet of a new formula closed or replaced
-
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,10 +6,6 @@ import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, drag, openFormula, press, saveAndReopen, type, typeKeys } from './helpers/editor.mjs';
 
-// regression tests of R9.4 on both platforms with trusted input. a formula is an object of the
-// slide, with the element menu of the editor on a right-click, and every kind of selection has its
-// context menu. after each edit the text is checked byte for byte, after an undo and a redo, and
-// after a save and an open
 describe('a formula as an object with its menu', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -34,8 +27,6 @@ describe('a formula as an object with its menu', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   let saves = 0;
 
-  // the editor, or the deck alone without edit, on the slide n of the demo deck served over HTTP, in
-  // a window of 1600 by 1000 px
   async function load(t, platform, { n = 0, edit = true } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -55,8 +46,6 @@ describe('a formula as an object with its menu', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -71,8 +60,6 @@ describe('a formula as an object with its menu', () => {
     return edited;
   }
 
-  // the context menu of the editor that is open, with its class and its items, each with its label
-  // and whether it is dimmed, or null
   const MENU = `(() => {
   const m = [...document.querySelectorAll('.beeson-edit-menu')].filter((m) => m.getClientRects().length).at(-1);
   if (!m) return null;
@@ -80,7 +67,6 @@ describe('a formula as an object with its menu', () => {
 })()`;
   const menu = (page) => page.evaluate(MENU);
   const mathJaxMenus = (page) => page.evaluate(`document.querySelectorAll('[class*=CtxtMenu_Menu]').length`);
-  // the selection of the editor, as the tag name of each element with its first class
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.getAttribute('class') ? '.' + e.getAttribute('class').split(' ')[0] : ''))`);
   const item = (m, label) => m?.items.find((i) => i.label === label);
 
@@ -89,8 +75,6 @@ describe('a formula as an object with its menu', () => {
     await frames(page);
   }
 
-  // the items of the submenu of an item of the open menu, opened with the pointer. the menus are
-  // closed after it
   async function submenu(page, label) {
     const at = await page.evaluate(`(() => {
     const m = [...document.querySelectorAll('.beeson-edit-menu')].filter((m) => m.getClientRects().length).at(-1);
@@ -105,9 +89,6 @@ describe('a formula as an object with its menu', () => {
     return m;
   }
 
-  // findings menus-keys-1 and tables-equations-insert-1: a right-click on a formula opened the menu of
-  // MathJax and never the element menu of the editor, and on a formula of a caption the page was
-  // scrolled while this menu was open
   for (const platform of PLATFORMS) {
     test(`a right-click on a formula opens the element menu of the editor (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 3 });
@@ -130,7 +111,6 @@ describe('a formula as an object with its menu', () => {
         assert.equal(await page.evaluate('document.body.scrollTop + document.documentElement.scrollTop'), 0, `the page is scrolled by a right-click on ${what}`);
         await closeMenu(page);
       }
-      // Edit Formula… of the menu of an inline formula opens the sheet of this formula
       await page.evaluate('Reveal.slide(3)');
       await frames(page);
       await click(page, '.reveal section.present p mjx-container', { button: 'right' });
@@ -153,13 +133,9 @@ describe('a formula as an object with its menu', () => {
     assert.ok((await mathJaxMenus(page)) > 0);
   });
 
-  // the style of the selector, read in the page
   const styleOf = (page, sel) => page.evaluate(`document.querySelector(${js(sel)}).getAttribute('style')`);
   const sheetOpen = (page) => page.evaluate(`!!document.querySelector('.beeson-math')`);
 
-  // finding select-move-resize-2: a Shift-click or a command-click on a formula added it to the
-  // selection and opened its TeX sheet as well, which took the next keys, and Esc then dropped the
-  // whole selection
   for (const platform of PLATFORMS) {
     for (const mod of platform === 'mac' ? ['Shift', 'Mod'] : ['Shift']) {
       test(`a ${mod}-click on a formula adds it to the selection or takes it out, without its sheet (${platform})`, async (t) => {
@@ -197,9 +173,6 @@ describe('a formula as an object with its menu', () => {
 
   const framed = (page) => page.evaluate(`document.querySelectorAll('.beeson-frame.selected:not([hidden])').length`);
 
-  // findings select-move-resize-1 and tables-equations-insert-5: Esc from the sheet of a formula left
-  // nothing selected, with the focus on the formula, which the editor took for a text. Delete and the
-  // arrow keys did nothing until a second Esc
   for (const platform of PLATFORMS) {
     test(`Esc from the sheet of a display selects it as an object for Delete and the arrow keys (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 3 });
@@ -218,7 +191,6 @@ describe('a formula as an object with its menu', () => {
         await frames(page);
         assert.match((await styleOf(page, math)) ?? '', /translate/, `an arrow key after ${how} does not nudge the formula`);
         await roundTrip(page);
-        // one more Esc clears the selection
         await clickText(page, math);
         await sleep(300);
         await press(page, 'Escape');
@@ -229,7 +201,6 @@ describe('a formula as an object with its menu', () => {
         assert.equal(await framed(page), 0);
         assert.equal(await page.evaluate(`document.activeElement.closest('mjx-container') === null`), true, 'the formula keeps the focus after the selection is cleared');
       }
-      // Backspace deletes the formula selected by Esc
       await clickText(page, math);
       await sleep(300);
       await press(page, 'Escape');
@@ -256,10 +227,8 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // the center of the menu item named label in the open menu
   const itemAt = (page, label) => page.evaluate(`(() => { const i = [...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.getClientRects().length).find((i) => i.querySelector('.label')?.textContent === ${js(label)}); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // asserts that a right-click at at keeps the selection sel and opens the element menu with Lock
   async function objectMenu(page, at, sel, what) {
     await click(page, at, { button: 'right' });
     await sleep(250);
@@ -271,9 +240,6 @@ describe('a formula as an object with its menu', () => {
     return m;
   }
 
-  // finding menus-keys-2: a right-click on a text block selected as an object, a code box included,
-  // on one of several selected blocks, or on a member of a selected group dropped the selection and
-  // opened the text menu, and a right-click on the handle of a block opened no menu of the editor
   for (const platform of PLATFORMS) {
     test(`a right-click on a selected block, several blocks, a group, or the handle opens the element menu (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
@@ -285,11 +251,9 @@ describe('a formula as an object with its menu', () => {
       assert.deepEqual(await selected(page), ['p']);
       await objectMenu(page, para, ['p'], 'a selected block');
       await closeMenu(page);
-      // the handle of the selected block
       const handle = await center(page, '.beeson-handle:not([hidden])');
       await objectMenu(page, handle, ['p'], 'the handle of a block');
       await closeMenu(page);
-      // two blocks, then the two grouped
       await clickText(page, head);
       await press(page, 'Escape');
       await click(page, para, { modifiers: 'Shift' });
@@ -303,7 +267,6 @@ describe('a formula as an object with its menu', () => {
       m = await objectMenu(page, para, ['h2', 'p'], 'a member of a selected group');
       assert.equal(item(await submenu(page, 'Group'), 'Ungroup')?.off, false);
       await roundTrip(page);
-      // Delete of the menu of a selected block
       await clickText(page, '.reveal section.present > ul');
       await press(page, 'Escape');
       await frames(page);
@@ -328,8 +291,6 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // an arrow drawn by a drag of 300 px from x0 along the line at y on the current slide, with
-  // nothing selected after it, and the text with it as the source of the page
   async function drawArrow(page, x0, y) {
     await page.evaluate(`window.BeesonEditor.exec('insert.arrow')`);
     await sleep(150);
@@ -345,8 +306,6 @@ describe('a formula as an object with its menu', () => {
     return r;
   }
 
-  // finding menus-keys-3: a right-click on the stroke of a line opened the slide menu, or over a text
-  // the text menu with the line taken out of the selection
   for (const platform of PLATFORMS) {
     test(`a right-click on the stroke of a line selects it and opens its element menu (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 6 });
@@ -377,8 +336,6 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // finding select-move-resize-4: an Option-drag of a line, a Ctrl-drag on Windows and Linux, moved
-  // the line without a copy, unlike a drag of every other kind
   for (const platform of PLATFORMS) {
     test(`a copy drag of a line leaves it in place and moves a copy (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 6 });
@@ -403,12 +360,9 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // the shown handles of a block with their cursor, and the cursor of the element at a point
   const handles = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-handle')].filter((h) => !h.hidden && h.getClientRects().length).map((h) => getComputedStyle(h).cursor)`);
   const cursorAt = (page, p) => page.evaluate(`getComputedStyle(document.elementFromPoint(${p.x}, ${p.y})).cursor`);
 
-  // finding select-move-resize-9: a locked block kept its handle with a move cursor, and a locked QR
-  // code showed a move cursor, although neither can be dragged
   for (const platform of PLATFORMS) {
     test(`a locked block or QR code does not show a move cursor (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 12 });
@@ -436,8 +390,6 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // finding tables-equations-insert-7: a TeX error was shown twice in the sheet of a formula, as the
-  // error box of MathJax in the preview and again as the red line under it
   for (const platform of PLATFORMS) {
     test(`a TeX error is shown once in the sheet of a formula (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 5 });
@@ -451,7 +403,6 @@ describe('a formula as an object with its menu', () => {
       assert.equal(sheet.boxes, 0, 'the preview shows the error box of MathJax beside the message under it');
       assert.match(sheet.message, /brace/i);
       assert.equal(sheet.insert, true);
-      // a TeX without an error is previewed again
       await page.evaluate(`document.querySelector('.beeson-math textarea').select()`);
       await type(page, 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}');
       await page.waitFor(`!document.querySelector('.beeson-math .error').textContent`);
@@ -460,8 +411,6 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // a stub of speechSynthesis that keeps the texts it is given in window.spoken and speaks until it
-  // is cancelled, or no speechSynthesis with off
   const STUB = (off) => `(() => {
   window.spoken = [];
   const stub = { speaking: false, current: null,
@@ -473,20 +422,16 @@ describe('a formula as an object with its menu', () => {
   const cmd = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const labels = (items) => items.map((i) => (i.rule ? '-' : i.command ?? i.label));
 
-  // the submenu Speech of the Edit menu of Keynote, with Start Speaking and Stop Speaking, which read
-  // the selected text, the selected blocks, or the slide aloud
   for (const platform of PLATFORMS) {
     test(`Edit > Speech reads the selection or the slide aloud (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 3 });
       await page.evaluate(STUB(false));
-      // the submenu follows Substitutions in the Edit menu
       const edit = labels(await page.evaluate(`window.BeesonEditorShell.menuItems('Edit')`));
       assert.ok(edit.includes('Speech'), `the Edit menu does not have Speech: ${edit.join(', ')}`);
       assert.equal(edit.indexOf('Speech'), edit.indexOf('Substitutions') + 1, 'Speech does not follow Substitutions');
       assert.deepEqual(labels(await page.evaluate(`window.BeesonEditorShell.menuItems('Edit', 'Speech')`)), ['edit.startSpeaking', 'edit.stopSpeaking']);
       assert.equal((await cmd(page, 'edit.startSpeaking')).enabled, true);
       assert.equal((await cmd(page, 'edit.stopSpeaking')).enabled, false);
-      // without a selection, the text of the slide in reading order, from its heading on
       await page.evaluate(`window.BeesonEditor.exec('edit.startSpeaking')`);
       let spoken = await page.evaluate('window.spoken');
       assert.equal(spoken.length, 1);
@@ -496,7 +441,6 @@ describe('a formula as an object with its menu', () => {
       await page.evaluate(`window.BeesonEditor.exec('edit.stopSpeaking')`);
       assert.equal(await page.evaluate('window.speechSynthesis.speaking'), false);
       assert.equal((await cmd(page, 'edit.stopSpeaking')).enabled, false);
-      // the selected text, with the key of Keynote on a Mac
       const para = '.reveal section.present > p:first-of-type';
       await clickText(page, para);
       await page.evaluate(`(() => { const t = document.querySelector(${js(para)}).firstChild; getSelection().setBaseAndExtent(t, 8, t, 16); })()`);
@@ -504,21 +448,18 @@ describe('a formula as an object with its menu', () => {
       else await page.evaluate(`window.BeesonEditor.exec('edit.startSpeaking')`);
       spoken = await page.evaluate('window.spoken');
       assert.equal(spoken.at(-1), 'type LaT');
-      // the text menu has the submenu Speech, as in Keynote
       await click(page, para, { button: 'right' });
       await sleep(250);
       const m = await menu(page);
       assert.match(m.cls, /\btext\b/);
       assert.ok(item(m, 'Speech'), 'the text menu does not have Speech');
       await closeMenu(page);
-      // the selected blocks
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await selected(page), ['p']);
       await page.evaluate(`window.BeesonEditor.exec('edit.startSpeaking')`);
       spoken = await page.evaluate('window.spoken');
       assert.match(spoken.at(-1), /^You can type LaTeX in equation boxes\..*expressed as$/s);
-      // nothing of the file or the history is changed
       await byteExact(page);
       assert.equal((await cmd(page, 'edit.undo')).enabled, false);
       assert.deepEqual(errors(page), []);
@@ -532,11 +473,8 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // the tab of the Format pane that is shown, and the field of the TeX in it
   const formatTab = (page) => page.evaluate(`document.querySelector('.beeson-edit-inspector .ed-tabs [aria-selected="true"]')?.textContent ?? null`);
 
-  // a check of the pictures of round 4: while the Formula pane was shown for a display formula, the
-  // formula was not framed on the slide, which thus did not show what the pane edits
   for (const platform of PLATFORMS) {
     test(`a display formula is framed while its Formula pane is shown (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 3 });
@@ -558,8 +496,6 @@ describe('a formula as an object with its menu', () => {
         await frames(page);
         assert.equal(await formatTab(page), 'Formula', `the Formula pane is not shown for a display ${how}`);
         assert.equal(await framed(page), 1, `a display ${how} is not framed while its pane is shown`);
-        // the focus in the TeX field of the pane keeps the frame. the TeX is edited in the sheet while
-        // the sheet is open
         if (how === 'clicked') {
           assert.equal(await sheetOpen(page), true);
           await press(page, 'Escape');
@@ -578,7 +514,6 @@ describe('a formula as an object with its menu', () => {
     });
   }
 
-  // the centers of the shown grips of the ends of a line, and the screen points of its ends, by end
   const ends = (page) => page.evaluate(`(() => {
   const svg = document.querySelector('.reveal section.present svg.line');
   const l = svg.querySelector('line'), r = svg.getBoundingClientRect(), k = r.width / svg.width.baseVal.value;
@@ -587,8 +522,6 @@ describe('a formula as an object with its menu', () => {
   return [1, 2].map((n) => ({ end: at(n), grip: grip(String(n)) }));
 })()`);
 
-  // a check of the pictures of round 4: the grip of an end with an arrowhead was drawn about 9 px
-  // beyond the tip, off the line, while the grip of an end without one was on its end
   for (const platform of PLATFORMS) {
     test(`each grip of a selected line is on the end point of its line, with or without an arrowhead (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 6 });
@@ -610,14 +543,9 @@ describe('a formula as an object with its menu', () => {
   }
 });
 
-// the work of R11.4 on both platforms: the parts of the presenter display moved and resized while
-// it is customized, as in Customize Presenter Display of Keynote (K52), the TeX popover of a
-// formula by the keyboard, and a marquee held at the edge of a zoomed canvas. each edit of the file
-// is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('the TeX popover by the keyboard', () => {
   const OUTLINE = 'test/pages/editor-outline.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
-  // the slide of editor-layouts.html with a display, an ordered list, and a figure box
   const MATH = 3;
   const PLATFORMS = ['mac', 'other'];
 
@@ -643,13 +571,9 @@ describe('the TeX popover by the keyboard', () => {
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   const sameRect = (a, b, by = 2) => !!a && !!b && near(a.left, b.left, by) && near(a.top, b.top, by) && near(a.width, b.width, by) && near(a.height, b.height, by);
   const mouse = (page, type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
-  // the box of the first element of selector on the screen, or null when it is not shown
   const rectOf = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); if (!e || !e.getClientRects().length || getComputedStyle(e).visibility === 'hidden') return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
-  // the selected elements, a display as math
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.matches('div.math') ? 'math' : el.localName)`);
 
-  // the editor on a deck served over HTTP, with the storage of the origin emptied first, and with
-  // slide n shown
   async function load(t, platform, { deck = OUTLINE, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -666,8 +590,6 @@ describe('the TeX popover by the keyboard', () => {
     return page;
   }
 
-  // the rendered text is edited, an undo gives the text before and a redo the edited text byte for
-  // byte, and the saved text is opened again without problems
   async function checkEdit(page, before, edited, name) {
     assert.equal(await render(page), edited);
     await undo(page);
@@ -678,8 +600,6 @@ describe('the TeX popover by the keyboard', () => {
     assert.equal(text, edited);
   }
 
-  // the element of each part of the presenter display, and the frames drawn around the parts while
-  // the display is customized
   const PART = { current: '.col.now', next: '.col.upcoming', notes: '.notes', clock: '.clock', timer: '.group.timer' };
   const DISPLAY = 'dialog.beeson-edit-presenter[open]';
   const LAYOUT_KEY = `localStorage.getItem('beeson-presenter-layout:' + location.pathname)`;
@@ -695,7 +615,6 @@ describe('the TeX popover by the keyboard', () => {
   const shotRatio = (page, which) => page.evaluate(`(() => { const r = document.querySelector('${DISPLAY} .shot.${which}').getBoundingClientRect(); return r.width / r.height; })()`);
   const customizing = (page) => page.evaluate(`!!document.querySelector('${DISPLAY} .layout:not([hidden])')`);
 
-  // the customizing started by the button of the popover of Display Options, as in Keynote (K52)
   async function customize(page) {
     if (await page.evaluate(`!!document.querySelector('${DISPLAY} .parts[hidden]')`)) await click(page, `${DISPLAY} .bar.top button[aria-label="Display Options"]`);
     const buttons = await page.evaluate(`[...document.querySelectorAll('${DISPLAY} .parts button')].map((b) => b.textContent)`);
@@ -709,7 +628,6 @@ describe('the TeX popover by the keyboard', () => {
       const page = await load(t, platform, { n: 1 });
       await exec(page, 'play.customizePresenter');
       await page.waitFor(`!!document.querySelector(${js(DISPLAY)})`);
-      // outside the customizing, a drag does not move a part
       const auto = {};
       for (const p of Object.keys(PART)) auto[p] = await partRect(page, p);
       await press(page, 'Escape');
@@ -729,7 +647,6 @@ describe('the TeX popover by the keyboard', () => {
         const r = await partRect(page, p);
         assert.ok(f && r && near(f.left, r.left, 4) && near(f.top, r.top, 4) && near(f.width, r.width, 8) && near(f.height, r.height, 8), `the frame of ${p} is ${js(f)} around ${js(r)}`);
       }
-      // a drag of the frame of the notes moves them, and the other parts stay
       const notes0 = await partRect(page, 'notes');
       const r0 = await partRect(page, 'current');
       await drag(page, centerOf(notes0), { dx: -300, dy: -40 });
@@ -737,14 +654,12 @@ describe('the TeX popover by the keyboard', () => {
       const notes1 = await partRect(page, 'notes');
       assert.ok(near(notes1.left, notes0.left - 300) && near(notes1.top, notes0.top - 40), `the notes moved from ${js(notes0)} to ${js(notes1)}`);
       assert.ok(sameRect(await partRect(page, 'current'), r0), 'the current slide moved with the notes');
-      // a drag of the corner of the current slide resizes it, and its slide keeps its aspect ratio
       await drag(page, await gripOf(page, 'current'), { dx: -240, dy: 30 });
       await frames(page);
       const r1 = await partRect(page, 'current');
       assert.ok(near(r1.left, r0.left) && near(r1.top, r0.top), `the corner across from the grip moved from ${js(r0)} to ${js(r1)}`);
       assert.ok(near(r1.width, r0.width - 240), `the width of the current slide is ${r1.width}, not ${r0.width - 240}`);
       assert.ok(near(await shotRatio(page, 'current'), 16 / 9, 0.02), 'the current slide does not keep its aspect ratio');
-      // the corners of the next slide and of the notes
       const n0 = await partRect(page, 'next');
       await drag(page, await gripOf(page, 'next'), { dx: -100, dy: 10 });
       await frames(page);
@@ -755,7 +670,6 @@ describe('the TeX popover by the keyboard', () => {
       await frames(page);
       const notes2 = await partRect(page, 'notes');
       assert.ok(near(notes2.width, notes1.width - 50) && near(notes2.height, notes1.height - 30), `the notes are ${js(notes2)} after a resize of ${js(notes1)} by -50, -30`);
-      // the clock is moved, and the text of the timer is made bigger by its corner
       const c0 = await partRect(page, 'clock');
       await drag(page, centerOf(c0), { dx: -500, dy: 300 });
       const c1 = await partRect(page, 'clock');
@@ -764,16 +678,13 @@ describe('the TeX popover by the keyboard', () => {
       await drag(page, await gripOf(page, 'timer'), { dx: 60, dy: 30 });
       const t1 = await partRect(page, 'timer');
       assert.ok(t1.height > t0.height + 15, `the timer is ${js(t1)} after a drag of its corner from ${js(t0)}`);
-      // a part is kept inside the display
       await drag(page, centerOf(c1), { dx: -2000, dy: -2000 });
       const c2 = await partRect(page, 'clock');
       assert.ok(near(c2.left, 0) && near(c2.top, 0), `the clock is dragged out of the display to ${js(c2)}`);
-      // the layout is kept in the storage as fractions of the display, and the file is not changed
       const stored = JSON.parse(await page.evaluate(LAYOUT_KEY));
       assert.deepEqual(Object.keys(stored).sort(), Object.keys(PART).sort());
       assert.ok(Object.values(stored).every((b) => Object.values(b).every((v) => v >= 0 && v <= 1)), `the layout ${js(stored)} is not in fractions`);
       assert.equal(await page.evaluate(PARTS_KEY), null);
-      // the keys of the show stay live while the display is customized, and Esc ends the customizing
       assert.equal(await page.evaluate(`document.querySelector('${DISPLAY} .count').textContent`), '2 / 3');
       await press(page, 'ArrowRight');
       assert.equal(await page.evaluate(`document.querySelector('${DISPLAY} .count').textContent`), '3 / 3');
@@ -782,7 +693,6 @@ describe('the TeX popover by the keyboard', () => {
       assert.ok(await page.evaluate(`!!document.querySelector(${js(DISPLAY)})`), 'Esc ends the display with the customizing');
       const placed = {};
       for (const p of Object.keys(PART)) placed[p] = await partRect(page, p);
-      // the layout holds at another size of the window
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false });
       await frames(page);
       const small = await partRect(page, 'notes');
@@ -791,11 +701,8 @@ describe('the TeX popover by the keyboard', () => {
       assert.ok(near(await shotRatio(page, 'current'), 16 / 9, 0.02));
       await page.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
       await frames(page);
-      // outside the customizing, a drag does not move a part of the layout
       await drag(page, `${DISPLAY} .notes .text`, { dx: 200, dy: 60 });
       assert.ok(sameRect(await partRect(page, 'notes'), placed.notes), 'a drag moved the notes after the customizing');
-      // the display is opened again with the layout, a part hidden is not framed, and Use Auto Layout
-      // puts the parts back where they were
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector(${js(DISPLAY)})`);
       await exec(page, 'play.customizePresenter');
@@ -823,22 +730,17 @@ describe('the TeX popover by the keyboard', () => {
     });
   }
 
-  // the TeX popover of a formula: the focus, Tab and Shift+Tab, Esc, Return on its button, and the
-  // keys of the editor after it closes
   const SHEET = '.beeson-math';
   const focusIn = (page, selector) => page.evaluate(`!!document.activeElement?.closest(${js(selector)})`);
   const focused = (page) => page.evaluate(`(() => { const a = document.activeElement; return a?.localName === 'textarea' ? 'field' : a?.localName === 'button' ? a.textContent : a?.localName ?? null; })()`);
   const sheetOpen = (page) => page.evaluate(`!!document.querySelector(${js(SHEET)})`);
-  // the TeX typed is typeset in the preview, and the button that applies it is lit
   const typeset = (page) => page.waitFor(`(() => { const b = document.querySelector('${SHEET} button.primary'); return !!b && !b.disabled; })()`);
 
-  // Tab until the focus is on stop, the field or the label of a button, within six presses
   async function tabTo(page, stop) {
     for (let i = 0; i < 6 && (await focused(page)) !== stop; i++) await press(page, 'Tab');
     assert.equal(await focused(page), stop, `Tab does not reach ${stop}`);
   }
 
-  // a trusted Return with its character, which presses a focused button as a key of a user does
   async function enter(page) {
     const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
@@ -848,7 +750,6 @@ describe('the TeX popover by the keyboard', () => {
   const TEX = String.raw`\[\ddot x - \class{coriolis}{2\dot y} = -\frac{\partial \tilde U}{\partial x},\]`;
   const LIVE_MATH = '.reveal section.present div.math mjx-container';
 
-  // the TeX popover opened by a double click on the display of slide MATH
   async function openTex(page) {
     await click(page, LIVE_MATH, { count: 2 });
     await page.waitFor(`!!document.querySelector(${js(SHEET)}) && !!document.querySelector('${SHEET} .preview mjx-container')`);
@@ -861,7 +762,6 @@ describe('the TeX popover by the keyboard', () => {
       await openTex(page);
       assert.equal(await focused(page), 'field', 'the focus is not in the TeX field when the popover opens');
       await typeset(page);
-      // Tab and Shift+Tab reach the field and each button, and the focus stays inside the popover
       const reached = new Set(['field']);
       for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
         await press(page, key);
@@ -869,7 +769,6 @@ describe('the TeX popover by the keyboard', () => {
         reached.add(await focused(page));
       }
       assert.deepEqual([...reached].sort(), ['Apply', 'Cancel', 'field'], 'Tab does not reach each control of the popover');
-      // Esc closes the popover without the change from the field and from each button
       for (const stop of ['field', 'Apply', 'Cancel']) {
         if (!(await sheetOpen(page))) await openTex(page);
         await page.evaluate(`document.querySelector('${SHEET} textarea').select()`);
@@ -883,7 +782,6 @@ describe('the TeX popover by the keyboard', () => {
         assert.equal(await render(page), page.source, `Esc with the focus on ${stop} changes the formula`);
         assert.deepEqual(await selected(page), ['math'], `after Esc from ${stop}, the formula is not selected`);
       }
-      // Return on Cancel closes the popover without the change
       await openTex(page);
       await page.evaluate(`document.querySelector('${SHEET} textarea').select()`);
       await type(page, 'y');
@@ -911,13 +809,11 @@ describe('the TeX popover by the keyboard', () => {
       const applied = page.source.replace(TEX, () => String.raw`\[\ddot x = 0,\]`);
       assert.equal(await render(page), applied, 'Return on Apply does not apply the TeX');
       assert.deepEqual(await selected(page), ['math'], 'the formula is not selected after the popover closes');
-      // the arrow keys nudge the formula, without a click
       await press(page, 'ArrowRight');
       await sleep(1100);
       const nudged = await render(page);
       assert.match(nudged, /<div class="math fragment" data-fragment-index="1" data-keep style="translate: [^"]+">/, 'the arrow key does not nudge the formula');
       await checkEdit(page, applied, nudged, `r11-4-nudge-${platform}.html`);
-      // after Esc from the popover, Delete removes the formula
       await page.evaluate(`Reveal.slide(${MATH})`);
       await frames(page);
       await openTex(page);
@@ -956,18 +852,12 @@ describe('the TeX popover by the keyboard', () => {
     });
   }
 
-  // a marquee from the empty slide held at the top edge of a zoomed canvas scrolls it, with the start
-  // corner of the marquee kept on its point of the slide, and selects what it covers at the release
   const CANVAS = `(() => { const c = document.querySelector('.beeson-edit-canvas'), v = window.BeesonEditorShell.stage.viewport; return { x: c.scrollLeft, y: c.scrollTop, zoomed: c.classList.contains('zoomed'), left: v.left, top: v.top, width: v.width, height: v.height }; })()`;
   for (const platform of PLATFORMS) {
     test(`a marquee held at the edge of a zoomed canvas scrolls it, and selects what it covers at the release (${platform})`, async (t) => {
-      // a window 600 px high, in which the canvas at Actual Size scrolls the display out of view
       const page = await load(t, platform, { deck: LAYOUTS, n: MATH, size: { width: 1600, height: 600 } });
       await exec(page, 'zoom.actual');
       await frames(page);
-      // an empty point of the slide under the list, with the canvas scrolled to put the point 300 px
-      // right of its left edge and the slide y of 560 px, under the display, at its top edge or as near
-      // as the canvas scrolls
       const start = { x: 640, y: 1000 };
       const at = await page.evaluate(`(() => {
       const c = document.querySelector('.beeson-edit-canvas'), st = window.BeesonEditorShell.stage, v = st.viewport;
@@ -981,7 +871,6 @@ describe('the TeX popover by the keyboard', () => {
       assert.ok(before.zoomed, 'the canvas is not zoomed at Actual Size');
       const math0 = await rectOf(page, '.reveal section.present div.math');
       assert.ok(math0.top + math0.height < before.top, `the display is in view before the marquee, at ${js(math0)}`);
-      // the marquee to 4 px under the top of the canvas, held there for a second with small moves
       const edge = before.top + 4;
       await drag(page, at, { dx: 0, dy: edge - at.y, hold: true });
       for (let i = 0; i < 12; i++) {
@@ -992,14 +881,11 @@ describe('the TeX popover by the keyboard', () => {
       await frames(page);
       const held = await page.evaluate(CANVAS);
       assert.ok(held.y < before.y - 50, `the canvas is scrolled from ${before.y} to ${held.y} while the marquee is held at its top edge`);
-      // the start corner stays on its point of the slide, and the marquee reaches the pointer
-      // the two are read in one frame, since the canvas is scrolled on while the marquee is held
       const { corner, box } = await page.evaluate(`(() => {
       const r = document.querySelector('.beeson-marquee')?.getBoundingClientRect();
       return { corner: window.BeesonEditorShell.stage.toScreen(${js(start)}), box: r && { left: r.left, top: r.top, width: r.width, height: r.height } };
     })()`);
       assert.ok(box && near(box.top + box.height, corner.y) && near(box.left, corner.x) && near(box.top, edge), `the marquee is ${js(box)}, from the start corner ${js(corner)} to the pointer at ${edge}`);
-      // the elements covered by the marquee are selected at the release
       await mouse(page, 'mouseReleased', at.x, edge);
       await frames(page);
       const picked = await selected(page);
@@ -1011,10 +897,6 @@ describe('the TeX popover by the keyboard', () => {
   }
 });
 
-// regression tests of R29.1 on both platforms, three leftovers of the skeptics: the sheet of a
-// formula in a new box replaced by the sheet of another formula drops the box, an emptied item or
-// paragraph that had a line break is saved empty, and a line attached to an element pushed by typing
-// follows it in the entry of the typing
 describe('a formula sheet replaced by another', () => {
   const PLATFORMS = ['mac', 'other'];
   const SLIDE = '.reveal .slides > section.present';
@@ -1045,7 +927,6 @@ describe('a formula sheet replaced by another', () => {
   const status = (page) => page.evaluate('window.BeesonEditor.status()');
   const call = (page, fn, ...args) => page.evaluate(`(${fn})(${args.map(js).join(', ')})`);
 
-  // the editor on slide n of the deck, with the storage of the origin emptied
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1062,14 +943,11 @@ describe('a formula sheet replaced by another', () => {
     return page;
   }
 
-  // the lines of text that differ from those of the file, for a short message of a failed assertion
   const changed = (text, file) => {
     const was = file.split('\n');
     return text.split('\n').filter((l, i) => l !== was[i]).join('\n');
   };
 
-  // the key of an inline formula: Cmd+Option+E on a Mac, and Alt+= elsewhere, sent as the browser
-  // sends it
   async function formulaKey(page, platform) {
     if (platform === 'mac') return press(page, 'Mod+Alt+E');
     const base = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
@@ -1077,18 +955,12 @@ describe('a formula sheet replaced by another', () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   }
 
-  // a trusted click on an empty point of the slide, near its lower left corner
   async function clickAway(page) {
     const at = await page.evaluate(`(() => { const r = document.querySelector(${js(SLIDE)}).getBoundingClientRect(); return { x: r.left + 40, y: r.bottom - 30 }; })()`);
     await clickText(page, at);
     await sleep(300);
   }
 
-  // 1. a new text box, or the empty words of a shape, with the sheet of a new inline formula open,
-  // and a click on the formula of the slide, which replaces the sheet with the sheet of this formula.
-  // the words are dropped as at a click away, and the file and the history are kept through two
-  // clicks away after it. the text box is kept as at a click away, written as an empty paragraph in
-  // the entry of its insert
   const ROUTES = [
     ['a new text box', async (page) => {
       await click(page, '.beeson-edit-top [data-command="insert.text"]');
@@ -1137,8 +1009,6 @@ describe('a formula sheet replaced by another', () => {
     }
   }
 
-  // 1. a new text box with a formula inserted into it is kept when the sheet of a second formula in
-  // it is replaced by the sheet of the formula of the slide, as at a click away
   for (const platform of PLATFORMS) {
     test(`1: a new text box with a formula entered is kept when the sheet of a second formula is replaced (${platform})`, async (t) => {
       const page = await load(t, platform, FORMULA);
@@ -1167,7 +1037,6 @@ describe('a formula sheet replaced by another', () => {
     });
   }
 
-  // the deck text written to a file of the root, served as a show at slide n, or as the print view
   let saves = 0;
   async function show(t, text, n, query = '') {
     const file = `test/pages/editor-r29-1-${process.pid}-${++saves}.html`;
@@ -1185,11 +1054,8 @@ describe('a formula sheet replaced by another', () => {
     return page;
   }
 
-  // the shown element of selector whose text holds needle, as an expression
   const textElementOf = (selector, needle) => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
 
-  // erase() presses Backspace count times from the end of the block of selector whose text holds
-  // needle, in one entry of the history, then Esc
   async function erase(page, selector, needle, count) {
     const at = await page.evaluate(`(() => { const r = ${textElementOf(selector, needle)}.getBoundingClientRect(); return { x: r.right - 4, y: r.bottom - 12 }; })()`);
     await clickText(page, at);
@@ -1200,12 +1066,8 @@ describe('a formula sheet replaced by another', () => {
     await frames(page);
   }
 
-  // the text, the mark, and whether it has a height, of each item and paragraph under root
   const marks = (root) => `[...${root}.querySelectorAll('li, p')].map((el) => [el.localName, el.innerHTML, el.localName === 'li' ? getComputedStyle(el, '::before').content : '', Math.round(el.getBoundingClientRect().height) > 0])`;
 
-  // 2. an item and a paragraph whose words have a line break, emptied by Backspace, are saved empty
-  // without the line breaks that the browser leaves, and the item is drawn without its dash in the
-  // show and in the print view. a line break between words that are kept is kept
   for (const platform of PLATFORMS) {
     test(`2: an item and a paragraph with a line break, emptied in the editor, are saved empty (${platform})`, async (t) => {
       const page = await load(t, platform, BREAKS);
@@ -1232,7 +1094,6 @@ describe('a formula sheet replaced by another', () => {
     });
   }
 
-  // the point on the screen of a point in slide px, with the scale k of the slide
   function screenOf(p) {
     const s = document.querySelector('.reveal .slides');
     const r = s.getBoundingClientRect();
@@ -1240,7 +1101,6 @@ describe('a formula sheet replaced by another', () => {
     return { x: r.left + p.x * k, y: r.top + p.y * k, k };
   }
 
-  // the box of the element of sel in slide px
   function boxIn(sel) {
     const s = document.querySelector('.reveal .slides');
     const r = s.getBoundingClientRect();
@@ -1249,7 +1109,6 @@ describe('a formula sheet replaced by another', () => {
     return { left: (b.left - r.left) / k, top: (b.top - r.top) / k, width: b.width / k, height: b.height / k };
   }
 
-  // the two ends of the straight line of sel in slide px, read from its translate and its line
   function endsOf(sel) {
     const svg = document.querySelector(sel);
     const [tx, ty] = (svg.style.translate || '0px 0px').split(/\s+/).map((v) => parseFloat(v) || 0);
@@ -1257,10 +1116,6 @@ describe('a formula sheet replaced by another', () => {
     return [+c.getAttribute('x1') + tx, +c.getAttribute('y1') + (ty || 0), +c.getAttribute('x2') + tx, +c.getAttribute('y2') + (ty || 0)].map(Math.round);
   }
 
-  // 3. a line drawn from a shape to the middle of the right edge of a table in the flow under a
-  // paragraph. words typed at the end of the paragraph wrap it onto more lines and push the table
-  // down, and the end of the line follows the table at once, in the entry of the typing, also in the
-  // text that a save writes
   for (const platform of PLATFORMS) {
     test(`3: a line glued to a table pushed down by typing follows it in the entry of the typing (${platform})`, async (t) => {
       const page = await load(t, platform, FLOW);
@@ -1303,11 +1158,6 @@ describe('a formula sheet replaced by another', () => {
   }
 });
 
-// the fixes of R6.6 on both platforms. the tiles of the layout chooser are drawn from samples of
-// the layouts rather than from the current slide. Cmd+Enter on a Mac and Ctrl+Enter elsewhere commit the TeX
-// of the Insert Formula and Edit Formula sheets while the preview is still typeset, and the labels
-// of the transitions say that reveal.js plays the Fade of the slide entered. each edit of the file
-// is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('the commit key of the formula sheets', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -1325,7 +1175,6 @@ describe('the commit key of the formula sheets', () => {
 
   let last = null;
 
-  // the editor on the slide at index of a deck, served over HTTP
   async function editor(platform, index = 2, deck = LAYOUTS) {
     await last?.close().catch(() => {});
     const page = await browser.newPage();
@@ -1362,7 +1211,6 @@ describe('the commit key of the formula sheets', () => {
     return text;
   }
 
-  // undoes every entry down to source, and redoes them all, back to the text edited
   async function undoAll(page, source) {
     const text = await render(page);
     let n = 0;
@@ -1375,8 +1223,6 @@ describe('the commit key of the formula sheets', () => {
     assert.equal(await render(page), text);
   }
 
-  // typesetPromise, which typesets a slide, and tex2svgPromise, which typesets the preview of a
-  // sheet, are each slowed by 150 ms, as on a loaded machine
   const SLOW = `(() => {
   for (const name of ['typesetPromise', 'tex2svgPromise']) {
     const t = MathJax[name].bind(MathJax);
@@ -1411,7 +1257,6 @@ describe('the commit key of the formula sheets', () => {
       await click(page, '.reveal section.present div.math mjx-container');
       assert.ok(await until(page, sheetOpen), 'the sheet is not open');
       assert.equal(await page.evaluate(`document.querySelector('.beeson-math .title').textContent`), 'Edit Formula');
-      // a brace left open in the TeX is an error of MathJax, which dims Apply
       await page.evaluate(`(() => {
       const f = document.querySelector('.beeson-math textarea');
       f.value = f.value.replace(${JSON.stringify(OLD)}, ${JSON.stringify(String.raw`-\frac{a}{`)});
@@ -1433,7 +1278,6 @@ describe('the commit key of the formula sheets', () => {
     });
   }
 
-  // as in Keynote, the transition of a slide is played when the show leaves it for the next slide
   for (const platform of PLATFORMS) {
     test(`the label of Fade says that it is played from the slide into the next slide on ${platform}`, async () => {
       const page = await editor(platform, 3);
@@ -1447,9 +1291,6 @@ describe('the commit key of the formula sheets', () => {
     });
   }
 
-  // the drawing of each tile of the chooser opened on the slide at index, as the markup of the slide
-  // in its shadow root, the computed styles and boxes of the tile and of the elements in it, and its
-  // pixels and a hash of them, inside the outline of the tile
   async function tiles(page, index) {
     await page.evaluate(`Reveal.slide(${index})`);
     await wait(page, 300);
@@ -1463,7 +1304,6 @@ describe('the commit key of the formula sheets', () => {
       name: t.textContent.trim(),
       marked: t.getAttribute('aria-selected') === 'true',
       markup: t.querySelector('.pic').shadowRoot.querySelector('.slides').innerHTML,
-      // the outline of the marked tile is left out, as from the pixels
       look: [t.querySelector('.pic'), ...t.querySelector('.pic').shadowRoot.querySelectorAll('*')].flatMap((el, i) => {
         const b = el.getBoundingClientRect();
         const of = (s) => [...s].filter((k) => i || !k.startsWith('outline')).map((k) => k + ': ' + s.getPropertyValue(k)).join('; ');
@@ -1492,12 +1332,9 @@ describe('the commit key of the formula sheets', () => {
       assert.equal(new Set(content.map((t) => t.markup)).size, 8, 'two tiles have the same markup');
       assert.equal(new Set(content.map((t) => t.pixels)).size, 8, 'two tiles are drawn alike');
       assert.deepEqual(figure.map((t) => t.markup), content.map((t) => t.markup), 'a tile depends on the current slide');
-      // the styles and boxes from which Chrome draws a tile are compared rather than its pixels, since
-      // the raster of an anti-aliased edge may differ by a few levels under load
       for (const [i, t] of figure.entries()) assert.deepEqual(t.look, content[i].look, `the tile of ${t.layout} is drawn from the current slide`);
       assert.deepEqual(content.filter((t) => t.marked).map((t) => t.layout), ['content']);
       assert.deepEqual(figure.filter((t) => t.marked).map((t) => t.layout), ['figure']);
-      // the deck is not changed by the chooser
       await byteExact(page);
       assert.deepEqual(errors(page), []);
     });

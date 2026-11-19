@@ -1,6 +1,3 @@
-// the place of a new text box, kept at its first key and at a paste, on title and closing slides
-// off the lines of the block, and the slide shown by an undo of Delete Text Box
-
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,9 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R15.3 on both platforms: the end of the show played by Present at a click
-// past its last step, a new text box kept in its place at its first input, and Distribute with a
-// group in the selection
 describe('a new text box kept in place', () => {
   const PLATFORMS = ['mac', 'other'];
   const FIGURES = 4;
@@ -35,7 +29,6 @@ describe('a new text box kept in place', () => {
   const exec = (page, id) => page.evaluate(`window.BeesonEditor.exec(${js(id)})`).then(() => frames(page));
   const near = (a, b, tol = 1) => Math.abs(a - b) <= tol;
 
-  // the editor on slide n of the demo deck, served over HTTP
   async function load(t, platform, n = 0) {
     const text = readFileSync('test-deck.html', 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -54,7 +47,6 @@ describe('a new text box kept in place', () => {
     return page;
   }
 
-  // the frame of the show played by Present
   const SHOW = `document.querySelector('.beeson-edit-show iframe')?.contentWindow`;
   const showReady = `(() => { try { const w = ${SHOW}; return !!w?.Reveal?.isReady() && (!w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false)); } catch { return false; } })()`;
   const showing = (page) => page.evaluate(`!!document.querySelector('.beeson-edit-show')`);
@@ -66,12 +58,8 @@ describe('a new text box kept in place', () => {
     return page;
   }
 
-  // a point of the slide shown by the show, on the heading of slide 12 and away from its video
   const slidePoint = { x: 400, y: 180 };
 
-  // finding opus 3 of round 6: a click past the last step of the last slide left the show up, while a
-  // key forward ended it. a click plays the steps of slide 12 first, and a deck opened by itself
-  // stays at its last slide at a click
   for (const platform of PLATFORMS) {
     test(`the show played by Present returns to the editor at a click past its last step (${platform})`, async (t) => {
       const page = await present(t, platform, LAST - 1);
@@ -109,7 +97,6 @@ describe('a new text box kept in place', () => {
     });
   }
 
-  // the box on the screen of the new text box of the current slide, empty or written
   const BOX = `(() => {
   const s = Reveal.getCurrentSlide();
   const p = s.querySelector('p.beeson-pending') ?? [...s.querySelectorAll('p')].find((e) => e.textContent.startsWith('H'));
@@ -121,7 +108,6 @@ describe('a new text box kept in place', () => {
   const undo = (page) => press(page, 'Mod+Z').then(() => sleep(200));
   const redo = (page) => press(page, 'Mod+Shift+Z').then(() => sleep(200));
 
-  // a trusted Mod+key with the editing command of the browser, e.g. paste
   async function command(page, platform, key, name) {
     const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: platform === 'mac' ? 4 : 2 };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: [name] });
@@ -130,8 +116,6 @@ describe('a new text box kept in place', () => {
 
   const kept = (a, b, what) => assert.ok(a && b && near(a.left, b.left, 0.6) && near(a.top, b.top, 0.6), `${what} moves the text box from ${js(a)} to ${js(b)}`);
 
-  // finding opus 4 of round 6: the empty box was drawn with a margin of 24 px above it, and the text
-  // box written at its first key with the margin of the theme, which moved it up
   for (const platform of PLATFORMS) {
     test(`a new text box stays in its place at its first key and after an undo of its typing (${platform})`, async (t) => {
       for (const n of [FIGURES, 1, 9]) {
@@ -182,9 +166,6 @@ describe('a new text box kept in place', () => {
     });
   }
 
-  // the boxes of the heading, the group of the paragraph and the figure, and the list of slide 5, in
-  // slide px. the box of the figure is its frame, i.e. the picture as it is fitted into the image and
-  // the caption under it
   const OBJECTS = `(() => {
   const s = document.querySelector('.reveal .slides');
   const S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
@@ -208,8 +189,6 @@ describe('a new text box kept in place', () => {
   return { h2: box(c.querySelector(':scope > h2')), group: box(p, f), p: box(p), f: box(f), ul: box(c.querySelector(':scope > ul')) };
 })()`;
 
-  // the paragraph and the figure of slide 5 grouped, and the heading and the list added to the
-  // selection
   async function groupAndSelect(page, platform) {
     await click(page, 'section.present figure img.for-light');
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
@@ -221,8 +200,6 @@ describe('a new text box kept in place', () => {
     await frames(page);
   }
 
-  // D23 of round 6: Distribute Vertically with a group moved the group above the slide and outside the
-  // span of the selection
   for (const platform of PLATFORMS) {
     test(`Distribute with a group keeps every object in the span of the selection and the outer two in place (${platform})`, async (t) => {
       for (const [axis, start, end] of [['vertical', 'top', 'bottom'], ['horizontal', 'left', 'right']]) {
@@ -232,7 +209,6 @@ describe('a new text box kept in place', () => {
         const b0 = await page.evaluate(OBJECTS);
         const all = [b0.h2, b0.group, b0.ul];
         const span = [Math.min(...all.map((b) => b[start])), Math.max(...all.map((b) => b[end]))];
-        // the outer two are the first and the last in the order of their start
         const order = ['h2', 'group', 'ul'].sort((a, b) => b0[a][start] - b0[b][start] || (b0[a][end] - b0[a][start]) - (b0[b][end] - b0[b][start]));
         await exec(page, `arrange.distribute.${axis}`);
         const b = await page.evaluate(OBJECTS);
@@ -241,10 +217,8 @@ describe('a new text box kept in place', () => {
           assert.ok(b[name].top >= -1 && b[name].left >= -1, `Distribute ${axis} puts the ${name} off the slide at ${js(b[name])}`);
         }
         for (const name of [order[0], order[2]]) assert.ok(near(b[name][start], b0[name][start]), `Distribute ${axis} moves the outer ${name} from ${js(b0[name])} to ${js(b[name])}`);
-        // the members of the group keep their places in it
         assert.ok(near(b.f.left - b.p.left, b0.f.left - b0.p.left) && near(b.f.top - b.p.top, b0.f.top - b0.p.top), `the members of the group are moved apart: ${js({ b0, b })}`);
         const edited = await render(page);
-        // the three start at the left margin, where equal gaps leave them, as in PowerPoint
         if (axis === 'horizontal') assert.equal(edited, grouped, 'Distribute Horizontally of objects at one left margin changes the file');
         else {
           await undo(page);
@@ -260,15 +234,12 @@ describe('a new text box kept in place', () => {
 
   const DISTRIBUTE = ['horizontal', 'vertical', 'evenly'].map((k) => `arrange.distribute.${k}`);
   const PANEL = '#beeson-edit-panel-format';
-  // whether each Distribute command is enabled, and whether its button of the Arrange pane is
   const distributeOn = async (page) => {
     await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-tabs button')].find((b) => b.textContent === 'Arrange')?.click()`);
     await frames(page);
     return page.evaluate(`${js(DISTRIBUTE)}.map((id) => [window.BeesonEditor.state(id).enabled, !document.querySelector('${PANEL} [data-command="' + id + '"]')?.disabled])`);
   };
 
-  // ruling 4 of the juror of round 6: with one selected object the pane reads Align to Slide, and
-  // Distribute acts on the object against the slide, as in PowerPoint. a group alone is one object
   for (const platform of PLATFORMS) {
     test(`Distribute is enabled for one selected object, and centers a group alone on the slide as one object (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
@@ -298,9 +269,6 @@ describe('a new text box kept in place', () => {
   }
 });
 
-// regression tests of R17.11 on both platforms: a new text box on a title or closing slide is a
-// child of the section, and the lines of the block keep their places. a box begun by a click on
-// Text right after a box was emptied is undone by one undo
 describe('the lines of a title block kept', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -324,7 +292,6 @@ describe('the lines of a title block kept', () => {
   const redo = (page) => press(page, 'Mod+Shift+Z').then(() => sleep(250));
   const labels = (page) => page.evaluate(`({ undo: window.BeesonEditor.state('edit.undo').label, redo: window.BeesonEditor.state('edit.redo').label })`);
 
-  // the editor on slide n of the demo deck, served over HTTP
   async function load(t, platform, n = 0) {
     const text = readFileSync('test-deck.html', 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -343,8 +310,6 @@ describe('the lines of a title block kept', () => {
     return page;
   }
 
-  // the boxes in slide px of the lines of the block of the current slide, and of the paragraphs of
-  // the new text box, i.e. the children of the section that start with mark or are pending
   const PLACES = (mark) => `(() => {
   const s = document.querySelector('.reveal .slides');
   const S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
@@ -361,8 +326,6 @@ describe('the lines of a title block kept', () => {
     assert.equal(a.lines.length, b.lines.length, `${what} changes the number of lines of the block`);
     a.lines.forEach((l, i) => assert.ok(near(l.left, b.lines[i].left) && near(l.top, b.lines[i].top), `${what} moves a line of the block from ${js(l)} to ${js(b.lines[i])}`));
   }
-  // an item of a menu of the menu bar, chosen with the mouse. Paste comes before Paste and Match
-  // Style in the Edit menu, hence the first item that starts with the name is taken
   async function menu(page, bar, item) {
     await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((e) => e.textContent.trim() === ${js(bar)}); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await sleep(250);
@@ -373,8 +336,6 @@ describe('the lines of a title block kept', () => {
   }
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  // N19 of round 7: on a title or closing slide, Insert > Text Box put the paragraph into the block,
-  // which is held at its foot, hence each line of the box lifted the lines of the block by a line
   for (const platform of PLATFORMS) {
     test(`a new text box on a title or closing slide keeps the lines of the block in place (${platform})`, async (t) => {
       for (const n of [0, 12]) {
@@ -387,7 +348,6 @@ describe('the lines of a title block kept', () => {
         assert.equal(empty.box.length, 1, `Text does not add a text box as a child of the section ${at}`);
         assert.equal(empty.inTitleText, false, `the text box is put into the title text ${at}`);
         sameLines(start, empty, `the insert ${at}`);
-        // the box is inside the margins of the slide, and off the words of the block and the lockup
         const b = empty.box[0];
         assert.ok(b.left >= 119.5 && b.right <= 1800.5 && b.top >= 0 && b.bottom <= 1080, `the text box ${js(b)} is outside the margins ${at}`);
         const words = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); const S = s.getBoundingClientRect(), k = S.width / s.offsetWidth; return [...Reveal.getCurrentSlide().querySelectorAll('.title-text > *')].filter((e) => e.textContent.trim()).map((e) => { const r = e.getBoundingClientRect(); return { left: (r.left - S.left) / k, top: (r.top - S.top) / k, right: (r.right - S.left) / k, bottom: (r.bottom - S.top) / k }; }); })()`);
@@ -406,7 +366,6 @@ describe('the lines of a title block kept', () => {
         const three = await places(page);
         sameLines(start, three, `three lines typed into the box ${at}`);
         const written = await render(page);
-        // the new paragraphs are children of the section, before the foot and the notes
         const slide = written.split(/<section/)[n + 1];
         assert.match(slide, /<p style="[^"]*translate: [\d.-]+px [\d.-]+px[^"]*">a<\/p>/, `the box is not written with its translate ${at}`);
         assert.ok(slide.indexOf('>a</p>') > slide.indexOf('</div>', slide.indexOf('class="title-text"')), `the box is written into the block ${at}`);
@@ -418,7 +377,6 @@ describe('the lines of a title block kept', () => {
         assert.equal(await render(page), written);
         assert.deepEqual(errors(page), []);
 
-        // the saved deck opened without edit draws the box at the place shown in the editor
         const shown = (await places(page, 'a')).box;
         const file = `.r17-11-${platform}-${n}.html`;
         writeFileSync(file, written);
@@ -440,8 +398,6 @@ describe('the lines of a title block kept', () => {
     });
   }
 
-  // the rules of R17.2 on a title slide: an undo of the first letter leaves the empty box, a box
-  // emptied and left is taken out of the file, and Edit > Paste as the first input is written
   for (const platform of PLATFORMS) {
     test(`a new text box on a title slide follows the rules of a new text box (${platform})`, async (t) => {
       const page = await load(t, platform, 0);
@@ -478,8 +434,6 @@ describe('the lines of a title block kept', () => {
     });
   }
 
-  // the edge left by R17.2: after a click on Text right after a box was emptied, the history held an
-  // insert of the new box whose undo did nothing
   for (const platform of PLATFORMS) {
     test(`one undo takes a box begun by a click on Text right after a box was emptied (${platform})`, async (t) => {
       for (const n of [4, 0]) {
@@ -498,7 +452,6 @@ describe('the lines of a title block kept', () => {
         await undo(page);
         assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll('p.beeson-pending').length`), 0, `an undo does not take the new box on slide ${n + 1}`);
         await byteExact(page);
-        // each entry left changes the file at its undo
         for (let i = 0; i < 6 && (await labels(page)).undo !== 'Undo'; i++) {
           const was = await render(page);
           await undo(page);
@@ -511,11 +464,6 @@ describe('the lines of a title block kept', () => {
   }
 });
 
-// regression tests of R20.12 on both platforms: a click on a figure that leaves an emptied new text
-// box (F6), Paste of the Edit menu with the caret in a cell (F18), the place of a further new text
-// box on a title slide and of a new table without a free place (F8, O1), the slide shown by the
-// undo of Delete Text Box (F7), and Paste of the Edit menu with the read of the clipboard refused
-// (F19)
 describe('further boxes and tables on a title slide', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test-deck.html';
@@ -547,7 +495,6 @@ describe('further boxes and tables on a title slide', () => {
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, deck = DECK, n = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -566,8 +513,6 @@ describe('further boxes and tables on a title slide', () => {
     return page;
   }
 
-  // an item of a menu of the menu bar, chosen with the mouse. Paste comes before Paste and Match
-  // Style in the Edit menu, hence the first item that starts with the name is taken
   async function menu(page, bar, item) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((e) => e.textContent.trim() === ${js(bar)})`));
     await sleep(250);
@@ -577,8 +522,6 @@ describe('further boxes and tables on a title slide', () => {
     await frames(page);
   }
 
-  // the boxes in slide px of the elements of the current slide that match selector, each with its
-  // text, its frame, and the ink of its words
   const BOXES = (selector) => `(() => {
   const s = document.querySelector('.reveal .slides');
   const S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
@@ -591,14 +534,11 @@ describe('further boxes and tables on a title slide', () => {
 })()`;
   const boxes = (page, selector) => page.evaluate(BOXES(selector));
 
-  // F6: a click on a figure that left an emptied new text box took the box out, and the undo of the
-  // entries of the box put the caret into it again, which dropped the selection of the figure
   for (const platform of PLATFORMS) {
     test(`a click on a figure that leaves an emptied text box selects the figure (${platform})`, async (t) => {
       for (const pause of [300, 1300]) {
         const page = await load(t, platform, DECK, 4);
         const at = `with a pause of ${pause} ms`;
-        // an older entry, which stays undoable
         await clickText(page, 'section.present h2');
         await press(page, 'End');
         await type(page, 'Q');
@@ -624,8 +564,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // the body cells Moon to 2.53e-5 of slide 2 of the tables deck copied by a trusted Mod+C, and the
-  // caret put into the cell Titan by a click
   async function copyRange(t, platform) {
     const page = await load(t, platform, TABLES, 1);
     await page.send('Page.bringToFront');
@@ -645,8 +583,6 @@ describe('further boxes and tables on a title slide', () => {
   }
   const PASTED = '<tr><td>Moon</td><td>\\(0.01215\\)</td><td>Saturn</td></tr>\n      <tr><td>Europa</td><td>2.53e-5</td><td></td></tr>';
 
-  // F18: Paste of the Edit menu with the caret in a cell typed the whole range into this cell, while
-  // Mod+V filled the cells from it
   for (const platform of PLATFORMS) {
     test(`Paste of the Edit menu and of the cell menu fill the cells from the caret as Mod+V does (${platform})`, async (t) => {
       for (const route of ['key', 'menu', 'cell menu']) {
@@ -680,8 +616,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // F8: on a title slide, an earlier new text box counted only by the ink of its words, hence a
-  // second and a third box were put inside its frame, and its words ran under theirs once it grew
   for (const platform of PLATFORMS) {
     test(`a second and a third new text box on a title slide are put off the frames of the earlier ones (${platform})`, async (t) => {
       const page = await load(t, platform, TITLE, 0);
@@ -716,8 +650,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // F8: on a closing slide, a new table counted an earlier new text box only by the ink of its
-  // words, hence the table was put over the frame of the box
   for (const platform of PLATFORMS) {
     test(`a new table on a closing slide is put off the frame of an earlier new text box (${platform})`, async (t) => {
       const n = (page) => page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.matches('.closing'))`);
@@ -742,8 +674,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // the boxes in slide px of the tables, of the pictures of the figures, and of each line of the
-  // words of the current slide
   const PIECES = `(() => {
   const slide = Reveal.getCurrentSlide();
   const s = document.querySelector('.reveal .slides');
@@ -759,8 +689,6 @@ describe('further boxes and tables on a title slide', () => {
   return { tables, figures, lines };
 })()`;
 
-  // O1: a new table without a free place is put at the place off the figures nearest to the middle
-  // of the slide, as the juror of round 6 ruled (finding 64 of glm in round 9)
   for (const platform of PLATFORMS) {
     test(`a new table without a free place is put at the middle of the slide, off the figure and the first table (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, 4);
@@ -783,8 +711,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // F7: the entry Delete Text Box of a box left by a click on a row of the navigator was opened on
-  // the clicked slide, hence its undo showed this slide and not the slide of the box
   for (const platform of PLATFORMS) {
     test(`the undo of Delete Text Box shows the slide of the box (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, 4);
@@ -817,8 +743,6 @@ describe('further boxes and tables on a title slide', () => {
     });
   }
 
-  // F19: with the read of the clipboard refused, Paste of the Edit menu pasted nothing and said
-  // nothing, while Mod+V pasted
   for (const platform of PLATFORMS) {
     test(`Paste of the Edit menu with the read of the clipboard refused says that Mod+V pastes (${platform})`, async (t) => {
       const page = await load(t, platform, TABLES, 2);
@@ -839,9 +763,6 @@ describe('further boxes and tables on a title slide', () => {
   }
 });
 
-// regression tests of R15.12 on both platforms, the findings F1, F2, F6, F7, and F11 of the review
-// of round 7: a new text box in the block of a title or a closing slide, Distribute of texts at one
-// margin, and the lifted copy of a row at a zoom and at a change of slide
 describe('the first key in a new title box', () => {
   const PLATFORMS = ['mac', 'other'];
   const TABLES = 'test/pages/editor-r13-3.html';
@@ -866,7 +787,6 @@ describe('the first key in a new title box', () => {
   const near = (a, b, what, tol = 1) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b}`);
   let saves = 0;
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, n, deck = 'test-deck.html') {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -884,9 +804,6 @@ describe('the first key in a new title box', () => {
     return page;
   }
 
-  // the texts of the block of the current slide in slide px, and the new text box, a child of the
-  // section after them: the box of each and the boxes of its lines, with the box of an empty text as
-  // its one line
   const TEXTS = `(() => {
   const s = document.querySelector('.reveal .slides'), S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
   const px = (r) => ({ top: (r.top - S.top) / k, bottom: (r.bottom - S.top) / k, left: (r.left - S.left) / k, right: (r.right - S.left) / k });
@@ -900,8 +817,6 @@ describe('the first key in a new title box', () => {
 })()`;
   const meets = (a, b) => a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5 && a.left < b.right && b.left < a.right;
 
-  // F1: on a title or a closing slide the block is anchored at its bottom. at the first key the
-  // texts of the block moved down by 48 px, and the box was held in its place over the last line
   for (const platform of PLATFORMS) {
     test(`the first key in a new text box of a title or a closing slide moves no text, and the box does not lie over a text (${platform})`, async (t) => {
       for (const n of [0, 12]) {
@@ -918,7 +833,6 @@ describe('the first key in a new title box', () => {
         assert.equal(box.text, 'Hq');
         for (let i = 0; i < empty.length - 1; i++) near(written[i].box.top, empty[i].box.top, `the first key on slide ${n + 1} moves the ${empty[i].name}`, 0.6);
         near(box.box.top, empty.at(-1).box.top, `the first key on slide ${n + 1} moves the box`, 0.6);
-        // the distance of the box to the text before it is the distance that the empty box had
         near(box.box.top - written.at(-2).box.bottom, empty.at(-1).box.top - empty.at(-2).box.bottom, `the gap over the box on slide ${n + 1}`, 0.6);
         for (const other of written.slice(0, -1)) {
           for (const a of box.lines) for (const b of other.lines) assert.ok(!meets(a, b), `a line of the box on slide ${n + 1} lies over a line of the ${other.name}: ${js({ a, b })}`);
@@ -933,15 +847,12 @@ describe('the first key in a new title box', () => {
     });
   }
 
-  // the left and the right of the heading, the paragraph, and the list of slide 5, in slide px
   const COLUMN = `(() => {
   const s = document.querySelector('.reveal .slides'), S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
   const c = Reveal.getCurrentSlide();
   return Object.fromEntries(['h2', 'p', 'ul'].map((n) => { const r = c.querySelector(':scope > ' + n).getBoundingClientRect(); return [n, [Math.round((r.left - S.left) / k), Math.round((r.right - S.left) / k)]]; }));
 })()`;
 
-  // F2: Distribute Horizontally of three texts at the left margin spaced their centers where the gap
-  // is negative, and moved the list by 25 px
   for (const platform of PLATFORMS) {
     test(`Distribute Horizontally of three texts at one left margin leaves them and the file as they are (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -963,7 +874,6 @@ describe('the first key in a new title box', () => {
     });
   }
 
-  // the rows of the table of the current slide, a segment of a bar, and the lifted copy of a row
   const TABLE = `document.querySelector('.reveal section.present table')`;
   const rowsOf = (page) => page.evaluate(`[...${TABLE}.rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()).join(' '))`);
   const segment = (bar, i) => `.beeson-table-bars .bar.${bar} > [data-index="${i}"]`;
@@ -977,7 +887,6 @@ describe('the first key in a new title box', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // row 2 of the plain table selected by its bar and dragged down by one row with the button held
   async function liftRow(page) {
     await click(page, await cellPoint(page, 'A2'));
     await wait(page, 100);
@@ -990,7 +899,6 @@ describe('the first key in a new title box', () => {
     return { x: m.x, y: m.y + m.h };
   }
 
-  // F6: the lifted copy kept its size and its place from the start of the drag after a zoom
   for (const platform of PLATFORMS) {
     test(`the lifted copy of a row is scaled and placed with the table at a zoom during the drag (${platform})`, async (t) => {
       const page = await load(t, platform, 1, TABLES);
@@ -1009,7 +917,6 @@ describe('the first key in a new title box', () => {
         near(l.w, r.w, `the width of the lifted row ${what}`, 2);
         near(l.h, r.h, `the height of the lifted row ${what}`, 2);
         near(l.x, r.x, `the left of the lifted row ${what}`, 2);
-        // the point of the copy under the pointer is the one pressed, at the scale of the zoom
         near(l.y - y, ((l0.y - at.y) * r.h) / r0.h, `the top of the lifted row against the pointer ${what}`, 2);
       };
       await check(at.y, 'after the zoom');
@@ -1024,9 +931,6 @@ describe('the first key in a new title box', () => {
     });
   }
 
-  // F7: a drag by a bar went on after a change of slide, and the release moved the row of the slide
-  // that was left, as an entry of the history. a key does not change the slide during the drag, as
-  // test/editor-table-rows.test.mjs checks for PageDown
   for (const platform of PLATFORMS) {
     for (const [how, go] of [['Reveal.slide', (page) => page.evaluate('Reveal.slide(2)')]]) {
       test(`a change of slide by ${how} ends the drag of a row by its bar without a change of the file (${platform})`, async (t) => {

@@ -1,9 +1,3 @@
-// the structure and the formats of the text of a slide, on both platforms: Return splits a block,
-// Backspace and Delete join two, Tab and Shift+Tab change the level of a list item, the list
-// switch, the links, the formats of the words, their tones, and the paragraph styles. each edit is
-// checked byte for byte, after an undo and a redo, against the scope rule, and after a save and an
-// open of the saved text
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -44,8 +38,6 @@ after(async () => {
   server?.close();
 });
 
-// the editor on the third slide of the deck of layouts, served over HTTP, where a save is written
-// into the origin private file system
 let last = null;
 
 async function textPage(platform) {
@@ -62,8 +54,6 @@ async function textPage(platform) {
   return page;
 }
 
-// selects the characters start to end of the text of the first element at selector whose text
-// contains has, with its block focused
 const select = (page, selector, has, start, end = start) =>
   page.evaluate(`(() => {
     const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.textContent.includes(${JSON.stringify(has)}));
@@ -90,14 +80,11 @@ const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${JSON.stri
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 
-// a trusted key with its key, code, and Windows key code given, for a symbol that press() does not
-// know. mods holds the bits Alt 1, Ctrl 2, Meta 4, and Shift 8
 async function raw(page, key, code, keyCode, mods) {
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers: mods });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers: mods });
 }
 
-// the problems of the scope rule in the rendered text that the file did not have before
 async function inScope(page) {
   const now = textProblems(await page.evaluate('window.BeesonEditor.render()'), THEME);
   for (const p of textProblems(page.source, THEME)) {
@@ -107,8 +94,6 @@ async function inScope(page) {
   assert.deepEqual(now, []);
 }
 
-// the edit checked byte for byte, then after an undo, which gives the file with the edits before,
-// and again after a redo
 async function roundTrip(page, edits, label, before = []) {
   await byteExact(page, edits);
   await inScope(page);
@@ -119,7 +104,6 @@ async function roundTrip(page, edits, label, before = []) {
   await byteExact(page, edits);
 }
 
-// the errors of the page, apart from the request of a favicon, which the server does not have
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let saves = 0;
@@ -155,7 +139,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'edit.undo')).label, 'Undo Join Paragraphs');
     await undo(page);
     await byteExact(page, [split]);
-    // Delete at the end of the first part joins them too
     await select(page, '.reveal section.present li', 'A first', 7);
     await press(page, 'Delete');
     await byteExact(page);
@@ -181,7 +164,6 @@ for (const platform of PLATFORMS) {
 
   test(`Tab nests a list item in a ul of the item before, and Shift+Tab takes it out on ${platform}`, async () => {
     const page = await textPage(platform);
-    // Tab in the first item is taken, and does not change its level
     await select(page, '.reveal section.present li', 'A first item', 3);
     await press(page, 'Tab');
     await byteExact(page);
@@ -236,7 +218,6 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`window.BeesonEditor.render().includes('href="#/7"')`);
     const link = [PARAGRAPH, PARAGRAPH.replace('paragraph', '<a href="#/7">paragraph</a>')];
     await roundTrip(page, [link], 'Link');
-    // the caret in the link opens the dialog on its slide, and Remove takes the link off
     await select(page, '.reveal section.present a', 'paragraph', 3);
     assert.equal((await state(page, 'text.link')).label, 'Edit Link…');
     await press(page, 'Mod+K');
@@ -247,7 +228,6 @@ for (const platform of PLATFORMS) {
     await byteExact(page);
     await undo(page);
     await byteExact(page, [link]);
-    // a webpage typed without its scheme, and Esc, which closes the dialog without a change
     await select(page, '.reveal section.present > p', 'A paragraph', 17, 21);
     await press(page, 'Mod+K');
     await page.waitFor(`document.activeElement?.name === 'href'`);
@@ -277,7 +257,6 @@ for (const platform of PLATFORMS) {
     await roundTrip(page, [word('<sup>paragraph</sup>')], 'Superscript');
     await select(page, '.reveal section.present > p', 'A paragraph', 2, 11);
     assert.equal((await state(page, 'text.superscript')).checked, true);
-    // subscript takes superscript off, and a second subscript takes itself off
     if (platform === 'mac') await raw(page, '-', 'Minus', 189, 2 | mod);
     else await raw(page, ',', 'Comma', 188, mod);
     await roundTrip(page, [word('<sub>paragraph</sub>')], 'Subscript', [word('<sup>paragraph</sup>')]);
@@ -296,7 +275,6 @@ for (const platform of PLATFORMS) {
     await inScope(page);
     await exec(page, 'text.tone.text');
     await byteExact(page);
-    // the caret in a word sets the format on the word
     await select(page, '.reveal section.present > p', 'A paragraph', 5);
     await press(page, 'Mod+B');
     await roundTrip(page, [word('<strong>paragraph</strong>')], 'Bold');
@@ -317,7 +295,6 @@ for (const platform of PLATFORMS) {
     const block = () => select(page, '.reveal section.present > :is(p, h3, div)', 'A paragraph', 3);
     const smaller = () => raw(page, '<', 'Comma', 188, mod | 8);
     const bigger = () => raw(page, '>', 'Period', 190, mod | 8);
-    // each style after the one before, with the caret kept in the retagged block
     const steps = [
       [() => exec(page, 'text.style.subheading'), as('<h3>', '</h3>'), 'Paragraph Style', 'h3'],
       [smaller, as('<p>', '</p>'), 'Smaller', 'p'],
@@ -343,7 +320,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'text.smaller')).enabled, false);
     await exec(page, 'text.style.body');
     await byteExact(page);
-    // a style is set on a block selected on the canvas too, after Esc leaves its text
     await press(page, 'Escape');
     assert.equal(await page.evaluate('document.activeElement.localName'), 'body');
     await exec(page, 'text.style.subheading');
@@ -353,13 +329,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// regression tests of R23.1 on both platforms, for six gaps of the acceptance audit of round 8: a
-// moved or turned element glides in a Magic Move of the show, the formula key writes into a new
-// empty text box, a paragraph style keeps a trailing space, the effect of a step is set on an
-// element shown with the slide, an empty list item is drawn without its mark outside the editor,
-// Oval gives the ellipse of a letterboxed picture, and Text Color > Text gives a small paragraph
-// the text color. after each edit an undo gives the file byte for byte, a redo gives the edit, and
-// a save is opened again without problems
 describe('Magic Move glide, formula key, and list marks', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r23-1.html';
@@ -397,7 +366,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     return text;
   }
 
-  // the editor on the deck at slide
   async function load(t, platform, slide = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -413,7 +381,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     return page;
   }
 
-  // the deck without the editor at slide, as the show draws it
   async function show(t, slide = 0, query = '') {
     const page = await browser.newPage({ width: 1600, height: 900 });
     t.after(() => page.close().catch(() => {}));
@@ -423,8 +390,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     return page;
   }
 
-  // the edit is one entry of the history with label: an undo gives the file back byte for byte, a
-  // redo gives the edit, and a save is opened again as it is
   async function roundTrip(page, expected, label) {
     assert.equal(await render(page), expected);
     if (label) assert.equal(await undoLabel(page), label);
@@ -436,7 +401,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     assert.equal(text, expected);
   }
 
-  // the caret put into the block of selector by a click on its first characters
   async function caretIn(page, selector) {
     const at = await page.evaluate(`(() => {
     const el = document.querySelector(${js(`${SLIDE} ${selector}`)});
@@ -454,17 +418,12 @@ describe('Magic Move glide, formula key, and list marks', () => {
     await frames(page);
   }
 
-  // the block of selector selected as an object, by a click into its text and Esc
   async function selectTextElement(page, selector) {
     await caretIn(page, selector);
     await press(page, 'Escape');
     await frames(page);
   }
 
-  // G10. the shape moved between the two slides of the Magic Move is between its two places during
-  // the move, and the turned one is between its two angles. the shape left in place stays there at
-  // full opacity. the shapes are read in the page at each frame of the move, since on a slow runner
-  // one read sent 160 ms after the move was started was answered after its end
   test('a moved and a turned element glide in a Magic Move of the show, and an element left in place stays', async (t) => {
     const page = await show(t, 0);
     const read = `(() => {
@@ -488,7 +447,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
   })`);
     const to = await page.evaluate(read);
     assert.ok(to.moved[0] - from.moved[0] > 100, `the shape is not moved by the slides: ${js([from, to])}`);
-    // the frame in which the moved shape is nearest to the middle of its way
     const half = (from.moved[0] + to.moved[0]) / 2;
     const mid = moving.reduce((a, b) => (Math.abs(b.moved[0] - half) < Math.abs(a.moved[0] - half) ? b : a));
     const between = (a, b, v) => v > Math.min(a, b) + 5 && v < Math.max(a, b) - 5;
@@ -500,8 +458,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     assert.deepEqual(errors(page), []);
   });
 
-  // the key of an inline formula: Cmd+Option+E on a Mac, and Alt+= elsewhere, sent as the browser
-  // sends it
   async function formulaKey(page, platform) {
     if (platform === 'mac') return press(page, 'Mod+Alt+E');
     const base = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
@@ -509,14 +465,12 @@ describe('Magic Move glide, formula key, and list marks', () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   }
 
-  // a new text box on the empty slide, with the caret in it
   async function newBox(page) {
     await click(page, '.beeson-edit-top [data-command="insert.text"]');
     await sleep(300);
     assert.equal(await page.evaluate(`!!document.querySelector(${js(`${SLIDE} .beeson-pending`)})`), true, 'the box is not drawn');
   }
 
-  // the TeX typed into the open sheet of a formula and applied with Mod+Enter
   async function applyTex(page, tex) {
     await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
     await type(page, tex);
@@ -525,7 +479,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     await sleep(500);
   }
 
-  // a trusted click on the title of a menu of the menu bar, then on each item of path in turn
   async function choose(page, bar, ...path) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     assert.ok(i >= 0, `the menu bar does not have ${bar}`);
@@ -543,7 +496,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     }
   }
 
-  // the text of the empty slide in the file, with the paragraph written there
   const emptySlide = (text) => text.match(/<section>\n  <h2>Empty<\/h2>[\s\S]*?<\/section>/)[0];
 
   for (const platform of PLATFORMS) {
@@ -557,7 +509,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
         const text = await render(page);
         assert.match(emptySlide(text), /\n  <p( style="[^"]*")?>\\\(\\theta_1\\\)<\/p>\n<\/section>$/, `the formula is not written: ${emptySlide(text)}`);
         assert.equal(await page.evaluate(`document.querySelectorAll(${js(`${SLIDE} p mjx-container`)}).length`), 1, 'the formula is not typeset');
-        // one entry, whose undo gives the file back
         await undo(page);
         assert.equal(await render(page), SOURCE, 'one undo does not give the file back');
         await redo(page);
@@ -583,14 +534,12 @@ describe('Magic Move glide, formula key, and list marks', () => {
     });
   }
 
-  // the center of the chip of the row of the Steps pane whose text starts with text
   const chipOf = (page, text) => page.evaluate(`(() => {
   const row = [...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.text').textContent.startsWith(${js(text)}));
   const r = row.querySelector('.chip').getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // the item label of the open menu taken with a trusted click, once it is enabled
   async function pickItem(page, label) {
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     const item = await page.evaluate(`(() => {
@@ -600,7 +549,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
     assert.ok(item, `the menu does not have an enabled item ${label}`);
-    // an item is taken at a release 250 ms after the press that opened its menu
     await sleep(300);
     await clickText(page, item);
     await frames(page);
@@ -609,7 +557,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
   const ALPHA = '<p>Alpha stays with the slide.</p>';
   const EFFECT = '.beeson-edit-side [aria-label="Effect of the step"]';
 
-  // G12. the paragraph Alpha is shown with the slide, and Beta is step 1
   for (const platform of PLATFORMS) {
     test(`G12: the Effect control of the Steps pane makes an element shown with the slide the last step with the effect (${platform})`, async (t) => {
       const page = await load(t, platform, 3);
@@ -635,13 +582,9 @@ describe('Magic Move glide, formula key, and list marks', () => {
     });
   }
 
-  // the content of the mark of each item of the slide of lists in root, which is none for an item
-  // drawn without its mark
   const marks = (root = 'document') => `[...${root}.querySelectorAll('li')].map((li) => [li.closest('ul, ol').localName + (li.closest('ul, ol').className ? '.' + li.closest('ul, ol').className : ''), li.textContent, getComputedStyle(li, '::before').content])`;
   const LISTS = [['ul', 'A chevron', '""'], ['ul', '', 'none'], ['ul.dots', '', 'none'], ['ul.dashes', '', 'none'], ['ol', '', 'none']];
 
-  // G7. the slide of lists has an empty item in a list of chevrons, of dots, of dashes, and of numbers,
-  // whose marks the editor draws, since an empty item is the placeholder of a new slide
   for (const platform of PLATFORMS) {
     test(`G7: an empty list item is drawn without its mark in the show and in the print view, and with it in the editor (${platform})`, async (t) => {
       const page = await show(t, 4);
@@ -660,8 +603,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     });
   }
 
-  // the picture of the shown image of the slide of pictures as drawn, in screen px: its box, and the
-  // part of the box that the picture fills under object-fit contain
   const drawn = (page) => page.evaluate(`(() => {
   const img = [...document.querySelectorAll(${js(`${SLIDE} figure img`)})].find((i) => i.getBoundingClientRect().width);
   const r = img.getBoundingClientRect();
@@ -671,8 +612,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
   return { box: [r.width, r.height].map(round), picture: [r.left + (r.width - w) / 2, r.top + (r.height - h) / 2, w, h].map(round) };
 })()`);
 
-  // G8. the picture of 1200 by 1440 px is drawn letterboxed at 600 by 720 px in the figure box of 600 by
-  // 800 px, hence Oval writes its width, and the figure is moved by the 40 px that the picture rises
   for (const platform of PLATFORMS) {
     test(`G8: Oval on a picture drawn smaller than its box gives the ellipse of the picture, for both pictures of a pair (${platform})`, async (t) => {
       const page = await load(t, platform, 5);
@@ -693,7 +632,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     });
   }
 
-  // the color of the words of selector, and of a paragraph of body text, which is the text color
   const colors = (page, selector) => page.evaluate(`(() => {
   const s = document.querySelector(${js(SLIDE)});
   const el = s.querySelector(${js(selector)});
@@ -704,8 +642,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
     assert.ok(new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8'))).has('tone-text'));
   });
 
-  // G1. on the slide of colors, the small paragraph, the caption, and the footnote are drawn in a
-  // color of their own, and the paragraph of body text holds words in orange
   for (const platform of PLATFORMS) {
     test(`G1: Text Color > Text draws the words of a small paragraph, a caption, and a footnote in the text color (${platform})`, async (t) => {
       let page;
@@ -724,7 +660,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
         assert.equal(now, body, `the words of ${selector} are not drawn in the text color`);
       }
       page = await load(t, platform, 6);
-      // on a block in the text color, Text takes the tone of its words off
       await selectTextElement(page, 'p');
       await exec(page, 'text.tone.text');
       await roundTrip(page, edited([['<p>Body words <span class="tone-accent">in orange</span> here.</p>', '<p>Body words in orange here.</p>']]), 'Undo Text Color');
@@ -733,10 +668,6 @@ describe('Magic Move glide, formula key, and list marks', () => {
   }
 });
 
-// tests of R7.4 on both platforms with trusted input: ⌘] and ⌘[ for the list level, the name of an
-// insert in Undo, Copy Style and Paste Style for a figure, Change Case with Shift+F3 at the head of
-// its submenu, Smart Web and Email Links, and dash lists in the speaker notes. after each edit the
-// text is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('list levels, Change Case, and notes dash lists', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -770,7 +701,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 
-  // the editor on slide n of a deck, the layouts by default, opened from its file without problems
   async function load(t, platform, n = 0, deck = LAYOUTS) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -785,8 +715,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
     return page;
   }
 
-  // the edited text, the text before byte for byte after an undo, the edit again after a redo, and
-  // an open of the saved text without problems
   let saves = 0;
   async function roundTrip(page, edited, undos = 1) {
     assert.equal(await render(page), edited);
@@ -800,7 +728,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
     return text;
   }
 
-  // a press of a bracket key with the command modifier, which press() does not know
   async function bracket(page, platform, key) {
     const modifiers = platform === 'mac' ? 4 : 2;
     const [code, keyCode] = key === ']' ? ['BracketRight', 221] : ['BracketLeft', 219];
@@ -809,8 +736,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   }
 
-  // the caret put after the text at of the first element at selector, or at its end, with its block
-  // focused, by a click and then the range
   async function caretIn(page, selector, at = null) {
     await click(page, selector);
     await frames(page);
@@ -838,14 +763,12 @@ describe('list levels, Change Case, and notes dash lists', () => {
     await frames(page);
   }
 
-  // the items of the last open menu as [label, keys, disabled], with '|' for a rule
   const lastMenu = (page) => page.evaluate(`(() => {
   const menus = [...document.querySelectorAll('.beeson-edit-menu')];
   const m = menus.at(-1);
   return [...m.querySelectorAll(':scope .item, :scope .rule, :scope [role=separator]')].map((i) => i.classList.contains('item') ? [i.querySelector('.label').textContent, i.querySelector('.keys')?.textContent ?? '', i.getAttribute('aria-disabled') === 'true'] : '|');
 })()`);
 
-  // a click on the item labeled label of the open menus
   async function choose(page, label) {
     const at = await page.evaluate(`(() => {
     const item = [...document.querySelectorAll('.beeson-edit-menu .item')].reverse().find((i) => i.querySelector('.label')?.textContent === ${js(label)});
@@ -858,14 +781,11 @@ describe('list levels, Change Case, and notes dash lists', () => {
     await frames(page);
   }
 
-  // the menus of a path opened from the menu bar, e.g. Format, Font, Change Case
   async function openPath(page, path) {
     await openBar(page, path[0]);
     for (const name of path.slice(1)) await choose(page, name);
   }
 
-  // the parts of a zip, from its central directory, as a map of a name to a Buffer, as in
-  // pptx.test.mjs
   function unzip(file) {
     const end = file.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
     const parts = new Map();
@@ -888,8 +808,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
 
   for (const platform of PLATFORMS) {
     test(`⌘] and ⌘[ change the level of a list item as Tab and Shift+Tab do, and the menu shows them (${platform})`, async (t) => {
-      // Tab on a page of its own, closed before the next, since the first indent after an open
-      // writes the step that reveal.js numbered on the page, and a later one the step of the file
       const second = '.reveal section.present > ul > li:nth-child(2)';
       const tab = await load(t, platform, TEXT);
       await caretIn(tab, second, 'A sec');
@@ -907,7 +825,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       assert.equal(await undoLabel(page), 'Undo Increase Indent Level');
       await undo(page);
       await byteExact(page);
-      // the nested item is taken out a level with the left bracket, as with Shift+Tab
       const nested = '.reveal section.present > ul ul > li';
       await caretIn(page, nested, 'A nes');
       await bracket(page, platform, '[');
@@ -915,8 +832,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const outdented = await render(page);
       assert.notEqual(outdented, page.source, `${KEY[platform].outdent} did not outdent the item`);
       await roundTrip(page, outdented);
-      // the List submenu of Format > Text shows the bracket keys, Keynote's keys of the two items, on
-      // a Mac, and elsewhere Tab and Shift+Tab, since ] and [ are typed with AltGr on some layouts
       const shown = platform === 'mac' ? KEY.mac : { indent: 'Tab', outdent: 'Shift+Tab' };
       await caretIn(page, '.reveal section.present > ul > li:nth-child(1)', 'A fir');
       await openPath(page, ['Format', 'Text']);
@@ -928,7 +843,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
     });
 
     test(`an insert is named Insert and its kind in Undo, while the menu keeps its label (${platform})`, async (t) => {
-      // slide 3 does not have a footnote, which Footnote would only give the caret
       const page = await load(t, platform, FIGURE_BOX);
       for (const [id, label] of [['insert.text', 'Text Box'], ['insert.code', 'Code Box'], ['insert.footnote', 'Footnote']]) {
         await exec(page, id);
@@ -936,7 +850,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
         assert.equal(await undoLabel(page), `Undo Insert ${label}`);
         await press(page, 'Escape');
         await sleep(150);
-        // a text box left empty is written as an empty paragraph in the entry of its insert
         if (id === 'insert.text') {
           assert.equal(await undoLabel(page), 'Undo Insert Text Box');
           await undo(page);
@@ -944,8 +857,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
         }
         await byteExact(page);
       }
-      // the Edit menu reads Undo Typing after a text box is typed, as Keynote does, with Undo Insert
-      // Text Box under it, and Insert still lists Text Box
       await exec(page, 'insert.text');
       await frames(page);
       await typeKeys(page, 'x');
@@ -962,7 +873,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await undo(page);
       await sleep(100);
       await byteExact(page);
-      // a QR code and a table, each one entry named for its kind
       await exec(page, 'insert.qr');
       await frames(page);
       assert.equal(await undoLabel(page), 'Undo Insert QR Code');
@@ -979,7 +889,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await exec(page, 'insert.formula');
       await sleep(200);
       assert.equal(await undoLabel(page), 'Undo Insert Formula');
-      // the TeX field closed with an empty TeX takes the formula off, which finds its entry by name
       await press(page, 'Escape');
       await sleep(400);
       await byteExact(page);
@@ -991,18 +900,15 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const page = await load(t, platform, WHITE_FIGURE);
       const copy = platform === 'mac' ? 'Mod+Alt+C' : 'Mod+Shift+C';
       const paste = platform === 'mac' ? 'Mod+Alt+V' : 'Mod+Shift+V';
-      // the image of the figure box of slide 3 is shown in one mode only
       await page.evaluate(`Reveal.slide(${FIGURE_BOX})`);
       await frames(page);
       await click(page, '.reveal section.present .figure-box > img');
       await frames(page);
       assert.equal((await state(page, 'text.copyStyle')).enabled, true, 'Copy Style is dimmed on an image');
-      // the first click selects the figure, whose style is the style of the image shown in it
       assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`), ['figure']);
       const mode = await page.evaluate(`[...document.querySelectorAll('.reveal section.present .figure-box > img')].find((e) => e.getBoundingClientRect().width).className`);
       assert.match(mode, /^for-(dark|light)$/);
       await press(page, copy);
-      // on the white figure of slide 6, white-figure is taken off and the mode is set
       await page.evaluate(`Reveal.slide(${WHITE_FIGURE})`);
       await frames(page);
       await click(page, '.reveal section.present .plate > img');
@@ -1014,8 +920,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const img = '<img class="white-figure" src="../../demo/figure-light.png" alt="A white raster figure">';
       const styled = page.source.replace(img, `<img class="${mode}" src="../../demo/figure-light.png" alt="A white raster figure">`);
       await roundTrip(page, styled);
-      // the white-figure style of slide 6 goes to the video of the split slide, which takes only the mode, in a
-      // class written after its attributes
       await page.evaluate(`Reveal.slide(${SPLIT})`);
       await frames(page);
       await click(page, '.reveal section.present .figure-box > video');
@@ -1024,7 +928,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await frames(page);
       const video = '<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop></video>';
       await roundTrip(page, page.source.replace(video, `<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop class="${mode}"></video>`));
-      // a text style is not pasted on a figure, and a figure style not on a text
       await caretIn(page, '.reveal section.present .text-column > p', 'Words');
       assert.equal((await state(page, 'text.pasteStyle')).enabled, false, 'the style of a figure is pasted on a text');
       await press(page, copy);
@@ -1062,7 +965,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await frames(page);
       assert.equal(await undoLabel(page), 'Undo Change Case');
       await roundTrip(page, page.source.replace(PARAGRAPH, PARAGRAPH.replace('paragraph', 'PARAGRAPH')));
-      // the sheet of shortcuts lists the key at Change Case
       await exec(page, 'help.keys');
       await frames(page);
       const rows = await page.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-keys .row')].map((r) => [r.firstChild.textContent, r.lastChild.textContent])`);
@@ -1081,7 +983,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const linked = PARAGRAPH.replace('inline.</p>', 'inline. See <a href="https://www.example.com/a">www.example.com/a</a>. </p>');
       assert.equal(await undoLabel(page), 'Undo Smart Link');
       assert.equal(await render(page), page.source.replace(PARAGRAPH, linked));
-      // one undo leaves the typed text, and the next takes the typing
       await undo(page);
       assert.equal(await render(page), page.source.replace(PARAGRAPH, typed));
       await undo(page);
@@ -1089,14 +990,11 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await redo(page);
       await redo(page);
       await roundTrip(page, page.source.replace(PARAGRAPH, linked), 2);
-      // an email address gets a mailto link, and a word with a dot is left as typed
       await caretIn(page, P);
       await typeKeys(page, 'me@example.org e.g. ');
       await frames(page);
       const mail = linked.replace('</a>. </p>', '</a>. <a href="mailto:me@example.org">me@example.org</a> e.g. </p>');
-      // three entries: the address typed, its link, and the words typed after it
       await roundTrip(page, page.source.replace(linked, mail), 3);
-      // switched off in Edit > Substitutions, an address stays text
       await openPath(page, ['Edit', 'Substitutions']);
       await choose(page, 'Smart Web and Email Links');
       assert.equal((await state(page, 'text.smart.links')).checked, false);
@@ -1118,7 +1016,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       await typeKeys(page, '- first');
       await frames(page);
       assert.equal(await render(page), page.source.replace(notes, '<aside class="notes">Notes of a content slide.<ul><li>first</li></ul></aside>'));
-      // Return starts the next item, and Return in an empty item ends the list
       await press(page, 'Enter');
       await typeKeys(page, 'second');
       await press(page, 'Enter');
@@ -1128,7 +1025,6 @@ describe('list levels, Change Case, and notes dash lists', () => {
       const listed = '<aside class="notes">Notes of a content slide.<ul><li>first</li><li>second</li></ul>after</aside>';
       assert.equal(await render(page), page.source.replace(notes, listed));
       page.source = page.source.replace(notes, listed);
-      // Backspace at the start of an item makes it a line again
       await caretIn(page, `${NOTES} li:nth-child(2)`);
       await page.evaluate(`(() => { const r = document.createRange(); r.setStart(document.querySelector(${js(`${NOTES} li:nth-child(2)`)}).firstChild, 0); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
       await press(page, 'Backspace');
@@ -1181,11 +1077,9 @@ describe('list levels, Change Case, and notes dash lists', () => {
 
   test('the speaker view of reveal.js and the PowerPoint file show the list of the notes', async (t) => {
     const listed = readFileSync(LAYOUTS, 'utf8').replace('<aside class="notes">Notes of a content slide.</aside>', '<aside class="notes">Notes of a content slide.<ul><li>first</li><li>second</li></ul>after</aside>');
-    // the deck saved next to the layouts, so that its paths to the theme hold
     const deck = 'test/pages/r7-4-notes.tmp.html';
     writeFileSync(deck, listed);
     t.after(() => rmSync(deck, { force: true }));
-    // the editor opens the deck with the list in its notes and renders it unchanged
     const page = await load(t, 'mac', TEXT, deck);
     assert.equal(await render(page), listed);
     await page.close();
@@ -1195,13 +1089,10 @@ describe('list levels, Change Case, and notes dash lists', () => {
     await show.waitFor(deckSettled);
     const notes = await show.evaluate(`Reveal.getSlideNotes(Reveal.getSlides().find((s) => s.querySelector('h2')?.textContent === 'Text, a list, and a backdrop'))`);
     assert.equal(notes, 'Notes of a content slide.<ul><li>first</li><li>second</li></ul>after');
-    // the speaker view writes the notes as HTML into its notes box
     assert.match(readFileSync('theme/vendor/reveal/notes.js', 'utf8'), /notesValue\.innerHTML = data\.notes;/);
     const folder = mkdtempSync(join(tmpdir(), 'beeson-r7-4-'));
     try {
       const output = join(folder, 'deck.pptx');
-      // the notes are written the same with --still, and the recordings of the backdrops, 5 min of
-      // this test on a runner, are compared in test/pptx.test.mjs
       const run = spawnSync(process.execPath, ['scripts/export-pptx.mjs', '--still', deck, output], { encoding: 'utf8' });
       assert.equal(run.status, 0, run.stderr);
       const parts = unzip(readFileSync(output));
@@ -1227,14 +1118,9 @@ describe('list levels, Change Case, and notes dash lists', () => {
   });
 });
 
-// regression tests of R19.7 on both platforms, the findings D16, D17, and D18 of the fourth
-// review of round 7: the keys that type a character in the speaker notes, Bold in the notes after
-// a display was framed, and the inspector closed for the navigator in a narrow window, after the
-// deck is opened again
 describe('the keys and Bold in the speaker notes', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test-deck.html';
-  // the indices of the slides of index.html with the steps, the equations, and the figures
   const STEPS = 2;
   const EQUATIONS = 3;
   const FIGURES = 4;
@@ -1261,7 +1147,6 @@ describe('the keys and Bold in the speaker notes', () => {
 
   const urlOf = (platform) => `${server.origin}/${DECK}?edit&still&theme=light&edit-platform=${platform}`;
 
-  // opens the deck at url, with the storage of the browser as it is
   async function open(page, url, n) {
     await page.goto(url);
     await page.waitFor(deckSettled);
@@ -1282,7 +1167,6 @@ describe('the keys and Bold in the speaker notes', () => {
     return page;
   }
 
-  // the speaker notes of the slide shown, with the caret put by a click and then moved to their end
   const NOTES = `Reveal.getCurrentSlide().querySelector('aside.notes')`;
   async function notesCaret(page) {
     if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');
@@ -1293,7 +1177,6 @@ describe('the keys and Bold in the speaker notes', () => {
     assert.equal(await page.evaluate(`!!document.activeElement.closest('aside.notes')`), true, 'the click does not put the caret into the notes');
   }
 
-  // a key as a real keyboard sends it, e.g. Shift+0 with the key ) and the text )
   const REAL = {
     ')': { code: 'Digit0', windowsVirtualKeyCode: 48, modifiers: 8 },
     '!': { code: 'Digit1', windowsVirtualKeyCode: 49, modifiers: 8 },
@@ -1309,7 +1192,6 @@ describe('the keys and Bold in the speaker notes', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D16: the notes take every bare key that types a character, also with Shift
     test(`the speaker notes take every key that types a character, also ) of Shift+0 (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await notesCaret(page);
@@ -1329,7 +1211,6 @@ describe('the keys and Bold in the speaker notes', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D17: Bold and Italic act on a text of the notes, also after a display was framed
     test(`Bold and Italic are live in the notes after a display of math was framed (${platform})`, async (t) => {
       const page = await load(t, platform, EQUATIONS);
       await click(page, await rect(page, `Reveal.getCurrentSlide().querySelector('div.math mjx-container')`));
@@ -1347,7 +1228,6 @@ describe('the keys and Bold in the speaker notes', () => {
     });
   }
 
-  // whether the navigator and the inspector are drawn, and whether Format is checked
   const panes = (page) => page.evaluate(`(() => {
   const drawn = (s) => (document.querySelector(s)?.getBoundingClientRect().width ?? 0) > 0;
   return { nav: drawn('.beeson-edit-nav'), inspector: drawn('.beeson-edit-inspector'), format: window.BeesonEditor.state('shell.format').checked };
@@ -1358,7 +1238,6 @@ describe('the keys and Bold in the speaker notes', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D18: the inspector closed only to make room for the navigator comes back after a reopen
     test(`the inspector closed for the navigator in a narrow window is given back after the deck is opened again (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES, { width: 760, height: 900 });
       assert.deepEqual(await panes(page), { nav: false, inspector: true, format: true });
@@ -1369,7 +1248,6 @@ describe('the keys and Bold in the speaker notes', () => {
       assert.equal((await panes(page)).inspector, true, 'the inspector is not shown after the deck is opened again at 760 px');
       await resize(page, 1600, 900);
       assert.deepEqual(await panes(page), { nav: true, inspector: true, format: true }, 'the inspector is not given back at 1600 px after the deck is opened again');
-      // Format closed by hand stays closed after a reopen
       await exec(page, 'shell.format');
       await wait(page);
       await open(page, urlOf(platform), FIGURES);

@@ -1,6 +1,3 @@
-// the place of a new table, i.e. in free space off the texts, figures, backdrops, and other tables,
-// or at the middle of a slide without a free place, and Distribute Rows Evenly
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,14 +6,8 @@ import { serve } from '../scripts/webdriver.mjs';
 import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
 import { declarationProblem } from '../src/editor/model/scope.ts';
 
-// a new element on a figure slide, on both platforms. the plate of a figure slide is in the flow and
-// as large as the slide, hence a new element is written after it, and what is drawn in the plate
-// stays where the theme puts it. a new table does not have a free place there. it is put off the
-// heading and the caption with the room of its bars, off a white figure, on less than a twentieth
-// of a video or a plot, and with its bars inside the slide
 describe('a new element on a figure slide', () => {
   const DECK = 'test/pages/editor-layouts.html';
-  // the figure slides of editor-layouts.html, with what is drawn in the plate of each
   const SLIDES = [
     [6, 'a paper image', '.plate > img'],
     [7, 'a video', '.plate > video'],
@@ -24,8 +15,6 @@ describe('a new element on a figure slide', () => {
     [9, 'a backdrop', null],
   ];
   const PLATFORMS = ['mac', 'other'];
-  // the gap and the height in screen px of the bars of a selected table, and the room in slide px
-  // that a new table keeps to a text, which is the room of the bars at the zoom of the canvas
   const BARS = 24;
 
   let browser;
@@ -47,8 +36,6 @@ describe('a new element on a figure slide', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the zoom of the canvas, the boxes in slide px of the shown elements of selector on the current
-  // slide, and the boxes of the lines of the text of the elements of texts
   const measure = (page, selector, texts) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -68,7 +55,6 @@ describe('a new element on a figure slide', () => {
   return { k, boxes, lines };
 })()`);
   const meets = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-  // the share of the area of b that a covers
   const covers = (a, b) => (Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))) / ((b.right - b.left) * (b.bottom - b.top));
   const round = (boxes) => boxes.map((b) => [b.left, b.top, b.right, b.bottom].map(Math.round));
   const grown = (b, d) => ({ left: b.left - d, top: b.top - d, right: b.right + d, bottom: b.bottom + d });
@@ -98,7 +84,6 @@ describe('a new element on a figure slide', () => {
         assert.equal(media.length, 1);
         await exec(page, id);
         await frames(page);
-        // an empty text box is written into the file only once it has text
         if (id !== 'insert.text') assert.notEqual(await render(page), before, 'nothing was inserted');
         const { boxes: after } = await measure(page, '.plate > img', ':scope > h2');
         assert.deepEqual(round(after), round(media), `the insert of a ${name} moved the image of the plate`);
@@ -108,8 +93,6 @@ describe('a new element on a figure slide', () => {
       });
     }
 
-    // an element written after the plate is under it in the flow, hence its offset would carry it above
-    // the slide once the plate is deleted or cut
     const removals = [['deleted', 'element.delete'], ['cut', 'edit.cut']];
     const inserts = [['insert.table', 'table', ':scope > table', { rows: 3, columns: 3 }], ['insert.qr', 'QR code', ':scope > .qr', undefined]];
     for (const [verb, command, id, name, selector, arg] of removals.flatMap((r) => inserts.map((i) => [...r, ...i]))) {
@@ -123,7 +106,6 @@ describe('a new element on a figure slide', () => {
         const edited = await render(page);
         const { boxes: placed } = await measure(page, selector, ':scope > h2');
         assert.equal(placed.length, 1, `no ${name} was inserted`);
-        // a point of the image that is not under the new element, the heading, or the caption
         const at = await page.evaluate(`(() => {
         const r = document.querySelector('.reveal section.present .plate img').getBoundingClientRect();
         for (let fy = 0.9; fy > 0.1; fy -= 0.05) for (let fx = 0.1; fx < 0.9; fx += 0.05) {
@@ -141,7 +123,6 @@ describe('a new element on a figure slide', () => {
         assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present .plate').length`), 0, `the plate was not ${verb}`);
         const { boxes: left } = await measure(page, selector, ':scope > h2');
         assert.deepEqual(round(left), round(placed), `the ${name} moved when the plate was ${verb}`);
-        // the removal is one entry of the history, taken back and made again byte for byte
         const deleted = await render(page);
         await undo(page);
         assert.equal(await render(page), edited);
@@ -153,8 +134,6 @@ describe('a new element on a figure slide', () => {
       });
     }
 
-    // on a content slide, the plate of the figure slide is the figure box at the right, and its delete
-    // does not move the elements beside it
     test(`a deleted plate does not write an offset on the element beside it once the slide is a content slide (${platform})`, async (t) => {
       const page = await load(t, platform, 6);
       await exec(page, 'insert.qr');
@@ -175,8 +154,6 @@ describe('a new element on a figure slide', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // the plate of a plot is as large as the slide, and a new element may lie over it, but not over
-    // another new element while a place off it exists
     test(`a second QR code on a figure slide with a plot is put off the first (${platform})`, async (t) => {
       const page = await load(t, platform, 8);
       for (let i = 0; i < 2; i++) {
@@ -191,8 +168,6 @@ describe('a new element on a figure slide', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // the first table of a new figure slide fills its plate, and a second table keeps the room of its
-    // bars to it, as to a text
     test(`a second table on a new figure slide is put off the first with the room of its bars (${platform})`, async (t) => {
       const page = await load(t, platform, 3, 'test-deck.html');
       await exec(page, 'slide.new');
@@ -226,14 +201,12 @@ describe('a new element on a figure slide', () => {
         const bars = grown(table, room);
         assert.ok(bars.left >= -1 && bars.top >= -1 && table.right <= 1921 && table.bottom <= 1081, `the table at ${js(table)} does not have its bars inside the slide`);
         for (const l of lines) assert.ok(!meets(bars, l), `the table at ${js(table)} with the room of its bars lies over a line of text at ${js(l)}`);
-        // what is drawn in the plate is where it was before the insert
         const { boxes: after } = await measure(page, drawn, ':scope > h2');
         assert.deepEqual(round(after), round(media), 'the insert of a table moved what is drawn in the plate');
         for (const m of media) {
           if (what === 'a paper image') assert.ok(!meets(table, m), `the table at ${js(table)} lies over the image at ${js(m)}`);
           else assert.ok(covers(table, m) < 0.05, `the table at ${js(table)} covers more than a twentieth of what is drawn in the plate at ${js(m)}`);
         }
-        // the insert is one entry of the history, taken back and made again byte for byte
         const edited = await render(page);
         assert.notEqual(edited, before);
         await undo(page);
@@ -246,19 +219,12 @@ describe('a new element on a figure slide', () => {
   }
 });
 
-// the place of a new table of R15.10, on both platforms. with a free place, the table is put there,
-// inside the margins of the slide. without one, it is put at the center of the slide, or at the
-// place nearest to the center that is off every figure, video, plot, QR code, and table.
-// each insert is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('a new table at a free place', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
-  // slide 5 of index.html, with a figure in its figure box and without a free place, and the figure slide
-  // of editor-layouts.html with a video in its plate
   const FIGURES = 4;
   const VIDEO = 7;
   const PLATFORMS = ['mac', 'other'];
-  // the margin of the layouts at the left and the right of a slide, in slide px
   const MARGIN = 120;
 
   let browser;
@@ -280,7 +246,6 @@ describe('a new table at a free place', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the box in slide px of each shown element of selector on the current slide
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -291,7 +256,6 @@ describe('a new table at a free place', () => {
   });
 })()`);
   const meets = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-  // a box as its left, top, width, and height, rounded to slide px
   const round = (b) => [b.left, b.top, b.right - b.left, b.bottom - b.top].map(Math.round);
   const inside = (b) => b.left >= MARGIN - 1 && b.right <= 1920 - MARGIN + 1 && b.top >= -1 && b.bottom <= 1081;
 
@@ -316,8 +280,6 @@ describe('a new table at a free place', () => {
     await frames(page);
   };
 
-  // the rendered text differs from before, an undo gives before and a redo the edited text byte for
-  // byte, and the saved text is opened again without problems
   async function checkEdit(page, before, name) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -330,8 +292,6 @@ describe('a new table at a free place', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // probe 13 and requirement 3 of the juror of round 6. slide 5 does not have a free place for a
-    // table of 3 by 3, which was put at 48, 808, left of the margin and over the last list item
     test(`a new table on slide 5 is put inside the margins at the middle of the slide, off the figure, and a second table off the first (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       const before = await render(page);
@@ -343,8 +303,6 @@ describe('a new table at a free place', () => {
       assert.ok(inside(table), `the table at ${js(round(table))} is not inside the margins of the slide`);
       assert.ok(!meets(table, figure), `the table at ${js(round(table))} lies over the figure at ${js(round(figure))}`);
       assert.ok(Math.abs((table.top + table.bottom) / 2 - 540) <= 1, `the table at ${js(round(table))} is not at the middle of the slide`);
-      // the place nearest to the center of the slide that keeps the room of the bars of the table to
-      // the figure, 48 slide px at every size of the window
       assert.deepEqual(round(table), [654, 433, 498, 213]);
       await checkEdit(page, before, `r15-10-table-${platform}.html`);
       await insertTable(page);
@@ -356,8 +314,6 @@ describe('a new table at a free place', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // a table keeps its free place under the code box of slide 6 and at the center of the free figure box
-    // of slide 4
     test(`a new table on a slide with a free place is put there as before (${platform})`, async (t) => {
       for (const [n, place] of [[5, [120, 715, 498, 213]], [3, [1251, 414, 498, 213]]]) {
         const page = await load(t, platform, n);
@@ -371,8 +327,6 @@ describe('a new table at a free place', () => {
       }
     });
 
-    // gap 7 of the juror of round 6, from state 426. a new table on the figure slide with a video was
-    // put at 1368, 811, over 19 px of the box of the video
     test(`a new table on the figure slide with a video does not cover the video (${platform})`, async (t) => {
       const page = await load(t, platform, VIDEO, LAYOUTS);
       const before = await render(page);
@@ -396,17 +350,11 @@ describe('a new table at a free place', () => {
   }
 });
 
-// regression tests of R16.5 on both platforms: a second and a third new table on a section, title,
-// closing, or split slide is put off the texts and the tables of its own block (G11), a check of
-// an overlap on one slide is not dropped by the inserts on another slide (G10), and a turned
-// figure is tested against the part of a line inside the box of its text (G9)
 describe('second and third new tables on a slide', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // slide 5 of the demo deck, with a heading, a paragraph, a list of three items, and a figure
   const FIGURES = 4;
-  // the margin of the layouts at the left and the right of a slide, in slide px
   const MARGIN = 120;
 
   let browser;
@@ -435,7 +383,6 @@ describe('second and third new tables on a slide', () => {
     await page.evaluate(`Reveal.slide(${n})`);
     await settle(page);
   };
-  // the index of the first slide of the deck that matches selector
   const indexOf = (page, selector) => page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.matches(${js(selector)}))`);
   const outlined = (page) => page.evaluate(`document.querySelectorAll('.reveal section.present .beeson-overflow').length`);
 
@@ -453,8 +400,6 @@ describe('second and third new tables on a slide', () => {
     return page;
   }
 
-  // the boxes in slide px of the tables and the figures of the current slide, and of each line of
-  // the words of its headings, paragraphs, and list items outside a table
   const pieces = (page) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -474,10 +419,6 @@ describe('second and third new tables on a slide', () => {
   const round = (b) => [b.left, b.top, b.right - b.left, b.bottom - b.top].map(Math.round);
   const inside = (b) => b.left >= MARGIN - 1 && b.right <= 1920 - MARGIN + 1 && b.top >= -1 && b.bottom <= 1081;
 
-  // count new tables of 3 by 3 on the first slide of deck that matches selector. each is put inside
-  // the margins and off the earlier tables, the figures, and the words of the slide, which are
-  // measured after the insert, since a new table in a block at the lower left pushes its words up.
-  // as many undos give the file byte for byte
   async function newTables(t, platform, deck, selector, count = 3) {
     const page = await load(t, platform, deck);
     const n = await indexOf(page, selector);
@@ -489,7 +430,6 @@ describe('second and third new tables on a slide', () => {
       await settle(page);
       const { tables, figures, texts } = await pieces(page);
       assert.equal(tables.length, i + 1, 'no table was inserted');
-      // each new table is put after the earlier ones in the file
       const table = tables[i];
       const where = `table ${i + 1} on ${deck} ${selector} at ${js(round(table))}`;
       assert.ok(inside(table), `${where} is not inside the margins`);
@@ -503,19 +443,15 @@ describe('second and third new tables on a slide', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // G11: the second table was put at 120, 808 over the lower 93 px of the first
     test(`three new tables on the section slide of the demo deck lie off each other and off the words (${platform})`, (t) => newTables(t, platform, DECK, '.section'));
     test(`three new tables on the section slide of the layouts page lie off each other and off the words (${platform})`, (t) => newTables(t, platform, LAYOUTS, '.section'));
     test(`three new tables on a title slide lie off each other and off the words (${platform})`, (t) => newTables(t, platform, DECK, '.title'));
     test(`three new tables on a closing slide lie off each other, the QR code, and the words (${platform})`, (t) => newTables(t, platform, DECK, '.closing'));
-    // the text column of the split slide of the layouts page is full after two tables, hence a third one is
-    // put by centerPlace of place.ts
     test(`two new tables on a split slide lie off each other, the zone, and the words (${platform})`, (t) => newTables(t, platform, LAYOUTS, '.split', 2));
   }
 
   for (const platform of PLATFORMS) {
     for (const kept of [false, true]) {
-      // G10: the 64 later checks of slide 1 dropped the check of slide 5 under the cap
       test(`the report of a layout change on slide 5 stays after 70 inserts on slide 1${kept ? '' : ', each undone'} (${platform})`, async (t) => {
         const page = await load(t, platform);
         await show(page, FIGURES);
@@ -542,8 +478,6 @@ describe('second and third new tables on a slide', () => {
     }
   }
 
-  // the boxes in slide px of the heading of the closing slide, of its one line of words, and of the
-  // last QR code, with the width of the QR code without its rotation
   const heading = (page) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -557,10 +491,6 @@ describe('second and third new tables on a slide', () => {
   return { h1: px(h1.getBoundingClientRect()), line: px(range.getClientRects()[0]), qr: px(q.getBoundingClientRect()), size: q.offsetWidth, marked: h1.classList.contains('beeson-overflow') };
 })()`);
 
-  // a new QR code on the closing slide turned by 45 degrees, with its center put by a typed
-  // position at the point that at gives for the boxes of heading. a second move corrects the center
-  // by less than a px. the layout is then changed to Title, which keeps the place of the heading and
-  // asks for the report of the whole slide
   async function turned(t, platform, at) {
     const page = await load(t, platform);
     await show(page, await indexOf(page, '.closing'));
@@ -584,8 +514,6 @@ describe('second and third new tables on a slide', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // G9: the lower corner of the turned QR code is 10 px inside the box of the heading and 20 px
-    // right of the end of the words, hence it meets only the content area of the font above the box
     test(`a turned QR code that meets the line of a heading only above its box is not reported (${platform})`, async (t) => {
       const { page, b, s } = await turned(t, platform, (g) => ({ x: g.line.right + 20, y: g.h1.top + 10 - g.size / Math.SQRT2 }));
       assert.ok(Math.abs((b.qr.left + b.qr.right) / 2 - b.line.right - 20) < 1.5, `the QR code is not 20 px right of the words: ${js(b)}`);
@@ -596,8 +524,6 @@ describe('second and third new tables on a slide', () => {
       assert.deepEqual(errors(page), []);
     });
 
-    // the lower corner of the turned QR code reaches 30 px into the box of the heading, 40 px left of
-    // the end of the words, and it is still reported
     test(`a turned QR code whose corner reaches the words of a heading inside its box is reported (${platform})`, async (t) => {
       const { page, b, s } = await turned(t, platform, (g) => ({ x: g.line.right - 40, y: g.h1.top + 30 - g.size / Math.SQRT2 }));
       assert.ok(b.qr.bottom > b.h1.top + 28, `the QR code does not reach into the box of the heading: ${js(b)}`);
@@ -609,16 +535,11 @@ describe('second and third new tables on a slide', () => {
   }
 });
 
-// regression tests of R17.1 on both platforms: a new table is put off the drawn orbit of the
-// backdrop of a figure slide (requirement 3d, N11), at the same place in slide px in every size of
-// the window (N10), and on a title or closing slide without moving the words of its block (N9)
 describe('a new table off the backdrop orbit', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // slide 5 of the demo deck, with a heading, a paragraph, a list of three items, and a figure
   const FIGURES = 4;
-  // the margin of the layouts at the left and the right of a slide, in slide px
   const MARGIN = 120;
 
   let browser;
@@ -643,8 +564,6 @@ describe('a new table off the backdrop orbit', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the editor on deck in a window of width by height px, with the first slide that matches the
-  // selector or the index n shown
   async function load(t, platform, deck, n, width = 1600, height = 1000) {
     const page = await browser.newPage({ width, height });
     t.after(() => page.close().catch(() => {}));
@@ -668,8 +587,6 @@ describe('a new table off the backdrop orbit', () => {
     await settle(page);
   };
 
-  // the boxes in slide px of the tables and the figures of the current slide, and of each line of the
-  // words of its texts outside a table and a plot, by the rects of their text nodes
   const pieces = (page) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -695,14 +612,12 @@ describe('a new table off the backdrop orbit', () => {
   const inside = (b) => b.left >= MARGIN - 1 && b.right <= 1920 - MARGIN + 1 && b.top >= -1 && b.bottom <= 1081;
   const wordsUnder = (box, words) => words.filter((l) => meets(box, l)).map((l) => `${l.name} ${Math.round(area(box, l))} px2`);
 
-  // the edit gives back the file byte for byte after one undo
   async function undone(page, before) {
     assert.notEqual(await render(page), before);
     await undo(page);
     assert.equal(await render(page), before);
   }
 
-  // the drawn pixels of the backdrop of the current slide under box, sampled every 4 slide px
   const drawnUnder = (page, box) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect(), k = s.width / slide.offsetWidth;
@@ -724,7 +639,6 @@ describe('a new table off the backdrop orbit', () => {
 })()`);
 
   for (const platform of PLATFORMS) {
-    // requirement 3d and N11: the table was put at 120, 231 over 1.2 percent of the drawn orbit
     test(`a new table on the figure slide with a backdrop lies off the drawn orbit and the words (${platform})`, async (t) => {
       const page = await load(t, platform, LAYOUTS, 9);
       assert.ok(await page.evaluate(`!!document.querySelector('.reveal section.present.figure > .backdrop canvas')`), 'slide 10 is not the figure slide with a backdrop');
@@ -743,7 +657,6 @@ describe('a new table off the backdrop orbit', () => {
     });
   }
 
-  // the boxes of two tables inserted on slide 5 in a window of width by height px
   async function two(t, platform, width, height) {
     const page = await load(t, platform, DECK, FIGURES, width, height);
     await insertTable(page);
@@ -756,8 +669,6 @@ describe('a new table off the backdrop orbit', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // N10: the first table was at x 620, 640, or 665 at the three sizes, and the last table at
-    // 1920 by 1080 over the words of the heading
     test(`two tables on slide 5 are put at the same places in slide px at three sizes of the window (${platform})`, async (t) => {
       const runs = [];
       for (const [w, h] of [[1280, 800], [1600, 1000], [1920, 1080]]) runs.push({ size: `${w}x${h}`, ...(await two(t, platform, w, h)) });
@@ -774,8 +685,6 @@ describe('a new table off the backdrop orbit', () => {
 
   for (const platform of PLATFORMS) {
     for (const [deck, selector] of [[DECK, '.title'], [DECK, '.closing']]) {
-      // N9: the first table moved the heading of the title slide from y 399 to y 162, and a second
-      // one to y -75, cut at the top of the slide
       test(`two new tables on a ${selector.slice(1)} slide leave the words of its block at their place (${platform})`, async (t) => {
         const page = await load(t, platform, deck, selector);
         const before = await render(page);
@@ -798,8 +707,6 @@ describe('a new table off the backdrop orbit', () => {
   }
 });
 
-// regression tests of R18.3 on both platforms: the drawn cells of a backdrop are read from a copy
-// of the canvas of a fixed size in slide px, whatever the zoom (C13)
 describe('drawn backdrop cells read at any zoom', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -825,8 +732,6 @@ describe('drawn backdrop cells read at any zoom', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the editor on deck in a window of width by height px, with the first slide that matches the
-  // selector or the index n shown
   async function load(t, platform, deck, n, width = 1600, height = 1000) {
     const page = await browser.newPage({ width, height });
     t.after(() => page.close().catch(() => {}));
@@ -850,8 +755,6 @@ describe('drawn backdrop cells read at any zoom', () => {
     await settle(page);
   };
 
-  // the boxes in slide px of the tables and the figures of the current slide, and of each line of the
-  // words of its texts outside a table and a plot, by the rects of their text nodes
   const pieces = (page) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -876,7 +779,6 @@ describe('drawn backdrop cells read at any zoom', () => {
   const round = (b) => [b.left, b.top, b.right - b.left, b.bottom - b.top].map(Math.round);
   const wordsUnder = (box, words) => words.filter((l) => meets(box, l)).map((l) => `${l.name} ${Math.round(area(box, l))} px2`);
 
-  // the drawn pixels of the backdrop of the current slide under box, sampled every 4 slide px
   const drawnUnder = (page, box) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect(), k = s.width / slide.offsetWidth;
@@ -903,7 +805,6 @@ describe('drawn backdrop cells read at any zoom', () => {
   };
 
   for (const platform of PLATFORMS) {
-    // C13: every canvas of the backdrop was read at its full size, 3840 by 2160 px at 200 percent
     test(`a new table on the figure slide with a backdrop at 200 percent reads a small copy of the canvases, and lies off the drawn orbit (${platform})`, async (t) => {
       const page = await load(t, platform, LAYOUTS, 9);
       await zoom(page, 2);
@@ -932,21 +833,13 @@ describe('drawn backdrop cells read at any zoom', () => {
   }
 });
 
-// tests of R26.6 on both platforms with trusted input: the place of a new table on a slide without
-// a free place, at the middle of the slide inside its margins with a second table beside the first
-// (finding 64 of glm), and Distribute Rows Evenly in the cell menu, the Table pane, and Format >
-// Table (a finding of gemini)
 describe('a new table without a free place', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test-deck.html';
-  // a table with a cell of two lines, and a table with a row drawn higher than its words
   const ROWS = 'test/pages/editor-r26-6.html';
   const HEIGHTS = 'test/pages/editor-r26-6-heights.html';
   const PANEL = '#beeson-edit-panel-format';
-  // slide 5 of index.html, with a figure in its figure box and without a free place for a table of 3 by 3
   const FIGURES = 4;
-  // the margin of the layouts at the left and the right of a slide, and the room of the bars of a
-  // table at every size of the window, in slide px
   const MARGIN = 120;
   const ROOM = 48;
 
@@ -971,12 +864,10 @@ describe('a new table without a free place', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const title = (page) => page.evaluate(`document.querySelector('.beeson-edit-menubar .state, .beeson-edit-header .state')?.textContent ?? null`);
   const meets = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-  // the gap in slide px between two boxes that do not meet, along the axis on which they are apart
   const gap = (a, b) => Math.max(b.left - a.right, a.left - b.right, b.top - a.bottom, a.top - b.bottom);
   const round = (b) => [b.left, b.top, b.right - b.left, b.bottom - b.top].map(Math.round);
   const inside = (b) => b.left >= MARGIN - 1 && b.right <= 1920 - MARGIN + 1 && b.top >= -1 && b.bottom <= 1081;
 
-  // the editor on slide n of deck, with the storage of the origin emptied
   async function load(t, platform, deck = DECK, n = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -995,7 +886,6 @@ describe('a new table without a free place', () => {
     return page;
   }
 
-  // the box in slide px of each shown element of selector on the current slide
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -1006,8 +896,6 @@ describe('a new table without a free place', () => {
   });
 })()`);
 
-  // finding 64 of glm: on the full slide 5 a new table was put at 702, 843, at the lower right over
-  // the last list item, where the juror of round 6 ruled the middle of the slide
   for (const platform of PLATFORMS) {
     test(`a new table on a slide without a free place is put at the middle of the slide inside the margins, and a second table beside the first (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, FIGURES);
@@ -1021,9 +909,7 @@ describe('a new table without a free place', () => {
       assert.ok(inside(table), `the table at ${js(round(table))} is not inside the margins of the slide`);
       assert.ok(Math.abs((table.top + table.bottom) / 2 - 540) <= 1, `the table at ${js(round(table))} is not at the middle of the slide`);
       assert.ok(!meets(table, figure), `the table at ${js(round(table))} lies over the figure at ${js(round(figure))}`);
-      // the place nearest to the center of the slide that keeps the room of the bars to the figure
       assert.deepEqual(round(table), [654, 433, 498, 213]);
-      // the report of the title bar is kept
       assert.match(await title(page), /\d+ texts? (is|are) under a table$/);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
       await sleep(300);
@@ -1046,7 +932,6 @@ describe('a new table without a free place', () => {
     });
   }
 
-  // the heights in slide px of the rows of the table of the current slide, and of the table
   const heights = (page) => page.evaluate(`(() => {
   const slides = document.querySelector('.reveal .slides');
   const k = slides.getBoundingClientRect().width / slides.offsetWidth;
@@ -1055,10 +940,8 @@ describe('a new table without a free place', () => {
 })()`);
   const cell = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
   const near = (a, b, what, tolerance = 1) => assert.ok(Math.abs(a - b) <= tolerance, `${what} is ${a} and not ${b}`);
-  // the heights written in the style of each row of the rendered text, or null
   const written = (text) => [...text.matchAll(/<tr( style="[^"]*")?>/g)].map((m) => (m[1] ? Number(/height: (\d+)px/.exec(m[1])?.[1] ?? NaN) : null));
 
-  // an undo gives the text of the file, a redo the edit, and a save is opened again without problems
   async function roundTrip(page, name) {
     const edited = await render(page);
     assert.notEqual(edited, page.source);
@@ -1079,7 +962,6 @@ describe('a new table without a free place', () => {
   });
 
   for (const platform of PLATFORMS) {
-    // a finding of gemini: the cell menu had Distribute Columns Evenly and not Distribute Rows Evenly
     test(`Distribute Rows Evenly of the cell menu gives every row the same height and keeps the height of the table (${platform})`, async (t) => {
       const page = await load(t, platform, HEIGHTS);
       const before = await heights(page);
@@ -1115,7 +997,6 @@ describe('a new table without a free place', () => {
       await sleep(200);
       await frames(page);
       const after = await heights(page);
-      // a row is not drawn lower than its words, hence each row is as high as the row of two lines
       const high = Math.max(...before.rows);
       for (const [n, h] of after.rows.entries()) near(h, high, `the row ${n + 1}`, 1.5);
       await roundTrip(page, `r26-6-pane-${platform}.html`);

@@ -1,9 +1,3 @@
-// regression tests of R9.6 on both platforms with trusted input: Bold and Italic at a caret, the
-// items of a list as one text, the undo of a format, Bigger on a selected word, the focus after
-// Replace, the popover of a clicked link, the keys in the tooltips of the Text pane, and the names
-// of the entries of the history. after each edit the text is checked byte for byte, after an undo
-// and a redo, and after a save and an open
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -30,7 +24,6 @@ const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 let saves = 0;
 
-// the editor on slide n of the demo deck, counted from 0, served over HTTP
 async function load(t, platform, n = 4) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close().catch(() => {}));
@@ -48,8 +41,6 @@ async function load(t, platform, n = 4) {
   return page;
 }
 
-// roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-// and an open of the saved edit without problems
 async function roundTrip(page, undos = 1) {
   const edited = await render(page);
   assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -64,10 +55,8 @@ async function roundTrip(page, undos = 1) {
   return edited;
 }
 
-// the shown element of selector that holds needle, as an expression
 const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
 
-// the client point of the character at offset k of needle in the text of the element
 const pointOf = (page, selector, needle, k = 0) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -82,7 +71,6 @@ const pointOf = (page, selector, needle, k = 0) => page.evaluate(`(() => {
   }
 })()`);
 
-// the caret put after k characters of needle, in the text node that holds it
 const caretAt = (page, selector, needle, k) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -92,8 +80,6 @@ const caretAt = (page, selector, needle, k) => page.evaluate(`(() => {
   }
 })()`);
 
-// the selection of the window: its text, whether it is collapsed, and the text of its block before
-// the caret
 const selection = (page) => page.evaluate(`(() => {
   const s = getSelection();
   if (!s.rangeCount) return null;
@@ -106,8 +92,6 @@ const selection = (page) => page.evaluate(`(() => {
 
 const PARA = '.reveal section.present > p';
 
-// finding text-lists-find-1: with the caret in a word or at its edge, Bold and Italic left the word
-// selected, and the next character typed replaced it
 for (const platform of PLATFORMS) {
   for (const [key, tag] of [['B', 'strong'], ['I', 'em']]) {
     for (const [where, k, after] of [
@@ -127,14 +111,12 @@ for (const platform of PLATFORMS) {
         await type(page, 'X');
         const text = await render(page);
         assert.ok(text.includes(after), `the paragraph is written as ${text.match(/<p>Export[^\n]*/)?.[0]}`);
-        // inside a word, the format of the word and the typing are two entries of the history
         await roundTrip(page, k === 3 ? 2 : 1);
       });
     }
   }
 }
 
-// the keydown of each F3 is kept in window.f3, so that whether it was prevented is read after it
 const WATCH_F3 = `window.addEventListener('keydown', (e) => { if (e.key === 'F3') window.f3 = e; }, true)`;
 const prevented = async (page, keys) => {
   await page.evaluate('window.f3 = null');
@@ -142,8 +124,6 @@ const prevented = async (page, keys) => {
   return page.evaluate('window.f3 ? window.f3.defaultPrevented : null');
 };
 
-// finding 9 of the tester on Windows and Linux: Shift+F3 outside a text, and F3 with the Find panel
-// open and its field empty, were left to the browser, which opened its own find bar
 for (const platform of PLATFORMS) {
   test(`F3, Shift+F3, and Mod+Shift+F3 are prevented in every state (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -177,7 +157,6 @@ const ITEMS = [
   '<li class="fragment" data-fragment-index="2">You might have noticed a toggle on the top right: try clicking it on this slide.</li>',
   '<li class="fragment" data-fragment-index="3">You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>',
 ];
-// the caret put at the end of the text of item i of the list
 const caretAtEnd = (page, i) => page.evaluate(`(() => {
   const li = document.querySelectorAll(${js(ITEM)})[${i}];
   const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
@@ -185,16 +164,12 @@ const caretAtEnd = (page, i) => page.evaluate(`(() => {
   for (let n = w.nextNode(); n; n = w.nextNode()) if (n.data.trim()) last = n;
   getSelection().collapse(last, last.length);
 })()`);
-// the text of the block of the caret, from its start
 const hostText = (page) => page.evaluate(`(() => {
   const n = getSelection().focusNode;
   return (n.nodeType === 1 ? n : n.parentElement).closest('[contenteditable="true"]')?.textContent.trim() ?? null;
 })()`);
-// the li written in the file whose text starts with head
 const written = (text, head) => text.split('\n').find((l) => l.includes(`>${head}`) || l.includes(`<strong>${head}`) || l.includes(`<em>${head}`))?.trim();
 
-// finding text-lists-find-2: each item of a list was a text of its own, hence the arrows, Shift with
-// the arrows, a drag, Mod+A, Bold, and Tab stopped at the border of an item
 for (const platform of PLATFORMS) {
   test(`the arrows move the caret over the border of two items and of two paragraphs (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -219,7 +194,6 @@ for (const platform of PLATFORMS) {
     assert.equal(written(await render(page), 'QYou'), ITEMS[1].replace('>You', '>QYou'));
     await roundTrip(page);
 
-    // two paragraphs of one text column on slide 9
     await page.evaluate('Reveal.slide(8)');
     await frames(page);
     await clickText(page, await pointOf(page, '.reveal section.present > p', 'gravitational', 2));
@@ -230,8 +204,6 @@ for (const platform of PLATFORMS) {
     assert.match(await hostText(page), /^The gravitational/, 'ArrowUp on the first line of a paragraph stays in it');
   });
 
-  // a drag from "toggle" in item 2 to the end of item 3, with the left button held on every move,
-  // after the caret is put in the list. With quick, the moves and the release are sent at once, as in a quick drag
   const dragOver = async (page, quick = false) => {
     const from = await pointOf(page, ITEM, 'toggle', 0);
     const to = await pointOf(page, ITEM, 'mode.', 4);
@@ -259,8 +231,6 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
   });
 
-  // after a quick drag, the change of the selection of the browser is reported after the release,
-  // and the selection over both items was then lost. On a slow runner, the test above failed at times
   test(`a quick drag from one item into the next selects over both (${platform})`, async (t) => {
     const page = await load(t, platform);
     await dragOver(page, true);
@@ -278,7 +248,6 @@ for (const platform of PLATFORMS) {
     const nested = /for-light<\/code>\.\s*<ul>\s*<li class="fragment" data-fragment-index="2">You might[^\n]*<\/li>\s*<li class="fragment" data-fragment-index="3">You should[^\n]*<\/li>\s*<\/ul>\s*<\/li>/;
     assert.match(await render(page), nested, 'Tab does not indent both items');
     await roundTrip(page);
-    // Shift+Tab after a drag over the two nested items takes both out again
     const tabbed = page.source;
     await dragOver(page);
     await press(page, 'Shift+Tab');
@@ -322,8 +291,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the k characters of needle from its start selected in the text node that holds it, its block
-// focused
 const selectText = (page, selector, needle, k = needle.length) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -335,8 +302,6 @@ const selectText = (page, selector, needle, k = needle.length) => page.evaluate(
   }
 })()`);
 
-// finding dialogs-undo-a11y-3: an undo or a redo of a format put the caret at the end of the
-// change, where an undo of a move of an element selects the element again
 for (const platform of PLATFORMS) {
   for (const [name, run] of [
     ['Bold', (page) => press(page, 'Mod+B')],
@@ -361,15 +326,12 @@ for (const platform of PLATFORMS) {
   }
 }
 
-// the trusted key Mod+Shift with key on a US layout, which press() does not know, with Mod as Cmd
-// on a Mac and Ctrl elsewhere
 async function modShift(page, platform, key, code, keyCode) {
   const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers: (platform === 'mac' ? 4 : 2) | 8 };
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
 
-// finding menus-keys-13: Bigger and Smaller on a selected word put a caret at its start
 for (const platform of PLATFORMS) {
   for (const [name, key, code, keyCode] of [['Bigger', '>', 'Period', 190], ['Smaller', '<', 'Comma', 188]]) {
     test(`${name} on a selected word keeps the word selected (${platform})`, async (t) => {
@@ -386,7 +348,6 @@ for (const platform of PLATFORMS) {
   }
 }
 
-// the center of the button of the Find panel with label
 const findButton = (page, label) => page.evaluate(`(() => {
   const b = [...document.querySelectorAll('.beeson-find button')].find((e) => e.textContent.trim() === ${js(label)});
   const r = b.getBoundingClientRect();
@@ -394,8 +355,6 @@ const findButton = (page, label) => page.evaluate(`(() => {
 })()`);
 const findOpen = (page) => page.evaluate(`(() => { const f = document.querySelector('.beeson-find'); return !!f && !f.hidden; })()`);
 
-// finding text-lists-find-3: a Replace or a Replace All that left no match disabled the clicked
-// button, the focus went to the replaced text of the slide, and the next keys typed into it
 for (const platform of PLATFORMS) {
   for (const label of ['Replace All', 'Replace']) {
     test(`after ${label} leaves no match, the focus stays in the Find panel and Esc closes it (${platform})`, async (t) => {
@@ -422,8 +381,6 @@ for (const platform of PLATFORMS) {
   }
 }
 
-// the link popover: whether it is open, its address, its buttons, and where the focus and the caret
-// are
 const linkPopover = (page) => page.evaluate(`(() => {
   const d = document.querySelector('dialog.beeson-edit-link[open]');
   const s = getSelection();
@@ -437,8 +394,6 @@ const linkPopover = (page) => page.evaluate(`(() => {
   };
 })()`);
 
-// finding text-lists-find-6: a click on a link only placed the caret, and its popover opened only
-// with Mod+K or the Text pane
 for (const platform of PLATFORMS) {
   test(`a click on a link places the caret and opens its popover with its address (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -456,11 +411,9 @@ for (const platform of PLATFORMS) {
     await frames(page);
     let p = await linkPopover(page);
     assert.deepEqual(p, { open: true, href: 'https://example.com', buttons: ['Remove', 'Open Link', 'Done'], focus: 'p', inLink: true });
-    // Esc closes the popover and leaves the caret in the link
     await press(page, 'Escape');
     p = await linkPopover(page);
     assert.deepEqual([p.open, p.focus, p.inLink], [false, 'p', true]);
-    // a key typed after a click goes into the link, and the popover is closed
     await clickText(page, await pointOf(page, PARA, 'template', 3));
     await frames(page);
     assert.equal((await linkPopover(page)).open, true);
@@ -471,8 +424,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the edge rule of Bold and Italic (finding text-lists-find-1) is not the rule of a link: Mod+K with
-// the caret at the end of a word links the word, as it did before
 for (const platform of PLATFORMS) {
   test(`Mod+K with the caret at the end of a word links the word (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -488,8 +439,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// finding text-lists-find-8: the format buttons of the Text pane had tooltips without their keys,
-// where the buttons of the toolbar give theirs
 const PANE_KEYS = {
   mac: { bold: 'Bold (⌘B)', italic: 'Italic (⌘I)', strike: 'Strikethrough (⇧⌘X)', superscript: 'Superscript (⌃⌘+)', subscript: 'Subscript (⌃⌘−)', outdent: 'Decrease Indent Level (⌘[)', indent: 'Increase Indent Level (⌘])' },
   other: { bold: 'Bold (Ctrl+B)', italic: 'Italic (Ctrl+I)', strike: 'Strikethrough (Alt+Shift+5)', superscript: 'Superscript (Ctrl+.)', subscript: 'Subscript (Ctrl+,)', outdent: 'Decrease Indent Level (Shift+Tab)', indent: 'Increase Indent Level (Tab)' },
@@ -507,8 +456,6 @@ for (const platform of PLATFORMS) {
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 
-// finding dialogs-undo-a11y-4: Undo was named after the value chosen in a control, e.g. Undo Accent
-// or Undo Split, and Undo Edit Alt Text kept the ellipsis of its menu item
 for (const platform of PLATFORMS) {
   test(`each entry of the history made by a control is named after its action (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -547,11 +494,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// item of R10.2: Bold on a paragraph with a span colored at a step wrote the classes hl-target and
-// hl-accent, which steps.ts puts on the span at run time, into the file at a save. each action that
-// writes the block is checked on the same paragraph, on a range across the start of the span, and
-// Bold also on the whole span and on the paragraph selected as a block. the editor does not have
-// Underline, since the theme does not define it
 const COLORED = '.reveal section.present > p';
 const acrossSpan = (page) => page.evaluate(`(() => {
   const p = ${find(COLORED, 'Coriolis')};
@@ -592,9 +534,6 @@ for (const platform of PLATFORMS) {
   }
 }
 
-// finding 10 of the juror of round 4: Return on an empty item added one more empty item, and the
-// list was never ended. Return on an empty item of a deeper level moves it one level out, and on the
-// first level ends the list, with the caret in a new paragraph after it, each as one entry
 for (const platform of PLATFORMS) {
   test(`Return on an empty item moves it out one level, then ends the list (${platform})`, async (t) => {
     const page = await load(t, platform);

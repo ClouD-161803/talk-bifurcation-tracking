@@ -1,8 +1,3 @@
-// the thumbnail of a slide with a backdrop in the navigator of the editor (issue #69). the backdrop is drawn in the
-// thumbnail of a slide that reveal.js has not laid out yet, from a built-in drawing and from a file, with its
-// labels, as it is drawn once the slide was shown. after a flip of the mode, it is drawn in the new mode, also
-// where the navigator or the picture of the slide was hidden at the flip. the copy of such a slide beside a hovered row draws the backdrop as well
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -18,10 +13,8 @@ after(async () => {
 });
 
 const SLIDES = `[...document.querySelectorAll('.reveal:not(.beeson-peek) .slides > section')]`;
-// the last slide of test-deck.html, at which a page is opened so that its first slides are not laid out
 const LAST = readFileSync('test-deck.html', 'utf8').match(/<section[\s>]/g).length - 1;
 
-// the share of the pixels of canvas that are drawn, and their mean lightness from 0 to 1
 const INK = `((canvas) => {
   if (!canvas?.width || !canvas.height) return { drawn: 0, light: 0 };
   const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
@@ -35,8 +28,6 @@ const INK = `((canvas) => {
   return { drawn: drawn / (data.length / 4), light: drawn ? light / drawn : 0 };
 })`;
 
-// the backdrop of slide i and its picture in the thumbnail: whether the canvas of the slide was sized by a draw,
-// the ink of the picture, and the labels placed in the thumbnail
 const state = (i) => `(() => {
   const el = ${SLIDES}[${i}].querySelector('.backdrop');
   const pic = document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.shadowRoot?.querySelector('.beeson-thumb .backdrop');
@@ -47,7 +38,6 @@ const state = (i) => `(() => {
   };
 })()`;
 
-// the slides of test-deck.html with a backdrop of a file, with a built-in backdrop with labels, and the last slide
 const found = `(() => {
   const slides = ${SLIDES};
   return {
@@ -57,10 +47,10 @@ const found = `(() => {
   };
 })()`;
 
-// the times the thumbnail of slide i was drawn
 const draws = (i) => `Number(document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.dataset.drawn ?? 0)`;
 
-// true once the picture of slide i is drawn, false after a minute without it
+const due = (i) => `document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}].hasAttribute('data-due')`;
+
 const drawn = (page, i) => page.waitFor(`${state(i)}.drawn > 0`, 60000).then(() => true, () => false);
 
 test('the thumbnail of a slide that was never shown draws its backdrop and its labels, as after the slide was shown', { timeout: 600000 }, async (t) => {
@@ -75,13 +65,11 @@ test('the thumbnail of a slide that was never shown draws its backdrop and its l
   }
   const labels = await page.evaluate(`${SLIDES}[${at.labeled}].querySelectorAll('.backdrop .label').length`);
   await page.waitFor(`${state(at.labeled)}.labels === ${labels}`, 60000);
-  // each drawing fills its thumbnail as it does once its slide was shown, i.e. the trajectories of a file are drawn too
   for (const i of [at.file, at.labeled]) {
     await page.waitFor(`${state(i)}.drawn > 0`, 60000);
     const far = await page.evaluate(state(i));
     const before = await page.evaluate(draws(i));
     await page.evaluate(`(() => { Reveal.slide(${i}); return true; })()`);
-    // the thumbnail is drawn again from the backdrop of the slide, once this backdrop is drawn
     await page.waitFor(`${state(i)}.sized && ${draws(i)} > ${before}`, 60000);
     const shown = await page.evaluate(state(i));
     await page.evaluate(`(() => { Reveal.slide(${at.last}); return true; })()`);
@@ -96,7 +84,6 @@ test('after a flip of the mode, the backdrop of a thumbnail is drawn in the new 
   t.after(() => page.close().catch(() => {}));
   const at = await page.evaluate(found);
   assert.ok(at.labeled > 0, 'the slide with a labeled backdrop is not found');
-  // the labeled backdrop is near the first slide and was drawn at the start, and the last slide is far from it
   assert.equal((await page.evaluate(state(at.labeled))).sized, true, 'the backdrop near the first slide is not drawn on its slide, and the case is not checked');
   assert.equal((await page.evaluate(state(at.last))).sized, false, 'the backdrop of the last slide is drawn on its slide, and the case is not checked');
   const dark = {};
@@ -126,8 +113,7 @@ test('a thumbnail that is due while the navigator is hidden draws its backdrop o
   await page.waitFor(`!(${shown})`, 60000);
   await page.evaluate(`(() => { window.BeesonEditor.exec('view.slideDark'); return true; })()`);
   await page.waitFor(`document.documentElement.dataset.theme === 'light'`, 60000);
-  // the time in which every thumbnail is due and the page is idle
-  await new Promise((done) => setTimeout(done, 3000));
+  await page.waitFor(due(at.last), 60000);
   await page.evaluate(`(() => { window.BeesonEditor.exec('view.navigator'); return true; })()`);
   await page.waitFor(shown, 60000);
   const flipped = await page.waitFor(`(() => { const s = ${state(at.last)}; return s.drawn > 0 && s.light < ${dark} - 0.05; })()`, 20000).then(() => true, () => false);
@@ -142,7 +128,6 @@ test('a thumbnail that is due while its slide is hidden in the show draws its ba
   const at = await page.evaluate(found);
   assert.ok(await drawn(page, at.last), `the backdrop of slide ${at.last} is blank in its thumbnail`);
   const dark = (await page.evaluate(state(at.last))).light;
-  // the picture of a hidden slide is not shown in its row
   const shown = `document.querySelectorAll('.beeson-edit-nav .row .pic')[${at.last}].getClientRects().length > 0`;
   const run = (id) => page.evaluate(`(() => { window.BeesonEditor.exec('${id}'); return true; })()`);
   await run('slide.selectAll');
@@ -150,7 +135,7 @@ test('a thumbnail that is due while its slide is hidden in the show draws its ba
   await page.waitFor(`!(${shown})`, 60000);
   await run('view.slideDark');
   await page.waitFor(`document.documentElement.dataset.theme === 'light'`, 60000);
-  await new Promise((done) => setTimeout(done, 3000));
+  await page.waitFor(due(at.last), 60000);
   await run('slide.hide');
   await page.waitFor(shown, 60000);
   const flipped = await page.waitFor(`(() => { const s = ${state(at.last)}; return s.drawn > 0 && s.light < ${dark} - 0.05; })()`, 20000).then(() => true, () => false);
@@ -163,7 +148,6 @@ test('a thumbnail that is due while its slide is hidden in the show draws its ba
 test('the backdrop of a slide that was never shown fills its box in a tile of the slide sorter, whose styles are loaded after the tile is made', { timeout: 300000 }, async (t) => {
   const page = await editorPage(browser, { query: 'edit&still&theme=dark', clear: true });
   t.after(() => page.close().catch(() => {}));
-  // the box of the backdrop in the tile of slide i and the buffer of its canvas in device px, and the ink of the canvas
   const tile = (i) => `(() => {
     const el = document.querySelectorAll('.beeson-edit-sorter .tile .pic')[${i}]?.shadowRoot?.querySelector('.beeson-thumb .backdrop');
     const canvas = el?.querySelector('canvas.orbits-base');
@@ -187,7 +171,6 @@ test('the copy of a slide that was never shown, beside its hovered row, draws it
   t.after(() => page.close().catch(() => {}));
   const at = await page.evaluate(found);
   assert.equal((await page.evaluate(state(at.last))).sized, false, 'the backdrop of the last slide is drawn on its slide, and the case is not checked');
-  // the list is scrolled so that its lower edge cuts the thumbnail of the last slide, which is then copied at a hover
   const cut = await page.evaluate(`(() => {
     const list = document.querySelector('.beeson-edit-nav .rows');
     const edge = list.getBoundingClientRect().bottom;

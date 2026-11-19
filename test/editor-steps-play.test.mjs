@@ -1,14 +1,3 @@
-// tests of R37.1 on both platforms. a video of the fragment style play is listed in the Steps pane
-// with the effect Play, which the menu of the effect of a row offers only for a video, after Fade
-// In. the checkbox Start on a click of the Video pane sets the effect Play of the video or takes it
-// off, and Play while the slide is shown is dimmed and off while it is checked. a preview of the
-// steps plays a video of the style play at its step and rewinds it to its poster at its end. the
-// class play is in the scope rule, and the hint of the text of a QR code says when the code is
-// drawn without the logo. a tycho viewer is started at its step in the same way: Play is offered
-// in the Steps pane, Start on a click is in the Arrange pane of a scene, and a preview of the steps
-// holds the scene at its first frame until its step. each change is one entry of the history, an undo gives the file byte for
-// byte, a redo gives the edit, and a save is opened again without problems
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -23,7 +12,6 @@ const PLATFORMS = ['mac', 'other'];
 const REDO = { mac: 'Mod+Shift+Z', other: 'Mod+Y' };
 const PANEL = '#beeson-edit-panel-format';
 const DECK = 'test/pages/editor-r37-1.html';
-// the index of slide 12 of index.html, "Starting a video on a click"
 const CLICK_SLIDE = 11;
 
 let browser;
@@ -43,7 +31,6 @@ const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
 
-// asserts that a text is the expected one, with the first line that differs in the message
 function sameText(actual, expected, message = 'the text differs') {
   if (actual === expected) return;
   const a = actual.split('\n'), e = expected.split('\n');
@@ -53,9 +40,6 @@ function sameText(actual, expected, message = 'the text differs') {
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})).then(() => true)`);
 
-// runs the command of a preview, steps.preview or steps.playFrom, after the script before of the
-// page. the editor sets the class beeson-previewing in the task of the command, hence a command
-// that did not start the preview fails here with its state, and not at a wait for the class
 async function startPreview(page, { id = 'steps.preview', before = '' } = {}) {
   const state = await page.evaluate(`(() => {
     ${before}
@@ -66,16 +50,12 @@ async function startPreview(page, { id = 'steps.preview', before = '' } = {}) {
   assert.ok(state.started, `the command did not start the preview: ${JSON.stringify(state)}`);
 }
 
-// the editor on a deck served over HTTP at a slide, with the Steps pane or the Format tab shown
-// reduced motion is the setting of the Windows runner of GitHub, and under it a kiosk viewer is
-// not started by the tycho runtime at its load. With motion, the page is shown without it
 async function open(t, platform, { deck = DECK, slide = 0, pane = 'steps', motion = false } = {}) {
   const page = await browser.newPage({ width: 1920, height: 1080, motion });
   t.after(() => page.close().catch(() => {}));
   await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
   await page.waitFor(deckSettled);
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-  // the drafts that an earlier test left in the shared browser are not offered
   await page.evaluate('localStorage.clear()');
   page.source = readFileSync(deck, 'utf8');
   assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(page.source)})`)).problems, []);
@@ -87,8 +67,6 @@ async function open(t, platform, { deck = DECK, slide = 0, pane = 'steps', motio
   return page;
 }
 
-// one change is one entry of the history: an undo gives the text before it byte for byte, and a
-// redo gives the text after it
 async function undoRedo(page, platform, before, edited) {
   await press(page, 'Mod+Z');
   await frames(page);
@@ -98,12 +76,10 @@ async function undoRedo(page, platform, before, edited) {
   sameText(await rendered(page), edited, 'a redo does not give the edit again');
 }
 
-// the row of the Steps pane of a kind, e.g. Video, or whose text starts with what
 const ROW = (what) => `[...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.meta .kind')?.textContent === ${js(what)} || r.querySelector('.text').textContent.startsWith(${js(what)}))`;
 const rowOf = (page, what) => page.evaluate(`(() => { const r = ${ROW(what)}; return r ? { step: r.dataset.step, meta: r.querySelector('.meta').textContent } : null; })()`);
 const chipAt = (page, what) => page.evaluate(`(() => { const b = ${ROW(what)}.querySelector('.chip').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
 
-// the labels of the menu of the chip of a row, which is closed again
 async function chipMenu(page, what) {
   await click(page, await chipAt(page, what));
   await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
@@ -113,7 +89,6 @@ async function chipMenu(page, what) {
   return labels;
 }
 
-// an item of the menu of the chip of a row, chosen with two trusted clicks
 async function pick(page, what, label) {
   await click(page, await chipAt(page, what));
   await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
@@ -125,14 +100,12 @@ async function pick(page, what, label) {
   })()`);
   const labels = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => i.querySelector('.label').textContent + (i.getAttribute('aria-disabled') === 'true' ? ' (off)' : ''))`);
   assert.ok(item, `the menu of the chip does not have an enabled item ${label}: ${labels.join(', ')}`);
-  // an item is taken at a release 250 ms after the press that opened its menu
   await sleep(300);
   await click(page, item);
   await page.evaluate('window.BeesonEditor.status()');
   await frames(page);
 }
 
-// the two videos of slide 12 of index.html, with the classes and the index of their step
 const pairOf = (step) => [
   `<video class="for-dark${step}" src="demo/clip-dark.mp4" poster="demo/clip-dark.png" muted loop></video>`,
   `<video class="for-light${step}" src="demo/clip-light.mp4" poster="demo/clip-light.png" muted loop></video>`,
@@ -140,16 +113,11 @@ const pairOf = (step) => [
 const PLAY_PAIR = pairOf(' fragment play" data-fragment-index="1');
 const withPair = (source, pair) => source.replace(PLAY_PAIR[0], pair[0]).replace(PLAY_PAIR[1], pair[1]);
 
-// the one video of the first slide of DECK, played while its slide is shown, and the same video
-// with other attributes after loop
 const CLIP = '<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop data-autoplay></video>';
 const clip = (attrs) => `<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop${attrs}></video>`;
-// the one video of the second slide of DECK, a step played at its step, and the same video with
-// other attributes before src and after loop
 const STEP_CLIP = '<video class="fragment" data-fragment-index="1" src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop data-autoplay></video>';
 const stepClip = (head, tail) => `<video${head} src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop${tail}></video>`;
 
-// the shown checkboxes of the Format tab in their order, each with its command
 const checks = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-check')].filter((l) => l.getClientRects().length).map((l) => {
   const i = l.querySelector('input');
   return { command: i.dataset.command, text: l.textContent, checked: i.checked, disabled: i.disabled };
@@ -162,7 +130,6 @@ async function toggle(page, command) {
   await frames(page);
 }
 
-// the video of the slide shown in the mode of the deck, selected with a trusted click
 async function selectVideo(page) {
   const sel = await page.evaluate(`(() => { const v = [...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length); return v.classList.contains('for-light') ? 'video.for-light' : v.classList.contains('for-dark') ? 'video.for-dark' : 'video'; })()`);
   await click(page, `.reveal section.present ${sel}`);
@@ -181,7 +148,6 @@ test('the class play of a video is in the scope rule of the editor', () => {
   assert.deepEqual(textProblems('<video class="fragment play" data-fragment-index="1" src="a.mp4" poster="a.png" muted></video>', new Set()), []);
 });
 
-// the hint of the QR pane names this limit of src/qr.ts
 test('a QR code is drawn with the logo up to 1273 bytes', () => {
   assert.equal(encode('a'.repeat(1273), true).logo, true);
   assert.equal(encode('a'.repeat(1274), true).logo, false);
@@ -209,7 +175,6 @@ for (const platform of PLATFORMS) {
     assert.match((await rowOf(page, 'Video')).meta, /Play$/);
     await undoRedo(page, platform, faded, source);
 
-    // the step taken off a video takes its class play off as well, and the steps after it move up
     await pick(page, 'Video', 'With the Slide');
     const plain = withPair(source, pairOf(''))
       .replace('<li class="fragment" data-fragment-index="2">Videos', '<li class="fragment" data-fragment-index="1">Videos')
@@ -217,7 +182,6 @@ for (const platform of PLATFORMS) {
     sameText(await rendered(page), plain);
     await undoRedo(page, platform, source, plain);
 
-    // a pair made a step again by Start on a click is written fragment play on both videos
     await exec(page, 'shell.format');
     await selectVideo(page);
     await toggle(page, 'figure.startOnClick');
@@ -315,8 +279,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
-  // the show draws a video of the style play with its poster at full opacity before its step, and
-  // does not dim it at the later steps
   test(`${platform}: a preview of the Steps pane keeps the video of slide 12 at full opacity before and after its step`, async (t) => {
     const page = await open(t, platform, { deck: 'test-deck.html', slide: CLICK_SLIDE });
     await startPreview(page, {
@@ -338,8 +300,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
-  // the previews of the toolbar draw the slide on a layer, whose video is shown with its poster
-  // before its step, played from its step on without a dim, and taken down with the layer
   for (const command of ['preview.steps', 'preview.slide']) {
     test(`${platform}: ${command} of the toolbar plays the video of slide 12 at its step, with its poster before it`, async (t) => {
       const page = await open(t, platform, { deck: 'test-deck.html', slide: CLICK_SLIDE });
@@ -375,14 +335,12 @@ for (const platform of PLATFORMS) {
     });
   }
 
-  // an image dropped on a video replaces it and keeps its step, but not the style play of a video
   test(`${platform}: an image that replaces the video of slide 12 is a step with the effect Fade In`, async (t) => {
     const page = await open(t, platform, { deck: 'test-deck.html', slide: CLICK_SLIDE });
     const source = page.source;
     const at = await page.evaluate(`(() => { const v = [...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length); const r = v.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const data = { items: [], files: [resolve('demo/figure-dark.png')], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await page.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
-    // the video is removed after the image is written
     const FIGURE_BOX = `window.BeesonEditor.render().split('Starting a video on a click')[1].split('</section>')[0]`;
     await page.waitFor(`/<img[^>]*figure-dark/.test(${FIGURE_BOX}) && ${FIGURE_BOX}.split('<video').length === 2`, 30000);
     await frames(page);
@@ -424,7 +382,6 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, platform, source, edited);
     await saved(page, `r37-1-${++saves}.html`);
 
-    // a deck whose codes are drawn without the logo keeps the hint of the count alone
     const plain = await open(t, platform, { deck: 'test/pages/qr-plain.html', pane: 'format' });
     await click(plain, '.reveal section.present .qr');
     await frames(plain);
@@ -433,8 +390,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the viewers of test/pages/viewer-play.html: the viewer of its first slide, which is a step of the
-// style play, and the viewer of its third slide, in a figure box that is the step
 const VIEWERS = 'test/pages/viewer-play.html';
 const scene = (attrs) => `<tycho-viewer theme="dark" kiosk id="play"${attrs}>`;
 const SCENE = scene(' class="figure-box fragment play" data-fragment-index="2"');
@@ -442,7 +397,6 @@ const LATER = (n) => `<p class="fragment" data-fragment-index="${n}">A later ste
 const INSIDE = '<div class="figure-box fragment play" data-fragment-index="1">\n        <tycho-viewer theme="dark" kiosk id="inside">';
 const AFTER = (n) => `<p class="fragment" data-fragment-index="${n}">A paragraph after the scene.</p>`;
 
-// the viewer of the slide, or the figure box around it, selected with a trusted click, with the Arrange pane shown
 async function selectScene(page) {
   await click(page, '.reveal section.present tycho-viewer');
   await frames(page);
@@ -467,8 +421,6 @@ for (const platform of PLATFORMS) {
     await saved(page, `r37-1-${++saves}.html`);
   });
 
-  // a kiosk viewer that is only a step is played by tycho while it is hidden, hence a viewer taken
-  // off Start on a click is not left a step
   test(`${platform}: Start on a click of the Arrange pane of a scene is checked for a viewer of the style play, and its uncheck shows the viewer with its slide`, async (t) => {
     const page = await open(t, platform, { deck: VIEWERS, pane: 'format' });
     const source = page.source;
@@ -481,7 +433,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await undoLabel(page), 'Undo Start on a Click');
     await undoRedo(page, platform, source, plain);
 
-    // a viewer shown with its slide is made the last step of its slide, with the style play
     await toggle(page, 'figure.startOnClick');
     const last = plain.replace(scene(' class="figure-box"'), scene(' class="figure-box fragment play" data-fragment-index="3"'));
     sameText(await rendered(page), last);
@@ -501,7 +452,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await checkOf(page, 'figure.startOnClick')).checked, false);
     await undoRedo(page, platform, source, plain);
 
-    // the step is then written on the tag of the viewer, as the theme reads it
     await toggle(page, 'figure.startOnClick');
     const last = plain.replace('<tycho-viewer theme="dark" kiosk id="inside">', '<tycho-viewer theme="dark" kiosk id="inside" class="fragment play" data-fragment-index="2">');
     sameText(await rendered(page), last);
@@ -527,8 +477,6 @@ for (const platform of PLATFORMS) {
       const html = document.documentElement;
       const v = document.getElementById('play');
       const see = () => window.__seen.push({ step: html.dataset.previewStep, playing: v.playing, time: v.time });
-      // the scene is read at each step and in each frame, since on a slow runner a frame of the
-      // scene can be longer than the 0.8 s of a step
       new MutationObserver(see).observe(html, { attributes: true, attributeFilter: ['data-preview-step'] });
       const look = () => {
         if (html.classList.contains('beeson-previewing')) see();
@@ -543,24 +491,19 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(before.filter((s) => s.playing || s.time !== 0).slice(0, 3), [], 'the scene is played before its step');
     const from = seen.find((s) => s.step === '2' && s.playing);
     assert.ok(from && from.time < 0.5, `the scene is not played from its start at its step: ${JSON.stringify(from)}, read ${JSON.stringify(seen.filter((s) => s.step !== '0' && s.step !== '1').slice(0, 4))}`);
-    // the editor shows every step, hence the scene is played again after the preview
     await page.waitFor(`document.getElementById('play').playing`);
     sameText(await rendered(page), page.source);
     assert.deepEqual(errors(page), []);
   });
 
-  // a scene is played again after a preview, as the editor shows it, and the next preview starts it anew
   test(`${platform}: a preview from a step at which a viewer is shown, after another preview, plays the scene from its start`, async (t) => {
     const page = await open(t, platform, { deck: VIEWERS, motion: true });
     await page.waitFor(`!!document.getElementById('play').state`);
     await exec(page, 'steps.preview');
     await page.waitFor(`!document.documentElement.classList.contains('beeson-previewing')`, 20000);
     await page.waitFor(`document.getElementById('play').playing && document.getElementById('play').time > 1.5`, 20000);
-    // the row of the step after the scene is selected, and the preview is played from the step before it, at which the scene is shown
     await click(page, await page.evaluate(`(() => { const b = ${ROW('A later step')}.querySelector('.text').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`));
     await frames(page);
-    // the scene is read at the first step of the preview, since on a slow runner the page is read
-    // by the test only after the next step
     await startPreview(page, {
       id: 'steps.playFrom',
       before: `

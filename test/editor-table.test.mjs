@@ -1,13 +1,3 @@
-// the tables of the editor: the model of src/editor/table.ts under node, and on either platform
-// with trusted input the Insert Table grid, Tab and the arrow keys between the cells, the rows and
-// columns added and deleted, the header row, the numbers at the right, the context menu of a cell,
-// a paste of tab-separated text or of an HTML table, onto the slide or into a cell, a range of
-// cells selected by a drag, a Shift-click, and the keys, the cells merged and unmerged, the widths
-// of the columns, and Auto-Align. after each edit the text is in the scope rule, an undo gives the
-// file byte for byte, a redo gives the edit, and a save is opened again without problems. a paste
-// is a synthetic event with a DataTransfer of its own, since the clipboard of the system is shared
-// with the other tests run at the same time
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -19,9 +9,7 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, drag, editorPage, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
 
 const LAYOUTS_DECK = 'test/pages/editor-layouts.html';
-// a table with a rowspan and a colspan on its first slide, and a plain table on its second
 const TABLES_DECK = 'test/pages/editor-tables.html';
-// the index of the slide of the equations in index.html, a content slide without a table
 const EQUATIONS = 3;
 const STYLE = { step: '  ', eol: '\n' };
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
@@ -50,7 +38,6 @@ test('a table is written with an explicit tbody, a header row of th, and numbers
 });
 
 test('the cells of a table are laid out with their colspan and rowspan, and a range grows over merged cells', () => {
-  // the table of merged cells of TABLES_DECK: Halo over two rows, Distant retrograde over two columns
   const cell = (name, rows = 1, cols = 1) => ({ name, rows, cols });
   const g = layoutCells([
     [cell('Family'), cell('Period'), cell('Jacobi')],
@@ -61,10 +48,8 @@ test('the cells of a table are laid out with their colspan and rowspan, and a ra
   assert.equal(g.width, 3);
   assert.deepEqual(g.grid.map((r) => r.map((s) => s.cell.name)), [['Family', 'Period', 'Jacobi'], ['Halo', '14.8', '3.05'], ['Halo', '6.6', '3.04'], ['DRO', 'DRO', '2.92']]);
   assert.deepEqual(g.spots[2].map((s) => [s.row, s.col]), [[2, 1], [2, 2]]);
-  // a range from 6.6 to Distant retrograde grows to Halo, which reaches into it
   assert.deepEqual(grow(g, { r0: 2, c0: 1, r1: 3, c1: 1 }), { r0: 1, c0: 0, r1: 3, c1: 1 });
   assert.deepEqual(spotsIn(g, { r0: 1, c0: 0, r1: 3, c1: 1 }).map((s) => s.cell.name), ['Halo', '14.8', '6.6', 'DRO']);
-  // a rowspan of 0 or past the last row reaches the last row
   assert.equal(layoutCells([[cell('a', 0)], [], [cell('b')]], (c) => c).spots[0][0].rows, 3);
   assert.equal(layoutCells([[cell('a', 9)], [cell('b')]], (c) => c).grid[1][1].cell.name, 'b');
 });
@@ -104,11 +89,9 @@ async function show(page, at) {
   await sleep(150);
 }
 
-// the center of a cell of the table of the current slide, by row and column
 const cellSelector = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
 const at = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// the row and the column of the cell of the focus, or null outside a table
 const focusCell = (page) => page.evaluate(`(() => {
   const c = document.activeElement?.closest?.('td, th');
   if (!c) return null;
@@ -117,7 +100,6 @@ const focusCell = (page) => page.evaluate(`(() => {
 
 const selected = (page) => page.evaluate('String(window.getSelection())');
 
-// a paste event with data of its own, as the browser sends it for the paste key
 const paste = (page, data) =>
   page.evaluate(`(() => {
     const data = new DataTransfer();
@@ -125,9 +107,8 @@ const paste = (page, data) =>
     (document.activeElement ?? document.body).dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
   })()`);
 
-// the time for the edits of a paste, which are run after the event
 const settled = async (page) => {
-  await sleep(120);
+  await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`);
   return settle(page);
 };
 
@@ -135,7 +116,6 @@ let saves = 0;
 async function roundTrip(page, undos = 1) {
   const edited = await render(page);
   assert.notEqual(edited, page.source, 'the edit did not change the text');
-  // the problems of the scope rule that the file did not have before
   const added = textProblems(edited, THEME);
   for (const p of textProblems(page.source, THEME)) if (added.includes(p)) added.splice(added.indexOf(p), 1);
   assert.deepEqual(added, [], 'the edit is out of the scope rule');
@@ -152,11 +132,8 @@ async function roundTrip(page, undos = 1) {
 
 const THREE = '<table>\n    <tbody>\n      <tr><th></th><th></th><th></th></tr>\n      <tr><td></td><td></td><td></td></tr>\n      <tr><td></td><td></td><td></td></tr>\n    </tbody>\n  </table>';
 
-// the text rendered with the translate taken off a new table, which placeTable of
-// commands/table.ts gives it on a slide whose text column is full
 const placed = async (page) => (await render(page)).replace(/<table style="translate: -?\d+px -?\d+px">/, '<table>');
 
-// the table of a text cut out with the line it is on, which gives the deck before the insert
 const without = (text, table) => text.replace(`\n  ${table}`, '');
 
 const LAYOUT_ROWS = [
@@ -166,8 +143,6 @@ const LAYOUT_ROWS = [
 ];
 const layoutTable = (rows) => `<table>\n${rows.map((r) => `    ${r}\n`).join('')}  </table>`;
 
-// the white space before the first row of a table without a tbody tag is in the table, before the
-// tbody of the page, and a row inserted into that tbody was written on the line of the row before
 test('a row inserted into a table without a tbody tag is written on a line of its own', async (t) => {
   const page = await open('mac', LAYOUTS_DECK);
   t.after(() => page.close?.());
@@ -180,8 +155,6 @@ test('a row inserted into a table without a tbody tag is written on a line of it
   await byteExact(page);
 });
 
-// for the same reason, a row inserted before the first row, or the first row removed, wrote the
-// white space of the first row twice
 test('the first row of a table without a tbody tag is replaced without its white space twice', async (t) => {
   const page = await open('mac', LAYOUTS_DECK);
   t.after(() => page.close?.());
@@ -195,8 +168,6 @@ test('the first row of a table without a tbody tag is replaced without its white
   await byteExact(page);
 });
 
-// a key with Option and the editing command that Chrome on a Mac sends with it, e.g. moveWordRight,
-// which press() does not send
 async function optionKey(page, name, command) {
   const [key, keyCode] = { ArrowLeft: ['ArrowLeft', 37], ArrowUp: ['ArrowUp', 38], ArrowRight: ['ArrowRight', 39], ArrowDown: ['ArrowDown', 40] }[name];
   const base = { key, code: key, windowsVirtualKeyCode: keyCode, modifiers: 1 };
@@ -204,17 +175,12 @@ async function optionKey(page, name, command) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
 
-// the offset of the caret in the text of the cell of the focus
 const caretOffset = (page) => page.evaluate(`(() => {
   const r = window.getSelection().getRangeAt(0).cloneRange();
   r.setStart(document.activeElement.closest('td, th'), 0);
   return r.toString().length;
 })()`);
 
-// on a Mac, Option with an arrow moves the caret by a word or a paragraph in every text field, the
-// cells of Keynote included, and Option with Right Arrow in a cell added a column. the word move is
-// left to the browser, which moves as its host does: past the space after the word on Windows, and
-// to the end of the word on macOS and Linux
 test('Option and Right Arrow in the text of a cell move the caret by a word (mac)', async (t) => {
   const page = await open('mac', LAYOUTS_DECK);
   t.after(() => page.close?.());
@@ -239,7 +205,6 @@ for (const platform of ['mac', 'other']) {
     await click(page, '.beeson-edit-top [data-command="insert.table"]');
     await page.waitFor(`!!document.querySelector('dialog.beeson-table-picker[open]')`);
     assert.equal(await page.evaluate('document.activeElement.className'), 'grid');
-    // the cell of row 3 and column 3 of the grid of 10 columns
     const cell = await at(page, 'dialog.beeson-table-picker .grid > :nth-child(23)');
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cell.x, y: cell.y });
     assert.equal(await page.evaluate(`document.querySelector('.beeson-table-picker .size').textContent`), '3 × 3 Table');
@@ -252,7 +217,6 @@ for (const platform of ['mac', 'other']) {
     assert.equal(without(edited, THREE), page.source);
     assert.deepEqual(await focusCell(page), [0, 0]);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Insert Table');
-    // the bars of the table are shown around it, with column A and row 1 marked
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-table-bars .bar > .on')].map((d) => d.textContent)`), ['A', '1']);
     await roundTrip(page);
   });
@@ -303,7 +267,6 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await focusCell(page), [3, 0]);
     await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable([...LAYOUT_ROWS, '<tr><td></td><td></td></tr>'])]]);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Add Row');
-    // the text typed into the new row is a second entry, and both are undone to the deck
     await type(page, 'Axial');
     await settle(page);
     await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable([...LAYOUT_ROWS, '<tr><td>Axial</td><td></td></tr>'])]]);
@@ -314,7 +277,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    // the cells of the header row hold text, and those of the second column math
     await click(page, cellSelector(0, 0));
     await press(page, 'End');
     await press(page, 'ArrowLeft');
@@ -340,7 +302,6 @@ for (const platform of ['mac', 'other']) {
   test(`rows and columns are added and deleted at the cell of the caret, one entry each (${platform})`, async (t) => {
     const table = layoutTable(LAYOUT_ROWS);
     const steps = [
-      // a row above the header row is a header row, and a row below it is a row of td
       [0, 1, 'table.rowAbove', [`<tr><th></th><th></th></tr>`, ...LAYOUT_ROWS], [0, 1]],
       [0, 1, 'table.rowBelow', [LAYOUT_ROWS[0], '<tr><td></td><td></td></tr>', ...LAYOUT_ROWS.slice(1)], [1, 1]],
       [1, 0, 'table.columnBefore', ['<tr><th></th><th>Family</th><th>Period</th></tr>', '<tr><td></td><td>Lyapunov</td><td>\\(2.69\\)</td></tr>', '<tr class="fragment" data-fragment-index="1"><td></td><td>Halo</td><td>\\(3.41\\)</td></tr>'], [1, 0]],
@@ -358,13 +319,10 @@ for (const platform of ['mac', 'other']) {
       await byteExact(page, [[table, layoutTable(rows)]]);
       assert.deepEqual(await focusCell(page), focus, `the caret after ${id}`);
       await roundTrip(page);
-      // a page left open behind the next one is drawn slowly
       await page.close();
     }
   });
 
-  // as in Keynote, Option with an arrow adds a row or a column while the cell is selected as a block,
-  // after Esc in its text, and the new cell is then the selected block
   test(`the keys of the rows and columns add and delete them at the cell selected as a block (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
@@ -374,8 +332,6 @@ for (const platform of ['mac', 'other']) {
     const range = () => page.evaluate(`!!document.querySelector('.beeson-table-bars .cell.range:not([hidden])')`);
     await show(page, '.reveal .slides table');
     await click(page, cellSelector(1, 0));
-    // on a Mac the text of a cell takes the keys, which add nothing there. on Windows and Linux they
-    // act in the text too, as test/editor-table-rows.test.mjs checks
     if (platform === 'mac') {
       await press(page, 'Alt+ArrowDown');
       await press(page, 'Alt+ArrowUp');
@@ -404,7 +360,6 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await marked(), ['A', '4']);
     for (let i = 0; i < 3; i++) await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
-    // the undo removed the cell selected as a block, hence it is selected again
     await click(page, cellSelector(1, 0));
     await press(page, 'Escape');
     await press(page, 'Alt+ArrowRight');
@@ -430,14 +385,12 @@ for (const platform of ['mac', 'other']) {
       await page.evaluate('window.BeesonEditor.undo()');
     }
     await byteExact(page);
-    // a click puts the caret into the text of a cell again, where the keys add nothing on a Mac
     await click(page, cellSelector(0, 0));
     if (platform === 'mac') {
       await press(page, 'Alt+ArrowDown');
       await settle(page);
       assert.equal(await render(page), page.source);
     }
-    // a row added with a key is one entry, undone byte for byte and saved without problems
     await press(page, 'Escape');
     await press(page, 'Alt+ArrowDown');
     await settle(page);
@@ -469,7 +422,6 @@ for (const platform of ['mac', 'other']) {
     page = await open(platform, LAYOUTS_DECK);
     await show(page, '.reveal .slides table');
     await click(page, cellSelector(1, 1));
-    // the cells of math are numbers
     assert.equal(await page.evaluate(`window.BeesonEditor.state('table.numbersRight').checked`), false);
     await page.evaluate(`window.BeesonEditor.exec('table.numbersRight')`);
     await settle(page);
@@ -528,7 +480,6 @@ for (const platform of ['mac', 'other']) {
     const edited = await placed(page);
     assert.ok(edited.includes(table), `the table is not written:\n${edited.slice(edited.indexOf('Equations'), edited.indexOf('Equations') + 1600)}`);
     assert.equal(without(edited, table), page.source);
-    // the new table is selected, and its bars are shown without a cell marked
     assert.equal(await page.evaluate(`window.BeesonEditor.state('table.delete').enabled`), true);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-table-bars:not([hidden]) .bar > div')].length`), 5);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Paste');
@@ -540,8 +491,12 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     await show(page, EQUATIONS);
     await paste(page, { 'text/plain': 'one\ntwo' });
-    await settled(page);
-    assert.ok(!(await render(page)).includes('<table>'), 'plain lines are written as a table');
+    await paste(page, { 'text/plain': 'Family\tPeriod\nHalo\t3.41\n' });
+    await page.waitFor(`window.BeesonEditor.render().includes('<th>Family</th>')`);
+    await settle(page);
+    const text = await render(page);
+    assert.equal(text.split('<table').length, page.source.split('<table').length + 1, 'plain lines are written as a table');
+    assert.doesNotMatch(text, /<t[dh]>one<\/t[dh]>/, 'plain lines are written as a table');
   });
 
   test(`a paste of an HTML table onto the slide writes its cells (${platform})`, async (t) => {
@@ -573,7 +528,6 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
-// the rows of the table of merged cells of TABLES_DECK, and the table of rows in its indentation
 const MERGED_ROWS = [
   '<tr><th>Family</th><th>Period</th><th>Jacobi</th></tr>',
   '<tr><td rowspan="2">Halo</td><td style="text-align: right">14.8</td><td style="text-align: right">3.05</td></tr>',
@@ -583,8 +537,6 @@ const MERGED_ROWS = [
 const tbodyTable = (rows) => `<table>\n    <tbody>\n${rows.map((r) => `      ${r}\n`).join('')}    </tbody>\n  </table>`;
 const R = '<td style="text-align: right">';
 
-// the cells were counted with colspan only, hence a row or a column added at a cell next to a
-// rowspan was written with a cell too many, or at the wrong column
 for (const platform of ['mac', 'other']) {
   test(`a row added in a table with a rowspan grows the rowspan and gets a cell less (${platform})`, async (t) => {
     const page = await open(platform, TABLES_DECK);
@@ -606,7 +558,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    // the cell 6.6 is the first cell of its row and in the second column
     await click(page, cellSelector(2, 0));
     await page.evaluate(`window.BeesonEditor.exec('table.columnAfter')`);
     await settle(page);
@@ -620,8 +571,6 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
-// the letters of the columns and the numbers of the rows marked in the bars, whether the outline is
-// drawn as cells selected as a block, and the cell of the caret
 const marked = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-table-bars .bar > .on')].map((d) => d.textContent)`);
 const asRange = (page) => page.evaluate(`!!document.querySelector('.beeson-table-bars .cell.range:not([hidden])')`);
 
@@ -655,7 +604,6 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'Shift+ArrowUp');
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', '2']);
-    // an arrow selects the one cell beside the focus, and stops at the edge of the table
     await press(page, 'ArrowRight');
     await press(page, 'ArrowRight');
     await settle(page);
@@ -664,16 +612,13 @@ for (const platform of ['mac', 'other']) {
     await settle(page);
     assert.deepEqual(await marked(page), ['C', '2'], 'the arrow moved the table');
     assert.equal(await render(page), page.source);
-    // Return puts the caret into the focus
     await press(page, 'Enter');
     await settle(page);
     assert.deepEqual(await focusCell(page), [1, 2]);
-    // a Shift-click from the caret selects the cells between
     await click(page, cellSelector(3, 0), { modifiers: 'Shift' });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3', '4']);
     assert.equal(await focusCell(page), null);
-    // a click into a cell puts the caret there again
     await click(page, cellSelector(2, 0));
     await settle(page);
     assert.deepEqual(await focusCell(page), [2, 0]);
@@ -685,7 +630,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    // from 6.6 down to Distant retrograde, which takes in Halo above it
     const from = await at(page, cellSelector(2, 0));
     const to = await at(page, cellSelector(3, 0));
     await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
@@ -699,7 +643,6 @@ for (const platform of ['mac', 'other']) {
     await page.evaluate(`window.BeesonEditor.exec('table.selectRow')`);
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3']);
-    // the menu of a cell in the range keeps the range, and its rows are added below it
     await click(page, cellSelector(2, 1), { button: 'right' });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3']);
@@ -725,7 +668,6 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
-// a drag from one cell of the current slide to another, by row and column
 async function dragCells(page, [r0, c0], [r1, c1]) {
   const from = await at(page, cellSelector(r0, c0));
   const to = await at(page, cellSelector(r1, c1));
@@ -738,7 +680,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    // Moon and the formula above Europa and 2.53e-5
     await dragCells(page, [1, 0], [2, 1]);
     assert.equal((await page.evaluate(`window.BeesonEditor.state('table.unmerge')`)).enabled, false);
     if (platform === 'mac') await press(page, 'Ctrl+Mod+M');
@@ -751,7 +692,6 @@ for (const platform of ['mac', 'other']) {
       PLAIN_ROWS[3],
     ])]]);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Merge Cells');
-    // the merged cell stays selected as a block, and is the range of Unmerge Cells
     assert.deepEqual(await marked(page), ['A', 'B', '2', '3']);
     assert.ok(await asRange(page));
     assert.equal(await page.evaluate(`document.querySelector('.reveal section.present td[rowspan] mjx-container') !== null`), true);
@@ -762,7 +702,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    // the column of Halo grows over Distant retrograde, which reaches into the second column
     await click(page, cellSelector(1, 0));
     await page.evaluate(`window.BeesonEditor.exec('table.selectColumn')`);
     await settle(page);
@@ -784,8 +723,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    // 14.8 and 3.05 over 6.6 and 3.04: the second row is then empty and taken out, and Halo with it
-    // a row shorter
     await dragCells(page, [1, 1], [2, 1]);
     await page.evaluate(`window.BeesonEditor.exec('table.merge')`);
     await settled(page);
@@ -801,7 +738,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    // Period and Jacobi of the header row are one th
     await dragCells(page, [0, 1], [0, 2]);
     await page.evaluate(`window.BeesonEditor.exec('table.merge')`);
     await settled(page);
@@ -810,8 +746,6 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
-// the widths of the content of the cells of the first row of the current slide in slide px, their
-// widths in the layout, and the scale of the slide on the screen
 const firstRow = (page) => page.evaluate(`(() => {
   const table = document.querySelector('.reveal section.present table');
   const cells = [...table.rows[0].cells];
@@ -822,7 +756,6 @@ const firstRow = (page) => page.evaluate(`(() => {
     scale: table.getBoundingClientRect().width / table.offsetWidth,
   };
 })()`);
-// the widths in px written into the style of the cells of the first row of the plain table
 const writtenWidths = (text) => {
   const m = text.match(/<tr><th(?: style="width: (\d+)px")?>Body<\/th><th(?: style="width: (\d+)px")?>Mass ratio<\/th><th(?: style="width: (\d+)px")?>System<\/th><\/tr>/);
   assert.ok(m, 'the first row of the plain table is not in the text');
@@ -849,7 +782,6 @@ for (const platform of ['mac', 'other']) {
     await byteExact(page, [[tbodyTable(PLAIN_ROWS), tbodyTable(withWidths([a, b, null]))]]);
     near((await firstRow(page)).table, before.table, 'the table');
     assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Resize Column');
-    // the caret stays in its cell
     assert.deepEqual(await focusCell(page), [2, 0]);
     await roundTrip(page);
   });
@@ -950,7 +882,6 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    // Europa and Titan with their numbers and systems
     await dragCells(page, [2, 0], [3, 2]);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '3', '4']);
     await autoAlign(page);
@@ -979,16 +910,9 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
-// regression tests of tables, media, and locked elements, on either platform with trusted input:
-// a table inserted under the list of a full slide, the width of the Table pane, the text of merged
-// cells, the controls of a locked element, and Capture Poster on a video of a deck opened from a
-// file. after each edit the text is in the scope rule, an undo gives the file byte for byte, a
-// redo gives the edit, and a save is opened again without problems
 describe('the Table pane, merged cells, and locked controls', () => {
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
   const PANEL = '#beeson-edit-panel-format';
-  // the index of the slide "Figures are first class citizens, too" of index.html, whose list ends
-  // above the bottom of its figure
   const FIGURES = 4;
 
   let browser;
@@ -1010,7 +934,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on a deck served over HTTP, with the Format tab shown, in a window of size
   async function open(platform, { deck = 'test-deck.html', size } = {}) {
     const page = await browser.newPage(size);
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
@@ -1029,7 +952,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     await settle(page);
   }
 
-  // the box of the first shown element of selector in CSS px of the viewport, or null
   const boxOf = (page, selector) => page.evaluate(`(() => {
   const el = [...document.querySelectorAll(${js(selector)})].find((e) => e.getClientRects().length);
   if (!el) return null;
@@ -1037,7 +959,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
 })()`);
 
-  // the box of the text of the element of selector, without the white space of its box
   const inkOf = (page, selector) => page.evaluate(`(() => {
   const range = document.createRange();
   range.selectNodeContents(document.querySelector(${js(selector)}));
@@ -1069,13 +990,8 @@ describe('the Table pane, merged cells, and locked controls', () => {
     return edited;
   }
 
-  // the window of the pictures of round 2 on the Mac, and a window of 1920 by 1080 elsewhere
   const SIZES = { mac: { width: 1600, height: 1000 }, other: { width: 1920, height: 1080 } };
 
-  // state table-inserted of round 2: the table was put into the flow under the list, which its
-  // translate moves down, hence the bar of the columns covered the last line of the list, and the
-  // rows and the button Add Row ran past the bottom of the slide. a table of 2 rows fits under the
-  // list, and one of 3 rows is moved up over it, as tested in editor-table-rows.test.mjs
   for (const platform of ['mac', 'other']) {
     test(`a table inserted under the list of a full slide is put in its free space, with its controls in the canvas (${platform})`, async (t) => {
       const page = await open(platform, { size: SIZES[platform] });
@@ -1103,7 +1019,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     });
   }
 
-  // the controls of the Format tab that reach past the right edge of the inspector, with their text
   const overflowing = (page) => page.evaluate(`(() => {
   const panel = document.querySelector('${PANEL}');
   const edge = panel.getBoundingClientRect().right - (panel.offsetWidth - panel.clientWidth);
@@ -1112,9 +1027,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     .map((el) => el.textContent.trim() || el.getAttribute('aria-label') || el.localName);
 })()`);
 
-  // states inspector-table and inspector-table-dark of round 2: the row Size of the Table pane put
-  // Distribute Evenly and Fit to Content beside its label, and Fit to Content was cut off at the
-  // right edge of the inspector
   for (const platform of ['mac', 'other']) {
     test(`every control of the Table pane fits the width of the inspector (${platform})`, async (t) => {
       const page = await open(platform, { size: SIZES[platform] });
@@ -1131,9 +1043,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     });
   }
 
-  // the deck of tables of the table tests: a table with a rowspan and a colspan on its first slide,
-  // a table of mass ratios on its second, and a first column set at the right in its first row on
-  // its third
   const TABLES_DECK = 'test/pages/editor-tables.html';
   const cellSelector = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
   const centerOf = (page, selector) => boxOf(page, selector).then((b) => ({ x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }));
@@ -1145,21 +1054,17 @@ describe('the Table pane, merged cells, and locked controls', () => {
     await settle(page);
   }
 
-  // the lines of the text of the cell of selector on the page, from the tops of its line boxes
   const linesOf = (page, selector) => page.evaluate(`(() => {
   const range = document.createRange();
   range.selectNodeContents(document.querySelector(${js(selector)}));
   return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
 })()`);
 
-  // state table-merged of round 2: Merge Cells joined the text of the cells with spaces on one line,
-  // where PowerPoint and Keynote keep the text of each cell on a line of its own
   for (const platform of ['mac', 'other']) {
     test(`Merge Cells keeps the text of each cell on a line of its own, in the order of reading (${platform})`, async (t) => {
       const page = await open(platform, { deck: TABLES_DECK });
       t.after(() => page.close?.());
       await show(page, 1);
-      // Moon and the formula above Europa and 2.53e-5
       await dragCells(page, [1, 0], [2, 1]);
       if (platform === 'mac') await press(page, 'Ctrl+Mod+M');
       else await exec(page, 'table.merge');
@@ -1178,7 +1083,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
       const page = await open(platform, { deck: TABLES_DECK });
       t.after(() => page.close?.());
       await show(page, 2);
-      // Halo, set at the right, above Lyapunov, set at the left
       await dragCells(page, [1, 0], [2, 0]);
       await exec(page, 'table.merge');
       await sleep(120);
@@ -1192,27 +1096,20 @@ describe('the Table pane, merged cells, and locked controls', () => {
     });
   }
 
-  // the controls of the Format tab other than its tabs, as text, command, and whether each is enabled
   const controls = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} :is(button, input, textarea, select)')]
   .filter((e) => e.getAttribute('role') !== 'tab' && e.getClientRects().length)
   .map((e) => ({ name: e.textContent.trim() || e.getAttribute('aria-label') || e.name || e.type, command: e.dataset.command ?? null, on: !e.disabled }))`);
 
-  // the items of the open menu, as their text without the keys, and whether each is enabled
   const menuItems = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role^=menuitem]')]
   .map((e) => ({ text: e.textContent.trim(), on: e.getAttribute('aria-disabled') !== 'true' }))`);
 
-  // the commands that change a figure, which a lock turns off
   const CHANGES = [
     'media.replace', 'figure.alt', 'figure.decorative', 'figure.whiteFigure', 'figure.invert', 'figure.mode.dark', 'image.editMask', 'image.crop',
     'edit.cut', 'element.delete', 'selection.editText', 'arrange.align.left', 'arrange.order.back', 'arrange.flipHorizontal', 'arrange.nudge.left',
     'arrange.group', 'steps.add',
   ];
-  // the items of the context menu of a locked figure that do not change it
   const KEPT = ['Copy', 'Paste', 'Duplicate', 'Save as Picture…', 'Unlock'];
 
-  // state locked-element of round 2: a figure locked with Lock kept Replace and the other controls
-  // of the Image pane, the align, flip, and order buttons of the Arrange pane, and the items of its
-  // context menu enabled, where Keynote turns off every control of a locked object but Unlock
   for (const platform of ['mac', 'other']) {
     test(`a locked figure cannot be changed from the inspector, the menus, or its context menu until it is unlocked (${platform})`, async (t) => {
       const page = await open(platform, { size: SIZES[platform] });
@@ -1242,7 +1139,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
       await press(page, 'Escape');
       const edited = await roundTrip(page);
       assert.match(edited, /<figure class="figure-box" data-locked>/);
-      // Unlock gives the controls back, on the figure selected again after the open of the save
       await clickText(page, figure);
       await settle(page);
       assert.equal((await state(page, 'media.replace')).enabled, false);
@@ -1254,8 +1150,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     });
   }
 
-  // the text of a locked block was still typed into after a double click, where Keynote keeps the
-  // text of a locked object as it is until an unlock
   const LEAD = '<p>Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.</p>';
   for (const platform of ['mac', 'other']) {
     test(`the text of a locked block is not changed by typing until it is unlocked (${platform})`, async (t) => {
@@ -1288,8 +1182,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     });
   }
 
-  // the lock cancelled the beforeinput of Enter, but the typing of text/typing.ts still broke the
-  // line of the locked block by hand
   test('Enter and Shift+Enter at a caret in a locked block do not break its line', async (t) => {
     const page = await open('other');
     t.after(() => page.close());
@@ -1302,7 +1194,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     const locked = await render(page);
     assert.ok(locked.includes(LEAD.replace('<p>', '<p data-locked>')));
     await click(page, lead, { count: 2 });
-    // a collapsed caret at the end of the word chosen by the double click
     await page.evaluate('getSelection().collapseToEnd()');
     for (const key of ['Enter', 'Shift+Enter']) await press(page, key);
     await press(page, 'Escape');
@@ -1312,11 +1203,9 @@ describe('the Table pane, merged cells, and locked controls', () => {
     assert.deepEqual(errors(page), []);
   });
 
-  // the index of the slide "Embedding videos" of index.html, with a video for each mode
   const VIDEOS = 10;
   const clipOf = (mode) => `<video class="for-${mode}" src="demo/clip-${mode}.mp4" poster="demo/clip-${mode}.png" muted loop data-autoplay></video>`;
 
-  // a trusted click on the button of the Format tab with the text name
   async function tap(page, name) {
     const at = await page.evaluate(`(() => {
     const b = [...document.querySelectorAll('${PANEL} button')].find((b) => b.textContent.trim() === ${js(name)});
@@ -1328,7 +1217,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
     await clickText(page, at);
   }
 
-  // the file at path given to the open file chooser of the editor, as a person picks it
   async function choose(page, path) {
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
     const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
@@ -1337,9 +1225,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
 
   const ASK = 'dialog.beeson-edit-dialog.beeson-poster-ask[open]';
 
-  // state video-capture-poster of round 2: in a deck opened from a file, the page has an origin of
-  // its own, which the video of the folder does not share, hence the browser kept the frames of the
-  // video from the page, and Capture Poster failed with a message in the title bar
   for (const platform of ['mac', 'other']) {
     test(`Capture Poster on a video of a deck opened from a file asks once for its file and writes its first frame (${platform})`, async (t) => {
       const page = await editorPage(browser, { query: `edit&still&edit-platform=${platform}` });
@@ -1347,7 +1232,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
       assert.match(await page.evaluate('location.protocol'), /^file:$/);
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
       await show(page, VIDEOS);
-      // the video of the mode of the slide, and its file
       const mode = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length && v.getBoundingClientRect().width).classList.contains('for-dark') ? 'dark' : 'light'`);
       const video = `.reveal section.present video.for-${mode}`;
       const clip = `clip-${mode}`;
@@ -1360,11 +1244,8 @@ describe('the Table pane, merged cells, and locked controls', () => {
       const asked = await page.waitFor(`!!document.querySelector(${js(ASK)}) || window.BeesonEditor.status().message !== ${js(before)}`, 8000).then(() => page.evaluate(`document.querySelector(${js(ASK)})?.textContent ?? null`));
       assert.ok(asked, `Capture Poster did not ask for the file: ${(await page.evaluate('window.BeesonEditor.status()')).message}`);
       assert.ok(asked.includes(`${clip}.mp4`), asked);
-      // the button says that it asks for the file
       assert.equal(button[0], 'Capture Poster…');
       assert.match(button[1], /asked once for the file/);
-      // a chooser opened by a trusted click is cancelled at once in headless Chrome unless the
-      // protocol intercepts it, and the input then keeps waiting for its files
       await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
       await clickText(page, `${ASK} button.primary`);
       await choose(page, resolve(`demo/${clip}.mp4`));
@@ -1377,7 +1258,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
       await byteExact(page);
       await page.evaluate('window.BeesonEditor.redo()');
       assert.equal(await render(page), captured);
-      // a second capture reads the file chosen before, without asking again
       await page.evaluate('window.BeesonEditor.undo()');
       await clickText(page, video);
       await settle(page);
@@ -1389,10 +1269,6 @@ describe('the Table pane, merged cells, and locked controls', () => {
   }
 });
 
-// regression tests of R9.5, the tables, on both platforms with trusted input. a table is selected
-// as an object by the Esc ladder of Keynote, by Select Table, and by its move handle, and is then
-// moved, resized in width, and deleted as any element. after each edit the text is checked byte for
-// byte, after an undo and a redo, and after a save and an open
 describe('a table selected as an object', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -1416,7 +1292,6 @@ describe('a table selected as an object', () => {
   const middle = (r) => ({ x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 });
   let saves = 0;
 
-  // the editor on a deck served over HTTP in a window of 1600 by 1000 px, on the slide n
   async function load(t, platform, { deck = 'test-deck.html', n = 0, mode = 'light' } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1435,8 +1310,6 @@ describe('a table selected as an object', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -1451,8 +1324,6 @@ describe('a table selected as an object', () => {
     return edited;
   }
 
-  // newTable adds a slide with a table of 3 by 3 cells and the caret in its first cell, as the audit
-  // makes it, and keeps the text of the file after it as the text before the next check
   async function newTable(page) {
     await exec(page, 'slide.new');
     await frames(page);
@@ -1464,9 +1335,6 @@ describe('a table selected as an object', () => {
   const PANE_NOTE = `document.querySelector('#beeson-edit-panel-format .ed-note')?.textContent ?? ''`;
   const cellOf = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
 
-  // what is selected of the table of the current slide: the table as an object, the cells as a
-  // block, or a text, with the frame, the grips, and the rotate handle drawn, and its box on the
-  // screen and its translate
   const TABLE = `(() => {
   const table = document.querySelector('.reveal section.present table');
   const shown = (el) => !!el && !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
@@ -1491,8 +1359,6 @@ describe('a table selected as an object', () => {
   };
 })()`;
 
-  // isObject asserts that the table is selected as an object, with its frame and without a cell
-  // selected, and returns what TABLE reads
   async function isObject(page, what) {
     const s = await page.evaluate(TABLE);
     assert.ok(s.object, `the table is not the selection ${what}`);
@@ -1503,8 +1369,6 @@ describe('a table selected as an object', () => {
     return s;
   }
 
-  // finding select-move-resize-3: Esc from a cell selected as a block cleared the selection, and
-  // Select Table and the move handle left the cell selected, hence an arrow key moved the cell
   for (const platform of PLATFORMS) {
     test(`Esc goes from the text of a cell to the cell, to the table as an object, and to nothing (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2 });
@@ -1543,7 +1407,6 @@ describe('a table selected as an object', () => {
       assert.match(await render(page), new RegExp(`<table style="translate: ${x0 + 1}px ${y0}px">`));
       await roundTrip(page);
 
-      // the move handle, pressed while a cell is selected as a block
       await click(page, cellOf(1, 1));
       await press(page, 'Escape');
       await frames(page);
@@ -1562,7 +1425,6 @@ describe('a table selected as an object', () => {
       await frames(page);
       s = await page.evaluate(TABLE);
       assert.ok(!s.table, 'Delete does not delete the table selected as an object');
-      // the nudge down and the delete
       await roundTrip(page, 2);
       assert.deepEqual(errors(page), []);
     });
@@ -1592,7 +1454,6 @@ describe('a table selected as an object', () => {
       assert.ok(Math.max(...widths) - Math.min(...widths) <= 1, `the columns are not widened alike: ${widths}`);
       await roundTrip(page);
 
-      // the open of the saved text clears the selection
       await click(page, cellOf(0, 0));
       await press(page, 'Escape');
       await press(page, 'Escape');
@@ -1608,15 +1469,12 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // what is open of the menus: the labels of the items of the one menu shown, or null
   const MENU = `(() => {
   const m = [...document.querySelectorAll('.beeson-edit-menu')].find((el) => el.getClientRects().length);
   return m ? [...m.querySelectorAll('[role^="menuitem"]')].map((i) => i.textContent.trim()) : null;
 })()`;
   const segment = (bar, i) => `.beeson-table-bars .bar.${bar} > [data-index="${i}"]`;
 
-  // finding tables-equations-insert-3: a click on a column letter or a row number opened the menu of
-  // the table and moved the caret, and did not select the column or the row
   for (const platform of PLATFORMS) {
     test(`a click on a column letter or a row number selects the column or the row, Shift extends it, and the arrow and a right-click open its menu (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
@@ -1633,8 +1491,6 @@ describe('a table selected as an object', () => {
       }
       assert.equal(await render(page), page.source, 'a selection in the bars edits the file');
 
-      // the menu of a column from a right-click and from the arrow of its letter, with the commands
-      // of a column
       await click(page, segment('cols', 1), { button: 'right' });
       await frames(page);
       let items = await page.evaluate(MENU);
@@ -1655,7 +1511,6 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // the box of the move handle, and the boxes of the bars and buttons of the table drawn
   const HANDLE = `(() => {
   const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const h = document.querySelector('.beeson-overlay .beeson-handle');
@@ -1664,8 +1519,6 @@ describe('a table selected as an object', () => {
 })()`;
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  // finding select-move-resize-6: the move handle of a selected table was drawn half under the bar of
-  // its row numbers
   for (const platform of PLATFORMS) {
     test(`the move handle of a selected table is drawn clear of its bars, and its drag moves the table (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2 });
@@ -1687,15 +1540,12 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // the fields of the counts of rows and columns of the Table pane, with their values, or null
   const COUNTS = `(() => {
   const f = (name) => document.querySelector('#beeson-edit-panel-format #beeson-edit-num-' + name);
   return f('rows') && f('columns') ? { rows: f('rows').value, columns: f('columns').value } : null;
 })()`;
   const shape = (page) => page.evaluate(`[...document.querySelector('.reveal section.present table').rows].map((r) => r.cells.length)`);
 
-  // finding tables-equations-insert-8: the Table pane did not have fields for the counts of rows and
-  // columns, as the Table tab of Keynote has
   for (const platform of PLATFORMS) {
     test(`the Table pane has fields with steppers for the counts of rows and columns, each change one entry of the history (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
@@ -1712,8 +1562,6 @@ describe('a table selected as an object', () => {
       await click(page, cellOf(1, 0));
       await frames(page);
       await click(page, '#beeson-edit-panel-format #beeson-edit-num-columns');
-      // a key with the command modifier sent over the protocol does not run the editing commands of
-      // macOS, hence the text of the field is selected by a script
       await page.evaluate(`document.querySelector('#beeson-edit-num-columns').select()`);
       await page.send('Input.insertText', { text: '1' });
       await press(page, 'Enter');
@@ -1725,15 +1573,12 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // the buttons of the insert group of the toolbar, by their command, with true where one is enabled
   const INSERTS = `Object.fromEntries([...document.querySelectorAll('.beeson-edit-top button[data-command^="insert."]')]
   .filter((b) => b.getClientRects().length > 0).map((b) => [b.dataset.command, !b.disabled]))`;
   const TABLE_BUTTON = '.beeson-edit-top button[data-command="insert.table"]';
   const PICKER = `!!document.querySelector('dialog.beeson-table-picker[open]')`;
   const pressed = (page) => page.evaluate(`(() => { const b = document.querySelector(${js(TABLE_BUTTON)}); return { pressed: b.getAttribute('aria-pressed'), expanded: b.getAttribute('aria-expanded') }; })()`);
 
-  // finding tables-equations-insert-10: while the grid of Insert > Table was open, the insert buttons
-  // were disabled, and the Table button under its grid was not drawn pressed
   for (const [platform, mode] of [['mac', 'light'], ['other', 'dark']]) {
     test(`the Table button is drawn pressed under its open grid, and the other insert buttons stay enabled (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 6, mode });
@@ -1750,7 +1595,6 @@ describe('a table selected as an object', () => {
       assert.equal(await page.evaluate(PICKER), false, 'Esc does not close the grid');
       assert.deepEqual(await pressed(page), { pressed: null, expanded: 'false' }, 'the Table button is still pressed after the grid is closed');
 
-      // a second click on the pressed button closes its grid, as a click on another button does
       await click(page, TABLE_BUTTON);
       await page.waitFor(PICKER);
       await click(page, TABLE_BUTTON);
@@ -1769,8 +1613,6 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // finding tables-equations-insert-11: the header option of the Table pane was labeled with the
-  // element of HTML it writes, Header row, written as th
   for (const platform of PLATFORMS) {
     test(`the header option of the Table pane reads Header Row, as in the menus (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
@@ -1782,8 +1624,6 @@ describe('a table selected as an object', () => {
     });
   }
 
-  // the frame of the cell or the range drawn on the table, and the boxes of the glyphs of the cells
-  // with the given texts, which are beside the range
   const BESIDE = (texts) => `(() => {
   const frame = document.querySelector('.beeson-table-bars .cell:not([hidden])')?.getBoundingClientRect();
   const cells = [...document.querySelectorAll('.reveal section.present table :is(td,th)')].filter((c) => ${js(texts)}.includes(c.textContent.trim()));
@@ -1804,8 +1644,6 @@ describe('a table selected as an object', () => {
     assert.deepEqual(covered, [], `the frame ${what} at ${js(s.frame)} covers the glyphs of ${covered.join(', ')} beside it`);
   }
 
-  // the check of a round of the council: the frame of a range of cells and of a merged cell was drawn
-  // outside the cells, over the first glyph of the column after it
   for (const platform of PLATFORMS) {
     test(`the frame of a range of cells and of a merged cell is drawn on their edges, clear of the text beside them (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
