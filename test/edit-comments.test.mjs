@@ -746,6 +746,29 @@ test('a shift of the anchors by typing is written to the file', async (t) => {
   reads(authority.text, saved.comments[0].slide, '<section>\n  <h2>Two');
 });
 
+test('typing that only shifts the anchors does not write the file until the stop', async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { authority, comments } = open(dir, DECK, { every: 0 });
+  const text = authority.text;
+  comments.add(ANN, { base: authority.version, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'x' });
+  await comments.idle();
+  let writes = 0;
+  const write = comments.write;
+  comments.write = function () {
+    writes++;
+    return write.call(this);
+  };
+  for (let k = 0; k < 20; k++) {
+    replace(authority, 'First slide', `First slide ${k}`);
+    await new Promise((done) => setTimeout(done, 5));
+    await comments.idle();
+  }
+  assert.equal(writes, 0, 'a shift of the anchors alone is not written while the session runs');
+  comments.stopSync();
+  assert.equal(readJson(file).sum, checksum(authority.text));
+});
+
 test('a time of reading in the future is taken as the time now', (t) => {
   const { comments } = open(sessionDir(t), DECK, { now: () => 1_000_000 });
   assert.equal(comments.seen(BO, 5_000_000), 1_000_000);

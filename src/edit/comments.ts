@@ -151,6 +151,9 @@ export class Comments {
   // the count of changes, and the count that the file holds
   private edits = 0;
   private saved = 0;
+  // the checksum of the text that the anchors of the file are of. a shift of the anchors alone is
+  // written only at a stop, since a start places them by their checks
+  private savedSum = '';
   private stopped = false;
   // true from a failed delayed write to the next one that succeeds, which log once each
   private failing = false;
@@ -170,6 +173,7 @@ export class Comments {
       mkdirSync(dir, { recursive: true });
     } catch {}
     const saved = this.load();
+    this.savedSum = saved?.sum ?? this.sum;
     if (saved) this.place(saved.sum, found);
     authority.observe((op, text) => this.operation(op, text));
   }
@@ -399,7 +403,7 @@ export class Comments {
       this.stopped = true;
       if (this.timer) clearTimeout(this.timer);
       this.timer = null;
-      if (this.saved !== this.edits && !this.locked) this.writeNow();
+      if ((this.saved !== this.edits || (this.savedSum !== this.sum && this.threads.size)) && !this.locked) this.writeNow();
     }
     return this.saved === this.edits || this.locked;
   }
@@ -407,11 +411,12 @@ export class Comments {
   // the file written at once, or false when it could not be. a change of a thread tries the rename 3
   // times, which holds the edit command for 30 ms at most, and a stop as often as other files
   private writeNow(tries?: number): boolean {
-    const tmp = this.tmpName();
+    const tmp = this.tmpName(), sum = this.sum;
     try {
       writeFileSync(tmp, this.serialize());
       renameRetriedSync(tmp, this.file, tries);
       this.saved = this.edits;
+      this.savedSum = sum;
       this.writesNow++;
       return true;
     } catch (e) {
@@ -603,7 +608,6 @@ export class Comments {
       if (r.changed[k]) ids.push(t.id);
     });
     if (ids.length) this.changed(ids);
-    else if (threads.length) this.dirty();
   }
 
   // written is true when the file holds the changes already
@@ -669,7 +673,7 @@ export class Comments {
   private async write(): Promise<void> {
     if (this.stopped) return;
     const edits = this.edits;
-    const writesNow = this.writesNow;
+    const writesNow = this.writesNow, sum = this.sum;
     this.lastWrite = Date.now();
     const tmp = this.tmpName();
     try {
@@ -683,6 +687,7 @@ export class Comments {
       }
       renameRetriedSync(tmp, this.file, 1);
       this.saved = Math.max(this.saved, edits);
+      this.savedSum = sum;
       if (this.failing) this.log(`wrote ${this.file} again`);
       this.failing = false;
     } catch (e) {
