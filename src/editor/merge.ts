@@ -172,14 +172,15 @@ function markMoved(a: string[], b: string[]): [string[], string[]] | null {
   // hence it is not weighed again
   let end = 0;
   const pairs = [...exact, ...loose].sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
-  // the heaviest run in the same order, by dynamic programming over the slides, with the later
-  // slide kept at a tie
-  const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
+  // the heaviest run in the same order, by dynamic programming over the slides, with the slides
+  // moved the least kept at a tie
+  const far = (p: number[]) => Math.abs(p[0] - p[1]), best = pairs.map((p) => p[2]), off = pairs.map(far), prev = pairs.map(() => -1);
+  const over = (w: number, d: number, i: number) => w > best[i] || (w === best[i] && d < off[i]);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
-    if (j < i && q[1] < p[1] && best[j] + p[2] >= best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
+    if (j < i && q[1] < p[1] && over(best[j] + p[2], off[j] + far(p), i)) [best[i], off[i], prev[i]] = [best[j] + p[2], off[j] + far(p), j];
   }));
   const kept = new Set<number>();
-  for (let i = best.indexOf(Math.max(...best)); i >= 0; i = prev[i]) kept.add(i);
+  for (let i = best.reduce((t, w, k) => (over(w, off[k], t) ? k : t), pairs.length ? 0 : -1); i >= 0; i = prev[i]) kept.add(i);
   if (kept.size === pairs.length) return null;
   const x = [...a], y = [...b];
   pairs.forEach(([from, to, n], i) => {

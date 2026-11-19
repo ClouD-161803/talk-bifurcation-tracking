@@ -1015,6 +1015,16 @@ test('a key typed in a list item that another person removes from a slide they m
   }
 });
 
+test('a slide moved up past a slide as long as it and a slide that the mover types in is the removal and the insertion of the slide moved', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const one = s('Method 1', ['<p>Same words 11</p>']), two = s('Same words 2', []), four = s('Intro 4 k00', []), five = s('Same words 5', ['<p>Same words</p>']);
+  const three = (p) => s('Halo 3', [`<p>${p}</p>`]);
+  const base = one + two + three('Halo 31') + four + five, moved = one + four + two + three('Halo 31 k20') + five;
+  const found = changes(base, moved).map((e) => [base.slice(e.start, e.end), e.text]);
+  assert.ok(found.some(([cut, put]) => cut === four && !put) && found.some(([cut, put]) => !cut && put === four), JSON.stringify(found));
+  assert.ok(found.every(([cut, put]) => !`${cut}${put}`.includes('Halo 3<')), JSON.stringify(found));
+});
+
 test('a slide moved past a slide as long as it, after a slide that the mover types in, is the removal and the insertion of the slide moved', () => {
   const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
   const one = s('Moon 1', ['<p>Same words</p>', '<p>Method 22</p>']), three = s('Halo 3', ['<p>Same words</p>', '<p>Orbit 31</p>']);
