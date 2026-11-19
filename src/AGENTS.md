@@ -24,6 +24,8 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - Do not take design decisions that tie a feature to Chrome or to any one browser.
 - Do not make users reach for a terminal. Whatever a talk needs from a command is written by the editor as well, e.g. `tex.js` from `npm run tex`.
 - Record the videos of the PowerPoint export as H.264 in MP4, the one video format that every version of PowerPoint can play.
+- Open a file chooser, a folder picker, or a save picker in the handler of the click or the key press, since a picker requested later is refused.
+- Build menus and selects of DOM elements, since the popup of a native select is missing from a screenshot taken over the DevTools protocol.
 
 ## Theme
 
@@ -116,3 +118,10 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - WebDriver cannot read the console of Safari, and pages from file URLs are refused in Safari. Phones and pixel ratios are emulated only in Chrome. On a Mac, enable safaridriver once with `sudo safaridriver --enable`.
 - Firefox on Android reports a fine pointer on a screen with a stylus. Hence a rule for touch screens also matches `hover: none`.
 - In a PDF from Chrome, the page tree, the objects of the pages, and the dictionaries of the images are not compressed. Hence the scripts and the tests read them as text.
+- The origin of a deck opened from a file is opaque. Hence the files of its folder cannot be fetched, and the rules of its style sheets and the frames of its videos cannot be read.
+- Under a type filter, `index.html` may be grayed out in the file dialog of macOS. Open files without a filter.
+- After a click canceled with `preventDefault`, the former state of a checkbox is put back after the listeners of the click. Read the checkbox in the next task.
+- reveal.js takes the first `.reveal` of the page, and the sections under `.reveal .slides` as the slides. Put a copy of a slide in a shadow root or after the slide.
+- A pinch of the trackpad arrives as gesture events in Safari, and as a wheel event with Ctrl in the other browsers.
+- In Safari on a phone, the memory of all canvases together is small. Set the size of a canvas to 0 once it is read.
+- The cancel of a dialog at Esc may be ignored when the dialog was not used since a former cancel. Close a dialog at Esc in a keydown listener of the dialog.
