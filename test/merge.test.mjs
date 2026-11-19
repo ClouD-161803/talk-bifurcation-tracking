@@ -7,8 +7,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, charEdits, clash, edits, fine, merge, mergeEdits, moves, revert } from '../src/editor/merge.ts';
-import { apply as applyPatches, conflict, diff, mergePatches, shift } from '../src/session/patch.ts';
+import { apply, changes, charEdits, clash, edits, merge, mergeEdits, moves, revert } from '../src/editor/merge.ts';
+import { apply as applyPatches, conflict, diff, mergePatches, mergeTexts, shift } from '../src/session/patch.ts';
+
+// the merge of a session of the edits ours and all of base, where ours wins at a conflict and all
+// comes first at a tie
+const session = (base, ours, all, twice = false) => mergeTexts(base, apply(base, all), apply(base, ours), !twice);
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
 const at = (text, s) => {
@@ -183,18 +187,18 @@ test('revert in the direction of a redo puts the text of the person back after a
   assert.equal(revert('The slide.', 'The complete slide.', 'Thlide.'), null, 'a removal across the point of the insertion');
 });
 
-test('with apart, two insertions at one point are both kept with theirs first, and an insertion strictly inside a replaced range is still a conflict', () => {
+test('with apart, two insertions at one point are both kept with theirs first, and an insertion strictly inside a replaced word goes after the new word', () => {
   const base = 'The slide.';
   const ins = (at, text) => ({ start: at, end: at, text });
   const at = base.indexOf('slide');
-  const kept = mergeEdits(base, [ins(at, 'ours ')], [ins(at, 'theirs ')], 'ours', true);
-  assert.deepEqual(kept, { text: 'The theirs ours slide.', conflicts: [] });
+  assert.equal(session(base, [ins(at, 'ours ')], [ins(at, 'theirs ')]), 'The theirs ours slide.');
   // an insertion at the end and at the start of a range that the other side replaces
   const range = { start: at, end: at + 5, text: 'deck' };
-  assert.deepEqual(mergeEdits(base, [ins(at + 5, '!')], [range], 'ours', true), { text: 'The deck!.', conflicts: [] });
-  assert.deepEqual(mergeEdits(base, [ins(at, 'new ')], [range], 'theirs', true), { text: 'The new deck.', conflicts: [] });
+  assert.equal(session(base, [ins(at + 5, '!')], [range]), 'The deck!.');
+  assert.equal(session(base, [ins(at, 'new ')], [range]), 'The new deck.');
   const inside = ins(at + 2, 'X');
-  assert.deepEqual(mergeEdits(base, [inside], [range], 'ours', true), { text: 'The slXide.', conflicts: [inside] });
+  assert.equal(session(base, [inside], [range]), 'The deckX.');
+  assert.equal(session(base, [range], [inside]), 'The deckX.');
   // without apart, an insertion at one point or at an end of a range is a conflict, as before
   assert.deepEqual(mergeEdits(base, [ins(at, 'ours ')], [ins(at, 'theirs ')], 'ours'), { text: 'The ours slide.', conflicts: [ins(at, 'ours ')] });
   assert.deepEqual(mergeEdits(base, [ins(at + 5, '!')], [range], 'theirs'), { text: 'The deck.', conflicts: [ins(at + 5, '!')] });
@@ -206,8 +210,7 @@ test('with apart, the edits of each letter keep the keys of two others on both s
   const text = from.replace('one', 'oneB').replace('three', 'threeC');
   const want = '<section>\n  <p>oneB twoA threeC</p>\n</section>\n';
   assert.equal(edits(from, text).length, 1, 'the line diff gives one edit from B to C');
-  assert.equal(mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text, from.replace('two', 'twoA'));
-  assert.equal(mergeEdits(from, charEdits(from, seen, 500), charEdits(from, text, 500), 'ours', true).text, want);
+  assert.equal(mergeTexts(from, text, seen), want);
 });
 
 test('with apart, the merge of the page gives the text of the authority, which applies the patches in the order of their arrival', () => {
@@ -237,12 +240,13 @@ test('with apart, the merge of the page gives the text of the authority, which a
     // the patches of ours start at the points and the ends of the patches of theirs as often as not
     const ours = operation(base, 'cd', theirs.flatMap((p) => [p.start, p.end]));
     for (const o of ours) for (const h of theirs) assert.equal(clash(o, h), conflict(o, h), `clash and conflict of ${JSON.stringify(o)} and ${JSON.stringify(h)}`);
-    const moved = shift(ours, theirs, true);
+    // the authority gets the patches that a page sends, i.e. the diff of its text
+    const t = diff(base, applyPatches(base, theirs)), o = diff(base, applyPatches(base, ours));
+    const moved = shift(o, t, true);
     if (!moved) continue;
     cases += 1;
-    const authority = applyPatches(applyPatches(base, theirs), moved);
-    const page = mergeEdits(base, ours, theirs, 'ours', true);
-    assert.deepEqual(page, { text: authority, conflicts: [] }, `base ${JSON.stringify(base)}, ours ${JSON.stringify(ours)}, theirs ${JSON.stringify(theirs)}`);
+    const authority = applyPatches(applyPatches(base, t), moved);
+    assert.equal(session(base, ours, theirs), authority, `base ${JSON.stringify(base)}, ours ${JSON.stringify(ours)}, theirs ${JSON.stringify(theirs)}`);
   }
   assert.ok(cases > 1000, `${cases} pairs of operations that the authority accepts`);
 });
@@ -315,13 +319,15 @@ test('the merge of an apply in a session gives the text of the authority for pai
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   for (const [p0, ps, pt] of PAIRS) {
     const f = wrap(p0), s = wrap(ps), t = wrap(pt);
-    const page = mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text;
+    const page = mergeTexts(f, t, s);
     const moved = shift(diff(f, s), diff(f, t), true);
     const authority = moved ? applyPatches(t, moved) : applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours', f).patches);
     assert.equal(page, authority, `${ps} over ${pt}`);
   }
 });
 
+// the text with a key K after the tenth letter of its paragraph
+const keyed = (text) => text.replace(/(<p>|^)([^<]{10})/, '$1$2K');
 const PROSE = 'The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon. ';
 const PARA = 'A low energy transfer from the Earth to the Moon uses the manifolds of the halo orbits of L1 and L2. '.repeat(3).slice(0, 300);
 
@@ -357,7 +363,7 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     const f = wrap(`<p>${para}</p>`);
     const s = wrap(`<p>${para.slice(0, at)}A${para.slice(at)}</p>`);
     const t = wrap(`<p>${paste}${para}C</p>`);
-    return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text !== wrap(`<p>${paste}${para.slice(0, at)}A${para.slice(at)}C</p>`);
+    return mergeTexts(f, t, s) !== wrap(`<p>${paste}${para.slice(0, at)}A${para.slice(at)}C</p>`);
   });
   assert.deepEqual(lost.map(([para, , paste]) => `${paste.slice(0, 8)}… of ${paste.length} into ${para}`), []);
 });
@@ -368,8 +374,8 @@ test('the merge of an apply in a session keeps a long deletion of one person bef
   const para = rep(PARA, 1000), before = rep(PROSE, 1100), after = rep('Another sentence that a third person deletes. ', 1100);
   const f = wrap(`<p>${before}${para}${after}</p>`), t = wrap(`<p>${para}</p>`);
   const s = wrap(`<p>${before}${para.slice(0, 500)}A${para.slice(500)}${after}</p>`), want = wrap(`<p>${para.slice(0, 500)}A${para.slice(500)}</p>`);
-  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, want);
-  assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, want);
+  assert.equal(mergeTexts(f, t, s), want);
+  assert.equal(mergeTexts(f, s, t), want);
 });
 
 // the longest runs in common of the paragraph and the new text are "econd " of the paste and
@@ -378,7 +384,7 @@ test('the merge of an apply in a session keeps a paste of prose over the first w
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const paste = PROSE.repeat(6).slice(0, 600);
   const f = wrap('<p>Second slide</p>'), s = wrap('<p>Second slAide</p>'), t = wrap(`<p>${paste} slideC</p>`);
-  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste} slAideC</p>`));
+  assert.equal(mergeTexts(f, t, s), wrap(`<p>${paste} slAideC</p>`));
 });
 
 test('the merge of an apply in a session keeps a long paste and a phrase of a third person that replaces the last word around an unread key of the person', () => {
@@ -386,7 +392,7 @@ test('the merge of an apply in a session keeps a long paste and a phrase of a th
   const phrase = ' leaves the orbit of the halo near the Moon on the stable manifold of the halo orbit at L2 for good';
   const paste = PROSE.repeat(11).slice(0, 1200);
   const f = wrap('<p>Second slide</p>'), s = wrap('<p>SecAond slide</p>'), t = wrap(`<p>${paste}Second${phrase}</p>`);
-  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste}SecAond${phrase}</p>`));
+  assert.equal(mergeTexts(f, t, s), wrap(`<p>${paste}SecAond${phrase}</p>`));
 });
 
 // the paste leaves few cells to the parts after the run in common, and the part around the key
@@ -397,26 +403,39 @@ test('the merge of an apply in a session keeps a long paste and two phrases of a
   const paste = rep(PROSE, 3194), rest = PARA.slice('A low energy transfer from the Earth to the Moon uses the manifolds of'.length);
   const f = wrap(`<p>${PARA}</p>`), s = wrap(`<p>${PARA.replace(' to ', ' tAo ')}</p>`);
   const t = wrap(`<p>${paste}A low energy the spacecraft on the stable manifold to the unstable manifold${rest}</p>`);
-  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste}A low energy the spacecraft on the stable manifold tAo the unstable manifold${rest}</p>`));
+  assert.equal(mergeTexts(f, t, s), wrap(`<p>${paste}A low energy the spacecraft on the stable manifold tAo the unstable manifold${rest}</p>`));
 });
 
-test('fine() of a paste far over the cap of anchored() costs no more than a paste at the cap', () => {
+test('the merge of a paste far over the cells of the search for a run in common and a key of another person costs no more than a paste at the cap', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
   const cost = (n) => {
-    const f = wrap(`<p>${PARA}</p>`), t = wrap(`<p>${rep(PROSE, n)}${PARA}C</p>`);
-    fine(f, t);
+    const f = wrap(`<p>${PARA}</p>`), t = wrap(`<p>${rep(PROSE, n)}${PARA}C</p>`), s = keyed(f);
+    mergeTexts(f, t, s);
     const times = [];
     for (let i = 0; i < 7; i++) {
       const t0 = performance.now();
-      fine(f, t);
+      mergeTexts(f, t, s);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[3];
+  };
+  // one letter of the paste differs from the paragraph, so that the search of the paragraph in the
+  // paste does not find it, and the paste fills the cells of the search for a run in common
+  const cap = () => {
+    const f = wrap(`<p>${PARA}</p>`), t = wrap(`<p>${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C</p>`), s = keyed(f);
+    mergeTexts(f, t, s);
+    const times = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      mergeTexts(f, t, s);
       times.push(performance.now() - t0);
     }
     return times.sort((a, b) => a - b)[3];
   };
   let ratio = Infinity;
-  for (let i = 0; i < 3 && ratio >= 4; i++) ratio = cost(55_000) / cost(3_194);
-  assert.ok(ratio < 4, `a paste of 55,000 characters costs ${ratio.toFixed(1)} times one of 3,194`);
+  for (let i = 0; i < 3 && ratio >= 4; i++) ratio = cost(55_000) / cap();
+  assert.ok(ratio < 4, `a paste of 55,000 characters costs ${ratio.toFixed(1)} times one of 3,194 at the cap`);
 });
 
 // the diff reads the deletion of 'le stab' in 'unstable stable' as a deletion of 'stable ', which
@@ -424,14 +443,15 @@ test('fine() of a paste far over the cap of anchored() costs no more than a past
 test('the merge of an apply in a session keeps an insertion of another person two letters after an unread deletion of the person whose letters repeat after it', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   const f = wrap('toward unstable stable point'), s = wrap('toward unstable point'), t = wrap('toward unstable stablexyz point');
-  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap('toward unstablexyz point'));
-  assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, wrap('toward unstablexyz point'));
+  assert.equal(mergeTexts(f, t, s), wrap('toward unstablexyz point'));
+  assert.equal(mergeTexts(f, s, t), wrap('toward unstablexyz point'));
 });
 
 // each deletion of the person holds an insertion X of another person. it is moved over letters
 // that repeat to the left or to the right of X, unless the letters differ or the move would hold
-// another edit, and a replacement or a deletion of the other side stays a conflict
-test('the merge of an apply in a session moves a deletion off an insertion of another person to a side where the letters repeat and no other edit is held, and leaves other conflicts as they are', () => {
+// another edit. X is otherwise put at the end of the deletion, and two deletions that overlap stay a
+// conflict
+test('the merge of an apply in a session moves a deletion off an insertion of another person to a side where the letters repeat and no other edit is held, and otherwise puts the insertion at the end of the deletion', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   for (const [p, mine, others, want, unread] of [
     ['go go go', [[0, 3, '']], [[1, 1, 'X']], 'gXo go'],
@@ -440,43 +460,39 @@ test('the merge of an apply in a session moves a deletion off an insertion of an
     ['go go go', [[5, 8, '']], [[6, 6, 'X']], 'go Xgo'],
     ['go go go', [[0, 3, '']], [[0, 0, 'X'], [1, 1, 'Y']], 'XgYo go'],
     ['go go go', [[3, 6, '']], [[2, 2, 'Y'], [4, 4, 'X']], 'goY gXo'],
-    ['xo go', [[2, 5, '']], [[3, 3, 'X']], 'xo', 'xo Xgo'],
-    ['go go go', [[0, 3, '']], [[1, 1, 'X'], [2, 2, 'Y']], 'go go', 'gXoY go go'],
-    ['go go go', [[0, 3, ''], [4, 4, 'Z']], [[2, 2, 'X']], 'gZo go', 'goX gZo go'],
-    ['go go go', [[5, 8, ' to']], [[7, 7, 'X']], 'go go to', 'go go gXo'],
+    ['xo go', [[2, 5, '']], [[3, 3, 'X']], 'xoX'],
+    ['go go go', [[0, 3, '']], [[1, 1, 'X'], [2, 2, 'Y']], 'gXoY go'],
+    ['go go go', [[0, 3, ''], [4, 4, 'Z']], [[2, 2, 'X']], 'gZoX go'],
+    ['go go go', [[5, 8, ' to']], [[7, 7, 'X']], 'go go tXo'],
     ['go go go', [[5, 8, '']], [[7, 8, '']], 'go go', 'go go g'],
   ]) {
     const f = wrap(p), at = f.indexOf(p);
     const edits = (list) => list.map(([start, end, text]) => ({ start: at + start, end: at + end, text }));
-    assert.equal(mergeEdits(f, edits(mine), edits(others), 'ours', true, true).text, wrap(want), `${p} ${JSON.stringify(mine)}`);
-    assert.equal(mergeEdits(f, edits(others), edits(mine), 'ours', true, true).text, wrap(unread ?? want), `${p} ${JSON.stringify(mine)} unread`);
+    assert.equal(session(f, edits(mine), edits(others), true), wrap(want), `${p} ${JSON.stringify(mine)}`);
+    assert.equal(session(f, edits(others), edits(mine), true), wrap(unread ?? want), `${p} ${JSON.stringify(mine)} unread`);
   }
 });
 
 // the letters that repeat at the ends of each deletion are the ; of a reference before it, the >
 // of the start tag before it, or the &a of a reference after it. a literal & or > is kept as the
 // file has it, e.g. one written by an agent
-test('the merge of an apply in a session does not move a deletion off an insertion of another person into a tag or a character reference', () => {
+test('the merge of an apply in a session does not move a deletion off an insertion of another person into a tag or a character reference, and puts the insertion at the end of the deletion', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
-  for (const [p0, ps, pt] of [
-    ['for i &lt;n; i++', 'for i &lt; i++', 'for i &lt;nm; i++'],
-    ['R&amp;D; costs', 'R&amp; costs', 'R&amp;DX; costs'],
-    ['Oui&nbsp;x; non', 'Oui&nbsp; non', 'Oui&nbsp;xy; non'],
-    ['x> y', ' y', 'xX> y'],
+  for (const [p0, ps, pt, want] of [
+    ['for i &lt;n; i++', 'for i &lt; i++', 'for i &lt;nm; i++', 'for i &lt;m i++'],
+    ['R&amp;D; costs', 'R&amp; costs', 'R&amp;DX; costs', 'R&amp;X costs'],
+    ['Oui&nbsp;x; non', 'Oui&nbsp; non', 'Oui&nbsp;xy; non', 'Oui&nbsp;y non'],
+    ['x> y', ' y', 'xX> y', 'X y'],
   ]) {
     const f = wrap(p0), s = wrap(ps), t = wrap(pt);
-    assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, s, `${pt} over ${ps}`);
-    assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, t, `${pt} over ${ps} unread`);
+    assert.equal(mergeTexts(f, t, s), wrap(want), `${pt} over ${ps}`);
+    assert.equal(mergeTexts(f, s, t), wrap(want), `${pt} over ${ps} unread`);
   }
-  const f = wrap('R&D &amp; co'), at = f.indexOf('R&D');
-  const mine = [{ start: at + 1, end: at + 4, text: '' }], others = [{ start: at + 2, end: at + 2, text: 'X' }];
-  assert.equal(mergeEdits(f, mine, others, 'ours', true, true).text, wrap('R&amp; co'));
-  assert.equal(mergeEdits(f, others, mine, 'ours', true, true).text, wrap('R&XD &amp; co'));
 });
 
 // the other person also deletes a letter of the word, which clashes with the deletion of the page
 test('the merge of an apply in a session keeps a paste, a word, or an Enter of another person right beside a word that the page deleted', () => {
-  const page = (from, seen, text) => mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
+  const page = (from, seen, text) => mergeTexts(from, text, seen);
   assert.equal(page('<p>Second item</p>', '<p>Second </p>', '<p>Second brand new iem</p>'), '<p>Second brand new </p>');
   assert.equal(page('<p>Second item here</p>', '<p>Second  here</p>', '<p>Second iem, brand new here</p>'), '<p>Second , brand new here</p>');
   assert.equal(page('<p>Second item</p>', '<p>Second </p>', '<p>Second iem</p><p></p>'), '<p>Second </p><p></p>');
@@ -485,7 +501,7 @@ test('the merge of an apply in a session keeps a paste, a word, or an Enter of a
 test('the merge of an apply in a session keeps the edits of letters of one word by two people that do not clash', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   const f = wrap('Second slide');
-  assert.equal(mergeEdits(f, fine(f, wrap('Second side')), fine(f, wrap('Second slice')), 'ours', true, true).text, wrap('Second sice'));
+  assert.equal(mergeTexts(f, wrap('Second slice'), wrap('Second side')), wrap('Second sice'));
   // and so does the merge of a file
   const g = wrap('First slide here'), l = g.indexOf('slide') + 1;
   const page = [{ start: l, end: l + 1, text: 'L' }], file = [{ start: l, end: l + 1, text: 'X' }, { start: l + 3, end: l + 4, text: 'E' }];
@@ -494,15 +510,16 @@ test('the merge of an apply in a session keeps the edits of letters of one word 
 
 // x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
 // part between two runs in common has sides of over 500 units that charEdits() cannot diff
-test('fine() of a chain of parts that charEdits() cannot diff costs no more than a paste at the cap of anchored()', () => {
+test('the merge of a chain of parts that the Myers algorithm cannot diff and a key of another person costs no more than a paste at the cap', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
   const median = (f, t) => {
-    fine(f, t);
+    const s = keyed(f);
+    mergeTexts(f, t, s);
     const times = [];
     for (let i = 0; i < 7; i++) {
       const t0 = performance.now();
-      fine(f, t);
+      mergeTexts(f, t, s);
       times.push(performance.now() - t0);
     }
     return times.sort((a, b) => a - b)[3];
@@ -518,15 +535,16 @@ test('fine() of a chain of parts that charEdits() cannot diff costs no more than
 });
 
 // a paste of a run of a is broken by a b at each end, so that neither side holds the other
-test('fine() of a paste into a paragraph of 32,000 units of a short period costs no more than a paste at the cap of anchored()', () => {
+test('the merge of a paste into a paragraph of 32,000 units of a short period and a key of another person costs no more than a paste at the cap', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
   const median = (f, t) => {
-    fine(f, t);
+    const s = keyed(f);
+    mergeTexts(f, t, s);
     const times = [];
     for (let i = 0; i < 7; i++) {
       const t0 = performance.now();
-      fine(f, t);
+      mergeTexts(f, t, s);
       times.push(performance.now() - t0);
     }
     return times.sort((a, b) => a - b)[3];
@@ -536,7 +554,6 @@ test('fine() of a paste into a paragraph of 32,000 units of a short period costs
   for (const [unit, q] of [['a', `b${'a'.repeat(m - 2)}b`], ['- ', rep(' -', m)], ['&nbsp;', rep('nbsp;&', m)]]) {
     const p = rep(unit, m);
     const a = wrap(p), b = wrap('Z' + p.slice(0, m / 2) + q + p.slice(m / 2) + 'Y');
-    assert.equal(apply(a, fine(a, b)), b);
     let ratio = Infinity, ms = 0;
     for (let i = 0; i < 3 && ratio >= 4; i++) {
       ms = median(a, b);
@@ -561,7 +578,7 @@ test('mergePatches() of a paste into a paragraph of 32,000 units of a short peri
     }
     return times.sort((a, b) => a - b)[3];
   };
-  const cap = () => median(() => fine(wrap(PARA), wrap(`${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C`)));
+  const cap = () => median(() => mergeTexts(wrap(PARA), wrap(`${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C`), keyed(wrap(PARA))));
   const m = 32_000;
   for (const [unit, q] of [['a', `b${'a'.repeat(m - 2)}b`], ['- ', rep(' -', m)]]) {
     const p = rep(unit, m);
@@ -578,21 +595,19 @@ test('mergePatches() of a paste into a paragraph of 32,000 units of a short peri
 
 // the paragraph starts with a run of a, and the paste ends with one more a, hence the search of the
 // paragraph in the new text matches one unit early first
-test('fine() of a paste above the cells of anchored() that ends with the letter of a run at the start of the paragraph gives the paste as an insertion', () => {
+test('the merge of a paste above the cells of the search for a run in common, which ends with the letter of a run at the start of the paragraph, keeps the paste as an insertion before a key of another person', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
   const p = 'a'.repeat(40) + 'b ' + rep(PROSE, 2400);
   const a = wrap(p), b = wrap(rep(PROSE.toUpperCase(), 700) + 'a' + p + 'Y');
-  const found = fine(a, b);
-  assert.equal(apply(a, found), b);
-  assert.deepEqual(found.map((e) => [e.end - e.start, e.text.length]), [[0, 701], [0, 1]]);
+  assert.equal(mergeTexts(a, b, keyed(a)), wrap(rep(PROSE.toUpperCase(), 700) + 'a' + keyed(p) + 'Y'));
 });
 
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const twice = (p0, ps, pt) => {
     const f = wrap(p0), s = wrap(ps), t = wrap(pt);
-    return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text;
+    return mergeTexts(f, t, s);
   };
   assert.equal(twice('<p>Second slide</p>', '<p>Seconde slide</p>', '<p>Seconde slide</p>'), wrap('<p>Secondee slide</p>'));
   // the diff turns slide into deck as a removal of sli and an insertion of ck, which are one change
@@ -613,8 +628,8 @@ test('the merge of an apply in a session takes a format off a word or changes it
     ['the <em>moon</em> here', 'the <strong>moon</strong> here', 'the <em>oon</em> here', 'the <strong>oon</strong> here'],
   ]) {
     const f = wrap(p0), s = wrap(off), t = wrap(cut);
-    assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(want), `${off} over ${cut}`);
-    assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, wrap(want), `${cut} over ${off}`);
+    assert.equal(mergeTexts(f, t, s), wrap(want), `${off} over ${cut}`);
+    assert.equal(mergeTexts(f, s, t), wrap(want), `${cut} over ${off}`);
     assert.equal(applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours', f).patches), wrap(want), `replica ${cut} over ${off}`);
   }
 });
@@ -624,7 +639,7 @@ test('the merge of an apply in a session keeps a key of another person inside a 
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const f = wrap('<p>Second <strong>slide</strong></p>'), s = wrap('<p>Second slide</p>');
   for (const [pt, want] of [['<p>Second <strong>sliZde</strong></p>', '<p>Second sliZde</p>'], ['<p>Second <strong>slideZ</strong></p>', '<p>Second slideZ</p>']]) {
-    assert.equal(mergeEdits(f, fine(f, s), fine(f, wrap(pt)), 'ours', true, true).text, wrap(want));
+    assert.equal(mergeTexts(f, wrap(pt), s), wrap(want));
   }
 });
 
@@ -635,7 +650,7 @@ test('the merge of an apply in a session keeps a format that one person puts aro
   // the other way around
   const both = (formatted, typed) => {
     const s = wrap(`<p>Second ${formatted}</p>`), t = wrap(`<p>Second ${typed}</p>`);
-    return [mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text];
+    return [mergeTexts(f, t, s), mergeTexts(f, s, t)];
   };
   for (const [open, close] of [['<em>', '</em>'], ['<a href="https://example.org">', '</a>'], ['<strong><em>', '</em></strong>']]) {
     const formatted = `${open}slide${close}`;
@@ -665,7 +680,7 @@ test('the merge of an apply in a session keeps a format with keys of its own sid
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>Second ${p}</p>\n</section>\n`;
   const merged = (before, mine, others) => {
     const f = wrap(before);
-    return mergeEdits(f, fine(f, wrap(mine)), fine(f, wrap(others)), 'ours', true, true).text;
+    return mergeTexts(f, wrap(others), wrap(mine));
   };
   // the unread key Z of the page, and a format of the others with a key of theirs in the word,
   // after it, or before it
@@ -696,8 +711,8 @@ test('the merge of an apply in a session keeps a format with keys of its own sid
   const here = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
   for (const other of ['Secondlide here', 'Second slidhere']) {
     const f = here('Second slide here'), em = here('Second <em>slide</em> here');
-    assert.equal(mergeEdits(f, fine(f, em), fine(f, here(other)), 'ours', true, true).text, em, other);
-    assert.equal(mergeEdits(f, fine(f, here(other)), fine(f, em), 'ours', true, true).text, here(other), `${other} unread`);
+    assert.equal(mergeTexts(f, here(other), em), em, other);
+    assert.equal(mergeTexts(f, em, here(other)), here(other), `${other} unread`);
   }
 });
 
@@ -718,11 +733,11 @@ test('keys of another person on both sides of an unread key are kept when the re
   const seen = from.replace('two three', 'twoA three');
   const keys = from.replace('one', 'oneB').replace('three', 'threeC');
   for (const [how, text] of [['a letter', keys.replace('cats', 'cat').replace('dog barks', 'dogs barks')], ['a word', keys.replace('The cats sleep', 'The cats').replace('A dog barks', 'A dog barks sleep')], ['a paragraph', keys.replace('  <p>Spacer two</p>\n', '').replace('</section>', '  <p>Spacer two</p>\n</section>')]]) {
-    assert.equal(mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text, text.replace('two three', 'twoA three'), how);
+    assert.equal(mergeTexts(from, text, seen), text.replace('two three', 'twoA three'), how);
   }
   const mice = '<section>\n  <h2>Mice</h2>\n  <p>Squeak</p>\n</section>\n', dogs = mice.replace('Mice', 'Dogs').replace('Squeak', 'Barks');
   const moved = keys + dogs + mice;
-  assert.equal(mergeEdits(from + mice + dogs, fine(from + mice + dogs, seen + mice + dogs), fine(from + mice + dogs, moved), 'ours', true, true).text, moved.replace('two three', 'twoA three'), 'a slide');
+  assert.equal(mergeTexts(from + mice + dogs, moved, seen + mice + dogs), moved.replace('two three', 'twoA three'), 'a slide');
 });
 
 test('a move is the removal of whole lines and the insertion of their text in the same order, and gives way only to an edit of someone else inside it', () => {
@@ -756,7 +771,7 @@ test('outside a session, a key in a paragraph that the file moves is a conflict,
 
 test('the merge of an apply in a session keeps the item or paragraph after one that two people delete when one of them also moves a paragraph to the next slide, in both orders', () => {
   const deck = (...slides) => slides.map((s) => `<section>\n  <h2>${s[0]}</h2>\n${s.slice(1).map((l) => `  ${l}\n`).join('')}</section>\n`).join('');
-  const unread = (from, mine, others) => mergeEdits(from, fine(from, mine), fine(from, others), 'ours', true, true).text;
+  const unread = (from, mine, others) => mergeTexts(from, others, mine);
   const lists = ['<li></li>', '<li>Same</li>'].map((next) => [next, ['One', '<ul>', '  <li>Method</li>', '  <li>Same words</li>', `  ${next}`, '</ul>', '<p>Para</p>'], '    <li>Same words</li>\n']);
   for (const [next, one, cut] of [...lists, ['<p>Same words 2</p>', ['One', '<p>Method</p>', '<p>Same words</p>', '<p>Same words 2</p>', '<p>Para</p>'], '  <p>Same words</p>\n']]) {
     const from = deck(one, ['Two', '<p>Last</p>']);
@@ -776,7 +791,7 @@ test('in the merge of the editor, a swap of two list items that differ in one ch
   const from = '<section>\n  <h2>Two</h2>\n  <ul>\n    <li>Beta 1</li>\n    <li>Beta 2</li>\n  </ul>\n</section>\n';
   const moved = from.replace('    <li>Beta 1</li>\n    <li>Beta 2</li>\n', '    <li>Beta 2</li>\n    <li>Beta 1</li>\n');
   const typed = from.replace('Beta 1', 'Beta 1 by Ana');
-  for (const [ours, all] of [[typed, moved], [moved, typed]]) assert.ok(mergeEdits(from, fine(from, ours), fine(from, all), 'ours', true).text.includes('<li>Beta 1 by Ana</li>'));
+  for (const [ours, all] of [[typed, moved], [moved, typed]]) assert.ok(mergeTexts(from, all, ours, true).includes('<li>Beta 1 by Ana</li>'));
 });
 
 test('in the merge of the editor, a paragraph moved together with a long paste on another slide is in the deck once around an unread key in it', () => {
@@ -785,7 +800,7 @@ test('in the merge of the editor, a paragraph moved together with a long paste o
   const from = `${one}\n${two}`;
   const long = Array.from({ length: 90 }, (_, i) => `word${i}`).join(' ');
   const moved = `${one.replace('</section>', `  <p>${long}</p>\n</section>`)}\n${two.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n')}`;
-  const text = mergeEdits(from, fine(from, from.replace('Second slide', 'Second slide by Ana')), fine(from, moved), 'ours', true).text;
+  const text = mergeTexts(from, moved, from.replace('Second slide', 'Second slide by Ana'), true);
   assert.equal(text.split('Second slide').length - 1, 1);
   assert.equal(text.split('word89').length - 1, 1);
 });
@@ -807,4 +822,57 @@ test('changes() gives a slide moved past another as the removal and the insertio
   const base = one + two + three + four, theirs = two.replace('Second', 'Second by Bob') + three + one + four;
   assert.deepEqual(changes(base, theirs), changes(base, theirs, true));
   assert.equal(apply(base, changes(base, theirs)), theirs);
+});
+
+// two and three people who type at once at one point, at points next to each other, and in a word
+// that one of them types over, merged in every order of arrival
+test('the merge of texts keeps every key of two or three people who type at once at one point, next to each other, or in a word that one of them replaces', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  const base = wrap('Second slide');
+  const orders = (n) => (n === 2 ? [[0, 1], [1, 0]] : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]);
+  for (const [texts, wants] of [
+    [['SecondA slide', 'SecondB slide'], ['SecondAB slide', 'SecondBA slide']],
+    [['SecondA slide', 'Second Bslide'], ['SecondA Bslide']],
+    [['SecondA slide', 'SecondB slide', 'Second Cslide'], ['SecondAB Cslide', 'SecondBA Cslide']],
+    [['Second deck', 'Second slXide'], ['Second deckX']],
+    [['Second slate', 'Second sliQde'], ['Second slateQ']],
+    [['Second deck', 'Second slXide', 'Second slidYe'], ['Second deckXY', 'Second deckYX']],
+    [['Second deck', 'Second slXide', 'SecondZ slide'], ['SecondZ deckX']],
+  ]) {
+    for (const order of orders(texts.length)) {
+      // each text reaches the merge of the others in this order, and is the page of its person
+      let text = wrap(texts[order[0]]);
+      for (const i of order.slice(1)) text = mergeTexts(base, text, wrap(texts[i]));
+      assert.ok(wants.map(wrap).includes(text), `${texts.join(', ')} in the order ${order.join('')}: ${text}`);
+    }
+  }
+});
+
+// one person puts a word in at once at the end of a paragraph while another types a word there key by
+// key. each page reads the word put in after a space as one that starts with the space, and the
+// authority puts a key that goes on with a word before a word that starts with a space at one point
+test('a word put in at once and a word typed key by key at one point each stay whole with the space before it', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  // the page of the person who typed the space reads the word of the other after the space
+  assert.deepEqual(diff(wrap('Second slide '), wrap('Second slide A0a ')), [{ start: wrap('Second slide').indexOf('</p>'), end: wrap('Second slide').indexOf('</p>'), text: ' A0a' }]);
+  for (const [theirs, ours] of [['Second slide A0a ', 'Second slide B0b'], ['Second slide B0b', 'Second slide A0a ']]) {
+    assert.equal(mergeTexts(wrap('Second slide '), wrap(theirs), wrap(ours)), wrap('Second slide A0a B0b'));
+  }
+  // a key after a sign that ends a sentence is not the rest of a word and goes after the word of the other
+  for (const [theirs, ours, want] of [['attention. See more.', 'attention.QQQ', 'attention. See more.QQQ'], ['attention. R', 'attention.q', 'attention. Rq']]) {
+    assert.equal(mergeTexts(wrap('attention.'), wrap(theirs), wrap(ours)), wrap(want));
+  }
+  // the authority puts the key of the person after the space before the word of the other there
+  const at = wrap('Second slide ').indexOf('</p>');
+  for (const first of [true, false]) {
+    assert.deepEqual(shift([{ start: at, end: at, text: 'B' }], [{ start: at, end: at, text: ' A0a' }], first), [{ start: at, end: at, text: 'B' }]);
+    assert.deepEqual(shift([{ start: at, end: at, text: ' A0a' }], [{ start: at, end: at, text: 'B' }], first), [{ start: at + 1, end: at + 1, text: ' A0a' }]);
+  }
+});
+
+test('mergePatches() ends on patches that conflict at the start of a text that starts with a line break', () => {
+  const base = '\nab\n';
+  const { patches } = mergePatches([{ start: 0, end: 2, text: 'X' }], [{ start: 1, end: 1, text: 'Y' }], 'ours', base);
+  // the key in the word that the other side types over goes to the end of the new word
+  assert.equal(applyPatches(base, patches), 'XbY\n');
 });

@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
-import { clickText, press, typeKeys } from './helpers/editor.mjs';
+import { clickText, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, leave, select, session, unbubble } from './helpers/presence.mjs';
 import { tap } from './helpers/share.mjs';
@@ -771,6 +771,24 @@ for (const [words, a, b, word, want] of [
   });
 }
 
+// a key inside a word that another person types over goes after the new word, as the caret of the
+// person does, whichever of the two the edit command hears first
+for (const [label, ana, marker, ben, more] of [
+  ['an unread key in it', [9, 9, 'X'], 'deck', async (ben) => {
+    assert.ok(await selectIn(ben, 7, 12));
+    await ben.evaluate(`document.execCommand('insertText', false, 'deck')`);
+  }, 'Y'],
+  ['an unread replacement of it', [7, 12, 'deck'], 'slXide', async (ben) => {
+    assert.ok(await selectIn(ben, 9, 9));
+    await typeKeys(ben, 'X');
+  }, ''],
+]) {
+  test(`a key of one person inside a word that another person replaces, with ${label}, goes after the new word`, { timeout: 300_000 }, async (t) => {
+    const text = await race(t, { ana, marker, ben, more });
+    assert.equal(text, `<p>Second deckX${more}</p>`);
+  });
+}
+
 // two pages in the paragraph, with the focus of each emulated, so that both hold a caret at once
 async function pair(t) {
   const s = await session(t, ['Ana', 'Ben']);
@@ -778,6 +796,27 @@ async function pair(t) {
   for (const page of s.pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
   return s;
 }
+
+// Ana puts a word in with one insert while Ben types his word one key at a time, both at the end of
+// the paragraph, and each word stays whole with its space before it
+test('a word put in at once and a word typed key by key at the same moment at the end of a paragraph are each kept whole with the space before it', { timeout: 300_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  for (let round = 0; round < 5; round++) {
+    await caretAtEnd(ana, p);
+    await caretAtEnd(ben, p);
+    const keys = async () => {
+      for (const c of ` B${round}b`) {
+        await typeKeys(ben, c);
+        await new Promise((done) => setTimeout(done, 40));
+      }
+    };
+    await Promise.all([type(ana, ` A${round}a`), keys()]);
+    const text = para(await converge(server, pages));
+    assert.ok(text.includes(` A${round}a`) && text.includes(` B${round}b`), `round ${round}: ${text}`);
+  }
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
 
 // Ana composes each step, and act(i) runs on the page of Ben after step i. when act returns true,
 // the step waits until index.html changes and Ana reads it

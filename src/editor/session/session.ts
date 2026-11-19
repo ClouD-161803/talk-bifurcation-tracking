@@ -11,7 +11,7 @@ import type { Pairing, Rendered } from '../render.ts';
 import type { Source } from '../source.ts';
 import type { Mark } from './caret.ts';
 import type { Applied, Engine, Tracked } from './port.ts';
-import { apply as applyEdits, caretOf, contentRange, edits, elementRange, fine, mapOffset, markOf, mathLookup, mergeEdits, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
+import { apply as applyEdits, caretOf, contentRange, edits, elementRange, mapOffset, markOf, mathLookup, mergeTexts, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
 import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
@@ -104,7 +104,7 @@ export function install(app: App, tracked: Tracked): Engine {
   // the text of the deck with the changes held back, which arrived before the edits of the person,
   // hence go first where both insert at one point, as at the authority. an edit of the person equal
   // to one of them is taken once
-  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, fine(behind.shown, deck), fine(behind.shown, behind.want), 'ours', true).text : deck);
+  const virtual = (deck: string): string => (behind ? mergeTexts(behind.shown, behind.want, deck, true) : deck);
 
   app.listen('open', () => {
     clean = ready();
@@ -421,11 +421,11 @@ export function install(app: App, tracked: Tracked): Engine {
     // an edit of the person that the client has not read is kept, and wins at a conflict. the
     // authority orders it after the text, which arrived first. the text was written against from,
     // hence a change of it equal to such an edit is the same key typed by another person
-    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
+    if (text !== null && from !== seen) target = mergeTexts(from, text, seen);
     if (text !== null) handed = text;
     // the text that a page loaded again is to read, which keeps the composing text as an edit of
     // the person
-    const kept = (): string => (bare !== null ? mergeEdits(seen, fine(seen, virtual(deck)), fine(seen, target), 'ours', true).text : target);
+    const kept = (): string => (bare !== null ? mergeTexts(seen, target, virtual(deck), true) : target);
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial(kept());
     // the composing text in the deck, as an edit of rest. the applies go around it, and one before

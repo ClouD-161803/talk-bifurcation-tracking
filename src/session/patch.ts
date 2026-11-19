@@ -5,7 +5,8 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { carry, changes, fine, nest, stay } from '../editor/merge.ts';
+import { carry, changes, stay } from '../editor/merge.ts';
+import { goesOn, mergeRun, spaced } from './run.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -113,11 +114,14 @@ export function conflict(a: Patch, b: Patch): boolean {
 }
 
 // true when a comes before b in the text with both, where a is of the operation ordered first
-// when aFirst is true. the two do not conflict
-function before(a: Patch, b: Patch, aFirst: boolean): boolean {
+// when aFirst is true. the two do not conflict. of two insertions at one point, one that goes on
+// with the word before it comes before one that starts a new word, hence a word typed key by key
+// stays whole beside a word that another person puts in at once at the same point. with the base,
+// this holds only after a space or a letter, e.g. not after a full stop
+function before(a: Patch, b: Patch, aFirst: boolean, base?: string): boolean {
   if (a.start !== b.start) return a.start < b.start;
   const ai = a.start === a.end, bi = b.start === b.end;
-  if (ai && bi) return aFirst;
+  if (ai && bi) return spaced(a.text) === spaced(b.text) || (base !== undefined && !goesOn(base[a.start - 1])) ? aFirst : spaced(b.text);
   return ai;
 }
 
@@ -169,27 +173,14 @@ export function invert(text: string, patches: Patch[]): Patch[] {
 
 // one operation of base with the patches of first and second, which do not conflict, where first
 // is ordered first at a tie
-export function combine(first: Patch[], second: Patch[]): Patch[] {
+export function combine(first: Patch[], second: Patch[], base?: string): Patch[] {
   const out: Patch[] = [];
   let i = 0, j = 0;
   while (i < first.length || j < second.length) {
-    if (j >= second.length || (i < first.length && before(first[i], second[j], true))) out.push(first[i++]);
+    if (j >= second.length || (i < first.length && before(first[i], second[j], true, base))) out.push(first[i++]);
     else out.push(second[j++]);
   }
   return out;
-}
-
-// the patches of one operation of base with each that conflicts with a patch of the other given
-// as the edits that fine() finds in it, since a patch spans a line from its first change to its
-// last, e.g. a format and a key of the same operation further on the line. a patch is kept whole
-// when one of these edits is not inside it, since fine() finds the removal of a line some characters
-// further on when the next line starts with the same characters
-function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
-  return patches.flatMap((p) => {
-    if (!other.some((o) => conflict(p, o))) return [p];
-    const edits = fine(base, apply(base, [p]));
-    return edits.every((e) => p.start <= e.start && e.end <= p.end) ? edits : [p];
-  });
 }
 
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
@@ -198,40 +189,76 @@ function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
 // conflict with a patch of theirs. with base, the text of both operations, the patches of each side
 // inside a move of the other side go with the move, see carry(), and a move of either side that
 // conflicts all the same is undone, with the changes of the mover in place, see stay(), apart from
-// a move of the side keep, which the dialog after a break decides. with nested as well, a format of
-// one side and the edits of plain text of the other side inside its run do not conflict, and both
-// are kept, see nest()
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+// a move of the side keep, which the dialog after a break decides. with nested as well, the patches
+// that conflict are merged by their characters over the lines of base that they span, see
+// mergeRun(), and are a conflict only when their characters conflict. an edit of ours equal to one
+// of theirs in such a run is taken once, unless twice is true and it is the only one and an insertion
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[] } {
   if (base !== undefined) {
     [theirs, ours] = carry(base, theirs, ours);
     [ours, theirs] = carry(base, ours, theirs);
   }
-  if (base !== undefined && nested) {
-    // the finer edits are taken only when none of them conflicts, since the letters of one word
-    // replaced on both sides would be mixed
-    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
-    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
-  }
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
-  let k = 0, any = false;
+  const pairs: [number, number][] = [];
+  let k = 0;
   for (let i = 0; i < ours.length; i++) {
     const o = ours[i];
     while (k < theirs.length && theirs[k].end <= o.start) k++;
     for (let j = k; j < theirs.length && theirs[j].start < o.end; j++) {
-      if (conflict(o, theirs[j])) hitOurs[i] = hitTheirs[j] = 1;
+      if (conflict(o, theirs[j])) {
+        hitOurs[i] = hitTheirs[j] = 1;
+        pairs.push([j, i]);
+      }
     }
-    any ||= hitOurs[i] === 1;
   }
-  const conflicts = ours.filter((_, i) => hitOurs[i]);
-  if (!any) return { patches: combine(theirs, ours), conflicts };
+  if (!pairs.length) return { patches: combine(theirs, ours, base), conflicts: [] };
   const [o, undone] = base === undefined || keep === 'ours' ? [ours, false] : stay(base, ours, theirs, conflict);
   const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
-  if (undone || gone) return { patches: mergePatches(t, o, wins, base, false, keep).patches, conflicts };
-  const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
-  const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
-  return { patches: combine(keptTheirs, keptOurs), conflicts };
+  if (undone || gone) return { patches: mergePatches(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
+  // the lines of the patches that conflict, each merged by its characters with every patch of both
+  // sides on it when the characters do not conflict
+  const runs: Patch[] = [];
+  if (base !== undefined && nested) {
+    const all = [...theirs, ...ours];
+    const into = (p: Patch, a: number, b: number) => (p.start === p.end ? a < p.start && p.start < b : p.start < b && a < p.end);
+    const lines: [number, number][] = [];
+    for (const [j] of pairs) {
+      let a = theirs[j].start, b = theirs[j].end;
+      if (lines.length && lines[lines.length - 1][1] >= a) continue;
+      for (let wider = true; wider; ) {
+        a = a && base.lastIndexOf('\n', a - 1) + 1;
+        b = base.indexOf('\n', b);
+        if (b < 0) b = base.length;
+        wider = false;
+        for (const p of all) if (into(p, a, b) && (p.start < a || p.end > b)) [a, b, wider] = [Math.min(a, p.start), Math.max(b, p.end), true];
+      }
+      while (lines.length && lines[lines.length - 1][1] >= a) a = Math.min(a, lines.pop()![0]);
+      lines.push([a, b]);
+    }
+    for (const [a, b] of lines) {
+      const tj = theirs.flatMap((p, j) => (into(p, a, b) ? [j] : [])), oi = ours.flatMap((p, i) => (into(p, a, b) ? [i] : []));
+      const at = (list: Patch[]) => apply(base.slice(a, b), list.map((p) => ({ start: p.start - a, end: p.end - a, text: p.text })));
+      const run = mergeRun(base.slice(a, b), at(tj.map((j) => theirs[j])), at(oi.map((i) => ours[i])), twice, wins);
+      runs.push({ start: a, end: b, text: run.text });
+      for (const j of tj) hitTheirs[j] = 2;
+      for (const i of oi) hitOurs[i] = run.conflicted && hitOurs[i] ? 3 : 2;
+    }
+  }
+  const conflicts = ours.filter((_, i) => hitOurs[i] === 1 || hitOurs[i] === 3);
+  const keptTheirs = theirs.filter((_, j) => hitTheirs[j] < 2 && (wins === 'theirs' || !hitTheirs[j]));
+  const keptOurs = ours.filter((_, i) => hitOurs[i] < 2 && (wins === 'ours' || !hitOurs[i]));
+  return { patches: combine(keptTheirs, combine(runs, keptOurs, base), base), conflicts };
+}
+
+// base with the edits that turn it into theirs and into ours, merged by mergePatches(), where ours
+// wins at a conflict and theirs comes first at a tie. with once, an edit of theirs equal to one of
+// ours is taken once, e.g. a change held back that the page already shows
+export function mergeTexts(base: string, theirs: string, ours: string, once = false): string {
+  const o = diff(base, ours);
+  const t = diff(base, theirs).filter((p) => !once || !o.some((q) => q.start === p.start && q.end === p.end && q.text === p.text));
+  return apply(base, mergePatches(t, o, 'ours', base, true, undefined, !once).patches);
 }
 
 // the last text tokenized, since a diff is taken many times against one base. odd is true when the
@@ -538,7 +565,12 @@ export function diff(base: string, text: string): Patch[] {
   const found = changes(base, text);
   const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
   const patches = lines.flatMap((p) => (p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]));
-  return widen(base, cap(base, patches));
+  // an insertion that ends with a space after a space starts with this space instead, e.g. a word put
+  // in after a space that another person typed, as runsOf() reads it
+  return widen(base, cap(base, patches)).map((p, i, all) => {
+    const c = base[p.start - 1] ?? '', at = p.start - 1;
+    return p.start < p.end || c !== ' ' || !p.text.endsWith(c) || spaced(p.text) || all[i - 1]?.end === p.start ? p : { start: at, end: at, text: c + p.text.slice(0, -1) };
+  });
 }
 
 // the size of an operation, i.e. the characters it removes and inserts
