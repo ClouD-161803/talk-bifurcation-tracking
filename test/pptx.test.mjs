@@ -72,12 +72,13 @@ function assertPackage(parts) {
 }
 
 // the run of the export of a deck, with options before and after the deck and the output, and the
-// parts of its file. with noH264, the export is run in a browser without an H.264 encoder
-function runExport(deck, before = [], after = [], { noH264 = false } = {}) {
+// parts of its file. with noH264, the export is run in a browser without an H.264 encoder, and with
+// reduced, in a browser that prefers reduced motion
+function runExport(deck, before = [], after = [], { noH264 = false, reduced = false } = {}) {
   const folder = mkdtempSync(join(tmpdir(), 'beeson-pptx-'));
   try {
     const output = join(folder, 'deck.pptx');
-    const preload = noH264 ? ['--import', './test/helpers/no-h264.mjs'] : [];
+    const preload = [...(noH264 ? ['--import', './test/helpers/no-h264.mjs'] : []), ...(reduced ? ['--import', './test/helpers/reduced-motion.mjs'] : [])];
     const run = spawnSync(process.execPath, [...preload, 'scripts/export-pptx.mjs', ...before, deck, output, ...after], { encoding: 'utf8' });
     return { run, parts: run.status === 0 ? unzip(readFileSync(output)) : null };
   } finally {
@@ -531,10 +532,11 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 
-// the file of test/pages/animations-record.html, exported once for the tests of its recordings
+// the file of test/pages/animations-record.html, exported once for the tests of its recordings, in a
+// browser that prefers reduced motion, in which the export records them all the same
 let animationsRun;
 const animationsDeck = () => {
-  animationsRun ??= runExport('test/pages/animations-record.html');
+  animationsRun ??= runExport('test/pages/animations-record.html', [], [], { reduced: true });
   assert.equal(animationsRun.run.status, 0, animationsRun.run.stderr);
   return animationsRun;
 };

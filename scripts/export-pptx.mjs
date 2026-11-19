@@ -149,8 +149,9 @@ const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
 const browser = await launch({ wholeFrames: true });
 let failed = false;
 try {
-  // twice the design size, since an image of text is blurred on a display above 1080 lines
-  const page = await browser.newPage({ scale: 2 });
+  // twice the design size, since an image of text is blurred on a display above 1080 lines. a plot
+  // does not move in a browser that prefers reduced motion, and is recorded only with motion
+  const page = await browser.newPage({ scale: 2, motion: true });
   // by default, a .pdf-page of reveal.js is a pixel shorter than its slide, and a picture of 1080 px
   // would then end on the first row of the next page
   await printView(page, deckUrl(deck, 'print-pdf&still&pdfPageHeightOffset=0'));
