@@ -2,6 +2,8 @@
 
 The rules below are for work on the template itself: the theme, the editor, the exports, and the tests. They add to the root `AGENTS.md`.
 
+Do not write comments or docstrings in the source, the scripts, or the tests, as ruled under Documentation in the root `AGENTS.md`. Write the reason for a workaround into a name, a test, or this file.
+
 ## Bundles and vendored files
 
 - Each bundle of `theme/` is compiled by `build.mjs` from an entry point under `src/`. `theme/editor-tex.js` is loaded when a sheet or the bibliography list is first opened, `theme/editor-pdf.js` with `theme/vendor/pdfjs/pdf.js` at the first PDF and by `npm run tex`, and `theme/editor-session.js` when a page starts or joins a session. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
