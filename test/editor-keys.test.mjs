@@ -32,6 +32,36 @@ async function raw(page, key, code, keyCode, modifiers = 0) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers });
 }
 
+const TAKEN = {
+  mac: {
+    '⌘1': 'the tabs of Chrome', '⌘2': 'the tabs of Chrome', '⌘3': 'the tabs of Chrome', '⌘4': 'the tabs of Chrome', '⌘5': 'the tabs of Chrome', '⌘6': 'the tabs of Chrome', '⌘7': 'the tabs of Chrome', '⌘8': 'the tabs of Chrome', '⌘9': 'the tabs of Chrome',
+    '⇧⌘P': 'a private window of Firefox',
+    '⌥⌘I': 'the developer tools',
+    '⌘{': 'the previous tab',
+    '⇧⌘[': 'the previous tab',
+    '⌃Space': 'the input source of macOS',
+  },
+  other: {
+    'Ctrl+1': 'the tabs of Chrome', 'Ctrl+2': 'the tabs of Chrome', 'Ctrl+3': 'the tabs of Chrome', 'Ctrl+4': 'the tabs of Chrome', 'Ctrl+5': 'the tabs of Chrome', 'Ctrl+6': 'the tabs of Chrome', 'Ctrl+7': 'the tabs of Chrome', 'Ctrl+8': 'the tabs of Chrome', 'Ctrl+9': 'the tabs of Chrome',
+    F5: 'the reload of the page',
+    'Ctrl+Shift+=': 'the zoom of the browser',
+  },
+};
+
+for (const platform of PLATFORMS) {
+  test(`no command lists a key that the browser or the system takes before the page, on ${platform}`, async (t) => {
+    const browser = await launch();
+    t.after(() => browser.close());
+    const page = await keysPage(browser, platform);
+    await page.evaluate(`window.BeesonEditor.exec('help.keys')`);
+    const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-keys .row')].map((r) => [r.children[0].textContent, r.children[1].textContent.split(', ')])`);
+    assert.ok(rows.length > 50, `the sheet lists ${rows.length} rows`);
+    const taken = rows.flatMap(([label, keys]) => keys.filter((k) => TAKEN[platform][k]).map((k) => `${label}: ${k}, taken for ${TAKEN[platform][k]}`));
+    assert.deepEqual(taken, []);
+    assert.deepEqual(page.errors, []);
+  });
+}
+
 for (const platform of PLATFORMS) {
   const redo = platform === 'mac' ? 'Mod+Shift+Z' : 'Mod+Y';
   const other = platform === 'mac' ? 'Mod+Y' : 'Mod+Shift+Z';
