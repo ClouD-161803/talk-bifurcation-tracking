@@ -19,7 +19,7 @@ PRE-RELEASE: The template is currently still in beta. View the most up to date v
 
 ## Using this template
 
-1. From GitHub, click the green 'Use this template' button on the top right corner of this repo's landing page, then 'Create a new repository'. I recommend toggling 'Include all branches' off and naming your repository something like `talk-{name-of-your-talk}`. The name of the repository becomes part of the URL of the slides on GitHub Pages (where your repo's slides are automatically deployed), e.g. `https://{owner}.github.io/talk-{name-of-your-talk}/`, where OWNER is your GitHub username.
+1. From GitHub, click the green 'Use this template' button on the top right corner of this repo's landing page, then 'Create a new repository'. I recommend toggling 'Include all branches' off and naming your repository something like `talk-{name-of-your-talk}`. The name of the repository becomes part of the URL of the slides on GitHub Pages (where your repo's slides are automatically deployed), e.g. `https://{owner}.github.io/talk-{name-of-your-talk}/`, where `{owner}` is your GitHub username.
 2. (Optional) Modify `README.md` of the new repository with information about your talk, overwriting the text you are reading right now.
 3. To create and edit your slides, open `index.html` (at the root of this repository) in your favorite browser. Then, press the `e` key on your keyboard. This will enter editor mode.
 (This appends the text `?edit` to your browser tab's URL bar, e.g. `https://{owner}.github.io/talk-{name-of-your-talk}?edit`. You can reach the editor by typing this out manually too).
@@ -64,10 +64,10 @@ If you want to help us with improving this tool, here is how you can get set up:
    ```sh
    npm ci && npm run vendor && npm run build
    ```
-4. Typecheck and the test suite.
+4. Typecheck and the test suite. Name the test files you want to run (the whole suite runs on CI at each push, and locally only with `npm test -- --all`).
    ```sh
    npm run typecheck
-   node --test test/editor-keys.test.mjs
+   npm test -- test/editor-keys.test.mjs
    ```
 5. Automated script for taking screenshots of every slide (which your agents can check from the `check/` folder), and export to PDF.
    ```sh
