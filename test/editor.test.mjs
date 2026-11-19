@@ -10,8 +10,6 @@ import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 
 const deckText = readFileSync('test-deck.html', 'utf8');
-// the newline of the file, since a checkout on Windows may turn it into CRLF
-const nl = deckText.includes('\r\n') ? '\r\n' : '\n';
 const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
 const openDeck = `window.BeesonEditor.open(${JSON.stringify(deckText)})`;
 
@@ -131,8 +129,8 @@ test('one edit of a text, a formula, the notes, or a line changes only that text
     slide.append(aside);
   }`);
   const rendered = await page.evaluate('window.BeesonEditor.render()');
-  assert.equal(rendered.split('<aside class="notes">New notes.</aside>' + nl).length, 2);
-  assert.equal(rendered.replace('  <aside class="notes">New notes.</aside>' + nl, ''), deckText);
+  assert.equal(rendered.split('<aside class="notes">New notes.</aside>\n').length, 2);
+  assert.equal(rendered.replace('  <aside class="notes">New notes.</aside>\n', ''), deckText);
   await page.evaluate(`[...document.querySelectorAll('.reveal aside.notes')].find((a) => a.textContent === 'New notes.').remove()`);
 
   // a line break inserted on the page is written as a br
@@ -964,7 +962,7 @@ test('with Notes on, a slide without notes gets an empty aside to type into, whi
   await page.evaluate(`(() => { const a = document.querySelector('.reveal section.present > aside.notes'); a.focus(); document.execCommand('insertText', false, 'New notes.'); })()`);
   assert.equal((await status()).dirty, true);
   const rendered = await page.evaluate('window.BeesonEditor.render()');
-  const line = '  <aside class="notes">New notes.</aside>' + nl;
+  const line = '  <aside class="notes">New notes.</aside>\n';
   assert.equal(rendered.replace(line, ''), deckText);
   // the notes are written into the second slide
   assert.equal(rendered.slice(0, rendered.indexOf(line)).split('<section').length - 1, 2);
