@@ -290,10 +290,8 @@ test('a formula is inserted with Mod+Alt+E, its TeX is applied, and a formula le
   await page.evaluate(`window.BeesonEditor.exec('insert.formula')`);
   await sleep(200);
   await type(page, 'E = mc^2');
-  // Apply is on once the preview of the TeX is typeset
-  await sleep(400);
   await press(page, 'Mod+Enter');
-  await sleep(500);
+  await page.waitFor(`!document.querySelector('.beeson-math')`);
   const ul = page.source.slice(page.source.indexOf('<ul style="translate: 0px 20px">'), page.source.indexOf('</ul>', page.source.indexOf('<ul style="translate: 0px 20px">')) + 5);
   assert.equal(await render(page), page.source.replace(ul, `${ul}\n  <div class="math">\\[E = mc^2\\]</div>`));
   await roundTrip(page, 2);
