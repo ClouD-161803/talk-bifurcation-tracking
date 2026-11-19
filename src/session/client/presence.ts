@@ -548,12 +548,15 @@ export class Presence {
     const present = new Set<string>();
     let changed = false;
     let lost = false;
+    // the other pages of this person, e.g. a second tab, are not drawn
+    const mine = new Set(client.people.filter((p) => p.person === client.person).map((p) => p.client));
     for (const p of client.presence) {
       if (p.client === client.client) {
         // the edit command lost the state of this page, e.g. when it dropped the page for silence
         lost = p.state === null && !!this.sent;
         continue;
       }
+      if (mine.has(p.client)) continue;
       const state = parseState(p.state);
       if (!state) continue;
       present.add(p.client);
