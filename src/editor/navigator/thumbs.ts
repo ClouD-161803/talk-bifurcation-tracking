@@ -123,7 +123,7 @@ function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
       if (stage < 1) return box;
       viewer.draw(Math.min(ratio, (2 * still.width) / stage));
     }
-    shrinkInto(still, [canvas, paintCanvas].filter((c): c is HTMLCanvasElement => !!c?.width && !!c.height));
+    shrinkByHalves(still, [canvas, paintCanvas].filter((c): c is HTMLCanvasElement => !!c?.width && !!c.height));
     box.append(still);
   } catch {} finally {
     if (size) viewer.stageSize = size;
@@ -131,7 +131,7 @@ function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
   return box;
 }
 
-function shrinkInto(still: HTMLCanvasElement, layers: HTMLCanvasElement[]): void {
+function shrinkByHalves(still: HTMLCanvasElement, layers: HTMLCanvasElement[]): void {
   let from = layers;
   while (from.length) {
     const { width: w, height: h } = from[0];
