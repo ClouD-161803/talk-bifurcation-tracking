@@ -451,12 +451,12 @@ function through(m: Edit[], o: number, after: boolean): number | null {
 
 // the offset in b of the offset o of a, where b is a with its lines moved, reindented, or changed
 // in part, read from the characters of both, or from their lines when they differ in more than 500
-// characters. a line of a is then found in b among the lines equal to it once trimmed, or as the
+// characters or put another text before o on its line. a line of a is then found in b among the lines equal to it once trimmed, or as the
 // line at its place in a run of changed lines as long in both, whose characters are then diffed.
 // null for an offset inside a change
 function across(a: string, b: string, o: number, after: boolean): number | null {
-  const m = charEdits(a, b, 500);
-  if (m) return through(m, o, after);
+  const m = charEdits(a, b, 500), r = m && through(m, o, after), head = (t: string, i: number) => t.slice(t.lastIndexOf('\n', i - 1) + 1, i);
+  if (m && (r === null || (!head(a, o) === !head(b, r) && head(a, o).trim() === head(b, r).trim()))) return r;
   const la = linesOf(a), lb = linesOf(b), oa = offsets(la), ob = offsets(lb);
   const hunks = myers(la.map((l) => l.trim()), lb.map((l) => l.trim()), MAX_LINES);
   if (!hunks) return null;

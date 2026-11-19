@@ -988,3 +988,29 @@ test('a slide or a vertical stack moved past another and edited is the removal a
     for (const [x, y] of [[moved, keyed], [keyed, moved]]) assert.equal(mergeTexts(base, x, y), one + three(' k02', ' k10') + two);
   }
 });
+
+test('a list put at the start of a paragraph that another person removes from a slide they move and type in goes with the slide on lines of its own, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = '  <ul>\n    <li>Intro 22</li>\n  </ul>\n';
+  const one = s('Orbit 1', ['<p>Moon 11</p>']), two = s('Data 2', ['<p>Halo 21</p>', ul.trim()]).replace(`  ${ul.trim()}\n`, ul);
+  const four = (k = '', p = ['<p>Thank you 41</p>']) => s('Intro 4', [`<p>Same words${k}</p>`, ...p]);
+  const base = one + two + four(), moved = four(' R&D &amp; k11', []) + one + two, put = one + s('Data 2', ['<p>Halo 21</p>']) + four().replace('  <p>Thank', `${ul}  <p>Thank`);
+  for (const [x, y] of [[moved, put], [put, moved]]) {
+    const text = mergeTexts(base, x, y);
+    assert.ok(text.split('\n').every((l) => /^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l)), text);
+    assert.ok(text.includes(ul), text);
+  }
+});
+
+test('a key typed in a list item that another person removes from a slide they move and type in is not put inside another line, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const list = ['<ul>', '  <li>Method 33</li>', '  <li>Data 32</li>', '</ul>'];
+  const one = (li, add = [], more = []) => s('Method 1', [...add, '<ul>', ...li, '</ul>', ...more, '<p>Same words 12</p>', '<ul>', '  <li>Thank you 13</li>', '  <li>Moon 11</li>', '</ul>']);
+  const two = (more = list) => s('Orbit 2', ['<p>Halo 21</p>']) + s('Method 3', ['<p>Halo 32</p>', ...more]);
+  const base = one(['  <li>Data 11</li>']) + two(), moved = two() + one([], ['<p>Added k10</p>']);
+  const keyed = one([`  <li>Data 11 ${'R&amp;D x &lt; y halo orbit '.repeat(20)}k02</li>`], [], list) + two([]);
+  for (const [x, y] of [[moved, keyed], [keyed, moved]]) {
+    const text = mergeTexts(base, x, y);
+    assert.ok(text.split('\n').every((l) => /^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l)), text);
+  }
+});
