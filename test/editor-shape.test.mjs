@@ -876,7 +876,6 @@ describe('braces, double clicks, and lists in shapes', () => {
       el.style.cssText = 'width: ' + bw + 'px; height: ' + bh + 'px';
       slide.append(el);
       window.Beeson.mount(el);
-      // a small box is widened by the padding of a shape
       const w = el.offsetWidth, h = el.offsetHeight;
       const path = el.querySelector(':scope > svg path');
       const { strokeLinejoin: join, strokeWidth: width } = getComputedStyle(path);

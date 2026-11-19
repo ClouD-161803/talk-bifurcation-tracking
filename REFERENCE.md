@@ -204,7 +204,7 @@ In the editor, an end of a line that you draw or drag onto an element is attache
 
 ## Shapes
 
-A shape is a `div` with the class `shape`, a child of the `section`, placed with `translate` and sized with `width` and `height` in px in its `style`. Its words are in a `p` inside it, centered in its box, or aligned to the left with the class `left` on the `p`. An orange rounded rectangle of 480 by 240 px at (200, 300) on the slide is written as follows.
+A shape is a `div` with the class `shape`, a child of the `section`, placed with `translate` and sized with `width` and `height` in px in its `style`. Its words are in a `p` inside it, centered in its box, or aligned to the left with the class `left` on the `p`. Its words are kept 24 px from its sides and 12 px from its top and bottom, hence a shape with words is at least 48 by 24 px. A shape without words, e.g. a thin brace, has exactly the size of its `style`. An orange rounded rectangle of 480 by 240 px at (200, 300) on the slide is written as follows.
 
 ```html
 <div class="shape rounded tone-accent" style="width: 480px; height: 240px; translate: 200px 300px"><p>Goal</p></div>
