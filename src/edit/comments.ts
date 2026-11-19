@@ -4,7 +4,7 @@ import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Kept, type Moved } from '../session/anchor.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, checksum, copy, type Patch } from '../session/patch.ts';
+import { apply, checksum, unsliced, type Patch } from '../session/patch.ts';
 import {
   COMMENT_MAX,
   formatVersion,
@@ -46,7 +46,7 @@ const bytesOf = (x: unknown) => Buffer.byteLength(JSON.stringify(x));
 const headBytes = (t: Comment) => bytesOf({ ...t, replies: [] }) + 1;
 const replyBytes = (r: CommentReply) => bytesOf(r) + 1;
 const tooLarge = () => fail(413, 'the comments of the deck are too large');
-const copyKept = (k: Kept): Kept => (typeof k === 'string' ? copy(k) : { tag: copy(k.tag), sum: k.sum });
+const copyKept = (k: Kept): Kept => (typeof k === 'string' ? unsliced(k) : { tag: unsliced(k.tag), sum: k.sum });
 const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) });
 const NOT_SAVED = 'The host could not save the comment';
 const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');

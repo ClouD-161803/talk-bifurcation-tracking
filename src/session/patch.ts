@@ -126,14 +126,15 @@ export function shiftOffset(offset: number, patches: Patch[], after = true): num
   return offset + delta;
 }
 
-export const copy = (text: string): string => (text.length < 13 ? text : JSON.parse(JSON.stringify(text)));
+const V8_SLICED_STRING_MIN = 13;
+export const unsliced = (text: string): string => (text.length < V8_SLICED_STRING_MIN ? text : JSON.parse(JSON.stringify(text)));
 
 export function invert(text: string, patches: Patch[]): Patch[] {
   let delta = 0;
   return patches.map((p) => {
     const start = p.start + delta;
     delta += p.text.length - (p.end - p.start);
-    return { start, end: start + p.text.length, text: copy(text.slice(p.start, p.end)) };
+    return { start, end: start + p.text.length, text: unsliced(text.slice(p.start, p.end)) };
   });
 }
 
@@ -184,11 +185,11 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   return { patches: combine(keptTheirs, keptOurs), conflicts };
 }
 
-let cached: { text: string; tokens: Token[]; odd: boolean } | null = null;
+let cached: { text: string; tokens: Token[]; lowercaseLonger: boolean } | null = null;
 function tokensOf(text: string): Token[] {
   if (cached?.text === text) return cached.tokens;
   const tokens = (cached && retokenize(cached, text)) ?? tokenize(text);
-  cached = { text, tokens, odd: text.includes('\u0130') };
+  cached = { text, tokens, lowercaseLonger: text.includes('\u0130') };
   return tokens;
 }
 
@@ -213,12 +214,12 @@ function moved(t: Token, d: number): Token {
   return { ...t, start: t.start + d, end: t.end + d, attrs: t.attrs.map((a) => ({ ...a, start: a.start + d, end: a.end + d })) };
 }
 
-function retokenize(last: { text: string; tokens: Token[]; odd: boolean }, text: string): Token[] | null {
+function retokenize(last: { text: string; tokens: Token[]; lowercaseLonger: boolean }, text: string): Token[] | null {
   const old = last.tokens, n = text.length, d = n - last.text.length;
   const both = Math.min(n, last.text.length);
   const p = sharedStart(last.text, text, both);
   const tail = n - sharedEnd(last.text, text, both - p);
-  if (last.odd || text.slice(p, tail).includes('\u0130')) return null;
+  if (last.lowercaseLonger || text.slice(p, tail).includes('\u0130')) return null;
   let lo = 0, hi = old.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;

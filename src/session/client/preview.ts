@@ -432,7 +432,8 @@ export class Preview {
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
       (el as HTMLElement).style.setProperty('--beeson-changed', tone(t.author));
-      if (same.length === t.of) addedIn(el, text, tokens, t.start, t.end, detail.marks, detail.removals ?? [], css && added, struck);
+      const parsedAsWritten = same.length === t.of;
+      if (parsedAsWritten) addedIn(el, text, tokens, t.start, t.end, detail.marks, detail.removals ?? [], css && added, struck);
       if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
     let rules = '';

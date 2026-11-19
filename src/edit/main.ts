@@ -106,7 +106,8 @@ async function main(argv: string[]): Promise<void> {
   const page = `${running.url}index.html?edit&session`;
   process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
   if (open) openBrowser(page);
-  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
+  const outliveClosedTerminal = () => {};
+  for (const stream of [process.stdout, process.stderr]) stream.on('error', outliveClosedTerminal);
   const fail = (e: unknown) => {
     process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
     void running!.close().finally(() => process.exit(1));

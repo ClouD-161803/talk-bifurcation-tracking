@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, copy, diff, mergePatches, type Patch } from '../session/patch.ts';
+import { apply, diff, mergePatches, unsliced, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
@@ -139,7 +139,7 @@ function reverse(text: string, before: string): Patch[] {
   const found = changes(text.slice(from, to), before.slice(from, before.length - text.length + to)) ?? [
     { start: pre - from, end: text.length - suf - from, text: before.slice(pre, before.length - suf) },
   ];
-  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy(p.text) }));
+  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: unsliced(p.text) }));
 }
 
 function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by: number) => void): string[] {

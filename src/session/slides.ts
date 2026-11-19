@@ -136,9 +136,9 @@ const words = (x: string) => x.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim
 function core(x: string, y: string) {
   if (x.length > y.length) [x, y] = [y, x];
   x = ` ${x} `;
-  const h = x.length >> 1, c = x[h];
+  const h = x.length >> 1, hoistedMiddle = x[h];
   let k = y.length, b = 0, p = -1;
-  while (k > 0 && ~(p = y.indexOf(c, ++p))) {
+  while (k > 0 && ~(p = y.indexOf(hoistedMiddle, ++p))) {
     let l = h, r = h;
     while (x[--l] === y[l + p - h]);
     while (x[++r] === y[r + p - h]);

@@ -1,6 +1,6 @@
 import type { AppliedOp, OpAnswer, OpRequest, Patch, RefusalReason, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, applyEach, checksum, copy, invert, shift, valid } from './patch.ts';
+import { apply, applyEach, checksum, invert, shift, unsliced, valid } from './patch.ts';
 
 type Entry = {
   op: AppliedOp;
@@ -147,7 +147,7 @@ export class Authority {
     const first = this.log.length - (this.n - at.n);
     const length = at.n === this.n ? this.text.length : this.log[first].lengthBefore;
     if (!valid(request.patches, length)) return { answer: this.refuse('invalid') };
-    let patches: Patch[] | null = request.patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+    let patches: Patch[] | null = request.patches.map((p) => ({ start: p.start, end: p.end, text: unsliced(p.text) }));
     for (let i = first; i < this.log.length && patches; i++) patches = shift(patches, this.log[i].op.patches, true);
     if (!patches) return { answer: this.refuse('conflict') };
     if (!valid(patches, this.text.length, this.text)) return { answer: this.refuse('invalid') };

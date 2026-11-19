@@ -13,6 +13,18 @@ const NAMED = /data-trajectories\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi;
 const SCRIPT = /^[^?#&]*\.js[\0- ]*(?:[?#][^]*)?$/i;
 const OPEN = Buffer.from('Beeson.trajectories(');
 const CLOSE = Buffer.from(');\n');
+const LOCAL_HEADER = 30;
+const CENTRAL_HEADER = 46;
+const END_RECORD = 22;
+const GZIP_HEADER = 10;
+const GZIP_TRAILER = 8;
+const ZIP_FIRST_YEAR = 1980;
+const ZIP_LAST_YEAR = 2107;
+const ZIP_VERSION = 20;
+const MADE_ON_UNIX = 3 << 8;
+const UTF8_NAMES = 0x800;
+const STORED = 0;
+const DEFLATED = 8;
 
 export type Zip = { parts: Buffer[]; size: number };
 
@@ -139,8 +151,8 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
   const sources = [...found, ...wraps].sort((a, b) => (a.name < b.name ? -1 : 1));
   const bytes = found.reduce((n, s) => n + s.size, index.length);
   if (bytes > limit || sources.length + 1 > MOST_FILES) throw new TooLarge(bytes, sources.length + 1);
-  const head = (name: string) => 76 + 2 * Buffer.byteLength(`${top}/${name}`);
-  const most = sources.reduce((n, s) => n + head(s.name) + s.size, head('index.html') + index.length + 22);
+  const head = (name: string) => LOCAL_HEADER + CENTRAL_HEADER + 2 * Buffer.byteLength(`${top}/${name}`);
+  const most = sources.reduce((n, s) => n + head(s.name) + s.size, head('index.html') + index.length + END_RECORD);
   if (!admit(most)) return null;
 
   const parts: Buffer[] = [];
@@ -173,32 +185,32 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
   let at = 0;
   const add = (name: string, content: Buffer, z: Buffer, mtime: Date, run: boolean) => {
     if (z[3] !== 0) throw new Error('gzip wrote a header with a field');
-    const deflated = z.subarray(10, z.length - 8);
+    const deflated = z.subarray(GZIP_HEADER, z.length - GZIP_TRAILER);
     const stored = deflated.length >= content.length;
     const data = stored ? content : deflated;
     const path = Buffer.from(`${top}/${name}`, 'utf8');
-    const year = Math.min(mtime.getFullYear(), 2107);
-    const day = year < 1980 ? 0x21 : ((year - 1980) << 9) | ((mtime.getMonth() + 1) << 5) | mtime.getDate();
-    const time = year < 1980 ? 0 : (mtime.getHours() << 11) | (mtime.getMinutes() << 5) | (mtime.getSeconds() >> 1);
-    const local = Buffer.alloc(30 + path.length);
+    const year = Math.min(mtime.getFullYear(), ZIP_LAST_YEAR);
+    const day = year < ZIP_FIRST_YEAR ? 0x21 : ((year - ZIP_FIRST_YEAR) << 9) | ((mtime.getMonth() + 1) << 5) | mtime.getDate();
+    const time = year < ZIP_FIRST_YEAR ? 0 : (mtime.getHours() << 11) | (mtime.getMinutes() << 5) | (mtime.getSeconds() >> 1);
+    const local = Buffer.alloc(LOCAL_HEADER + path.length);
     local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0x800, 6);
-    local.writeUInt16LE(stored ? 0 : 8, 8);
+    local.writeUInt16LE(ZIP_VERSION, 4);
+    local.writeUInt16LE(UTF8_NAMES, 6);
+    local.writeUInt16LE(stored ? STORED : DEFLATED, 8);
     local.writeUInt16LE(time, 10);
     local.writeUInt16LE(day, 12);
-    local.writeUInt32LE(z.readUInt32LE(z.length - 8), 14);
+    local.writeUInt32LE(z.readUInt32LE(z.length - GZIP_TRAILER), 14);
     local.writeUInt32LE(data.length, 18);
     local.writeUInt32LE(content.length, 22);
     local.writeUInt16LE(path.length, 26);
-    path.copy(local, 30);
-    const entry = Buffer.alloc(46 + path.length);
+    path.copy(local, LOCAL_HEADER);
+    const entry = Buffer.alloc(CENTRAL_HEADER + path.length);
     entry.writeUInt32LE(0x02014b50, 0);
-    entry.writeUInt16LE((3 << 8) | 20, 4);
-    local.copy(entry, 6, 4, 30);
+    entry.writeUInt16LE(MADE_ON_UNIX | ZIP_VERSION, 4);
+    local.copy(entry, 6, 4, LOCAL_HEADER);
     entry.writeUInt32LE(((0o100000 | (run ? 0o755 : 0o644)) << 16) >>> 0, 38);
     entry.writeUInt32LE(at, 42);
-    path.copy(entry, 46);
+    path.copy(entry, CENTRAL_HEADER);
     put(local);
     put(data);
     central.push(entry);
@@ -235,7 +247,7 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
     put(entry);
     directory += entry.length;
   }
-  const end = Buffer.alloc(22);
+  const end = Buffer.alloc(END_RECORD);
   end.writeUInt32LE(0x06054b50, 0);
   end.writeUInt16LE(central.length, 8);
   end.writeUInt16LE(central.length, 10);

@@ -7,7 +7,7 @@ import type { FigureError, FigureState } from '../session/protocol.ts';
 import { renameRetried, signature } from './disk.ts';
 
 const STABLE = 300;
-const RECENT = 2000;
+const COARSEST_MTIME_TICK = 2000;
 const LISTING = '\0figures';
 
 export type Box = { width: number | null; height: number | null };
@@ -155,7 +155,7 @@ export class FigureWatcher {
     this.recent = new Set();
     const watch = (path: string) => {
       const s = statOf(path);
-      if (s && s.mtimeMs > Date.now() - RECENT) this.recent.add(path);
+      if (s && s.mtimeMs > Date.now() - COARSEST_MTIME_TICK) this.recent.add(path);
       watched.set(path, s ? signature(s) : '');
     };
     watch(join(this.dir, 'preamble.tex'));

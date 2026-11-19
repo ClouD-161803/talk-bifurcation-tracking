@@ -146,11 +146,11 @@ export function cleanName(raw: string): string | null {
 function cleanStem(raw: string, fallback: string): string {
   let stem = raw.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
   if (!stem) stem = fallback;
-  if (RESERVED.test(stem)) stem = `${stem}-file`;
+  if (WINDOWS_DEVICES.test(stem)) stem = `${stem}-file`;
   return stem;
 }
 
-const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+const WINDOWS_DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 const FIGURE_NAME = /^[\w-]+$/;
 const SOURCES = ['preamble.tex', 'references.bib'];
 
@@ -474,7 +474,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       });
     }
     const name = body.name;
-    if (typeof name !== 'string' || !FIGURE_NAME.test(name) || RESERVED.test(name)) return error(400, 'the name of a figure is letters, digits, - and _');
+    if (typeof name !== 'string' || !FIGURE_NAME.test(name) || WINDOWS_DEVICES.test(name)) return error(400, 'the name of a figure is letters, digits, - and _');
     return oneAtATime(async () => {
       const file = join(real, `${name}.tex`);
       const current = await readFile(file, 'utf8').catch((e) => {
@@ -795,11 +795,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   );
   server.headersTimeout = 20_000;
   server.requestTimeout = 120_000;
+  const takenOrReservedByWindows = (code?: string) => code === 'EADDRINUSE' || code === 'EACCES';
   const ports = options.port !== undefined ? [options.port] : [...new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
   await new Promise<void>((done, fail) => {
     const tryListen = (i: number) => {
       server.once('error', (e: NodeJS.ErrnoException) => {
-        if ((e.code === 'EADDRINUSE' || e.code === 'EACCES') && i + 1 < ports.length) tryListen(i + 1);
+        if (takenOrReservedByWindows(e.code) && i + 1 < ports.length) tryListen(i + 1);
         else fail(e);
       });
       server.listen(ports[i], '127.0.0.1', () => {

@@ -326,11 +326,11 @@ export class Client {
       if (!this.framed) return;
       this.framed = false;
       cancelAnimationFrame(raf);
-      clearTimeout(timer);
+      clearTimeout(whileOccluded);
       void this.drive();
     };
     const raf = requestAnimationFrame(run);
-    const timer = window.setTimeout(run, 100);
+    const whileOccluded = window.setTimeout(run, 100);
   }
 
   private read(): string | null {

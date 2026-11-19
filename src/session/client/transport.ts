@@ -15,6 +15,7 @@ export class Failure extends Error {
 
 const POST_WAIT = 30_000;
 const POLL_WAIT = 45_000;
+const UNDER_KEEPALIVE_QUOTA = 60_000;
 
 export class Transport {
   private readonly base: URL;
@@ -38,7 +39,7 @@ export class Transport {
 
   op(post: OpPost): Promise<OpAnswer> {
     const body = JSON.stringify(post);
-    const keepalive = post !== this.failed && (body.length < 20_000 || (body.length < 60_000 && new Blob([body]).size < 60_000));
+    const keepalive = post !== this.failed && (body.length < UNDER_KEEPALIVE_QUOTA / 3 || (body.length < UNDER_KEEPALIVE_QUOTA && new Blob([body]).size < UNDER_KEEPALIVE_QUOTA));
     return this.send<OpAnswer>(this.url('op'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive }, POST_WAIT).catch((e: unknown) => {
       if (keepalive) this.failed = post;
       throw e;

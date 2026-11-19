@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncat
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, applyEach, byWords, copy, diff } from '../session/patch.ts';
+import { apply, applyEach, byWords, diff, unsliced } from '../session/patch.ts';
 import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Removal, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
@@ -121,7 +121,7 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
     delta += p.text.length - (p.end - p.start);
     return p;
   };
-  let [head, tail] = ['', ''];
+  let [head, unjoinedTail] = ['', ''];
   for (const q of b) {
     while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
     const before = delta;
@@ -130,7 +130,7 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
     if (o && q.start < o.end + delta) {
       out.pop();
       high = o.end + delta;
-      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + unjoinedTail.slice(0, unjoinedTail.length - (high - q.start)), unjoinedTail.slice(unjoinedTail.length - (high - q.end))];
     }
     while (i < a.length && a[i].start + delta <= q.end) {
       const at = a[i].start + delta;
@@ -138,8 +138,8 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
       if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
       if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
     }
-    [head, tail] = [pre + q.text, post];
-    if (low - before < high - delta || head || tail) out.push({ start: low - before, end: high - delta, text: head + tail });
+    [head, unjoinedTail] = [pre + q.text, post];
+    if (low - before < high - delta || head || unjoinedTail) out.push({ start: low - before, end: high - delta, text: head + unjoinedTail });
   }
   return out.concat(a.slice(i));
 }
@@ -203,7 +203,7 @@ function removalsOf(before: string, patches: Patch[], marks: Mark[], author: str
   return out;
 }
 
-const copied = (patches: Patch[]): Patch[] => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+const copied = (patches: Patch[]): Patch[] => patches.map((p) => ({ start: p.start, end: p.end, text: unsliced(p.text) }));
 
 const validPatches = (patches: unknown, n: number): patches is Patch[] => {
   if (!Array.isArray(patches)) return false;
