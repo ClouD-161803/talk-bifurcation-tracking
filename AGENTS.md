@@ -11,7 +11,7 @@ Hard invariants are never traded away for other goals. When a change would break
 2. Great performance on slow machines is always an objective.
 3. The best part is no part. Complexity is never favored when a simpler solution exists.
 <!-- shared:end -->
-4. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-pdf.js`, `theme/editor-session.js`, `theme/session.js`, and `theme/edit.mjs` are committed.
+4. Talks work without a toolchain. The bundles of `theme/`, from `npm run build`, are committed.
 5. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
 6. Editor saves keep every byte of `index.html` outside the edited text elements.
 7. Nothing in this repository is derived from DyLAN code.
@@ -89,7 +89,7 @@ PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write 
 
 - Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the PR is merged, not a suggestion.
 <!-- shared:end -->
-- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/editor-pdf.js`, `theme/editor-session.js`, `theme/session.js`, or `theme/edit.mjs` either. They are compiled and committed on purpose.
+- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in the bundles of `theme/`, from `npm run build`, either. They are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
 
 ## Documentation

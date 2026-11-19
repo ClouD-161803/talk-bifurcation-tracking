@@ -4,10 +4,10 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 ## Bundles and vendored files
 
-- The theme is compiled from `src/main.ts` into `theme/beeson.js`. The editor is compiled from `src/editor/main.ts` into `theme/editor.js`. The preamble and bibliography sheets are compiled from `src/editor/tex/sheets.ts` into `theme/editor-tex.js`, which is loaded when a sheet or the bibliography list is first opened. The renderer of PDF figures is compiled from `src/editor/pdf/render.ts` into `theme/editor-pdf.js`, which the editor loads with `theme/vendor/pdfjs/pdf.js` at the first PDF, and which `npm run tex` loads into Chrome. The engine of the port of a session, `src/editor/session/session.ts`, `apply.ts`, and `tree.ts`, is compiled from `src/editor/session/entry.ts` into `theme/editor-session.js`, which the editor loads when a page starts or joins a session. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
+- Each bundle of `theme/` is compiled by `build.mjs` from an entry point under `src/`. `theme/editor-tex.js` is loaded when a sheet or the bibliography list is first opened, `theme/editor-pdf.js` with `theme/vendor/pdfjs/pdf.js` at the first PDF and by `npm run tex`, and `theme/editor-session.js` when a page starts or joins a session. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`. Nothing of the editor is loaded in decks opened without `edit`.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`. The editor is loaded from this file at each `edit`.
-- The session client is compiled from `src/session/client/main.ts` into `theme/session.js`. The edit command is compiled from `src/edit/main.ts` into `theme/edit.mjs`. Keep both under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
+- Keep `theme/session.js` and `theme/edit.mjs` under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
 - Let `theme/session.js` reach the editor only through `src/session/client/handover.ts`. From `src/editor/`, import only `merge.ts`, `tokens.ts`, and types. Any other module would be a second copy with separate state, and `build.mjs` fails on it.
 - Let the engine of the port reach the editor only through `src/editor/session/host.ts`. Import a module of the editor into `session.ts`, `apply.ts`, or `tree.ts` only with `import type`. `theme/editor-session.js` may not share any module with `theme/editor.js`, and `build.mjs` fails on one.
 - Add what the session client needs from the editor as a small hook in `src/editor/session/`. Keep the drawing, the texts, and the styles in `src/session/client/`.
@@ -48,7 +48,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 ## Verifying
 
-On a laptop, the whole suite of `npm test` takes over an hour, with every core busy. In each round of the workflow `check`, the suite is split over seven runners. On a laptop, run only the test files of your change.
+On a laptop, the whole suite of `npm test` takes over an hour, with every core busy. In each round of the workflow `check`, the suite is split over several runners. On a laptop, run only the test files of your change.
 
 - Run test files with `npm test -- test/<name>.test.mjs`, which takes several files at once. Outside CI, they are run at the lowest priority of the system.
 - Find the test files of a change by searching `test/` for the commands, classes, and functions that you changed.
