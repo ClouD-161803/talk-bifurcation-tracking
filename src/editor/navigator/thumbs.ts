@@ -308,7 +308,7 @@ function seen(m: MutationRecord): boolean {
 }
 
 export const DELAY = 300;
-const REDRAWN = 600;
+const redrawnLater = (slide: Element): boolean => !!slide.querySelector('.backdrop') && !slide.classList.contains('present');
 const WAITS = 20;
 
 function rawTex(slide: Element): boolean {
@@ -423,7 +423,11 @@ export class Thumbs {
   }
 
   all(): void {
-    for (const s of this.hosts.keys()) this.soon(s, s.querySelector('.backdrop') && !s.classList.contains('present') ? REDRAWN + 100 : DELAY);
+    for (const s of this.hosts.keys()) if (!redrawnLater(s)) this.soon(s);
+  }
+
+  redrawn(): void {
+    for (const s of this.hosts.keys()) if (redrawnLater(s)) this.soon(s, 100);
   }
 
   private deck(): Size {
@@ -468,5 +472,6 @@ export function install(app: App): void {
   const nav = app.nav as unknown as { list: HTMLElement; useThumbs(t: Thumbs): void };
   const thumbs = new Thumbs(app, nav.list);
   nav.useThumbs(thumbs);
+  document.addEventListener('beeson:redrawn', () => thumbs.redrawn());
   new MutationObserver(() => thumbs.all()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }

@@ -447,7 +447,10 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     const now = window.Reveal.isPrintView() ? backdrops : within(deck.getCurrentSlide());
     for (const o of now) o.redraw();
     const later = backdrops.filter((o) => !now.includes(o));
-    if (later.length) setTimeout(() => { for (const o of later) o.redraw(); }, 600);
+    setTimeout(() => {
+      for (const o of later) o.redraw();
+      document.dispatchEvent(new Event('beeson:redrawn'));
+    }, 600);
     for (const s of surfaces) { s.recolor(); s.draw(); }
     redrawFigures(get());
     syncViewers(get());
