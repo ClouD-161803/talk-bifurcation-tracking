@@ -59,7 +59,6 @@ async function row(page, n, modifiers = '') {
 
 async function key(page, keys) {
   await press(page, keys);
-  await sleep(150);
   await page.evaluate('window.BeesonEditor.status()');
   await frames(page);
 }
