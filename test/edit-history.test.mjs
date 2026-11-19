@@ -936,6 +936,34 @@ test('the texts kept in memory as starting points of a rebuild stay within their
   history.stopSync();
 });
 
+// a deck of 5 MB leaves room for four texts in the budget, hence hundreds of versions lie between
+// two of them, which are applied without a copy of the deck for each
+test('the text of any version of a long history of a deck of 5 MB is rebuilt in about the time of one kept in memory', { timeout: 300_000 }, (t) => {
+  const deck = DECK.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
+  const { authority, history } = open(sessionDir(t), deck, { maxBytes: 1024 * 1024 * 1024 });
+  const ids = [];
+  for (let i = 0; i < 800; i++) {
+    const at = authority.text.indexOf('<!-- x') + 5 + ((i * 7919) % (5 * 1024 * 1024 - 8));
+    authority.enter([{ start: at, end: at, text: `w${i} ` }], ANN);
+    ids.push(history.close().id);
+  }
+  const kept = [...history.checkpoints.keys()];
+  assert.ok(kept.length <= 4 && history.step >= 200, `${kept.length} texts kept, one every ${history.step} versions`);
+  const timeOf = (id) => {
+    let best = Infinity;
+    for (let k = 0; k < 3; k++) {
+      const start = performance.now();
+      Buffer.byteLength(history.textOf(id));
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+  const near = timeOf(ids[kept.at(-1) - 1]);
+  const far = timeOf(ids[kept.at(-1) - 2]);
+  assert.ok(far < 10 * near, `a version ${history.step - 1} versions after a text kept took ${(far / near).toFixed(1)} times as long as a kept one`);
+  history.stopSync();
+});
+
 test('a version that restored another is told as such after a restart', { timeout: 60_000 }, (t) => {
   const dir = sessionDir(t);
   const { authority, history } = open(dir, DECK);

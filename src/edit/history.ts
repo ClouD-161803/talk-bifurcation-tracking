@@ -15,7 +15,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncat
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, byWords, copy, diff } from '../session/patch.ts';
+import { apply, applyEach, byWords, copy, diff } from '../session/patch.ts';
 import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
@@ -568,9 +568,7 @@ export class History {
     if (i === this.versions.length - 1) return this.lastText;
     let from = -1;
     for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
-    let text = from < 0 ? this.base.text : this.checkpoints.get(from)!;
-    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
-    return text;
+    return applyEach(from < 0 ? this.base.text : this.checkpoints.get(from)!, this.versions.slice(from + 1, i + 1).map((v) => v.patches));
   }
 
   private checkpoint(i: number, text: string): void {
