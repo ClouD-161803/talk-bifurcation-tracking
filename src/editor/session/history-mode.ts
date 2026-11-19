@@ -22,7 +22,7 @@ const FREE = ['file.history', 'file.save'];
 
 export function historyShell(app: App): HistoryShell {
   const run = app.commands.run.bind(app.commands);
-  app.commands.run = (id, arg) => (on && !FREE.includes(id) ? Promise.resolve() : run(id, arg));
+  app.commands.run = (id, arg, ev) => (on && !FREE.includes(id) ? Promise.resolve() : run(id, arg, ev));
   let opener = () => {};
   app.commands.define({
     id: 'file.history',

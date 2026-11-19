@@ -833,7 +833,7 @@ window.addEventListener('keydown', (ev) => {
   if (!c) return;
   ev.preventDefault();
   ev.stopImmediatePropagation();
-  void app.commands.run(c.id).catch((e) => app.fail(e));
+  void app.commands.run(c.id, undefined, ev).catch((e) => app.fail(e));
 }, true);
 
 function cellItems(cell: HTMLTableCellElement): MenuItem[] {
