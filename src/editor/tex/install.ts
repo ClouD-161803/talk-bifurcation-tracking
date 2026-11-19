@@ -34,6 +34,8 @@ export type TexSheets = {
   write(text: string, deck: FileSystemFileHandle): Promise<string>;
   download(text: string): string;
   dirty(): boolean;
+  // the sheet that is open, with its dialog. the app emits sheet at each open and close
+  showing(): { which: Which; dialog: HTMLDialogElement } | null;
   // the deck drawn again with the tex.js next to it, and the sources read again when they were read
   redraw(): Promise<void>;
   cite(target: CiteTarget): void;
@@ -61,6 +63,7 @@ declare global {
 const SELF = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
 
 let sheets: TexSheets | null = null;
+export const shownSheet = (): ReturnType<TexSheets['showing']> => sheets?.showing() ?? null;
 let loading: Promise<TexSheets> | null = null;
 let load: () => Promise<TexSheets> = () => Promise.reject(new Error('the sheets are not installed'));
 
@@ -198,9 +201,9 @@ export function install(app: App): void {
   // the run ends once the sheet is shown, since a sheet of a deck opened from a file waits for the
   // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
-  // in a session, the sources are the files of the talk folder, which the edit command reads
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in preamble.tex' : null), run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in references.bib' : null), run: () => open('bibliography') });
+  // in a session, the sheets read the sources from the talk folder, and the edit command writes them
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',
