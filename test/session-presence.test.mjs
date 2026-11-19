@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
-import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, ONLINE, open, sessionUrl, show, SIGTERM_TELLS_THE_PAGES, talk, TEXT } from './helpers/client.mjs';
 import { clickText, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 import { ANSWERS, NET } from './helpers/net.mjs';
@@ -903,7 +903,7 @@ test('after Leave Session and after the end of the session, no element stays hel
   await caretAtEnd(ben, el(1, 'h2'));
   await typeKeys(ben, 'y');
   assert.equal(await ben.evaluate(TIMERS), 0);
-  if (process.platform !== 'win32') {
+  if (SIGTERM_TELLS_THE_PAGES) {
     server.edit.child.kill('SIGTERM');
     for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
         assert.equal(await server.edit.exited, 0);

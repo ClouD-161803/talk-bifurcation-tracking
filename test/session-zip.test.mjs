@@ -8,7 +8,7 @@ import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
 import { launch as launchWebDriver, serve } from '../scripts/webdriver.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
+import { C, clean, converge, ONLINE, open, sessionUrl, show, SIGTERM_TELLS_THE_PAGES } from './helpers/client.mjs';
 import { click, press as key, type } from './helpers/editor.mjs';
 import { startEdit, stopEdit, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
@@ -572,7 +572,7 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   clean(host);
 });
 
-test('the end of the session closes the dialog of a download that is on its way or that failed, and not the one of a finished download', { timeout: 840_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+test('the end of the session closes the dialog of a download that is on its way or that failed, and not the one of a finished download', { timeout: 840_000, skip: !SIGTERM_TELLS_THE_PAGES && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await zipTalk(t);
