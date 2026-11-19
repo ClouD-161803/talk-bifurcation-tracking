@@ -194,7 +194,7 @@ async function askEarlier(client: Client, copy: Copy, made: number): Promise<boo
   const day = new Date(made).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   const dialog = client.shell.dialog({
     title: 'Changes from an earlier session',
-    text: `This browser kept your changes${client.shell.onSlides(client.shell.changedSlides(copy.base, copy.mine))} from ${day}, which were not sent. The deck has changed since then.`,
+    text: `This browser kept your changes${client.shell.onSlides(client.shell.changedSlides(copy.base, copy.mine))} from ${day}, which were not sent. The deck was modified since then.`,
     className: 'beeson-session-earlier',
     dismissable: false,
     stay: ['download'],

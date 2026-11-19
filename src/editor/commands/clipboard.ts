@@ -19,8 +19,8 @@ import { kindOf } from '../media/store.ts';
 import { insertPlain, pasteItems, pastesItems, spaced, typesetTyped } from '../text/typing.ts';
 import { hasTex } from '../typeset.ts';
 import { movableOf, objectsOf } from '../canvas/hit.ts';
-import { fieldOf, settleCopies, freshGroup } from './order.ts';
-import { copiedGroups } from '../model/groups.ts';
+import { dissolve, fieldOf, settleCopies, freshGroup } from './order.ts';
+import { copiedGroups, groupsOf } from '../model/groups.ts';
 import { relink } from '../model/attach.ts';
 import { withTwins } from '../canvas/hit.ts';
 import { VOID } from '../source.ts';
@@ -472,7 +472,9 @@ export function install(app: App): void {
       // an undo selects the cut elements again, as in Keynote
       await a.history.selecting('Cut', async () => {
         a.selection.clear();
+        const ids = els.flatMap((el) => [el, ...el.querySelectorAll('[data-group]')].flatMap(groupsOf));
         await removeJoining(a, [...els].reverse(), 'cut');
+        dissolve(a, ids);
         keep((el, translate) => docOf(a).setTag(el, { translate }, 'move'));
         held((el, translate) => docOf(a).setTag(el, { translate }, 'move'));
       });

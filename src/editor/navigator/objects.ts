@@ -34,8 +34,6 @@ const GLYPHS: Record<string, string[]> = {
   code: ['M7 6l-4 4 4 4', 'M13 6l4 4-4 4'],
   group: ['M3 3.5h9v9H3z', 'M8 7.5h9v9H8z'],
   plot: ['M3.5 3.5v13h13', 'M6.5 12.5l3-4 3 2 3.5-5'],
-  lock: ['M5.5 9h9v7.5h-9z', 'M7.5 9V6.5a2.5 2.5 0 0 1 5 0V9'],
-  unlock: ['M5.5 9h9v7.5h-9z', 'M12.5 9V6a2.5 2.5 0 0 1 5 0v1'],
   search: ['M8.5 3.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10z', 'M12.25 12.25 16.5 16.5'],
 };
 
@@ -315,7 +313,7 @@ export function install(app: App): void {
       rows = plan.map((p) => ({ item: p.item, row: rowOf(p.item, p.level, selected) }));
       list.replaceChildren(...rows.map((r) => r.row), drop);
       empty.hidden = rows.length > 0;
-      empty.textContent = query ? 'No matching objects' : 'No objects on this slide';
+      empty.textContent = query ? 'The search does not match any object' : 'This slide does not have objects';
       rows.find((r) => r.row.getAttribute('aria-selected') === 'true')?.row.scrollIntoView({ block: 'nearest' });
     }
     for (const r of rows) r.row.tabIndex = keyOf(r.item) === current ? 0 : -1;

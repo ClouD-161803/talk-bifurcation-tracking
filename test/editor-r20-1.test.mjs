@@ -186,7 +186,7 @@ for (const platform of PLATFORMS) {
     // the report is made after a change of the layout, and not after a move by the user
     await exec(page, 'slide.layout.wide');
     await wait(page, 400);
-    assert.match(await title(page), /A plot covers 1 text\b/);
+    assert.match(await title(page), /1 text is under a plot\b/);
     await exec(page, 'view.objects');
     await wait(page);
     const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row')].map((r) => r.querySelector('.name').textContent)`);

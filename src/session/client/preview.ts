@@ -48,7 +48,7 @@ html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
 html:not(.beeson-hide-changes) :is([data-beeson-changed].fragment, [data-beeson-changed] .fragment) { opacity: 1 !important; visibility: visible !important; }
 `;
 
-// the bar is wrapped onto two rows, with Name this version in More, below this width in px
+// the bar is wrapped onto two rows, with Tag this version in More, below this width in px
 const TWO_ROWS = 600;
 
 // the keys that reach reveal.js in the preview, which move through its slides
@@ -319,17 +319,17 @@ export class Preview {
     more.setAttribute('aria-haspopup', 'menu');
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
     const name = () => this.version && this.actions.name(this.version);
-    actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name, 'name'), more);
+    actions.append(label, this.button('Restore this version', restore), this.button('Tag this version', name, 'name'), more);
     return { info, date, who, slides: make('div', 'slides'), shown: '', notes: make('span', 'notes'), failed: make('span', 'removed'), actions };
   }
 
-  // the menu of More, which holds Name this version where the bar is narrow. a second press closes it
+  // the menu of More, which holds Tag this version where the bar is narrow. a second press closes it
   private more(button: HTMLElement, keyboard: boolean): void {
     const v = this.version;
     if (this.menu) return this.menu.close();
     if (!v) return;
     const items: MenuItem[] = [];
-    if (this.el.classList.contains('two')) items.push({ label: 'Name this version', run: () => this.actions.name(v) });
+    if (this.el.classList.contains('two')) items.push({ label: 'Tag this version', run: () => this.actions.name(v) });
     items.push({ label: 'Download This Version', run: () => void this.download('version', v.id) });
     const m = this.client.shell.menu(items, {
       anchor: button.getBoundingClientRect(),

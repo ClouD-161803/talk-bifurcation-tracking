@@ -218,7 +218,7 @@ export function install(app: App): void {
 
   // Insert > TikZ Figure after Video…, whose items the Media button of the toolbar lists as well
   why = (a: App): string | null =>
-    !a.session ? 'TikZ figures are compiled by the edit command. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.host() === false ? 'Only the host changes a TikZ figure' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the computer of the host' : null;
+    !a.session ? 'TikZ figures are compiled only while the edit command runs. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.host() === false ? 'Only the host changes a TikZ figure' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the computer of the host' : null;
   const starters: [Starter, string, string][] = [['data', 'From Data…', '.csv,text/csv'], ['file', 'From File…', '.tex'], ['blank', 'Blank', '']];
   for (const [i, [from, label, accept]] of starters.entries())
     app.commands.define({

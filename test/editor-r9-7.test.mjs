@@ -609,8 +609,8 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!!document.querySelector('.beeson-edit-inspector input[data-command="code.numbers"]')`);
     const dim = await page.evaluate(numbersSwitch);
     assert.equal(dim.disabled, true);
-    assert.match(dim.title, /line steps need the line numbers/, 'the dimmed switch does not have a tooltip');
-    assert.match(dim.note, /line steps need the line numbers/, 'the pane does not say why the switch is dimmed');
+    assert.match(dim.title, /Line steps are shown only with line numbers/, 'the dimmed switch does not have a tooltip');
+    assert.match(dim.note, /Line steps are shown only with line numbers/, 'the pane does not say why the switch is dimmed');
     assert.equal(dim.warn, false, 'the note is not muted');
     // without line steps, the switch is not dimmed and the note is not shown
     await page.evaluate(`window.BeesonEditor.exec('code.lines', { el: document.querySelector('.reveal section.present pre code'), value: '' })`);

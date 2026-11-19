@@ -226,7 +226,7 @@ function decimalField(app: App, run: Run, el: HTMLElement | null, field: Field):
     wrap.classList.toggle('off', !on);
     const unwritten = drag() !== null && clean(field, drag()!) !== written();
     wrap.classList.toggle('turned', unwritten);
-    input.title = unwritten ? 'Turned by a drag. Use Current View writes it.' : '';
+    input.title = unwritten ? 'Turned by a drag. Choose Use Current View to write it.' : '';
     if (document.activeElement === input) return;
     show(value());
   };
@@ -251,7 +251,7 @@ export function surfacePane(app: App, run: Run): Control[] {
       row([decimalField(app, run, el, 'azimuth'), decimalField(app, run, el, 'elevation')]),
       row([decimalField(app, run, el, 'zoom'), decimalField(app, run, el, 'turn')]),
       row([button(app, run, { command: 'surface.useView', arg: { el }, text: 'Use Current View' }), button(app, run, { command: 'surface.resetView', arg: { el }, text: 'Reset' })]),
-      followed(note(() => (el && turned.has(el) && liveOf(el) ? 'The fields show the view turned by the drag, which Use Current View writes.' : 'Drag the surface to turn it, and then use its view. A turn of 0 s keeps it still.'))),
+      followed(note(() => (el && turned.has(el) && liveOf(el) ? 'The view turned by the drag is shown in the fields. Choose Use Current View to write it.' : 'Drag the surface to turn it, and then use its view. A turn of 0 s keeps it still.'))),
       note(linked),
     ]),
     // an empty cell beside Z Scale keeps the field at the width of the fields above. a strip bundle

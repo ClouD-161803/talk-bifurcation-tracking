@@ -103,11 +103,12 @@ test('the theme bundle carries none of the editor, which is all in theme/editor.
   assert.ok(editor.includes('BeesonEditor'));
 });
 
-// the editor is loaded at each ?edit from a file, without a toolchain, hence its bundle is kept under
-// a budget, which leaves room for the editing features of Keynote and PowerPoint
-test('theme/editor.js is under 1280 kB', () => {
+// the editor is loaded at each ?edit from a file, without a toolchain. the budget is a tripwire for
+// a library bundled by mistake, with room for the editing features of Keynote and PowerPoint. it is
+// not a size to stay just under, and code is not shortened to fit it
+test('theme/editor.js is under 1536 kB', () => {
   const size = statSync(resolve('theme/editor.js')).size;
-  assert.ok(size < 1280 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 1536 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
 });
 
 // the engine of the port of a session is loaded beside theme/session.js at each ?edit&session

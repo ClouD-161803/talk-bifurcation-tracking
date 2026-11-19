@@ -80,14 +80,14 @@ export function checkOverlaps(app: App, slide: Element | null, scope: Element | 
   app.invalidate('layout');
 }
 
-// the sentences of the state line on the texts reported over a figure, e.g. "A table covers 1
-// text", which name the one drawn over the other first
+// the sentences of the state line on the texts reported over a figure, e.g. "1 text is under a
+// table"
 let sentences: string[] = [];
 export const coverSentences = (): string[] => sentences;
 
 const many = (n: number, word: string): string => (n === 1 ? `a ${word}` : `${n} ${word}${word.endsWith('x') ? 'es' : 's'}`);
 const texts = (n: number): string => `${n} text${n === 1 ? '' : 's'}`;
-const verb = (n: number): string => (n === 1 ? 'covers' : 'cover');
+const are = (n: number): string => (n === 1 ? 'is' : 'are');
 // the figures by kind, in the order in which they are met, e.g. 2 tables and a plot, or a
 // picture, a table, and a QR code
 function figures(fs: Set<Element>): string {
@@ -103,8 +103,7 @@ function sentencesOf(pairs: { text: Element; fig: Element }[]): string[] {
     if (!some.length) continue;
     const fs = new Set(some.map((p) => p.fig));
     const ts = new Set(some.map((p) => p.text)).size;
-    const named = figures(fs);
-    out.push(up ? `${named[0].toUpperCase()}${named.slice(1)} ${verb(fs.size)} ${texts(ts)}` : `${texts(ts)} ${verb(ts)} ${named}`);
+    out.push(`${texts(ts)} ${are(ts)} ${up ? 'under' : 'over'} ${figures(fs)}`);
   }
   return out;
 }

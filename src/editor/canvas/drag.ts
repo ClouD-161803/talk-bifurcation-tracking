@@ -24,7 +24,8 @@ import { injectStyle } from '../ui/dom.ts';
 const CSS = `
 html.beeson-dragging.beeson-copying, html.beeson-dragging.beeson-copying * { cursor: copy !important; }
 html.beeson-sizing, html.beeson-sizing * { cursor: var(--beeson-grip-cursor) !important; user-select: none !important; }
-html.beeson-pick .reveal * { cursor: default; }
+html.beeson-editing.beeson-pick .reveal .slides * { cursor: move; }
+html.beeson-editing.beeson-pick-locked .reveal .slides * { cursor: default; }
 `;
 
 // the cursor of a held grip kept over the page while it is dragged, as the resize cursor of a held
@@ -601,7 +602,8 @@ export function install(app: App): void {
     if (ev.button !== 0 || (ev.ctrlKey && mac()) || press) return;
     quiet = false;
     const target = ev.target instanceof Element ? ev.target : null;
-    if (!target) return;
+    // a button of the column left of a frame, e.g. a padlock, acts at its click
+    if (!target || target.closest('.beeson-lock, .beeson-grouping')) return;
     const sel = app.selection;
     if (target === frames.rotor) {
       const el = sel.only();
@@ -639,7 +641,7 @@ export function install(app: App): void {
       return;
     }
     const grip = target.closest('.beeson-grip');
-    if (grip && !grip.classList.contains('locked') && (grip as HTMLElement).dataset.group) {
+    if (grip && (grip as HTMLElement).dataset.group) {
       // the grips of a group, also of one selected with other objects: each member is a follower
       // of the box of the group
       ev.preventDefault();
@@ -659,7 +661,7 @@ export function install(app: App): void {
       holdGrip(grip as HTMLElement);
       return;
     }
-    if (grip && !grip.classList.contains('locked')) {
+    if (grip) {
       // the grips of a picture selected inside its figure resize the figure
       const member = frames.memberOf(grip);
       // a grip of a backdrop resizes its box, with its drawing kept in place
@@ -1154,7 +1156,7 @@ export function install(app: App): void {
     if (!p) return;
     press = null;
     app.stage?.edgeScroll(null);
-    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating', 'beeson-pick');
+    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating');
     view.moving = null;
     view.resizing = false;
     view.turn = null;
@@ -1195,6 +1197,7 @@ export function install(app: App): void {
     if (p.kind === 'move' && p.moved) quiet = true;
     frames.draw();
     app.invalidate('content');
+    pickCursor();
   };
 
   // the elements of a copy by a drag are put back, and a copy of each is written after it, at the
@@ -1230,14 +1233,14 @@ export function install(app: App): void {
   // is on its way to the handle at its upper left
   const hover = (ev: PointerEvent) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    if (target && (target === frames.handle || target.closest('.beeson-grip'))) return;
+    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-lock, .beeson-grouping, .beeson-table-bars'))) return;
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);
-    // the arrow over a text element that a click selects as a box, and the I-beam once it is selected
-    const host = el && app.hostOf(target);
-    document.documentElement.classList.toggle('beeson-pick', !!host && boxFirst(el) && app.selection.only() !== el && !editingIn(el));
-    const next = el ?? band;
+    under = target;
+    pickCursor();
+    const hot = frames.current();
+    const next = hot && hot !== el && toward(hot, ev) ? hot : el ?? band;
     if (next) {
       if (next !== view.hover) {
         view.hover = next;
@@ -1249,9 +1252,42 @@ export function install(app: App): void {
     }
   };
 
+  // the move cursor over a text element that a press selects or drags as a box, the arrow over a
+  // locked one that a press only selects, and the I-beam where a press puts the caret or selects
+  // words. the cursor is set again when the selection or the caret changes under a resting pointer
+  let under: Element | null = null;
+  const pickCursor = () => {
+    const el = pickOf(app, under);
+    const box = !!el && !!app.hostOf(under) && boxFirst(el) && !editingIn(el);
+    document.documentElement.classList.toggle('beeson-pick', box && !locked(el));
+    document.documentElement.classList.toggle('beeson-pick-locked', box && locked(el) && app.selection.only() !== el);
+  };
+  app.onRefresh(['selection', 'content', 'slide'], pickCursor);
+  for (const type of ['focusin', 'focusout']) document.addEventListener(type, () => queueMicrotask(pickCursor));
+
+  // the box of the handle and the buttons left of el, i.e. its padlock and its group button
+  const columnOf = (el: Element): Box | null => {
+    const parts = [frames.handle.hidden ? null : frames.handle.getBoundingClientRect(), frames.columnOf(el)].filter((b): b is Box => !!b);
+    if (!parts.length) return null;
+    const left = Math.min(...parts.map((b) => b.left)), top = Math.min(...parts.map((b) => b.top));
+    return { left, top, width: Math.max(...parts.map((b) => b.left + b.width)) - left, height: Math.max(...parts.map((b) => b.top + b.height)) - top };
+  };
+
+  // whether the pointer of ev is on the way from el to its handle and its buttons, i.e. in the strip
+  // from the left edge of the column of the buttons to the left edge of el, over the height of el
+  // and of the column, or on the column. there the hover stays on el, also over another element
+  // behind the strip
+  const toward = (el: Element, ev: PointerEvent): boolean => {
+    const h = columnOf(el);
+    if (!h) return false;
+    const r = el.getBoundingClientRect();
+    return ev.clientX >= h.left && ev.clientX <= r.left && ev.clientY >= Math.min(h.top, r.top) && ev.clientY <= Math.max(h.top + h.height, r.bottom);
+  };
+
   const near = (el: Element, ev: PointerEvent): boolean => {
     const r = el.getBoundingClientRect();
-    return ev.clientX >= r.left - 28 && ev.clientX <= r.right + 6 && ev.clientY >= r.top - 28 && ev.clientY <= r.bottom + 6;
+    const h = columnOf(el);
+    return ev.clientX >= Math.min(r.left - 28, h?.left ?? Infinity) && ev.clientX <= r.right + 6 && ev.clientY >= r.top - 28 && ev.clientY <= Math.max(r.bottom + 6, h ? h.top + h.height : -Infinity);
   };
 
   // the handle of a text element puts it back at its place in the file with a double click or Enter
@@ -1303,6 +1339,7 @@ export function install(app: App): void {
   });
   app.listen('slide', () => {
     view.hover = null;
+    under = null;
     if (press) onUp(null);
   });
 }

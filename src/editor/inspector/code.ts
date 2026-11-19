@@ -91,7 +91,7 @@ function groupList(app: App, run: Run, code: () => Element | null): Control {
     key = now;
     dimLines(null, null);
     if (!groups.length) {
-      el.replaceChildren(make('li', 'empty', 'No line steps. Select lines in the code and add them.'));
+      el.replaceChildren(make('li', 'empty', 'The code does not have line steps. Select lines in the code and add them.'));
       return;
     }
     el.replaceChildren(...groups.map((g, k) => {
@@ -141,7 +141,7 @@ export function codePane(app: App, run: Run): Control[] {
   return [
     section('Language', [
       languageButton(app, run, code),
-      note(() => (hljsOf() ? '' : 'The deck does not load theme/vendor/reveal/highlight.js, hence its code is not colored.'), () => true),
+      note(() => (hljsOf() ? '' : 'theme/vendor/reveal/highlight.js is not loaded in the deck, so its code cannot be colored.'), () => true),
     ]),
     section('Lines', [
       checkbox(app, run, 'code.numbers', 'Number the lines'),

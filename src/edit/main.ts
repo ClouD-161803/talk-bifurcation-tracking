@@ -107,7 +107,7 @@ async function main(argv: string[]): Promise<void> {
     const err = e as NodeJS.ErrnoException;
     const message =
       err instanceof NotUtf8
-        ? 'index.html is not valid UTF-8, hence the edit command cannot keep its bytes. Save it as UTF-8 and start again.'
+        ? 'index.html is not valid UTF-8, hence its bytes cannot be kept. Save it as UTF-8 and start the edit command again.'
         : err.code === 'ENOENT'
           ? `There is no index.html in ${folder ?? 'this folder'}. Start the edit command in a talk folder.`
           : `The edit command could not start: ${err.message}`;

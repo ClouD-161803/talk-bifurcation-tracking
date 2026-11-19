@@ -220,6 +220,7 @@ for (const platform of PLATFORMS) {
   test(`Align Left of two elements writes both offsets as one entry of the history on ${platform}`, async () => {
     const page = await inspectorPage(platform, slideWith(FIGURE));
     const p = await boxOf(page, P);
+    const f = await boxOf(page, FIGURE_BOX);
     await selectFigure(page, IMG);
     await click(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 }, { modifiers: 'Shift' });
     assert.deepEqual(await framed(page, [P, FIGURE_BOX]), [P, FIGURE_BOX]);
@@ -230,7 +231,7 @@ for (const platform of PLATFORMS) {
     const text = await page.evaluate('window.BeesonEditor.render()');
     const x = (tag) => Number(text.match(new RegExp(`${tag.slice(0, -1)} style="translate: (-?\\d+)px 0px">`))?.[1]);
     const [px, fx] = [x(LEAD.slice(0, 3)), x(FIGURE)];
-    assert.ok(px < 0 && fx < px, `the offsets of the paragraph and the figure are ${px} and ${fx}`);
+    assert.ok(px < 0 && fx === px, `the offsets of the paragraph and the figure are ${px} and ${fx}`);
     const edits = [
       [LEAD, `<p style="translate: ${px}px 0px">The lead-in of a display</p>`],
       [FIGURE, `${FIGURE.slice(0, -1)} style="translate: ${fx}px 0px">`],
@@ -242,9 +243,12 @@ for (const platform of PLATFORMS) {
     await byteExact(page);
     await redo(page);
     await byteExact(page, edits);
-    // the two left edges are at the left edge of the slide
+    // the two are moved as one ensemble: the left edge of the pair is at the left edge of the slide,
+    // and the figure keeps its distance from the paragraph
     const left = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().left`);
-    for (const s of [P, FIGURE_BOX]) assert.ok(Math.abs((await boxOf(page, s)).left - left) <= 1, `${s} is not at the left edge`);
+    const [p2, f2] = [await boxOf(page, P), await boxOf(page, FIGURE_BOX)];
+    assert.ok(Math.abs(Math.min(p2.left, f2.left) - left) <= 1, 'the pair is not at the left edge');
+    assert.ok(Math.abs(f2.left - p2.left - (f.left - p.left)) <= 1, 'the figure did not keep its distance from the paragraph');
     await saved(page, edits);
     assert.deepEqual(errors(page), []);
   });

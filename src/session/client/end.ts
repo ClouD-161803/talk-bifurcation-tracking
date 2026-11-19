@@ -17,7 +17,7 @@ export function install(client: Client): void {
     const slides = client.shell.changedSlides(client.snapshot()!.base, text);
     const dialog = client.shell.dialog({
       title: 'Your changes cannot be sent',
-      text: `The page must load again to show the deck. Your ${slides.length ? `changes${client.shell.onSlides(slides)}` : 'last changes'} did not reach ${client.host ? 'index.html' : 'the host'}.`,
+      text: `Load the page again to show the deck. Your ${slides.length ? `changes${client.shell.onSlides(slides)}` : 'last changes'} ${client.host ? 'were not saved to index.html' : 'did not reach the host'}.`,
       buttons: [
         { label: 'Download a copy', value: 'download' },
         { label: 'Load again', value: 'reload', primary: true },
@@ -41,7 +41,7 @@ export function install(client: Client): void {
     const who = ended.by && !host ? ended.by : null;
     const deck = host ? ['index.html'] : who ? [bdi(who), "'s deck"] : ["the host's deck"];
     const lines: (string | Node)[] = ['Your changes up to now are in ', ...deck, '.'];
-    if (!acked) lines.push(` Your ${slides.length ? `changes${client.shell.onSlides(slides)}` : 'last changes'} did not reach `, host ? 'index.html' : who ? bdi(who) : 'the host', '.');
+    if (!acked) lines.push(` Your ${slides.length ? `changes${client.shell.onSlides(slides)}` : 'last changes'} ${host ? 'were not saved to' : 'did not reach'} `, host ? 'index.html' : who ? bdi(who) : 'the host', '.');
     const dialog = client.shell.dialog({
       title: who ? `${who} ended the session` : 'The session has ended',
       text: '',

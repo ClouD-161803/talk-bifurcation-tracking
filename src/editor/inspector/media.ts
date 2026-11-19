@@ -242,10 +242,10 @@ export function videoPane(app: App, run: Run): Control[] {
     ]),
     section('Poster', [
       well(app, run, poster, () => fileName(poster()), 'media.poster', { el: video }, 'Capture Poster', () => (video && unreadable(video)
-        ? { text: 'Capture Poster…', title: 'Capture the frame of the slider as the poster. In a deck opened from a file, it asks once for the file of the video, whose frames the browser keeps from the page' }
+        ? { text: 'Capture Poster…', title: 'Capture the frame of the slider as the poster. In a deck opened from a file, you are asked once for the file of the video, since its frames cannot be read from the page' }
         : { text: 'Capture Poster', title: 'Capture the frame of the slider as the poster' })),
       frameSlider(app, run, video),
-      note(() => (poster() ? 'The frame shown before the video plays and printed in the PDF. Drag the slider to choose another one.' : 'The video does not have a poster, which the PDF prints.'), () => !poster()),
+      note(() => (poster() ? 'The frame shown before the video plays and printed in the PDF. Drag the slider to choose another one.' : 'The video does not have a poster for the PDF.'), () => !poster()),
       note(() => (video && unreadable(video) ? `In a deck opened from a file, the browser keeps the frames of ${fileName(video.getAttribute('src'))} from the page, hence Capture Poster asks once for the file.` : '')),
       keptNote(poster),
     ]),

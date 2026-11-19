@@ -77,6 +77,16 @@ const choiceOf = (el: Element, family: [string, string, string | null][]): strin
 const choose = (family: [string, string, string | null][], id: string): Record<string, boolean> =>
   Object.fromEntries(family.filter(([, , cls]) => cls).map(([k, , cls]) => [cls!, k === id]));
 
+// the tones of a shape, with text for a shape without a tone class
+const TONES: [string, string, string | null][] = LINE_TONES.map(([t, label]) => [t, label, t === 'text' ? null : `tone-${t}`]);
+export const toneOfShape = (el: Element): string => choiceOf(el, TONES);
+export const isShapeTone = (tone: string): boolean => TONES.some(([t]) => t === tone);
+
+// the tone of each shape of els written as one edit of its tag, as Shape Color writes it
+export function setShapeTone(app: App, els: Element[], tone: string): void {
+  for (const el of els) app.doc.setTag(el, { classes: choose(TONES, tone) }, 'Shape Color');
+}
+
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function caretAtEnd(el: Element): void {
@@ -372,7 +382,7 @@ export function install(app: App): void {
         },
       });
     });
-  family('tone', LINE_TONES.map(([t, label]) => [t, label, t === 'text' ? null : `tone-${t}`]), 'Shape Color', 'shape-tone', 80);
+  family('tone', TONES, 'Shape Color', 'shape-tone', 80);
   family('fill', FILLS, 'Shape Fill', 'shape-fill', 90);
   // a translucent shape is drawn without an outline unless it has weight-6 or weight-8, hence 3 px, which does not
   // have a class, is not offered on a translucent shape, and the outline of a translucent shape without a class reads as None

@@ -376,7 +376,7 @@ test('a name held by another person asks whether it is this person, says what co
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const b = await open(browser, sessionUrl(server.edit), { name: 'ann', wait: false });
   const asked = `document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent`;
-  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is that you?'`);
+  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is this you?'`);
   // the name is isolated from the text around it, which a name in a right-to-left script would reorder
   assert.equal(await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3 bdi')?.textContent`), 'Ann');
   assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
@@ -388,7 +388,7 @@ test('a name held by another person asks whether it is this person, says what co
   await b.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
   await b.evaluate(`document.querySelector('dialog.beeson-session-join input').value = 'Ann'`);
   await b.evaluate(`document.querySelector('dialog.beeson-session-join .row button').click()`);
-  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is that you?'`);
+  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is this you?'`);
   await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Yes, continue').click()`);
   await b.waitFor(ONLINE);
   assert.equal(await b.evaluate(`${C}.person`), await a.evaluate(`${C}.person`));
@@ -451,7 +451,7 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   assert.deepEqual(low(await heights(other)), [], 'the buttons of the join dialog');
   await other.evaluate(`document.querySelector('dialog.beeson-session-join input').value = 'Ann'`);
   await other.evaluate(`document.querySelector('dialog.beeson-session-join .row button.primary').click()`);
-  await other.waitFor(`${open_}?.querySelector('h3').textContent === 'Ann has joined this deck before. Is that you?'`);
+  await other.waitFor(`${open_}?.querySelector('h3').textContent === 'Ann has joined this deck before. Is this you?'`);
   assert.deepEqual(low(await heights(other)), [], 'the buttons of the taken dialog');
   // a signal ends a process at once on Windows, where a page is thus not told the end of the session
   if (process.platform !== 'win32') {

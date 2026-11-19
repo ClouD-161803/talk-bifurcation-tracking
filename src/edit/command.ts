@@ -443,7 +443,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const dir = join(root, 'media');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
-    if (!real.startsWith(root + sep)) return error(403, 'media/ leaves the talk folder');
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
     // with the hash of the page, a file sent again, e.g. after its answer was lost, is not copied
     const sent = request.headers['x-content-sha256'];
     if (sent !== undefined) {
@@ -499,7 +499,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const dir = join(root, 'figures');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
-    if (!real.startsWith(root + sep)) return error(403, 'figures/ leaves the talk folder');
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
     if (route === 'data') {
       if (typeof body.stem !== 'string') return error(400, 'stem is missing');
       const clean = `${cleanStem((body.stem.split(/[\\/]/).pop() ?? '').replace(/\.csv$/i, ''), 'data')}.csv`;
@@ -589,7 +589,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (parts.length !== 3 || parts[0] !== 'history') return error(404, 'not found');
     if (parts[2] === 'name') {
       const named = history.name(parts[1], body.name);
-      if (named === 'long') return error(400, 'the name must be a text of at most 80 characters');
+      if (named === 'long') return error(400, 'the tag must be a text of at most 80 characters');
       return named ? json(200, named) : error(404, 'there is no such version');
     }
     if (parts[2] === 'restore') {

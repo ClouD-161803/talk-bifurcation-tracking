@@ -127,7 +127,7 @@ test('a save of a text that the file changed too asks which to keep, and Cancel 
   void page.evaluate('window.BeesonEditor.save()');
   await until(page, `${card} !== null`);
   const shown = await page.evaluate(card);
-  assert.equal(shown.head, 'The file changed the texts that you edited');
+  assert.equal(shown.head, 'The texts that you edited were changed in the file');
   assert.match(shown.text, new RegExp(`^You edited texts on slide ${slide} that the file changed too`));
   assert.deepEqual(shown.buttons, ['Keep mine', "Keep the file's", 'Cancel']);
   assert.equal(await page.evaluate(`document.querySelector('.reveal .slides').inert`), true);

@@ -611,7 +611,7 @@ test('a copy of an earlier session is added to a deck that changed since only wh
     const day = await page.evaluate(`new Date(${beat}).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })`);
     assert.deepEqual(await page.evaluate(EARLIER), {
       title: 'Changes from an earlier session',
-      text: `This browser kept your changes on slide 2 from ${day}, which were not sent. The deck has changed since then.`,
+      text: `This browser kept your changes on slide 2 from ${day}, which were not sent. The deck was modified since then.`,
       buttons: ['Download my version', 'Discard them', 'Add my changes'],
     });
     await pressEarlier(page, 'Download my version');
@@ -856,7 +856,7 @@ test('the end of the session closes the dialog of the conflicts, keeps the versi
   server.edit = null;
   await ann.waitFor(`${C}.connection === 'ended'`);
   await ann.waitFor(`!document.querySelector('dialog.beeson-session-conflicts')`);
-  assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html. Your changes on slides 1 and 2 did not reach index.html.');
+  assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html. Your changes on slides 1 and 2 were not saved to index.html.');
   assert.equal(await ann.evaluate(`${el(0, 'p')}.textContent`), 'Opening slide');
   clean(ann);
   clean(ben);

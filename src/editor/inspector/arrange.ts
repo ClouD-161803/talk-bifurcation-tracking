@@ -97,7 +97,7 @@ export function arrangePane(app: App, run: Run): Control[] {
         field('Width', () => frame()?.width ?? shared(live().map((el) => sizeOf(el).w)), (w) => run('arrange.setSize', { w, els: live() }), () => !!group() || sized(), 1),
         field('Height', () => frame()?.height ?? shared(live().map((el) => sizeOf(el).h + captionHeight(app, whole(el)))), (h) => run('arrange.setSize', { h, els: group() ? live() : live().map(whole) }), () => !!group() || heightSet(live()), 1),
       ]),
-      note(() => (!els.length || sized() || group() ? '' : 'Set by the layout of the slide.')),
+      note(() => (!els.length || sized() || group() ? '' : 'Set in the layout of the slide.')),
       row([checkbox(app, run, 'arrange.constrainProportions', 'Constrain Proportions')]),
       // a lock turns the checkbox off too, which the note does not explain
       note(() => (sized() && !app.commands.applies('arrange.constrainProportions') ? 'Only the width is written, and the height follows the aspect or the layout.' : '')),

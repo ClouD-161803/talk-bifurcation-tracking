@@ -429,7 +429,8 @@ for (const platform of PLATFORMS) {
     // a group of two shapes, a lock, and the layer order
     await clickText(page, r);
     await click(page, await screen(page, 982, 340), { modifiers: 'Shift' });
-    // Align Left moves the ellipse to the left edge of the rectangle
+    // Align Left with Align to Selection moves the ellipse to the left edge of the rectangle
+    await exec(page, 'arrange.alignTo.selection');
     await exec(page, 'arrange.align.left');
     await frames(page);
     assert.ok((await render(page)).includes('<div class="shape ellipse tone-red fill-none" style="width: 300px; height: 160px; translate: 600px 260px"></div>'));

@@ -289,8 +289,8 @@ export function isOn(app: App, name: FormatName): boolean {
 }
 
 // the tone of the words at the caret or of the selection, null for the text color of the theme
-export function toneAt(app: App): Tone | null {
-  const t = inlineTargets(app)[0] ?? textTarget(app);
+export function toneAt(app: App, targets = inlineTargets(app)): Tone | null {
+  const t = targets[0] ?? textTarget(app);
   if (!t) return null;
   const span = around(t.host, textsIn(t.range)[0], isTone);
   return span ? (span.classList[0].slice(5) as Tone) : null;
@@ -301,8 +301,8 @@ export function toneAt(app: App): Tone | null {
 const ownColor = (host: Element): boolean => !!host.parentElement && getComputedStyle(host).color !== getComputedStyle(host.parentElement).color;
 
 // whether the words at the start of the text are drawn in the text color
-export function textColored(app: App): boolean {
-  const t = inlineTargets(app)[0] ?? textTarget(app);
+export function textColored(app: App, targets = inlineTargets(app)): boolean {
+  const t = targets[0] ?? textTarget(app);
   if (!t) return false;
   const span = around(t.host, textsIn(t.range)[0], isTone);
   return span ? span.classList.contains('tone-text') : !ownColor(t.host);
@@ -310,8 +310,7 @@ export function textColored(app: App): boolean {
 
 // the words colored in tone, or given the text color of the theme with null. the tone text is a
 // span only in a text element of a color of its own, and else the tone is taken off
-export function setTone(app: App, tone: Tone | null): void {
-  const targets = inlineTargets(app);
+export function setTone(app: App, tone: Tone | null, targets = inlineTargets(app)): void {
   edit(app, targets, (host, range) => {
     const t = tone === 'text' && !ownColor(host) ? null : tone;
     return setFormat(host, range, isTone, t ? () => {

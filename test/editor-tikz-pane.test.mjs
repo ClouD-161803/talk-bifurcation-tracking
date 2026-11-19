@@ -154,6 +154,6 @@ test('the TikZ Figure pane shows the file and the state of a figure, and writes 
   await select('lost');
   await page.waitFor(`document.querySelector('${PANEL} fieldset')?.disabled === true`);
   shown = await pane(page);
-  assert.ok(shown.text.includes('The source is no longer in the shape that From Data writes, hence these fields are off. Edit it with Edit Source…'), shown.text);
+  assert.ok(shown.text.includes('The source is no longer in the shape written with From Data, hence these fields are off. Edit it with Edit Source…'), shown.text);
   assert.deepEqual(page.errors.filter((e) => !/figures\/[\w-]+\.js/.test(e)), []);
 });

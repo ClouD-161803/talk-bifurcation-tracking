@@ -321,7 +321,7 @@ function sheets(host: TexHost): TexSheets {
     const ask = (reason = ''): Promise<Reader> => {
       if (quiet) return Promise.reject(new Error(`${reason}the files next to the deck are not read`));
       choosing = true;
-      note.textContent = `${reason}Choose the folder of the deck, i.e. choose ${SOURCE.preamble}, ${SOURCE.bibliography}, tex.js, and the files that the preamble inputs, since a browser reads the files next to a deck opened from a file only after you choose them.`;
+      note.textContent = `${reason}Choose the folder of the deck, i.e. choose ${SOURCE.preamble}, ${SOURCE.bibliography}, tex.js, and the files that are input in the preamble, since the files next to a deck opened from a file can be read only after you choose them.`;
       pick.hidden = false;
       input.focus();
       return chosen;

@@ -152,10 +152,10 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.equal(await page.evaluate('window.BeesonEditor.selection()[0].matches("div.shape")'), true, 'the shape is not selected');
     for (const id of ['text.smaller', 'text.tone.accent', 'text.bold']) assert.equal((await state(page, id)).enabled, true, `${id} is disabled: ${js(await state(page, id))}`);
-    await exec(page, 'text.tone.accent');
+    await exec(page, 'text.bold');
     const after = await render(page);
-    assert.notEqual(after, page.source, 'Accent does not change the words of the shape');
-    assert.equal(after, page.source.replace('<li>Goal</li>', '<li><span class="tone-accent">Goal</span></li>').replace('<li>Path</li>', '<li><span class="tone-accent">Path</span></li>'));
+    assert.notEqual(after, page.source, 'Bold does not change the words of the shape');
+    assert.equal(after, page.source.replace('<li>Goal</li>', '<li><strong>Goal</strong></li>').replace('<li>Path</li>', '<li><strong>Path</strong></li>'));
     await undo(page);
     assert.equal(await render(page), page.source);
     await redo(page);
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
     // a nested item is part of the block of its item, hence Smaller sets Small on Goal, whose look
     // Path takes
     const look = (word) => page.evaluate(`(() => { const li = [...document.querySelectorAll('.reveal section.present .shape li')].find((e) => e.firstChild.data.trim() === ${js(word)}); const s = getComputedStyle(li); return s.fontSize + ' ' + s.color; })()`);
-    const formats = { 'text.tone.accent': [/<li><span class="tone-accent">Goal\s*<\/span>/, '<li><span class="tone-accent">Path</span></li>'], 'text.smaller': [/<li class="small">Goal/, '<li>Path</li>'], 'text.bold': [/<li><strong>Goal\s*<\/strong>/, '<li><strong>Path</strong></li>'] };
+    const formats = { 'text.smaller': [/<li class="small">Goal/, '<li>Path</li>'], 'text.bold': [/<li><strong>Goal\s*<\/strong>/, '<li><strong>Path</strong></li>'] };
     for (const [id, [outer, inner]] of Object.entries(formats)) {
       await exec(page, id);
       const after = await render(page);
@@ -198,7 +198,7 @@ for (const platform of PLATFORMS) {
     // a nested item starts a sentence of its own, as a block does
     await exec(page, 'text.case.sentence');
     assert.equal(await render(page), indented, 'Sentence case changes the nested Path');
-    await exec(page, 'text.tone.accent');
+    await exec(page, 'text.bold');
     await saveAndReopen(page);
     assert.deepEqual(errors(page), []);
   });

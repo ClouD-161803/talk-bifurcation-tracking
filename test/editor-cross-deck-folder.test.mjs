@@ -157,7 +157,7 @@ test('in a browser without a folder picker, e.g. on a phone, the dialog is skipp
   await pasted(b);
   assert.equal(await b.evaluate(`!!document.querySelector('${DIALOG}[open]')`), false);
   assert.equal(sectionOf(await render(b), FILES), sectionOf(a.source, FILES));
-  assert.match((await status(b)).message, /were not copied from the folder a, since this browser cannot open a folder\./);
+  assert.match((await status(b)).message, /were not copied from the folder a, since your browser cannot open folders\./);
 });
 
 test('a folder chosen after a cancelled dialog in the same page is read', async (t) => {

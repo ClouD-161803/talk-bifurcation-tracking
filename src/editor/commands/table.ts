@@ -1096,7 +1096,7 @@ function openPicker(app: App, anchor: DOMRect | null, done: (size: Size) => void
   grid.append(...cells);
   const larger = make('button', 'more', 'Insert Table…');
   larger.type = 'button';
-  box.append(size, grid, make('div', 'foot', 'Arrow keys choose, Return inserts'), larger);
+  box.append(size, grid, make('div', 'foot', 'Choose with the arrow keys, and insert with Return'), larger);
   let pick: Size | null = null;
   // the size last shown, which Insert Table… opens with after the pointer leaves the grid
   let rested: Size | undefined;

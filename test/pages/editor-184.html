@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Editor cursor and handle deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the cursor over each kind of text element, and the handle of a table at the right of a list as
+     wide as the text column -->
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h2>Cursors over text</h2>
+  <p class="plain">A plain paragraph</p>
+  <ul class="items">
+    <li>The first item</li>
+    <li>The second item</li>
+  </ul>
+  <p data-locked class="held">A locked paragraph</p>
+  <p data-group="g1" class="member" style="width: 600px">A member of a group</p>
+  <p data-group="g1" style="width: 600px">Another member</p>
+  <div class="shape rounded" style="width: 500px; height: 160px; translate: 1100px 250px"><p>Words of a shape</p></div>
+  <table style="translate: 1000px -150px">
+    <tbody>
+      <tr><td>Cell</td><td>Cell</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>A table beside a list</h2>
+  <ul>
+    <li>A wide list</li>
+    <li>with a second item</li>
+    <li>and a third item</li>
+  </ul>
+  <table style="translate: 600px -200px">
+    <tbody>
+      <tr><td>Item 1</td><td>Entry</td><td>Entry</td></tr>
+      <tr><td>Item 2</td><td>Entry</td><td>Entry</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

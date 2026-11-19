@@ -51,7 +51,7 @@ function mark(pairing: Pairing | null): void {
     if (up && el.closest('section')?.contains(up)) continue;
     el.classList.add('beeson-movable');
     el.setAttribute('tabindex', '0');
-    if (!el.hasAttribute('aria-label') && !el.hasAttribute('alt')) el.setAttribute('aria-label', 'Figure: the arrow keys move it, Esc deselects it');
+    if (!el.hasAttribute('aria-label') && !el.hasAttribute('alt')) el.setAttribute('aria-label', 'Figure. Move it with the arrow keys, and deselect it with Esc');
   }
 }
 

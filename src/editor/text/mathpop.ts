@@ -357,7 +357,7 @@ export function install(app: App): void {
       if (kept.length && kept.every((el) => el.isConnected)) app.selection.set('elements', kept);
     };
     await (kept.length ? app.history.selecting('Formula', write) : write());
-    if (host.querySelectorAll('mjx-container').length !== count) throw new Error('MathJax does not find the formula with this TeX, and Undo puts the slide back');
+    if (host.querySelectorAll('mjx-container').length !== count) throw new Error('MathJax does not find the formula with this TeX. Choose Undo to put the slide back');
     if (active?.isConnected && !host.contains(active)) active.focus({ preventScroll: true });
   }
 

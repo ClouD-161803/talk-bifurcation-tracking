@@ -176,9 +176,9 @@ export function install(client: Client): void {
     named = make('input');
     named.type = 'checkbox';
     named.addEventListener('change', render);
-    label.append(named, document.createTextNode('Only show named versions'));
+    label.append(named, document.createTextNode('Only show tagged versions'));
     list = make('div', 'rows versions');
-    nameCurrent = make('button', 'name-current', 'Name this version');
+    nameCurrent = make('button', 'name-current', 'Tag this version');
     nameCurrent.type = 'button';
     nameCurrent.dataset.id = 'name-current';
     nameCurrent.addEventListener('click', () => void name('current', ''));
@@ -319,7 +319,7 @@ export function install(client: Client): void {
     const nodes: Node[] = [
       row('current', { kind: 'current' }, deferred ? 'deferred' : '', () => {
         const parts: (Node | string)[] = [make('span', 'title', 'Current version')];
-        if (deferred) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
+        if (deferred) parts.push(make('span', 'sub', 'The deck was changed. It is loaded again when Version History is closed.'));
         return parts;
       }),
       nameCurrent,
@@ -328,7 +328,7 @@ export function install(client: Client): void {
     if (failed) nodes.push(note('The versions cannot be read while the page is offline.'));
     if (!answer) {
       if (!failed) nodes.push(note('Loading versions…'));
-    } else if (!versions.length) nodes.push(note(named.checked && answer.versions.length ? 'No named versions yet.' : 'No earlier versions yet.'));
+    } else if (!versions.length) nodes.push(note(named.checked && answer.versions.length ? 'No tagged versions yet.' : 'The deck does not have earlier versions yet.'));
     let day = '';
     for (const fold of foldsOf(versions)) {
       const label = dayLabel(fold.head.time);
@@ -477,14 +477,14 @@ export function install(client: Client): void {
     input.type = 'text';
     input.value = was;
     input.spellcheck = false;
-    input.setAttribute('aria-label', 'Name of the version');
+    input.setAttribute('aria-label', 'Tag of the version');
     const count = make('p', 'count');
     count.id = 'beeson-session-name-count';
     count.hidden = true;
     const body = make('div');
     body.append(input, count);
     const d = client.shell.dialog({
-      title: 'Name this version',
+      title: 'Tag this version',
       body,
       buttons: [
         { label: 'Cancel', value: 'cancel' },
@@ -502,7 +502,7 @@ export function install(client: Client): void {
       count.textContent = over ? `${n} of at most ${VERSION_NAME_MAX} characters` : '';
       if (over) input.setAttribute('aria-describedby', count.id);
       else input.removeAttribute('aria-describedby');
-      const label = !n && id !== 'current' && was ? 'Remove name' : 'Save';
+      const label = !n && id !== 'current' && was ? 'Remove tag' : 'Save';
       if (save.textContent !== label) save.textContent = label;
       save.disabled = over || (!n && id !== 'current' && !was);
     };
@@ -524,7 +524,7 @@ export function install(client: Client): void {
       render();
       void load();
     } catch (e) {
-      fail('The version could not be named', e);
+      fail('The version could not be tagged', e);
     }
   }
 
@@ -558,7 +558,7 @@ export function install(client: Client): void {
     const when = dayLabel(v.time) === 'Today' ? `at ${timeOf(v.time)}` : `on ${dateOf(v.time)} at ${timeOf(v.time)}`;
     const d = client.shell.dialog({
       title: 'Restore this version?',
-      text: `The deck goes back to how it was ${when}. The current version stays in the history.`,
+      text: `The deck goes back to how it was ${when}. The current version is kept in the history.`,
       buttons: [
         { label: 'Cancel', value: 'cancel' },
         { label: 'Restore', value: 'restore', primary: true },
@@ -609,6 +609,6 @@ export function install(client: Client): void {
     if (r.by === client.person) return;
     toast([bdi(personOf(client, r.by)?.name ?? 'Someone'), ` restored the version of ${whenOf(r.time)}`]);
   });
-  client.on('overwritten', () => toast('A change of index.html from outside replaced text of this session. The text is kept in Version History.', { label: 'Show', run: () => open() }));
+  client.on('overwritten', () => toast('index.html was changed outside the editor, and text of this session was replaced. This text is kept in Version History.', { label: 'Show', run: () => open() }));
   client.on('ended', () => close());
 }

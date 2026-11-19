@@ -191,22 +191,23 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     assert.equal(await ann.evaluate(`${LIST}[3].folded.length`), 1);
   });
 
-  await t.test('a version is named in the bar of its preview, and Only show named versions lists it alone', async () => {
+  await t.test('a version is named in the bar of its preview, and Only show tagged versions lists it alone', async () => {
     await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')][1]`);
-    await press$(ann, BAR, 'Name this version');
+    await press$(ann, BAR, 'Tag this version');
     await nameIt(ann, 'Draft for Ben');
     await ann.waitFor(`${LIST}[2]?.title === 'Draft for Ben'`);
     const list = await ann.evaluate(LIST);
     // a named version does not fold
     assert.deepEqual(list.map((x) => x.title ?? x.day ?? x.fold), ['Today', list[1].title, 'Draft for Ben']);
     assert.equal(list[1].title, await timeIn(ann, (await versionsOf(ann))[0].time));
+    assert.equal(await ann.evaluate(`document.querySelector('${PANE} label.named').textContent`), 'Only show tagged versions');
     await tapOrClick(ann, `document.querySelector('${PANE} label.named input')`);
     await ann.waitFor(`${LIST}.length === 2`);
     assert.deepEqual((await ann.evaluate(LIST)).map((x) => x.title ?? x.day), ['Today', 'Draft for Ben']);
     await tapOrClick(ann, `document.querySelector('${PANE} label.named input')`);
     await ann.waitFor(`${LIST}.length === 3`);
-    // Name this version under Current version names the newest version when no edit is open
-    await press$(ann, PANE, 'Name this version');
+    // Tag this version under Current version names the newest version when no edit is open
+    await press$(ann, PANE, 'Tag this version');
     await nameIt(ann, 'Now');
     await ann.waitFor(`${LIST}[1]?.title === 'Now'`);
     assert.deepEqual((await ann.evaluate(LIST)).map((x) => x.title ?? x.day), ['Today', 'Now', 'Draft for Ben']);
@@ -273,7 +274,7 @@ test('the preview outlines each changed element in the tone of its author, and a
   await typeKeys(ben, ' by Ben');
   await converge(server, [ann, ben]);
   await openPane(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Both');
   await ann.waitFor(`${LIST}[1]?.title === 'Both'`);
   assert.deepEqual((await ann.evaluate(LIST))[1].who, ['Ann', 'Ben']);
@@ -287,7 +288,7 @@ test('the preview outlines each changed element in the tone of its author, and a
       return { date: b.querySelector('.date').textContent, who: [...b.querySelectorAll('.author')].map((a) => a.textContent), slides: [...b.querySelectorAll('button.slide')].map((x) => x.textContent), buttons: [...b.querySelectorAll('.actions button')].map((x) => x.textContent), changes: b.querySelector('label.changes').textContent };
     })()`);
     assert.equal(bar.date, `Both, Today, ${await timeIn(ann, (await versionsOf(ann))[0].time)}`);
-    assert.deepEqual([bar.who, bar.slides, bar.buttons, bar.changes], [['Ann', 'Ben'], ['Slide 1', 'Slide 2'], ['Restore this version', 'Name this version', '⋯'], 'Show changes']);
+    assert.deepEqual([bar.who, bar.slides, bar.buttons, bar.changes], [['Ann', 'Ben'], ['Slide 1', 'Slide 2'], ['Restore this version', 'Tag this version', '⋯'], 'Show changes']);
   });
 
   await t.test('the changed heading and list are outlined in the tones of Ann and Ben', async () => {
@@ -317,7 +318,7 @@ test('the preview outlines each changed element in the tone of its author, and a
   await t.test('a slide removed in index.html outside the editor is named in the bar and in the list', async () => {
     writeFileSync(server.file, server.read().replace(/\n<section>\n {2}<h2>Two<\/h2>[\s\S]*?<\/section>\n/, '\n'));
     await ann.waitFor(`!${TEXT}.includes('<h2>Two</h2>')`, 20_000);
-    await press$(ann, PANE, 'Name this version');
+    await press$(ann, PANE, 'Tag this version');
     await nameIt(ann, 'Cut');
     await ann.waitFor(`${LIST}[1]?.title === 'Cut'`);
     assert.deepEqual((await ann.evaluate(LIST))[1].who, ['Changed in index.html outside the editor']);
@@ -340,7 +341,7 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   assert.doesNotMatch(await timeIn(ben, Date.now()), /M$/);
   await converge(server, [ann, ben]);
   await openPane(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Start');
   await ann.waitFor(`${LIST}[1]?.title === 'Start'`);
   await show(ben, 'Two');
@@ -348,7 +349,7 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   await typeKeys(ben, ' gone');
   await converge(server, [ann, ben]);
   await front(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Later');
   await ann.waitFor(`${LIST}[1]?.title === 'Later'`);
   const start = await ann.evaluate(`document.querySelectorAll('${PANE} .versions .row.version')[1].querySelector('.sub').textContent`);
@@ -367,7 +368,7 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
     await tapOrClick(ann, `document.querySelectorAll('${PANE} .versions .row.version')[1]`);
     await press$(ann, BAR, 'Restore this version');
     await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'Restore this version?'`);
-    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), `The deck goes back to how it was at ${start}. The current version stays in the history.`);
+    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), `The deck goes back to how it was at ${start}. The current version is kept in the history.`);
     await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
     await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be restored'`);
     assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), 'the disk is full');
@@ -497,7 +498,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await converge(server, [ann]);
   await openPane(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Kept');
   await ann.waitFor(`${LIST}[1]?.title === 'Kept'`);
   await press(ann, 'Escape');
@@ -510,11 +511,11 @@ test('the pane of a page offline reads the versions once the page is online agai
   await ann.waitFor(`${LIST}[0]?.empty === 'The versions cannot be read while the page is offline.'`);
   assert.equal(await ann.evaluate(`${LIST}[2].title`), 'Kept');
   // a name cannot be given offline, and the dialog says so
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   // the request is refused at once, hence the dialog of the failure may open before a wait sees
   // the first dialog closed
   await typeName(ann, 'Lost');
-  await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be named'`);
+  await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be tagged'`);
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
   await server.start(['--port', String(port)]);
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
@@ -549,7 +550,7 @@ test('on a phone of 390 px the slide of the canvas is above the sheet, and the p
   })()`;
   await ann.waitFor(`Object.values(${room}).every(Boolean)`).catch(() => {});
   assert.deepEqual(await ann.evaluate(room), { below: true, above: true, shown: true });
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Phone');
   await ann.waitFor(`${LIST}[1]?.title === 'Phone'`);
   await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
@@ -663,7 +664,7 @@ const countRequests = (page, part) => page.evaluate(`(() => {
   return true;
 })()`);
 
-test('Name this version shows the name that a save replaces, an empty name under Current version does nothing, and a name is counted in characters', { timeout: 300_000 }, async (t) => {
+test('Tag this version shows the name that a save replaces, an empty name under Current version does nothing, and a name is counted in characters', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
@@ -671,7 +672,7 @@ test('Name this version shows the name that a save replaces, an empty name under
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
   await converge(server, [ann, ben]);
   await openPane(ben);
-  await press$(ben, PANE, 'Name this version');
+  await press$(ben, PANE, 'Tag this version');
   await nameIt(ben, 'Draft for Ben');
   await ben.waitFor(`${LIST}[1]?.title === 'Draft for Ben'`);
   await press(ben, 'Escape');
@@ -682,7 +683,7 @@ test('Name this version shows the name that a save replaces, an empty name under
   const save = `document.querySelector('${DIALOG} .row button.primary')`;
 
   await t.test('under Current version the field holds the name of the newest version, selected, while no edit was made since', async () => {
-    await press$(ann, PANE, 'Name this version');
+    await press$(ann, PANE, 'Tag this version');
     await ann.waitFor(`${field}?.focused`);
     assert.deepEqual(await ann.evaluate(field), { value: 'Draft for Ben', start: 0, end: 13, focused: true });
     await press(ann, 'Backspace');
@@ -692,8 +693,8 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal((await versionsOf(ann))[0].name, 'Draft for Ben');
   });
 
-  await t.test('Esc in Name this version closes the dialog and leaves Version History open', async () => {
-    await press$(ann, PANE, 'Name this version');
+  await t.test('Esc in Tag this version closes the dialog and leaves Version History open', async () => {
+    await press$(ann, PANE, 'Tag this version');
     await ann.waitFor(`${field}?.focused`);
     await press(ann, 'Escape');
     await ann.waitFor(`!document.querySelector('${DIALOG}') || !(${SHOWN})`);
@@ -706,7 +707,7 @@ test('Name this version shows the name that a save replaces, an empty name under
     await typeKeys(ben, ' more');
     await converge(server, [ann, ben]);
     await front(ann);
-    await press$(ann, PANE, 'Name this version');
+    await press$(ann, PANE, 'Tag this version');
     await ann.waitFor(`${field}?.focused`);
     assert.equal(await ann.evaluate(`${FIELD}.value`), '');
     await press(ann, 'Enter');
@@ -714,15 +715,15 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal(await ann.evaluate(`window.__count['/name']`), 0);
   });
 
-  await t.test('the name of a version is taken off by Remove name, which an empty field shows', async () => {
+  await t.test('the name of a version is taken off by Remove tag, which an empty field shows', async () => {
     await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
-    await press$(ann, BAR, 'Name this version');
+    await press$(ann, BAR, 'Tag this version');
     await ann.waitFor(`${field}?.focused`);
     assert.equal(await ann.evaluate(`${FIELD}.value`), 'Draft for Ben');
     assert.equal(await ann.evaluate(`${save}.textContent`), 'Save');
     await ann.evaluate(`${FIELD}.select(), true`);
     await press(ann, 'Backspace');
-    await ann.waitFor(`${save}.textContent === 'Remove name'`);
+    await ann.waitFor(`${save}.textContent === 'Remove tag'`);
     await press(ann, 'Enter');
     await ann.waitFor(`!document.querySelector('${DIALOG}')`);
     await ann.waitFor(`${LIST}[1]?.title !== 'Draft for Ben'`);
@@ -730,7 +731,7 @@ test('Name this version shows the name that a save replaces, an empty name under
   });
 
   await t.test('Save of a version without a name is off while the field is empty or holds more than 80 characters', async () => {
-    await press$(ann, BAR, 'Name this version');
+    await press$(ann, BAR, 'Tag this version');
     await ann.waitFor(`${field}?.focused`);
     assert.equal(await ann.evaluate(`${FIELD}.value`), '');
     assert.equal(await ann.evaluate(`${save}.disabled`), true);
@@ -786,7 +787,7 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     assert.deepEqual(fold, { text: 'Hide 2 more', expanded: 'true', hidden: false });
   });
 
-  await t.test('the focus stays on the fold button and on Name this version', async () => {
+  await t.test('the focus stays on the fold button and on Tag this version', async () => {
     await ann.evaluate(`document.querySelector('${PANE} .fold').focus(), true`);
     await version(' b');
     assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${PANE} .fold')`), true);
@@ -1014,7 +1015,7 @@ test('the restore of a version of another year names its year, and the time of t
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')].find((r) => r.querySelector('.title').textContent === 'Submitted')`);
   await press$(ann, BAR, 'Restore this version');
   await ann.waitFor(`document.querySelector('${DIALOG} h3')?.textContent === 'Restore this version?'`);
-  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), `The deck goes back to how it was on ${day} at ${time}. The current version stays in the history.`);
+  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), `The deck goes back to how it was on ${day} at ${time}. The current version is kept in the history.`);
   await press$(ann, DIALOG, 'Restore');
   await ann.waitFor(`!(${SHOWN})`, 20_000);
   await ben.waitFor('window.__toasts.length > 0');
@@ -1032,7 +1033,7 @@ test('the day headings of an open pane move on at midnight', { timeout: 300_000 
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await converge(server, [ann]);
   await openPane(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Before midnight');
   await ann.waitFor(`${LIST}[1]?.title === 'Before midnight'`);
   await press(ann, 'Escape');
@@ -1069,7 +1070,7 @@ test('an apply that needs a reload is held while the mode is on, which the row C
   await openPane(ann);
   const current = `[...document.querySelector('${PANE} .row.current').children].map((c) => c.textContent)`;
   assert.deepEqual(await ann.evaluate(current), ['Current version']);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Seen');
   await ann.waitFor(`${LIST}[1]?.title === 'Seen'`);
   await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
@@ -1082,8 +1083,8 @@ test('an apply that needs a reload is held while the mode is on, which the row C
   const at = bo.text.indexOf('Beeson.start({});');
   const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + 17, text: 'Beeson.start({ });' }] })).json();
   assert.equal(answer.ok, true);
-  await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck changed. It is loaded again when Version History is closed.'`, 20_000);
-  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck changed. It is loaded again when Version History is closed.']);
+  await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck was changed. It is loaded again when Version History is closed.'`, 20_000);
+  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck was changed. It is loaded again when Version History is closed.']);
   assert.equal(await ann.evaluate('window.__before'), true);
   assert.equal(await ann.evaluate(`${SHOWN} && !!document.querySelector('.beeson-session-preview:not([hidden])')`), true);
   await press$(ann, PANE, 'Back to editor');
@@ -1102,7 +1103,7 @@ test('a toast region is in the page before the first toast, and a toast during a
   await converge(server, [ann, ben]);
   assert.equal(await ann.evaluate(`document.querySelector('.beeson-session-toast[role="status"]')?.textContent`), '');
   await openPane(ann);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await nameIt(ann, 'Start');
   await ann.waitFor(`${LIST}[1]?.title === 'Start'`);
   const id = await rowId(ann, 0);
@@ -1122,7 +1123,7 @@ test('a toast region is in the page before the first toast, and a toast during a
     ${C}.on('restored', () => (window.__restored = performance.now()));
     return true;
   })()`);
-  await press$(ann, PANE, 'Name this version');
+  await press$(ann, PANE, 'Tag this version');
   await ann.waitFor(`${FIELD} === document.activeElement`);
   await ben.evaluate(`${C}.transport.post('history/${id}/restore', { token: ${C}.token }).then(() => true)`);
   await ann.waitFor('window.__restored > 0', 20_000);
@@ -1587,7 +1588,7 @@ test('Show changes tints a paragraph with a dollar or a backslash that MathJax s
   assert.deepEqual(seen, { math: { tints: ['typed in p[0]', 'typed in p[1]', 'typed in p[2]', 'typed in p[3]'], outlined: lines.map((_, k) => `p[${k}]`) } });
 });
 
-const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
+const OVERWRITTEN = 'index.html was changed outside the editor, and text of this session was replaced. This text is kept in Version History.';
 
 const TOAST = `(() => {
   const span = document.querySelector('.beeson-session-toast span');

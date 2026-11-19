@@ -167,5 +167,5 @@ test('a deck at the root of a server is named by its address in the note', async
   await b.evaluate(POINTER('touch'));
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
-  assert.ok((await status(b)).message.endsWith(`figs/orbit.png, figs/clip.mp4, figs/clip.png, and figs/shared.png were not copied from ${root.origin}/index.html, since this browser cannot open a folder.`), (await status(b)).message);
+  assert.ok((await status(b)).message.endsWith(`figs/orbit.png, figs/clip.mp4, figs/clip.png, and figs/shared.png were not copied from ${root.origin}/index.html, since your browser cannot open folders.`), (await status(b)).message);
 });

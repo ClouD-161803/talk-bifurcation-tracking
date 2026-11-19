@@ -66,7 +66,7 @@ const asciiJson = (value: unknown) => JSON.stringify(value).replace(/[\u007f-￿
 
 export class Taken extends Error {
   constructor() {
-    super('this session is already shared by another edit command, e.g. one started in a copy of this talk folder');
+    super('this session is already shared from another edit command, e.g. one started in a copy of this talk folder');
   }
 }
 

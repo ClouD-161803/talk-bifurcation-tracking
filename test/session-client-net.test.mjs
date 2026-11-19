@@ -127,7 +127,7 @@ test('a session that ends while a page waits to load again shows its dialog, wit
   server.edit = null;
   await page.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session has ended'`);
   assert.deepEqual(await page.evaluate(`({ text: ${DIALOG}.querySelector('p').textContent, inert: ${INERT}, loads: Number(sessionStorage.getItem('__loads')) })`), {
-    text: 'Your changes up to now are in index.html. Your changes on slide 1 did not reach index.html.',
+    text: 'Your changes up to now are in index.html. Your changes on slide 1 were not saved to index.html.',
     inert: false,
     loads: 1,
   });

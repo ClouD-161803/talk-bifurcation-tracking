@@ -175,7 +175,7 @@ export function install(app: App): void {
     title: 'Do you want to revert to the most recently saved version?',
     text: 'Your current changes will be lost.',
     buttons: [
-      { label: 'Revert', title: 'Forget the edits since the last save, and show the deck as its file holds it', value: 'revert', primary: true },
+      { label: 'Revert', title: 'Forget the edits since the last save, and show the deck as it is saved in its file', value: 'revert', primary: true },
       { label: 'Cancel', title: 'Go on editing', value: 'cancel' },
     ],
     className: 'revert',
@@ -205,7 +205,7 @@ export function install(app: App): void {
       void navigator.clipboard.writeText(pptxCommand.textContent ?? '').then(
         () => button && (button.textContent = 'Copied'),
         () => {
-          app.note = { text: 'The browser did not let the page copy the command', warn: true };
+          app.note = { text: 'The command could not be copied to the clipboard', warn: true };
           app.report();
         },
       );
@@ -474,7 +474,7 @@ export function install(app: App): void {
     const key = display('Mod+P', app.platform);
     const then = action === 'print' ? 'choose a printer' : 'choose Save as PDF';
     if (!win) {
-      app.note = { text: `The browser did not open the print view. Allow this page to open a tab, and ${action} again`, warn: true };
+      app.note = { text: `The print view could not be opened. Allow this page to open a tab, and ${action} again`, warn: true };
       app.report();
       return;
     }
@@ -494,7 +494,7 @@ export function install(app: App): void {
     const name = app.handle?.name ?? fileName();
     const where = location.protocol === 'file:' && name === fileName() ? `, i.e. ${folder()}` : '';
     pptxCommand.textContent = name === 'index.html' ? 'npm run pptx' : `npm run pptx -- ${name}`;
-    pptxDialog.text.textContent = `The PowerPoint file is written from the saved ${name} by this command, run in the folder of the deck${where}. It writes slides.pptx, with one click per step.`;
+    pptxDialog.text.textContent = `Run this command in the folder of the deck${where}. slides.pptx is then written from the saved ${name}, with one click per step.`;
     const copy = pptxDialog.buttons.get('copy');
     if (copy) copy.textContent = 'Copy Command';
     await pptxDialog.open('copy');

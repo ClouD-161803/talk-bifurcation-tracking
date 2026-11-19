@@ -91,7 +91,7 @@ export function install(app: App): void {
   const nav = (): Navigator => app.nav as Navigator;
 
   const conflict = new Dialog({
-    title: 'The file changed the texts that you edited',
+    title: 'The texts that you edited were changed in the file',
     text: '',
     buttons: [
       { label: 'Keep mine', title: 'Write your version of these texts into the file', value: 'ours', primary: true },

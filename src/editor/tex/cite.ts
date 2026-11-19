@@ -194,7 +194,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       o.note.textContent = 'Reading references.bib…';
       void store.ensure().then(done, failed);
     } else {
-      o.note.textContent = 'references.bib is not read yet, since a browser reads the files next to a deck opened from a file only after you choose them.';
+      o.note.textContent = 'references.bib is not read yet, since the files next to a deck opened from a file can be read only after you choose them.';
       o.choose.textContent = store.chooseLabel();
       o.choose.hidden = false;
       o.choose.onclick = () => void store.choose().then(done, failed);

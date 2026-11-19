@@ -50,8 +50,8 @@ const CLICKED = 320;
 const CSS = `
 .beeson-line-layer { position: fixed; inset: 0; z-index: 52; pointer-events: none; }
 .beeson-line-layer [hidden] { display: none !important; }
-.beeson-line-end { position: fixed; width: 11px; height: 11px; margin: -7px 0 0 -7px; border-radius: 50%; border: 1.5px solid var(--ed-select, #7048e8); background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; cursor: crosshair; }
-.beeson-line-end.bend { background: var(--ed-select, #7048e8); border-color: #fff; }
+.beeson-line-end { position: fixed; width: 11px; height: 11px; margin: -7px 0 0 -7px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; cursor: crosshair; }
+.beeson-line-end.bend { background: #444; border-color: #fff; }
 .beeson-line-end.locked { border-color: #8a8a8a; background: #d9d9d9; pointer-events: none; }
 .beeson-line-draft { position: fixed; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; color: var(--ed-select, #7048e8); }
 .beeson-line-draft > path { stroke: currentColor; stroke-width: 2; fill: none; }
