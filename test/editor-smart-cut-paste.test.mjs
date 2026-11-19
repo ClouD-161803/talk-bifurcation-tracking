@@ -8,7 +8,6 @@ import { click, clickText, press, saveAndReopen, type } from './helpers/editor.m
 describe('a word formatted or cut with its space', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r18-6.html';
-  const MOD = { mac: 4, other: 2 };
 
   let browser;
   let server;
@@ -40,7 +39,6 @@ describe('a word formatted or cut with its space', () => {
     await page.waitFor(deckSettled);
     await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
     page.source = readFileSync(DECK, 'utf8');
-    page.platform = platform;
     const s = await page.evaluate(`window.BeesonEditor.open(${js(page.source)})`);
     assert.deepEqual(s.problems, []);
     await page.evaluate('Reveal.slide(0)');
@@ -73,13 +71,6 @@ describe('a word formatted or cut with its space', () => {
     assert.deepEqual(errors(page), []);
   }
 
-  async function chord(page, key, command) {
-    const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: MOD[page.platform], commands: [command] };
-    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-    await frames(page);
-  }
-
   const rect = (page, expr) => page.evaluate(`(() => { const el = ${expr}; if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const MENU_ITEM = (label) => `[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.querySelector('.label')?.textContent === ${js(label)})`;
 
@@ -93,7 +84,7 @@ describe('a word formatted or cut with its space', () => {
     await frames(page);
   }
 
-  const CUTS = { 'Mod+X': (page) => chord(page, 'x', 'cut'), 'Cut of the Edit menu': menuCut };
+  const CUTS = { 'Mod+X': async (page) => { await press(page, 'Mod+X', { command: 'cut' }); await frames(page); }, 'Cut of the Edit menu': menuCut };
 
   const FORMATS = {
     Italic: [() => 'Mod+I', 'em'],
@@ -276,12 +267,6 @@ describe('a word pasted with the spaces of PowerPoint', () => {
     await frames(page);
   }
 
-  async function command(page, platform, key, name) {
-    const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: platform === 'mac' ? 4 : 2 };
-    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: [name] });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   const START = '.beeson-edit-inspector input[name="Start at"]';
   const ITEM = '.reveal section.present ol > li';
 
@@ -297,7 +282,7 @@ describe('a word pasted with the spaces of PowerPoint', () => {
       const label = (await state(page, 'edit.undo')).label;
       for (const key of '2.5') await type(page, key);
       assert.equal(await page.evaluate(`${field}.value`), '2.5');
-      await command(page, platform, 'z', 'undo');
+      await press(page, 'Mod+Z', { command: 'undo' });
       await frames(page);
       const now = await page.evaluate(`(() => { const f = ${field}; return { value: f.value, focused: document.activeElement === f, all: f.selectionStart === 0 && f.selectionEnd === f.value.length }; })()`);
       assert.deepEqual(now, { value: '1', focused: true, all: true }, 'one Undo does not put the shown value back, selected');
@@ -553,13 +538,6 @@ describe('a word pasted by a break or formula', () => {
     return page;
   }
 
-  async function formulaKey(page, platform) {
-    if (platform === 'mac') return press(page, 'Mod+Alt+E');
-    const base = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '=', unmodifiedText: '=' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   async function clickAway(page) {
     const at = await page.evaluate(`(() => { const r = document.querySelector(${js(SLIDE)}).getBoundingClientRect(); return { x: r.right - 30, y: r.bottom - 30 }; })()`);
     await clickText(page, at);
@@ -587,7 +565,7 @@ describe('a word pasted by a break or formula', () => {
         const page = await load(t, platform, deck, n);
         const label = (await state(page, 'edit.undo')).label;
         await open(page);
-        await formulaKey(page, platform);
+        await press(page, platform === 'mac' ? 'Mod+Alt+E' : 'Alt+=');
         await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
         await type(page, 'x^2');
         await sleep(300);

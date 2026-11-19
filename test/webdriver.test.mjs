@@ -52,3 +52,13 @@ test('a folder is served on a local port, without the files outside it', async (
     close();
   }
 });
+
+test('a missing /favicon.ico is answered with no content, which a page without an icon does not log as an error', async () => {
+  const { origin, close } = await serve('theme');
+  try {
+    assert.equal((await fetch(`${origin}/favicon.ico`)).status, 204);
+    assert.equal((await fetch(`${origin}/vendor/favicon.ico`)).status, 404);
+  } finally {
+    close();
+  }
+});

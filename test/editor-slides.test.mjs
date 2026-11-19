@@ -61,8 +61,6 @@ async function pick(page, i) {
 const titles = async (page) => (await rows(page)).map((r) => r.title);
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(window.BeesonEditor.status()))))');
 
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
-
 let saves = 0;
 async function roundTrip(page, undos = 1) {
   const edited = await page.evaluate('window.BeesonEditor.render()');
@@ -74,7 +72,7 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
   const { text } = await saveAndReopen(page, `saved-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
@@ -117,7 +115,7 @@ test('the demo deck shows 13 thumbnails within 1 s, numbered by their places, wi
   })()`);
   await page.waitFor(`document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn !== ${JSON.stringify(before)}`);
   assert.match(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .pic')[3].shadowRoot.querySelector('h2').textContent`), /again$/);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the slides after the closing slide are numbered by their places, as in the status bar', async (t) => {
@@ -126,7 +124,7 @@ test('the slides after the closing slide are numbered by their places, as in the
   const list = await rows(page);
   assert.equal(list.at(-1).no, String(list.length));
   assert.equal(list.at(-2).no, String(list.length - 1));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the preview of a row is not shown when its slide is deleted before the preview delay', async (t) => {
@@ -153,7 +151,7 @@ test('the preview of a row is not shown when its slide is deleted before the pre
   await settle(page);
   assert.ok(!(await titles(page)).includes(titled), 'the slide is deleted');
   assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-peek').hidden`), true);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 for (const platform of ['mac', 'other']) {

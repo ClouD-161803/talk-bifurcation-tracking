@@ -18,7 +18,8 @@ const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/ja
 export async function serve(folder, { delay = () => 0, writable = false } = {}) {
   const root = resolve(folder);
   const server = createHttpServer(async (request, response) => {
-    const path = join(root, decoded(new URL(request.url, 'http://localhost').pathname));
+    const { pathname } = new URL(request.url, 'http://localhost');
+    const path = join(root, decoded(pathname));
     try {
       if (!path.startsWith(root + sep)) throw new Error(`${path} is outside ${root}`);
       if (writable && request.method === 'PUT') {
@@ -47,7 +48,7 @@ export async function serve(folder, { delay = () => 0, writable = false } = {}) 
       response.writeHead(200, { ...type, 'Content-Length': body.length });
       response.end(body);
     } catch {
-      response.writeHead(404).end();
+      response.writeHead(pathname === '/favicon.ico' ? 204 : 404).end();
     }
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));

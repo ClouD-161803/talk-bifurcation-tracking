@@ -1061,7 +1061,7 @@ describe('a formula sheet replaced by another', () => {
     await clickText(page, at);
     await frames(page);
     await page.evaluate(`(() => { const el = ${textElementOf(selector, needle)}; const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
-    await press(page, 'Backspace', count);
+    await press(page, 'Backspace', { count });
     await press(page, 'Escape');
     await frames(page);
   }

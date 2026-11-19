@@ -193,7 +193,7 @@ test('a save writes the file through a handle, from a served deck', async (t) =>
   const after = await page.evaluate('window.BeesonEditor.status()');
   assert.equal(after.dirty, false);
   assert.match(after.message, /^Saved 1 edit to saved\.html/);
-  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('without the file pickers, a save is a download of the file with the edits', async (t) => {
@@ -589,7 +589,7 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   assert.equal(await file('restored.html'), replaced(`<h2>${h2}</h2>`, '<h2>Drafted twice</h2>'));
   s = await status();
   assert.deepEqual([s.recover, s.draft, s.dirty], [false, false, false]);
-  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico') && !e.includes('beforeunload')), []);
+  assert.deepEqual(page.errors.filter((e) => !e.includes('beforeunload')), []);
 });
 
 test('a formula is reached with Tab and opened with Enter, and the controls carry labels', async (t) => {

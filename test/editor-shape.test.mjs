@@ -572,12 +572,6 @@ describe('the Text pane on the words of shapes', () => {
     return page.evaluate(`[...document.querySelectorAll('${PANEL} button')].filter((b) => !b.closest('.ed-tabs') && b.offsetParent && b.disabled).map((b) => b.dataset.command ?? b.title ?? b.textContent)`);
   }
 
-  async function altEquals(page) {
-    const base = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '=', unmodifiedText: '=' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   test('the class left of the words of a shape is a class of the theme', () => {
     assert.ok(new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8'))).has('left'));
   });
@@ -680,8 +674,7 @@ describe('the Text pane on the words of shapes', () => {
       await frames(page);
       assert.equal((await state(page, 'view.rulers')).checked, !rulers, 'the rulers are not toggled');
       await byteExact(page);
-      if (platform === 'mac') await press(page, 'Mod+Alt+E');
-      else await altEquals(page);
+      await press(page, platform === 'mac' ? 'Mod+Alt+E' : 'Alt+=');
       await frames(page);
       const text = await render(page);
       assert.match(text, /<div class="math"[^\n]*>\\\[\\\]<\/div>/, 'a formula is not inserted');
@@ -1433,13 +1426,6 @@ describe('copies of groups and lines, drags on shapes', () => {
     }
   }
 
-  async function formulaKey(page, platform) {
-    if (platform === 'mac') return press(page, 'Mod+Alt+E');
-    const base = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '=', unmodifiedText: '=' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   const HOLLOW_SHAPE = '<div class="shape rounded" style="width: 400px; height: 240px; translate: 600px 400px"></div>';
 
   for (const platform of PLATFORMS) {
@@ -1451,7 +1437,7 @@ describe('copies of groups and lines, drags on shapes', () => {
         await press(page, 'Enter');
         await frames(page);
         assert.equal(await page.evaluate(`!!document.activeElement?.matches(${js(`${SLIDE} > .shape > p`)})`), true, 'the caret is not in the words of the shape');
-        if (route === 'key') await formulaKey(page, platform);
+        if (route === 'key') await press(page, platform === 'mac' ? 'Mod+Alt+E' : 'Alt+=');
         else await exec(page, 'math.inline');
         await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
         await type(page, 'z^2');

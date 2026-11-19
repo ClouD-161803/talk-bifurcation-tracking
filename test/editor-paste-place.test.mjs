@@ -10,7 +10,6 @@ describe('a paste on a slide without its sources', () => {
   const DECK = 'test/pages/editor-r31-1.html';
   const SOURCE = readFileSync(DECK, 'utf8');
   const [FROM, TARGET, THIRD] = [0, 1, 2];
-  const MOD = { mac: 4, other: 2 };
 
   let browser;
   let server;
@@ -59,10 +58,8 @@ describe('a paste on a slide without its sources', () => {
     await page.evaluate(`Reveal.slide(${FROM})`);
     await sleep(150);
     const kind = KINDS[what];
-    const key = async (k, code, kc, cmd) => {
-      const e = { key: k, code, windowsVirtualKeyCode: kc, modifiers: MOD[platform] };
-      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...e, commands: [cmd] });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...e });
+    const key = async (keys, command) => {
+      await press(page, keys, { command });
       await sleep(400);
       await frames(page);
     };
@@ -73,9 +70,9 @@ describe('a paste on a slide without its sources', () => {
         await click(page, at);
         await frames(page);
         assert.equal((await page.evaluate('window.BeesonEditor.selection()')).length, what === 'group' ? 2 : 1);
-        await key('c', 'KeyC', 67, 'copy');
+        await key('Mod+C', 'copy');
       },
-      paste: () => key('v', 'KeyV', 86, 'paste'),
+      paste: () => key('Mod+V', 'paste'),
       go: async (n) => {
         await page.evaluate(`Reveal.slide(${n})`);
         await frames(page);
@@ -220,7 +217,6 @@ describe('a paste on the slide of its sources', () => {
   const DECK = 'test/pages/editor-r31-1.html';
   const FLOW = 'test/pages/editor-r33-1.html';
   const [FROM, TARGET] = [0, 1];
-  const MOD = { mac: 4, other: 2 };
 
   let browser;
   let server;
@@ -271,10 +267,8 @@ describe('a paste on the slide of its sources', () => {
     await page.evaluate(`Reveal.slide(${FROM})`);
     await sleep(150);
     const kind = KINDS[what];
-    const key = async (k, code, kc, cmd) => {
-      const e = { key: k, code, windowsVirtualKeyCode: kc, modifiers: MOD[platform] };
-      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...e, commands: [cmd] });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...e });
+    const key = async (keys, command) => {
+      await press(page, keys, { command });
       await sleep(400);
       await frames(page);
     };
@@ -293,9 +287,9 @@ describe('a paste on the slide of its sources', () => {
       page,
       copy: async () => {
         await pick(0);
-        await key('c', 'KeyC', 67, 'copy');
+        await key('Mod+C', 'copy');
       },
-      paste: () => key('v', 'KeyV', 86, 'paste'),
+      paste: () => key('Mod+V', 'paste'),
       duplicate: async () => {
         await press(page, 'Mod+D');
         await sleep(300);
@@ -494,7 +488,6 @@ describe('a paste on the slide of its sources', () => {
 
 describe('the Flip row following the picture shown', () => {
   const PLATFORMS = ['mac', 'other'];
-  const MOD = { mac: 4, other: 2 };
 
   let browser;
   let server;
@@ -643,10 +636,8 @@ describe('the Flip row following the picture shown', () => {
     await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
     await page.evaluate('Reveal.slide(0)');
     await sleep(150);
-    const key = async (k, code, kc, cmd) => {
-      const e = { key: k, code, windowsVirtualKeyCode: kc, modifiers: MOD[platform] };
-      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...e, commands: [cmd] });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...e });
+    const key = async (keys, command) => {
+      await press(page, keys, { command });
       await sleep(400);
       await frames(page);
     };
@@ -657,9 +648,9 @@ describe('the Flip row following the picture shown', () => {
         await click(page, await at(1430, 500));
         await frames(page);
         assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((e) => e.style.translate)'), ['1300px 160px']);
-        await key('c', 'KeyC', 67, 'copy');
+        await key('Mod+C', 'copy');
       },
-      paste: () => key('v', 'KeyV', 86, 'paste'),
+      paste: () => key('Mod+V', 'paste'),
       down: async (n) => {
         for (let i = 0; i < n; i++) await press(page, 'Shift+ArrowDown');
         await sleep(1100);
@@ -748,7 +739,6 @@ describe('the Flip row following the picture shown', () => {
 
 describe('a duplicate of a block in the flow', () => {
   const PLATFORMS = ['mac', 'other'];
-  const MOD = { mac: 4, other: 2 };
   const INDEX = 'test-deck.html';
   const FLOW = 'test/pages/editor-r36-1.html';
 
@@ -793,10 +783,8 @@ describe('a duplicate of a block in the flow', () => {
     await page.evaluate(`Reveal.slide(${slide})`);
     await sleep(200);
     await frames(page);
-    const key = async (k, code, kc, cmd) => {
-      const e = { key: k, code, windowsVirtualKeyCode: kc, modifiers: MOD[platform] };
-      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...e, commands: [cmd] });
-      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...e });
+    const key = async (keys, command) => {
+      await press(page, keys, { command });
       await sleep(400);
       await frames(page);
     };
@@ -821,9 +809,9 @@ describe('a duplicate of a block in the flow', () => {
         await sleep(300);
         await frames(page);
       },
-      copy: () => key('c', 'KeyC', 67, 'copy'),
-      paste: () => key('v', 'KeyV', 86, 'paste'),
-      cut: () => key('x', 'KeyX', 88, 'cut'),
+      copy: () => key('Mod+C', 'copy'),
+      paste: () => key('Mod+V', 'paste'),
+      cut: () => key('Mod+X', 'cut'),
     };
   }
 

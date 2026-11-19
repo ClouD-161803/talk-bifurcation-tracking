@@ -544,15 +544,7 @@ describe('redo, cut, and Mod+D in text and fields', () => {
   }
 
   const INLINE = 1;
-  const MOD = { mac: 4, other: 2 };
   const line = (text, start) => text.slice(text.indexOf(start), text.indexOf('</p>', text.indexOf(start)) + 4);
-
-  async function chord(page, platform, key, command) {
-    const base = { key, code: `Key${key.toUpperCase()}`, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0), modifiers: MOD[platform], commands: [command] };
-    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-    await wait(page);
-  }
 
   for (const platform of PLATFORMS) {
     for (const [how, to] of [['Mod+I', 7], ['text.italic', 7], ['text.clear', 7], ['Mod+I', 6]]) {
@@ -582,7 +574,10 @@ describe('redo, cut, and Mod+D in text and fields', () => {
             await choose(page, 'Edit', 'Cut');
             await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`).catch(() => {});
             await wait(page);
-          } else await chord(page, platform, 'x', 'cut');
+          } else {
+            await press(page, 'Mod+X', { command: 'cut' });
+            await wait(page);
+          }
           await wait(page);
           assert.equal(line(await render(page), start), want);
           assert.equal((await labels(page))[0], 'Undo Cut');

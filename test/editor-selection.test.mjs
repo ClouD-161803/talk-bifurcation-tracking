@@ -41,7 +41,6 @@ test('a click on a button of the status bar keeps the selected figure', async (t
   assert.ok((await shownFrames(page)).some((f) => around(f, figureBox)), 'the figure is not selected by a click');
   const steps = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await clickText(page, steps);
-  await sleep(100);
   const after = await boxOf(page, '.reveal section.present .figure-box');
   assert.ok((await shownFrames(page)).some((f) => around(f, after)), 'the selection is cleared by a click on Steps');
   assert.deepEqual(page.errors, []);
@@ -1185,14 +1184,6 @@ describe('nested groups, Regroup, and the group tree', () => {
     await clickText(page, at);
   }
 
-  async function bracket(page, right, shift) {
-    const key = right ? (shift ? '}' : ']') : shift ? '{' : '[';
-    const base = { key, code: right ? 'BracketRight' : 'BracketLeft', windowsVirtualKeyCode: right ? 221 : 219, modifiers: 2 | (shift ? 8 : 0) };
-    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-    await frames(page);
-  }
-
   const menuRows = (page, level = 0) => page.evaluate(`[...([...document.querySelectorAll('.beeson-edit-menu')][${level}]?.querySelectorAll('.item') ?? [])].map((i) => i.querySelector('.label')?.textContent ?? '')`);
   async function hover(page, label, level = 0) {
     const at = await page.evaluate(`(() => { const i = [...[...document.querySelectorAll('.beeson-edit-menu')][${level}].querySelectorAll('.item')].find((x) => x.querySelector('.label').textContent === ${js(label)}); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -1498,15 +1489,17 @@ describe('nested groups, Regroup, and the group tree', () => {
   test('on Windows and Linux, Ctrl with ] or [ orders the selection on the canvas and still indents a list item (other)', async (t) => {
     const page = await load(t, 'other', SOURCE, 1);
     await clickText(page, 'section.present img[alt="A turned figure"]');
-    for (const [shift, label] of [[false, 'Bring Forward'], [true, 'Bring to Front']]) {
-      await bracket(page, true, shift);
+    for (const [key, label] of [['Ctrl+]', 'Bring Forward'], ['Ctrl+}', 'Bring to Front']]) {
+      await press(page, key);
+      await frames(page);
       assert.equal((await state(page, 'edit.undo')).label, `Undo ${label}`);
       await undo(page);
       assert.equal(await render(page), SOURCE);
     }
     await clickText(page, 'section.present img[alt="A straight figure"]');
-    for (const [shift, label] of [[false, 'Send Backward'], [true, 'Send to Back']]) {
-      await bracket(page, false, shift);
+    for (const [key, label] of [['Ctrl+[', 'Send Backward'], ['Ctrl+{', 'Send to Back']]) {
+      await press(page, key);
+      await frames(page);
       assert.equal((await state(page, 'edit.undo')).label, `Undo ${label}`);
       await undo(page);
       assert.equal(await render(page), SOURCE);
@@ -1514,7 +1507,8 @@ describe('nested groups, Regroup, and the group tree', () => {
     await empty(page);
     const two = await page.evaluate(`(() => { const r = [...Reveal.getCurrentSlide().querySelectorAll('li')][1].getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; })()`);
     await clickText(page, two);
-    await bracket(page, true, false);
+    await press(page, 'Ctrl+]');
+    await frames(page);
     assert.equal((await state(page, 'edit.undo')).label, 'Undo Increase Indent Level', 'Ctrl+] in a list item does not indent it');
     assert.deepEqual(errors(page), []);
   });
