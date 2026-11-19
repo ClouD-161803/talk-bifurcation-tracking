@@ -1,9 +1,3 @@
-// the writes of index.html by the edit command, with Disk driven directly on a temporary file or
-// the edit command started as a child process: the timing of the writes, a stop while a write is
-// in flight, a change of the file by another program while the edit command writes or stops, a
-// change written in two steps, the bases of a change of an agent that worked for a long time, a
-// write that keeps failing, and a file that is a symbolic link
-
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs, { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
@@ -18,8 +12,6 @@ import { DECK, post, startEdit, stopEdit, talkFolder, until } from './helpers/se
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// a folder with index.html holding text, an authority on the text, and a disk on the file, with
-// the lines that the disk logs
 function setup(t, text, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   const file = join(dir, 'index.html');
@@ -34,14 +26,10 @@ function setup(t, text, options = {}) {
   return { dir, file, authority, disk, lines };
 }
 
-// DECK padded with an HTML comment to about mb megabytes, so that a write takes long enough to be
-// seen in flight
 const big = (mb) => DECK.replace('</body>', `<!-- ${'x'.repeat(mb * 1024 * 1024)} -->\n</body>`);
 
 const temporary = (dir) => readdirSync(dir).filter((n) => n.endsWith('.tmp'));
 
-// resolves once a temporary file of the disk is in dir, i.e. while a write is in flight. the
-// folder is read at every turn of the event loop, since the write lasts some milliseconds
 async function inFlight(dir, timeout = 20_000) {
   const started = performance.now();
   while (temporary(dir).length === 0) {
@@ -50,7 +38,6 @@ async function inFlight(dir, timeout = 20_000) {
   }
 }
 
-// an insertion into the text of the authority before the first occurrence of what
 function insert(authority, what, text, author = 'Ann') {
   const at = authority.text.indexOf(what);
   assert.ok(at >= 0, `${what} is not in the text`);
@@ -61,8 +48,6 @@ test('a backward jump of the wall clock does not hold back the writes while typi
   const now = Date.now;
   t.after(() => (Date.now = now));
   let writtenAt = null;
-  // a time over the bound is measured again on a fresh disk, since a stall of the machine delays the
-  // write as well
   for (let tries = 0; tries < 3 && (writtenAt === null || writtenAt >= 2500); tries++) {
     const { file, authority } = setup(t, DECK);
     insert(authority, '</body>', '<i>0</i>');
@@ -152,8 +137,6 @@ test('a file written in two steps is taken once it is complete, and an empty fil
   assert.ok(after >= 5000, `the empty file was taken ${Math.round(after)} ms after it was written`);
 });
 
-// a program that opens file, writes text up to cut, pauses, and writes the rest on the same handle,
-// as a slow save does
 async function saveInTwoSteps(file, text, cut, pause) {
   const fd = openSync(file, 'w');
   try {
@@ -165,8 +148,6 @@ async function saveInTwoSteps(file, text, cut, pause) {
   }
 }
 
-// the demo deck with EDITED before its first heading, as saved by another program, and the place
-// of the second heading in it, where a person types
 function savedDemo() {
   const deck = readFileSync('index.html', 'utf8'), edited = deck.replace('<h2', 'EDITED <h2');
   return { deck, edited, second: edited.indexOf('<h2', edited.indexOf('<h2') + 1) };
@@ -183,7 +164,6 @@ test('a save of the demo deck that pauses for 700 or 1500 ms after 60 percent en
   for (const pause of [700, 1500]) {
     const { file, authority, disk } = setup(t, deck);
     disk.start();
-    // the pause is a step of the program, and no result is read after it
     await saveInTwoSteps(file, edited, Math.floor(edited.length * 0.6), async () => {
       authority.enter([{ start: second - 'EDITED '.length, end: second - 'EDITED '.length, text: 'ANN ' }], 'Ann');
       await sleep(pause);
@@ -203,8 +183,6 @@ test('a save of the demo deck that pauses after 30 percent until this part is ta
     await disk.stop();
     assertWhole(file, authority, edited);
   }
-  // the whole text is saved again by its path, as by a program whose handle was left on the file
-  // that the write of the edit of the person replaced
   {
     const { file, authority, disk } = setup(t, deck);
     disk.start();
@@ -244,8 +222,6 @@ test('an agent that writes back after more than 100 writes of people keeps every
 
 const timesIn = (text, part) => text.split(part).length - 1;
 
-// a person who enters each of words before at in the text of the authority, and waits until the
-// disk has written it
 async function typeInto(authority, file, at, word) {
   insert(authority, at, word);
   const text = authority.text;
@@ -278,7 +254,6 @@ test('a program that changes a line read after a person typed in it keeps the ty
   }
 });
 
-// numbers in [0, 1) from a seed, so that a failed case is run again by its seed
 function random(seed) {
   return () => {
     seed = (seed + 0x6d2b79f5) | 0;
@@ -294,18 +269,11 @@ test('a program that changes a text written during a chain of insertions keeps e
     const next = random(seed), pick = (n) => Math.floor(next() * n);
     const { file, authority, disk } = setup(t, start, { quiet: 5, latest: 20, poll: 20 });
     disk.start();
-    // whether each character of the text was typed, and an offset inside a random paragraph of
-    // the ones that a filter lets through
     let typed = Array.from(start, () => false);
     const spot = (allowed) => {
       const paragraphs = [...authority.text.matchAll(/<p>([^\n]*)<\/p>/g)].filter((_, i) => allowed(i)), p = paragraphs[pick(paragraphs.length)];
       return p.index + 3 + pick(p[1].length + 1);
     };
-    // the insertions are upper case, and the change of the program puts digits over lower case
-    // characters that were not typed, in one to three places apart from each other, and not in
-    // the paragraph free. the insertions after the read go into the paragraphs that the change
-    // leaves alone, since a change of a line wins over an edit of the session in this line. hence
-    // each part of the merged text has one source
     const count = 3 + pick(6), read = pick(count + 1), free = pick(4);
     const near = (at, c) => at >= c.start - 1 && at <= c.end + 1;
     const paragraphOf = (at) => authority.text.slice(0, at).split('<p>').length - 2;
@@ -349,7 +317,6 @@ test('an agent that adds a paragraph after a person moved a slide 8 or 9 times k
     disk.start();
     const read = readFileSync(file, 'utf8');
     for (let k = 0; k < moves; k++) {
-      // the first slide is moved to the end in one operation, as a drag in the Slide Sorter
       const text = authority.text, start = text.indexOf('<section>'), end = text.indexOf('</section>\n') + '</section>\n'.length, at = text.indexOf('</body>');
       authority.enter([{ start, end, text: '' }, { start: at, end: at, text: text.slice(start, end) }], 'Ann');
       const moved = authority.text;
@@ -395,7 +362,6 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   disk.start();
   insert(authority, 'Second slide', 'Very ');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
-  // an editor that did not reload the file saves its copy
   writeFileSync(file, DECK);
   await until(() => lines.some((l) => l.includes('earlier text')), 'a line of the log on the earlier text');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written back');
@@ -409,7 +375,6 @@ test('a file with the conflict markers of git is not taken nor written over, the
   insert(authority, 'Second slide', 'Very ');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
   const good = authority.text;
-  // a git pull whose change of the first slide conflicts with a commit of the host
   const conflicted = good.replace('  <h2>One</h2>\n', '<<<<<<< HEAD\n  <h2>One</h2>\n=======\n  <h2>Uno</h2>\n>>>>>>> origin/main\n');
   writeFileSync(file, conflicted);
   await until(() => errors.some((e) => e?.message.includes('conflict markers')), 'the host to be told of the markers');
@@ -418,7 +383,6 @@ test('a file with the conflict markers of git is not taken nor written over, the
   assert.equal(readFileSync(file, 'utf8'), conflicted, 'the file with the markers was written over');
   assert.ok(!authority.text.includes('<<<<<<<'), 'the markers reached the session');
   assert.ok(lines.some((l) => l.includes('conflict markers')), 'the log does not name the markers');
-  // the host resolves the conflict by taking the change of the pull
   writeFileSync(file, good.replace('<h2>One</h2>', '<h2>Uno</h2>'));
   await until(() => authority.text.includes('<h2>Uno</h2>') && errors.at(-1) === null, 'the resolved file to be taken');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written');
@@ -433,7 +397,6 @@ test('a program that changes a line that it changed before replaces its earlier 
   writeFileSync(file, DECK.replace('One', 'One second'));
   await until(() => authority.text.includes('second'), 'the second change to be merged');
   assert.equal(authority.text, DECK.replace('One', 'One second'), 'the second change was merged on the text before the first one');
-  // a person types on the other slide, and the program writes once more from its own copy
   insert(authority, 'Second slide', 'Very ');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
   writeFileSync(file, DECK.replace('One', 'One third'));
@@ -451,10 +414,6 @@ test('a program that writes back the text before its own change undoes this chan
   assert.equal(authority.text, DECK, 'the change that the program took back is still in the session');
 });
 
-// the longest time between two turns of the event loop while act runs, measured by an interval of
-// 1 ms that turns once more after act, so that a stall at its end is measured. a turn counts the
-// processor time of the process in it, and at most its time on the clock, since a process that
-// waits for a core on a loaded runner does not hold its event loop
 async function longestStall(act) {
   const used = () => {
     const { user, system } = process.cpuUsage();
@@ -476,12 +435,9 @@ async function longestStall(act) {
   return longest;
 }
 
-// the longest stalls of a merge and of a stop on the demo deck, with a chain of texts that each have
-// one more character in the long line than the one before
 async function stallsOnChain(t, texts) {
   const deck = readFileSync('index.html', 'utf8'), at = deck.indexOf('\n</tycho-viewer>');
   const { file, authority, disk } = setup(t, deck, { quiet: 5, latest: 20, poll: 20 });
-  // the chain is filled directly, since a write of each text would take minutes
   for (let k = 1; k <= texts; k++) disk.remember(`${deck.slice(0, at)}${'x'.repeat(k)}${deck.slice(at)}`);
   authority.enter([{ start: at, end: at, text: 'x'.repeat(texts) }], 'Ann');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the write of the last text of the chain');
@@ -500,7 +456,6 @@ async function stallsOnChain(t, texts) {
 
 test('a merge and a stop on a chain of 5000 texts of the demo deck hold the event loop no longer than on a chain of 50 texts', { timeout: 300_000 }, async (t) => {
   let short, long;
-  // a stall over the bound is measured again, since a pause of the garbage collector stalls too
   for (let tries = 0; tries < 3; tries++) {
     short = await stallsOnChain(t, 50);
     long = await stallsOnChain(t, 5000);
@@ -511,7 +466,6 @@ test('a merge and a stop on a chain of 5000 texts of the demo deck hold the even
   assert.ok(long.stop <= short.stop + 50, `a stop stalled for ${ms(long.stop)} on 5000 texts and ${ms(short.stop)} on 50`);
 });
 
-// a mode set by chmod refuses neither a read nor a write on Windows or to root
 const noChmod = process.platform === 'win32' || process.getuid?.() === 0 ? 'chmod does not refuse a read or a write on Windows or to root' : false;
 
 test('a write that keeps failing is reported with the number of unwritten operations, and the stop of the command exits nonzero', { timeout: 120_000, skip: noChmod }, async (t) => {
@@ -576,8 +530,6 @@ test('a stop that a paused relay and an unfinished request hold past 3 s exits n
     const at = DECK.indexOf('One');
     const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at, text: 'X' }] })).json();
     assert.equal(answer.ok, true);
-    // a request whose body does not end holds the close of the server for 300 ms, and the paused
-    // relay holds the end of the share for 2.5 s
     await new Promise((done) => open.connect(edit.port, '127.0.0.1', done));
     open.write(`POST ${api('op')} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"token":`);
     relay.kill('SIGSTOP');
@@ -592,15 +544,13 @@ test('a stop that a paused relay and an unfinished request hold past 3 s exits n
 test('a symbolic link index.html is written through to its target, the mode of the file is kept, and a temporary file of an earlier run is removed', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  // a symbolic link needs a privilege on Windows, and a file there has no mode bits but read-only
-  const posix = process.platform !== 'win32';
+  const linksAndModes = process.platform !== 'win32';
   const file = join(dir, 'index.html'), target = join(dir, 'real.html');
-  // a temporary file is named after the file that it replaces, i.e. the target of the link
-  const stale = join(dir, `.${posix ? 'real' : 'index'}.html.0123456789ab.tmp`), other = join(dir, 'notes.tmp');
+  const stale = join(dir, `.${linksAndModes ? 'real' : 'index'}.html.0123456789ab.tmp`), other = join(dir, 'notes.tmp');
   writeFileSync(stale, 'half a deck');
   writeFileSync(other, 'notes');
-  writeFileSync(posix ? target : file, DECK);
-  if (posix) {
+  writeFileSync(linksAndModes ? target : file, DECK);
+  if (linksAndModes) {
     chmodSync(target, 0o444);
     symlinkSync('real.html', file);
   }
@@ -609,7 +559,7 @@ test('a symbolic link index.html is written through to its target, the mode of t
   t.after(() => disk.stop());
   assert.equal(existsSync(stale), false, 'the temporary file of an earlier run is still there');
   assert.equal(existsSync(other), true, 'a file that the disk did not write was removed');
-  if (!posix) return;
+  if (!linksAndModes) return;
   insert(authority, '<h2>One', 'ONE ');
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
   assert.ok(lstatSync(file).isSymbolicLink(), 'index.html is no longer a symbolic link');
@@ -626,7 +576,6 @@ test('a symbolic link index.html replaced by a file is merged from this file, an
   const disk = new Disk(file, authority, false, { quiet: 5, latest: 20, poll: 20 });
   t.after(() => disk.stop());
   disk.start();
-  // an agent that saves by a temporary file and a rename, which replaces the link
   writeFileSync(saved, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
   renameSync(saved, file);
   await until(() => authority.text.includes('AGENT <h2>Two'), 'the change of the agent to be merged', 5000);
@@ -660,16 +609,12 @@ test('the rename of .session/applied.json lets the edit command answer while it 
       return null;
     }
   };
-  // the renames of node:fs for the edit command of this process. a rename onto the table fails with
-  // EBUSY while busy is above 0, as while another program holds the file on Windows, and waits for
-  // gate while it is set
   const { renameSync } = fs;
   const { rename } = fsp;
   const onto = (to) => to.endsWith(join('.session', 'applied.json'));
   let busy = 0;
   let gate = null;
   let gated = false;
-  // whether a callback of setImmediate queued at the first failure ran before the rename that succeeded
   let turned = null;
   let turnedAtRename = null;
   const fail = () => {
@@ -720,7 +665,6 @@ test('the rename of .session/applied.json lets the edit command answer while it 
   await until(() => seq() === 1, 'the table to hold operation 1');
   assert.equal(turnedAtRename, true, 'the event loop turned between the first failed rename of the table and the rename that succeeded');
 
-  // a table given while the write of an older one is in flight is written once this write ends
   let release;
   gate = new Promise((done) => (release = done));
   await op(2);
@@ -732,7 +676,6 @@ test('the rename of .session/applied.json lets the edit command answer while it 
   release();
   await until(() => seq() === 3, 'the table to hold operation 3');
 
-  // the stop writes the table of its last write of index.html after the write in flight
   gated = false;
   gate = new Promise((done) => (release = done));
   await op(4);
@@ -740,7 +683,6 @@ test('the rename of .session/applied.json lets the edit command answer while it 
   await until(() => gated, 'the write of the table of operation 4 to wait');
   await op(5);
   const closing = running.close();
-  // the last write of index.html is made by the stop while the table of operation 4 still waits
   await written(5);
   gate = null;
   release();

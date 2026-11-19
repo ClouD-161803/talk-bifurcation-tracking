@@ -1,10 +1,3 @@
-// the version history of the edit command: the rule of closing a version, the file
-// .session/history.jsonl read again after a restart, cut by a crash, or unreadable, a change of
-// index.html while the command was not running, the slides and the marks of a version, a name, a
-// restore, the preview of a version, the rewrite of the file past its size limit, and the texts set
-// aside. the module is driven directly where this is exact enough, and the edit command is started
-// as a child process for the requests
-
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import fs, { appendFileSync, chmodSync, closeSync, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -23,18 +16,15 @@ import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpe
 const ANN = 'AnnAnnAnnAnnAnnAnnAnn1';
 const BO = 'BoBoBoBoBoBoBoBoBoBoBo';
 
-// a .session folder in a temporary folder, removed after the test
 function sessionDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'slides history-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 
-// the deck made to read as text by one operation of author
 const enterText = (authority, text, author) => authority.enter(diff(authority.text, text), author);
 const replace = (authority, from, to, author) => enterText(authority, authority.text.replace(from, to), author);
 
-// a history on a new authority of text, with versions closed only by close() unless times are given
 function open(dir, text, options = {}) {
   const authority = new Authority(text);
   const logged = [];
@@ -44,13 +34,11 @@ function open(dir, text, options = {}) {
 
 test('a version is closed after a quiet time, and at the latest after the longest time', { timeout: 60_000 }, async (t) => {
   await t.test('after the quiet time since the last operation', async () => {
-    // read on the clock of the history, and with a quiet time far above the pause on a slow runner
     const { authority, history } = open(sessionDir(t), DECK, { quiet: 2_000, longest: 60_000 });
     let closedAt = null;
     history.onChange(() => (closedAt ??= performance.now()));
     replace(authority, 'One', 'Uno', ANN);
     const first = performance.now();
-    // a second operation within the quiet time moves the close
     await until(() => performance.now() - first >= 50, 'a pause shorter than the quiet time');
     const last = performance.now();
     replace(authority, 'Two', 'Deux', ANN);
@@ -85,7 +73,6 @@ test('the text of every version is rebuilt from the file after a restart', { tim
   const dir = sessionDir(t);
   const { authority, history } = open(dir, DECK);
   const texts = new Map();
-  // more versions than are kept between two texts held in memory
   for (let i = 0; i < 130; i++) {
     const n = i % 7;
     if (n === 0) replace(authority, '</body>', `<section>\n  <h2>Added ${i}</h2>\n</section>\n</body>`, i % 2 ? ANN : BO);
@@ -155,8 +142,6 @@ test('a file that cannot be read is moved aside, and a new history begins', { ti
   }
 });
 
-// a deck with a title slide, a hidden slide, a stack of two vertical slides, and a closing slide
-// with an appendix after it
 const STACKED = [
   '<!doctype html>',
   '<body><div class="reveal"><div class="slides">',
@@ -198,13 +183,10 @@ const STACKED = [
 test('the slides of a version are numbered as the status bar numbers them', { timeout: 60_000 }, async (t) => {
   await t.test('a slide at the top by its place in the show, and a vertical slide as reveal.js counts it', () => {
     const numberOf = (heading) => slidesOf(STACKED).find((s) => STACKED.slice(s.start, s.end).includes(heading))?.number;
-    // the hidden slide takes the place of the shown slide after it, and the stack is one place
     assert.deepEqual(['Title', 'Alpha', 'Hidden', 'Beta', 'Thanks', 'Appendix<'].map(numberOf), [1, 2, 3, 4, 5, 6]);
-    // reveal.js counts the hidden slide and each vertical slide, and leaves out the title slide
-    assert.equal(numberOf('Down one'), 3);
-    assert.equal(numberOf('Down two'), 4);
-    // the closing slide and the appendix are uncounted for reveal.js
-    assert.equal(numberOf('Appendix down'), 6);
+    assert.equal(numberOf('Down one'), 3, 'reveal.js counts the hidden slide and each vertical slide, and leaves out the title slide');
+    assert.equal(numberOf('Down two'), 4, 'reveal.js counts each vertical slide');
+    assert.equal(numberOf('Appendix down'), 6, 'reveal.js leaves the closing slide and the appendix uncounted');
     assert.equal(slidesOf(STACKED).length, 9);
   });
 
@@ -265,12 +247,9 @@ test('the marks of a version hold who changed each range last, moved by later op
   try {
     const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <h2>Three</h2>\n  <p>Kept</p>\n  <p>Removed by Ann</p>\n</section>\n</body>'));
     replace(authority, 'Two', 'Deux', ANN);
-    // an operation of Bo before the mark of Ann moves it
     replace(authority, '<h2>One</h2>', '<h2>One</h2>\n  <p>Inserted by Bo</p>', BO);
     replace(authority, 'Second slide', 'Second slide, typed by Ann', ANN);
-    // Bo writes over a part of what Ann typed, which splits her mark
     replace(authority, 'typed by Ann', 'typed by Bo', BO);
-    // a removal leaves an empty mark
     replace(authority, '  <p>Removed by Ann</p>\n', '', ANN);
     const v = history.close();
     const text = authority.text;
@@ -281,7 +260,6 @@ test('the marks of a version hold who changed each range last, moved by later op
     assert.ok(marks.some(([a, , empty]) => a === ANN && empty), 'the removal of the paragraph leaves an empty mark');
     assert.deepEqual(v.slides, [1, 2, 3]);
     assert.deepEqual(new Set(history.get(v.id).authors), new Set([ANN, BO]));
-    // a change made and undone within one version is not marked
     replace(authority, 'Deux', 'Dos', BO);
     replace(authority, 'Dos', 'Deux', BO);
     replace(authority, '<h2>One</h2>', '<h2>Uno</h2>', ANN);
@@ -300,7 +278,6 @@ test('the file is written anew past its size limit, without the old versions, an
   let clock = Date.now() - 100 * day;
   const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <p>start</p>\n</section>\n</body>'), { now: () => clock });
   const texts = [];
-  // each version replaces the text of a paragraph, hence the base does not grow when versions are left out
   const step = (i) => {
     replace(authority, /<p>[^<]*<\/p>\n<\/section>\n<\/body>/, `<p>${String.fromCharCode(97 + i).repeat(1000)}</p>\n</section>\n</body>`, ANN);
     const v = history.close();
@@ -309,7 +286,6 @@ test('the file is written anew past its size limit, without the old versions, an
   };
   for (let i = 0; i < 6; i++) step(i);
   history.name(texts[3][0], 'Kept');
-  // the versions after this jump are of the last 30 days
   clock = Date.now() - 2 * day;
   for (let i = 6; i < 9; i++) step(i);
   history.stopSync();
@@ -317,7 +293,6 @@ test('the file is written anew past its size limit, without the old versions, an
   const size = statSync(file).size;
   const again = open(dir, authority.text, { maxBytes: size + 100, now: () => clock });
   assert.equal(again.history.list().versions.length, 10);
-  // one more version passes the limit
   replace(again.authority, 'First slide', 'First slide, later', BO);
   const last = again.history.close();
   texts.push([last.id, again.authority.text]);
@@ -337,7 +312,6 @@ test('a text set aside is kept up to its size limit, and the oldest goes past th
   const dir = sessionDir(t);
   let clock = 1_000_000;
   const { history } = open(dir, DECK, { asideBytes: 100, asideFiles: 3, now: () => clock++ });
-  // 60 characters of two bytes each
   assert.equal(history.setAside('é'.repeat(60), ANN), null);
   const ids = ['a', 'b', 'c', 'd'].map((x) => history.setAside(x.repeat(100), BO).id);
   assert.deepEqual(history.list().aside.map((a) => a.id), ids.slice(1).reverse());
@@ -367,7 +341,6 @@ test('a restore of texts that differ in more than 2000 places is entered as one 
   assert.ok(ops[0].patches.length <= 2000, `${ops[0].patches.length} patches`);
 });
 
-// the history of a session through its requests
 const ENV = (config, times = { quiet: 100 }) => ({ XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_HISTORY: JSON.stringify(times) });
 
 async function session(t, times) {
@@ -379,7 +352,6 @@ async function session(t, times) {
   const hello = async (name) => (await post(edit.port, api('hello'), { name })).json();
   const list = async (page) => (await raw(edit.port, 'GET', `${api('history')}?token=${page.token}`)).json();
   const current = async () => (await raw(edit.port, 'GET', `${edit.base}index.html`)).text;
-  // an operation of page that replaces the first from in the current text by to
   const op = async (page, seq, from, to) => {
     const r = await raw(edit.port, 'GET', `${edit.base}index.html`);
     const at = r.text.indexOf(from);
@@ -388,7 +360,6 @@ async function session(t, times) {
     return (await post(edit.port, api('op'), { token: page.token, seq, base, patches: [{ start: at, end: at + from.length, text: to }] })).json();
   };
   const events = async (page, since) => (await raw(edit.port, 'GET', `${api('events')}?token=${page.token}&since=${since}`)).json();
-  // the newest version once n versions are closed
   const closed = (page, n) => until(async () => { const { versions } = await list(page); return versions.length === n && versions[0]; }, `${n} versions`);
   return { ...folder, edit, api, hello, list, current, op, events, closed, file: join(folder.talk, 'index.html') };
 }
@@ -397,7 +368,6 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   const s = await session(t, { quiet: 3_600_000, longest: 3_600_000 });
   const ann = await s.hello('Ann');
   const name = (id, value, token = ann.token) => post(s.edit.port, s.api(`history/${id}/name`), { token, name: value });
-  // the current state of a deck without a version yet is named as a version of the base
   const base = (await name('current', '  First   draft ')).json();
   assert.equal(base.name, 'First draft');
   assert.deepEqual(base.authors, []);
@@ -406,7 +376,6 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   const v = (await name('current', 'Second')).json();
   assert.deepEqual(v.authors, [ann.person]);
   assert.deepEqual(v.slides, [1]);
-  // the answer that tells of the two names above, and then a poll that waits
   assert.equal(typeof (await s.events(ann, first.v)).history, 'number');
   const waiting = s.events(ann, first.v);
   assert.equal((await name(base.id, '')).status, 200);
@@ -415,8 +384,7 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   assert.deepEqual(listed.versions.map((x) => [x.id, x.name]), [[v.id, 'Second'], [base.id, undefined]]);
   assert.equal((await name(v.id, 'x'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 'é'.repeat(80))).status, 200);
-  // the limit is in characters, of which an emoji is one and two UTF-16 code units
-  assert.equal((await name(v.id, '😀'.repeat(80))).status, 200);
+  assert.equal((await name(v.id, '😀'.repeat(80))).status, 200, 'an emoji counts as one character, not as its two UTF-16 code units');
   assert.equal((await name(v.id, '😀'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 42)).status, 400);
   assert.equal((await name('nope', 'x')).status, 404);
@@ -461,7 +429,6 @@ test('a restore is a new version on top, which every page gets as an operation o
     assert.deepEqual(events.restored, { by: ann.person, id: v1.id, time: v1.time });
     assert.equal(typeof events.history, 'number');
   }
-  // the restore is told once to each page
   await post(s.edit.port, s.api('presence'), { token: ann.token, state: { slide: 2 } });
   const later = await s.events(bo, restored.v);
   assert.equal(later.restored, undefined);
@@ -477,7 +444,6 @@ test('an operation in flight during a restore is applied on top, unless it confl
   const v1 = await s.closed(ann, 2);
   const t1 = await s.current();
   const changed = await s.op(ann, 2, 'Uno', 'Eins');
-  // two operations of Bo of the version before the restore, sent after it
   const text = await s.current();
   const free = text.indexOf('Second slide'), held = text.indexOf('Eins');
   assert.equal((await post(s.edit.port, s.api(`history/${v1.id}/restore`), { token: ann.token })).status, 200);
@@ -526,7 +492,6 @@ test('a change of index.html while the edit command was not running becomes a ve
   const ann = (await post(first.port, api(first, 'hello'), { name: 'Ann' })).json();
   const at = DECK.indexOf('One');
   assert.equal((await post(first.port, api(first, 'op'), { token: ann.token, seq: 1, base: ann.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json().ok, true);
-  // the open version is closed at the stop
   await stopEdit(first);
   const file = join(folder.talk, 'index.html');
   const written = readFileSync(file, 'utf8');
@@ -562,13 +527,11 @@ test('200 versions of a deck of 400 kB keep the changes of each version, not a c
   gc();
   const growth = (process.memoryUsage().heapUsed - before) / 2 ** 20;
   assert.equal(history.list().versions.length, 201);
-  // a copy of the deck per version would be 80 MB
   assert.ok(growth < 16, `the heap grew by ${growth.toFixed(1)} MB`);
   history.stopSync();
 });
 
 test('an operation after a sleep of the computer, or after the wall clock went back, begins a new version', { timeout: 60_000 }, async (t) => {
-  // the wall clock, and the clock of the timers, which stands while the computer sleeps
   const opened = () => {
     const c = { wall: 1_700_000_000_000, clock: 1000 };
     return { c, ...open(sessionDir(t), DECK, { quiet: 60_000, longest: 300_000, now: () => c.wall, clock: () => c.clock }) };
@@ -635,7 +598,6 @@ test('a removal that the diff of a version places at another equal line is marke
   const item = '    <li>Item</li>\n';
   const deck = DECK.replace('  <p style="left: 10px">First slide</p>\n', `  <ul>\n${item}${item}  </ul>\n`);
   const { authority, history } = open(sessionDir(t), deck);
-  // Ann removes the first of the two equal items, and the diff of the version removes the second
   const at = deck.indexOf(item);
   authority.enter([{ start: at, end: at + item.length, text: '' }], ANN);
   replace(authority, 'Second slide', 'Second slide, typed', BO);
@@ -649,8 +611,6 @@ test('a removal that the diff of a version places at another equal line is marke
 });
 
 test('large replaces in one version take time in proportion to their patches and marks', { timeout: 120_000 }, (t) => {
-  // four replaces of every paragraph of n, by two people in turn, in one version. the close is not
-  // timed, since its diff of n changed lines grows faster than n
   const run = (n) => {
     const head = '<body>\n';
     const authority = new Authority(`${head}${'<p>a</p>\n'.repeat(n)}</body>\n`);
@@ -752,7 +712,6 @@ test('the text of every version is right after the file is written anew with tex
   let clock = Date.now() - 100 * day;
   const { authority, history } = open(dir, DECK, { now: () => clock });
   const texts = [];
-  // more versions than are kept between two texts held in memory, the first 10 of them old
   for (let i = 0; i < 120; i++) {
     if (i === 10) clock = Date.now() - day;
     replace(authority, /First slide[^<]*/, `First slide ${i}`, i % 2 ? ANN : BO);
@@ -772,7 +731,6 @@ test('the text of every version is right after the file is written anew with tex
 
 test('an unreadable history.jsonl that another program holds open is copied aside, or else not written over', { timeout: 60_000 }, async (t) => {
   const content = 'not a history\n';
-  // a rename to the aside file fails as on Windows while an antivirus holds the file open
   const real = { renameSync: fs.renameSync, copyFileSync: fs.copyFileSync };
   const busy = () => Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
   const held = (copy) => {
@@ -831,7 +789,6 @@ test('a page that was dropped while two restores were made is told the later one
   const v1 = await s.closed(ann, 2);
   const second = await s.op(ann, 2, 'Two', 'Deux');
   const v2 = await s.closed(ann, 3);
-  // a page that does not poll after its hello is dropped, as one that was away for too long
   const dropped = (page) => until(async () => !(await s.events(ann, second.v)).presence.some((p) => p.client === page.client), `${page.client} to be dropped`, 60_000);
   await dropped(bo);
   const restore = async (v) => (await post(s.edit.port, s.api(`history/${v.id}/restore`), { token: ann.token })).json();
@@ -864,8 +821,6 @@ test('the deck as it read when a new history began is its first version, kept th
 });
 
 test('the edits of a version that was open at a crash are listed as those of the people who made them', { timeout: 60_000 }, async (t) => {
-  // a new history on the same folder without stopSync, as after a kill or a power loss, since
-  // index.html is written by then
   const crashed = (dir, text) => {
     const again = open(dir, text);
     const versions = again.history.list().versions;
@@ -896,7 +851,6 @@ test('the edits of a version that was open at a crash are listed as those of the
     const { authority, history } = open(dir, DECK);
     const named = history.name('current', 'Start');
     replace(authority, 'One', 'Uno', ANN);
-    // names given again and again write the file anew
     for (let i = 0; i < 1100; i++) history.name(named.id, i % 2 ? 'Start' : 'Begin');
     assert.deepEqual(crashed(dir, authority.text).versions, [['', [ANN]], ['Start', []]]);
   });
@@ -914,7 +868,6 @@ test('the edits of a version that was open at a crash are listed as those of the
     const dir = sessionDir(t);
     const { authority } = open(dir, DECK);
     replace(authority, 'One', 'Uno', ANN);
-    // index.html was not written before the crash
     assert.deepEqual(crashed(dir, DECK).versions, [['', []]]);
     assert.deepEqual(crashed(dir, DECK.replace('Two', 'Deux')).versions[0], ['', ['file']]);
   });
@@ -972,8 +925,6 @@ test('the texts kept in memory as starting points of a rebuild stay within their
     replace(authority, /First slide[^<]*/, `First slide ${i}`, ANN);
     texts.push([history.close().id, authority.text]);
   }
-  // read from the private map. a budget below the deck is raised to four texts of the deck, at two
-  // bytes a character
   const kept = [...history.checkpoints.values()];
   const bytes = kept.reduce((sum, text) => sum + 2 * text.length, 0);
   assert.ok(kept.length > 0 && bytes <= 4 * 2 * authority.text.length, `${kept.length} texts of ${bytes} bytes`);
@@ -981,8 +932,6 @@ test('the texts kept in memory as starting points of a rebuild stay within their
   history.stopSync();
 });
 
-// a deck of 5 MB leaves room for four texts in the budget, hence hundreds of versions lie between
-// two of them, which are applied without a copy of the deck for each
 test('the text of a version of a deck of 5 MB hundreds of versions after a kept text is rebuilt in about the time of one 10 versions after it', { timeout: 300_000 }, (t) => {
   const deck = DECK.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
   const { authority, history } = open(sessionDir(t), deck, { maxBytes: 1024 * 1024 * 1024 });
@@ -994,8 +943,6 @@ test('the text of a version of a deck of 5 MB hundreds of versions after a kept 
   }
   const kept = [...history.checkpoints.keys()];
   assert.ok(kept.length <= 4 && history.step >= 200, `${kept.length} texts kept, one every ${history.step} versions`);
-  // a version 10 versions after a kept text, and one a whole interval of history.step versions after it,
-  // timed in turn so that a burst of load slows both. the median ratio is measured up to three times
   const timeOf = (id) => {
     const start = performance.now();
     Buffer.byteLength(history.textOf(id));
@@ -1029,7 +976,6 @@ test('a restore that changes two slides takes in an operation in flight on a sli
   replace(authority, 'One', 'Uno', ANN);
   replace(authority, 'Three', 'Drei', ANN);
   history.close();
-  // an operation of Bo on the second slide, sent before the restore and applied after it
   const base = authority.version;
   const at = authority.text.indexOf('Second slide');
   history.restore(v1.id, ANN);
@@ -1043,7 +989,6 @@ test('a change of the history while the edit command stops is refused', { timeou
   const s = await session(t);
   const ann = await s.hello('Ann');
   const stopped = stopEdit(s.edit);
-  // answered until the stop refuses it, and then not at all once the server is closed
   let status = null;
   for (;;) {
     const answer = await post(s.edit.port, s.api('history/current/name'), { token: ann.token, name: 'Late' }).catch(() => null);
@@ -1071,7 +1016,6 @@ test('a change of index.html from outside is a version of its own, and the versi
 
 test('a change of index.html from outside is told as an overwrite only where it replaces text that a person wrote in the session, or writes where a person removed text', { timeout: 60_000 }, (t) => {
   const { authority, history } = open(sessionDir(t), DECK);
-  // whether a page at the version before the operation is told of an overwrite
   const told = (from, to, author = 'file') => {
     const before = authority.version;
     replace(authority, from, to, author);
@@ -1089,7 +1033,6 @@ test('a change of index.html from outside is told as an overwrite only where it 
   assert.equal(told('First gr', 'First-gr'), false, 'a change that begins where a word of Ann ends');
   replace(authority, 'Second slide', 'Second', ANN);
   assert.equal(told('Second<', 'Second slide<'), true, 'a removal of Ann taken back');
-  // a page of an earlier start says hello again, and is not told
   assert.deepEqual([history.overwrittenAfter('earlier.0'), history.overwrittenAfter('not a version')], [false, false]);
   assert.equal(told('First-gr', 'First-Gr', BO), false, 'an operation of a person over a word of Ann');
 });
@@ -1103,7 +1046,6 @@ test('every page is told when a change of index.html from outside replaces text 
   const read = await s.current();
   const uno = await s.op(ann, 1, 'One', 'Uno');
   await onDisk('Uno');
-  // a program that read index.html before the edit of Ann writes over the same word
   writeFileSync(s.file, read.replace('One', 'Eins'));
   await written('Eins');
   for (const page of [ann, bo]) assert.equal((await s.events(page, uno.v)).overwritten, true);
@@ -1111,8 +1053,6 @@ test('every page is told when a change of index.html from outside replaces text 
   assert.deepEqual(versions.map((v) => v.authors), [[ann.person], []]);
   assert.ok((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?version=${versions[0].id}`)).text.includes('<h2>Uno</h2>'));
 
-  // a program that read index.html before the edit of Ann writes after another program, hence its
-  // change is merged on the text of the other program, and the edit of Ann is reverted
   const stale = await s.current();
   const deux = await s.op(ann, 2, 'Two', 'Deux');
   await onDisk('Deux');
@@ -1140,10 +1080,6 @@ test('an operation of a person late in a long run takes about as long as one ear
   run(30_000);
   let late = run(1000);
   if (late > 2 * early) {
-    // a runner that is busier late in the test than early in it gives these two times without a
-    // slower edit command. the late operations are therefore timed again, in turns with the early
-    // operations of a worker, which has a fresh copy of the modules of the edit command and a fresh
-    // heap. the worker is stopped before its folder is removed
     let fresh;
     t.after(() => fresh?.terminate());
     fresh = new Worker(new URL('./helpers/long-run.mjs', import.meta.url), { workerData: { longRun: sessionDir(t) } });
@@ -1175,32 +1111,26 @@ test('a change of index.html from outside is told by the characters that people 
   replace(authority, 'First slide', 'First great slide', ANN);
   replace(authority, 'First great slide', 'First slide', ANN);
   assert.equal(told('First slide', 'First Slide'), false, 'a word typed and removed in one version');
-  // a removal that the diff of a later version places at the word of Ann, which stays
   replace(authority, '<h2>One</h2>', '<h2>One One</h2>', ANN);
   history.close();
   const at = authority.text.indexOf('One One');
   authority.enter([{ start: at, end: at + 4, text: '' }], BO);
   history.close();
   assert.equal(told('<h2>One', '<h2>Une'), true, 'the first letter of the word of Ann, after Bo removed the word before it');
-  // a word that Ann removed and typed again in one version, which reads as before
   replace(authority, 'Second slide', 'Second', ANN);
   replace(authority, 'Second<', 'Second slide<', ANN);
   assert.equal(told('slide<', 'page<'), true, 'a word that Ann typed again');
-  // a word of Ann before two changes from outside in one version, and an operation of Bo after them
   replace(authority, '</body>', '<p>Ann wrote this</p>\n</body>', ANN);
   replace(authority, 'Une', 'Une and a long title of a program', 'file');
   replace(authority, '<h2>Two', '<h2>Two and a long title of a program', 'file');
   replace(authority, 'Second page', 'Second page by Bo', BO);
   assert.equal(told('Ann wrote', 'A program wrote'), true, 'a word of Ann after two changes from outside in one version');
-  // two words of Ann in one version, the second one before the first one in the deck
   replace(authority, '</body>', '<p>late</p>\n</body>', ANN);
   replace(authority, '<h2>Une', '<h2>Early Une', ANN);
   assert.equal(told('<p>late', '<p>Late'), true, 'the first of two words of Ann in one version');
 });
 
-test('a change of index.html from outside is told whenever it replaces or removes a character that a person wrote, over random edits of people', { timeout: 120_000 }, (t) => {
-  // mulberry32
-  let seed = 38;
+function mulberry32(seed) {
   const rnd = () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -1209,16 +1139,21 @@ test('a change of index.html from outside is told whenever it replaces or remove
   };
   const int = (n) => Math.floor(rnd() * n);
   const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
-  // the text as cells of a character and whether a person wrote it, with patches applied
-  const applied = (cells, patches, person) => {
-    const out = [];
-    let at = 0;
-    for (const p of patches) {
-      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
-      at = p.end;
-    }
-    return [...out, ...cells.slice(at)];
-  };
+  return { rnd, int, word };
+}
+
+function applied(cells, patches, person) {
+  const out = [];
+  let at = 0;
+  for (const p of patches) {
+    out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
+    at = p.end;
+  }
+  return [...out, ...cells.slice(at)];
+}
+
+test('a change of index.html from outside is told whenever it replaces or removes a character that a person wrote, over random edits of people', { timeout: 120_000 }, (t) => {
+  const { rnd, int, word } = mulberry32(38);
   let missed = 0;
   for (let round = 0; round < 3000; round++) {
     let text = '<body>\n';
@@ -1253,8 +1188,6 @@ test('a change of index.html from outside is told whenever it replaces or remove
       undo = { author, n: authority.n, patches: inverse };
       if (rnd() < 0.25) history.close();
     }
-    // a program replaces one or two ranges with letters that the text does not hold, or removes
-    // them where the removal cannot be placed at another equal text
     const now = authority.text;
     const ranges = [];
     for (let at = 0, places = rnd() < 0.4 ? 2 : 1; places > 0 && at < now.length; places--) {
@@ -1324,7 +1257,6 @@ test('a change of index.html from outside takes about as long at the end of a de
   let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
   for (let i = 0; i < 4800; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
   const { authority, history } = open(sessionDir(t), `${deck}</div></div></body></html>\n`);
-  // each person writes a letter in each paragraph
   for (const person of [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy']) {
     for (let from = 0; from < 4800; from += 2000) {
       const patches = [];
@@ -1333,10 +1265,6 @@ test('a change of index.html from outside takes about as long at the end of a de
     }
     history.close();
   }
-  // the time in ms of a change from outside of the headings of 600 slides from slide `from` on, in
-  // patches of its own, since the diff of the deck would take most of the time. held is the number
-  // of changes at the end that are still to be held for 40 ms, as when another process takes the
-  // processor of a crowded runner for a while
   let held = 3;
   const change = (from) => {
     const patches = [];
@@ -1348,8 +1276,6 @@ test('a change of index.html from outside takes about as long at the end of a de
     authority.enter(patches.map((p, k) => ({ start: p.start - k, end: p.end - k - 1, text: 'Slide' })), 'file');
     return ms;
   };
-  // the changes at the start and at the end take turns, so that a burst of load holds both. each time
-  // is the best of up to ten attempts, taken again only while the bound is not met
   let early = Infinity;
   let late = Infinity;
   for (let attempt = 0; attempt < 10 && !(late <= 3 * early); attempt++) {
@@ -1365,7 +1291,6 @@ test('a change of index.html from outside is told where it replaces a word of a 
   replace(authority, 'First slide', 'First moon', ANN);
   history.close();
   replace(authority, 'First moon', 'First moon of the third body', ANN);
-  // the two insertions of the bold, inside the text that the version wrote
   const at = authority.text.indexOf('third');
   authority.enter([{ start: at, end: at, text: '<b>' }, { start: at + 5, end: at + 5, text: '</b>' }], ANN);
   history.close();
@@ -1375,26 +1300,7 @@ test('a change of index.html from outside is told where it replaces a word of a 
 });
 
 test('a change of index.html from outside is told whenever it replaces a character that a person wrote, after operations of several patches inside the text of their version', { timeout: 120_000 }, (t) => {
-  // mulberry32
-  let seed = 38;
-  const rnd = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-  const int = (n) => Math.floor(rnd() * n);
-  const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
-  // the text as cells of a character and whether a person wrote it, with patches applied
-  const applied = (cells, patches, person) => {
-    const out = [];
-    let at = 0;
-    for (const p of patches) {
-      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
-      at = p.end;
-    }
-    return [...out, ...cells.slice(at)];
-  };
+  const { rnd, int, word } = mulberry32(38);
   let missed = 0;
   for (let round = 0; round < 3000; round++) {
     let text = '<body>\n';
@@ -1403,8 +1309,6 @@ test('a change of index.html from outside is told whenever it replaces a charact
     const { authority, history } = open(sessionDir(t), text);
     let cells = [...text].map((ch) => ({ ch, person: false }));
     for (let k = 0, n = 2 + int(5); k < n; k++) {
-      // up to five places close to each other, as of a Replace All or a bold, each with a removal,
-      // an insertion, or a replace of up to 9 letters, which the next place may fall into
       const patches = [];
       for (let at = 0, places = 1 + int(5); places > 0 && at <= authority.text.length; places--) {
         const start = at + int(Math.min(12, authority.text.length + 1 - at));
@@ -1416,7 +1320,6 @@ test('a change of index.html from outside is told whenever it replaces a charact
       cells = applied(cells, patches, true);
       if (rnd() < 0.3) history.close();
     }
-    // a program replaces up to three characters with letters that the text does not hold
     const start = int(authority.text.length);
     const range = { start, end: Math.min(authority.text.length, start + 1 + int(3)), text: word('XYZ', 1 + int(3)) };
     const before = authority.version;
@@ -1440,11 +1343,8 @@ test('a change of index.html from outside is told by the words that it replaces 
     history.stopSync();
     return out;
   };
-  // the patch of the diff begins or ends at the tag, where Ann removed the word before or after
-  // it, and the attribute is written inside the tag
   assert.deepEqual(told([['First <b>', '<b>', ANN], ['<b>', '<b class="x">', 'file']]), [false], 'an attribute added to a tag after a word that Ann removed');
   assert.deepEqual(told([['<b>big ', '<b>', ANN], ['<b>', '<b class="x">', 'file']]), [false], 'an attribute added to a tag before a word that Ann removed');
-  // the second change replaces the word of Ann that the first one kept between its two words
   assert.deepEqual(told([['First <b>big slide</b>', 'one two three four', ANN], ['one', 'oe', BO], ['two three four', 'TWO three FOUR', 'file'], ['three', 'THREE', 'file']]), [true, true], 'a word of Ann after a letter that Bo removed before it');
 });
 
@@ -1454,16 +1354,12 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   deck += '</div></div></body></html>\n';
   const { authority, history } = open(sessionDir(t), deck);
   t.after(() => history.stopSync());
-  // Ann wrote on the last slide, which the change keeps
   replace(authority, '<p>Text 2399</p>', '<p>Text by Ann</p>', ANN);
   history.close();
   const alone = new Authority(authority.text);
-  // a formatter indents every element again and back, as 20 operations of 1,600 patches each
   const indented = authority.text.replace(/^ {2}</gm, '    <');
   const there = diff(authority.text, indented);
   const back = diff(indented, authority.text);
-  // each measurement as its wall time and the CPU time of the process, which tells a runner that
-  // took the CPU away from a slower history
   const measured = [];
   const ms = (a) => {
     const start = performance.now();
@@ -1476,9 +1372,8 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   };
   ms(alone);
   let [withHistory, without] = [ms(authority), ms(alone)];
-  // the code that looked at every mark took 10 times as long, and 4 times is reached on a loaded machine
   if (withHistory > 6 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
-  assert.ok(withHistory <= 6 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone, measured as ${measured.join('; ')}`);
+  assert.ok(withHistory <= 6 * without, `a history that read every mark was 10 times as slow, and this one took ${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone, measured as ${measured.join('; ')}`);
 });
 
 test('a Replace All in slides that a person pasted in the same version takes about as long as in slides of an earlier version', { timeout: 300_000 }, (t) => {
@@ -1494,8 +1389,6 @@ test('a Replace All in slides that a person pasted in the same version takes abo
     all.push({ start: at + i, end: at + i + 5, text: 'halo' });
   }
   assert.equal(new Set(all.map((p) => p.start)).size, 2000);
-  // the time of the Replace All at 2,000 places in 400 kB of slides that the operation before it
-  // pasted as one patch, with the version of the paste still open or closed, as the median of 3 runs
   const took = (closed) => {
     const times = [];
     for (let r = 0; r < 3; r++) {
@@ -1521,7 +1414,6 @@ test('a version serves the text that each person removed at the place of the rem
   const { authority, history } = open(sessionDir(t), deck);
   replace(authority, ' Ann wrote this.', '', BO);
   replace(authority, 'Second slide', 'Second', ANN);
-  // Ann removes the first of two equal items, whose removal a diff of the version places at the second
   const at = authority.text.indexOf(item);
   authority.enter([{ start: at, end: at + item.length, text: '' }], ANN);
   replace(authority, '<h2>Two', '<h2>Dos', BO);

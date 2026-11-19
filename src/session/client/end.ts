@@ -1,11 +1,7 @@
-// the dialog at the end of a session, and the dialog of a page blocked while it waits to load
-// again, each with a copy of the deck as this page has it
-
 import type { Client } from './client.ts';
 import type { Ended } from '../protocol.ts';
 import { bdi } from './dom.ts';
 
-// a page that waits to load again keeps the operations since its last apply out of the deck
 const copyOf = (client: Client): string => (client.reloading ? client.snapshot()!.mine : client.port.text());
 
 export function install(client: Client): void {
@@ -30,9 +26,7 @@ export function install(client: Client): void {
   });
 
   client.on('ended', (ended: Ended) => {
-    // Leave Session shows a dialog of its own, in people.ts
     if (client.left) return;
-    // read before the editor leaves the session
     const acked = client.acked();
     const text = copyOf(client);
     const base = client.snapshot()?.base;

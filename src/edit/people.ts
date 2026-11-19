@@ -1,8 +1,3 @@
-// the people of a session, their presence, and the long polls of events. a poll is answered at
-// once when there is news for its browser, and held for at most 25 s otherwise. a browser is
-// answered at most ten times a second, hence the news of a burst of operations is batched. every
-// person who ever joined is kept in .session/people.json, so that a name keeps its tone and its id
-
 import { randomBytes } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
@@ -10,36 +5,22 @@ import type { Authority } from '../session/authority.ts';
 import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence, type WriteError } from '../session/protocol.ts';
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
-// the hold of a poll, and the time after the last request of a page at which it is dropped, both
-// in ms and shorter in the tests
 const HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25_000;
-const GAP = 100;
+export const GAP = 100;
 const GONE = Number(process.env.SLIDES_GONE_MS) || 40_000;
-// a page that has not polled this long after its hello is dropped
 const FIRST_POLL = 5000;
 const MAX_PEOPLE = 64;
-// the pages that come through the relay, hence MAX_PEOPLE - MAX_GUESTS places are kept for the pages
-// of this computer
 const MAX_GUESTS = 48;
-// the pages of one person, beyond which the page that joined first is dropped
 const MAX_PAGES = 8;
 const MAX_CLIENTS = 1024;
 const MAX_KNOWN = 1024;
 const SAVE_GAP = 1000;
 export const MAX_STATE = 8 * 1024;
 
-// a person of people.json, with the times of the first and the last join in ms
 export type PersonRecord = KnownPerson & { first: number; last: number };
 
-// the revs of the feeds that a page has had, in the order of the feeds, or -1 when it may have
-// missed news, e.g. after it was dropped for a silence
 type Member = Person & { state: unknown; lastSeen: number; joined: number; polled: boolean; seen: number; knownSeen: number; writeSeen: number; feeds: number[]; lastAnswer: number; polls: number };
 
-// a source of news for the answers of events beside the operations and the people, e.g. the
-// version history. rev grows with each change, and write adds to an answer the news after the rev
-// that the page has had, which is -1 when it may have missed news, or after the version since of
-// its poll. of is the rev of a feed that differs between people, given instead of rev for the pages
-// of person
 export type Feed = { rev: () => number; of?: (person: string) => number; write: (answer: EventsAnswer, seen: number, since: string, person: string) => void };
 const revOf = (f: Feed, person: string) => (f.of ? f.of(person) : f.rev());
 
@@ -55,7 +36,6 @@ export type Joined = { member: Member; token: string } | { taken: { name: string
 
 const newId = () => randomBytes(16).toString('base64url');
 
-// the records of a people.json, without those that are malformed
 function readPeople(file: string): PersonRecord[] {
   try {
     const value = JSON.parse(readFileSync(file, 'utf8'));
@@ -72,16 +52,10 @@ export class People {
   private authority: Authority;
   private file: string | null;
   private members = new Map<string, Member>();
-  // the person, the kind, and the token of every page that said hello, so that a browser back
-  // from a sleep keeps its person, and whether the page said bye since
   private clients = new Map<string, { person: string; host: boolean; token: string; left?: true }>();
-  // the client id of each token
   private tokens = new Map<string, string>();
   private records = new Map<string, PersonRecord>();
-  // the pages whose session ended, answered with ended until they say hello again
   private ends = new Map<string, Ended>();
-  // the guests present at the last end of sharing that have not been answered with ended yet, and
-  // the callers that wait until none is left
   private untold = new Set<string>();
   private toldWaiters: (() => void)[] = [];
   private hostPerson: string | null = null;
@@ -89,13 +63,9 @@ export class People {
   private feedList: Feed[] = [];
   private rev = 0;
   private knownRev = 0;
-  // the write of index.html that failed last, or null once a write succeeded, and its revision
   private writeError: WriteError | null = null;
   private writeRev = 0;
-  // the message of the write of tex.js that failed last, or null once a write succeeded
   private texError: string | null = null;
-  // the changes of tex.js on disk, by the edit command or by another program, counted from the time
-  // of the start in ms, which a later run does not repeat
   private texRev = Date.now();
   private sweeper: ReturnType<typeof setInterval>;
   private ended: Ended | null = null;
@@ -105,7 +75,6 @@ export class People {
   private saving: Promise<void> | null = null;
   private log: (message: string) => void;
 
-  // file is the people.json of the talk folder, or null to keep the people in memory alone
   constructor(authority: Authority, file: string | null = null, log: (message: string) => void = () => {}) {
     this.authority = authority;
     this.file = file;
@@ -116,9 +85,6 @@ export class People {
     this.sweeper.unref?.();
   }
 
-  // a page joins as the person of the id, or as a new person. a name held by another person is
-  // refused unless claim is true, and the page then continues as this person. the token of an
-  // earlier hello keeps its client id
   hello(rawName: unknown, rawPerson: unknown, rawToken: unknown, host: boolean, claim = false): Joined {
     let person = isPersonId(rawPerson) ? rawPerson : newId();
     const name = cleanPersonName(rawName) || this.records.get(person)?.name || '';
@@ -132,8 +98,6 @@ export class People {
     const id = earlier ?? randomBytes(12).toString('base64url');
     const token = earlier ? (rawToken as string) : newId();
     if (!this.members.has(id)) {
-      // the page dropped for a new one is of the same kind, and a page of the host is dropped only
-      // for another page of the host, since person ids are public
       const pages = [...this.members.values()].filter((m) => m.person === person);
       const dropped = pages.length < MAX_PAGES ? undefined : (pages.find((m) => m.host === host) ?? (host ? pages[0] : undefined));
       if (pages.length >= MAX_PAGES && !dropped) return { full: true };
@@ -148,8 +112,6 @@ export class People {
       this.trimRecords();
       this.knownRev++;
     } else {
-      // a claim keeps the name as the person wrote it first, and so does a page that only knows the
-      // public person id, i.e. a page through the relay without a token of a page of this person
       const own = host || (earlier !== undefined && this.clients.get(earlier)?.person === person);
       if (record.name !== name && !claim && own) {
         record.name = name;
@@ -164,7 +126,6 @@ export class People {
     this.clients.set(id, { person, host, token });
     this.tokens.set(token, id);
     if (this.clients.size > MAX_CLIENTS) {
-      // the page used least lately that is not present, since revive moves a page to the end
       for (const [client, { token: old }] of this.clients) {
         if (this.members.has(client)) continue;
         this.clients.delete(client);
@@ -173,7 +134,6 @@ export class People {
       }
     }
     let member = this.members.get(id);
-    // a page reads the feeds again after a hello, hence it is sent only what changes later
     const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => revOf(f, person)) };
     if (member) Object.assign(member, fields);
     else this.members.set(id, (member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 }));
@@ -182,7 +142,6 @@ export class People {
     return { member, token };
   }
 
-  // a new name of the person of the page client, or null when the page did not say hello
   rename(client: string, rawName: unknown): { name: string } | { taken: { name: string } } | { empty: true } | null {
     const member = this.revive(client);
     if (!member) return null;
@@ -201,17 +160,14 @@ export class People {
     return { name };
   }
 
-  // whether the page client is in the session, i.e. said hello and neither left nor was dropped
   present(client: string): boolean {
     return this.members.has(client);
   }
 
-  // the client id of the page of token, or null
   clientOf(token: unknown): string | null {
     return isToken(token) ? (this.tokens.get(token) ?? null) : null;
   }
 
-  // the person id of a page that said hello, or null
   personOf(client: unknown): string | null {
     return typeof client === 'string' ? (this.clients.get(client)?.person ?? null) : null;
   }
@@ -232,30 +188,25 @@ export class People {
     return true;
   }
 
-  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
   retire(token: string): void {
     this.tokens.delete(token);
   }
 
-  // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client: string): void {
     const known = this.clients.get(client);
     if (known) known.left = true;
     if (this.members.delete(client)) this.changed();
   }
 
-  // a source of news for every page from now on
   feed(f: Feed): void {
     this.feedList.push(f);
     for (const m of this.members.values()) m.feeds.push(revOf(f, m.person));
   }
 
-  // the waiting polls woken after a change of a feed
   news(): void {
     this.wake();
   }
 
-  // a long poll of client for the news after the version since, held for at most hold ms
   events(client: string, since: string, hold = HOLD): Promise<EventsAnswer> | null {
     const end = this.ends.get(client);
     if (end) {
@@ -273,8 +224,6 @@ export class People {
     });
   }
 
-  // a write of index.html that failed, or null at the first write that succeeds after it, told to
-  // every page when it changed
   writeFailed(error: WriteError | null): void {
     if (JSON.stringify(error) === JSON.stringify(this.writeError)) return;
     this.writeError = error && { message: error.message, unwritten: error.unwritten };
@@ -282,8 +231,6 @@ export class People {
     this.changed();
   }
 
-  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
-  // write of index.html that failed is, when no write of index.html failed
   texFailed(message: string | null): void {
     if (message === this.texError) return;
     this.texError = message;
@@ -291,20 +238,15 @@ export class People {
     this.changed();
   }
 
-  // tex.js changed on disk, told to every page, which draws the deck again with it
   texChanged(): void {
     this.texRev++;
     this.changed();
   }
 
-  // the number of changes of tex.js on disk, for the answer of hello
   tex(): number {
     return this.texRev;
   }
 
-  // the waiting polls answered with ended, at a stop of the edit command, and people.json written.
-  // resolves once every page of the host present has been answered with ended, by a waiting poll or
-  // by a poll that arrives later. a guest is told by the record of the end at the relay
   end(): Promise<void> {
     this.ended = this.endedBy();
     clearInterval(this.sweeper);
@@ -316,9 +258,6 @@ export class People {
     return told;
   }
 
-  // the session ended for every page that came through the relay. their waiting polls are
-  // answered with ended, while the pages of the host go on. resolves once every guest present has
-  // been answered with ended, by a waiting poll or by a poll that arrives later
   endGuests(): Promise<void> {
     const end = this.endedBy();
     this.untold = new Set([...this.members.values()].filter((m) => !m.host).map((m) => m.client));
@@ -353,7 +292,6 @@ export class People {
     return null;
   }
 
-  // the tone that the fewest people now present hold, the lowest at a tie
   private freeColor(): number {
     const count = COLORS.map(() => 0);
     const present = new Set([...this.members.values()].map((m) => m.person));
@@ -364,7 +302,6 @@ export class People {
     return count.indexOf(Math.min(...count));
   }
 
-  // the absent people who joined least lately dropped from a list over MAX_KNOWN
   private trimRecords(): void {
     if (this.records.size <= MAX_KNOWN) return;
     const present = new Set([...this.members.values()].map((m) => m.person));
@@ -397,7 +334,6 @@ export class People {
     return member ?? null;
   }
 
-  // whether a page of the kind of host has a place, once the page leaving is dropped
   private hasPlace(host: boolean, leaving?: Member): boolean {
     if (this.members.size - (leaving ? 1 : 0) >= MAX_PEOPLE) return false;
     return host || [...this.members.values()].filter((m) => !m.host && m !== leaving).length < MAX_GUESTS;
@@ -418,7 +354,6 @@ export class People {
     for (const poll of this.polls) if (this.hasNews(poll)) this.soon(poll);
   }
 
-  // the poll answered now, or once GAP ms have passed since the last answer to its browser
   private soon(poll: Poll): void {
     if (poll.gap) return;
     const member = this.members.get(poll.client);
@@ -426,7 +361,6 @@ export class People {
     poll.gap = setTimeout(() => this.answer(poll), wait);
   }
 
-  // known is left out when the page has had the list since its last change
   private state(since: string, member: Member | null): EventsAnswer {
     const presence: Presence[] = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
@@ -474,7 +408,6 @@ export class People {
     return `${JSON.stringify([...this.records.values()], null, 1)}\n`;
   }
 
-  // people.json written by a temporary file and a rename, at most once a second
   private save(): void {
     if (!this.file) return;
     this.dirty = true;
@@ -509,7 +442,6 @@ export class People {
   private saveSync(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    // a write in flight may not end before the exit, hence it is made again here
     if (!this.file || (!this.dirty && !this.saving)) return;
     this.dirty = false;
     const tmp = `${this.file}.${randomBytes(6).toString('hex')}.tmp`;

@@ -81,8 +81,10 @@ export async function open(browser, url, { name = 'Ann', width = 1280, height = 
       const key = (k) => (String(k).startsWith('beeson-session-') ? prefix + k : k);
       const get = Storage.prototype.getItem;
       const set = Storage.prototype.setItem;
+      const remove = Storage.prototype.removeItem;
       Storage.prototype.getItem = function (k) { return get.call(this, key(k)); };
       Storage.prototype.setItem = function (k, v) { set.call(this, key(k), v); };
+      Storage.prototype.removeItem = function (k) { remove.call(this, key(k)); };
       try {
         if (${JSON.stringify(name)} && get.call(localStorage, prefix + 'beeson-session-name') === null) set.call(localStorage, prefix + 'beeson-session-name', ${JSON.stringify(name)});
         sessionStorage.setItem('__loads', String(Number(sessionStorage.getItem('__loads') || 0) + 1));

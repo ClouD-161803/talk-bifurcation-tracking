@@ -1,10 +1,3 @@
-// a toast: a short message above the status bar for SHOWN ms, read out by a screen reader, with an
-// optional button and a button Close. one toast is shown at a time, and the others wait in a queue.
-// the region is kept in the page between toasts, since a screen reader reads a change of a region
-// that it knows, and mountToasts() puts it in the page before the first toast for the same reason.
-// the time of a toast does not run while the pointer is over it or the focus is in it. a toast
-// waits for the close of a modal dialog, which makes the region inert, and its time starts then
-
 import { make, style } from './dom.ts';
 
 const CSS = `
@@ -18,16 +11,12 @@ const CSS = `
 
 export const SHOWN = 6000;
 
-// the time in ms that a toast is shown, which a test may set
 export const timing = { shown: SHOWN };
 
 export type ToastButton = { label: string; run(): void };
 
-// toasts of one key that wait while MAX toasts already wait are joined into the toast of many(n),
-// e.g. 4 new comments
 export type ToastKind = { key: string; many(n: number): { text: string; button?: ToastButton } };
 
-// a string, or a line of strings and nodes, e.g. with a name in a bdi element
 export type ToastText = string | (string | Node)[];
 
 const MAX = 3;
@@ -35,16 +24,12 @@ const MAX = 3;
 const queue: { text: ToastText; button?: ToastButton; kind?: ToastKind; n: number }[] = [];
 let region: HTMLElement | null = null;
 let timer = 0;
-// a toast is shown, or the first one follows a task after the region was made
 let showing = false;
-// the queue waits for the close of a modal dialog
 let waiting = false;
-// the ms left of the toast shown, from since on while its timer runs
 let left = 0;
 let since = 0;
 let over = false;
 let inside = false;
-// the element focused before the focus came into the region, given the focus back at a Close
 let before: HTMLElement | null = null;
 
 export function toast(text: ToastText, button?: ToastButton, kind?: ToastKind): void {
@@ -57,7 +42,6 @@ export function toast(text: ToastText, button?: ToastButton, kind?: ToastKind): 
   if (!showing && !waiting) next();
 }
 
-// the empty region in the page, ahead of its first toast
 export function mountToasts(): HTMLElement {
   if (region) return region;
   style('toast', CSS);
@@ -103,7 +87,6 @@ function next(): void {
   clearTimeout(timer);
   timer = 0;
   if (!region) {
-    // a region made with its text is not read out, hence the text follows a task later
     mountToasts();
     showing = true;
     timer = window.setTimeout(next, 0);
@@ -165,8 +148,6 @@ function next(): void {
   });
   parts.push(close);
   box.replaceChildren(...parts);
-  // a removed button does not send focusout in every browser, and a pointer that stays still does
-  // not send pointerenter
   inside = box.contains(document.activeElement);
   over = box.matches(':hover');
   run();

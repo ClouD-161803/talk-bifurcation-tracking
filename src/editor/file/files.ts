@@ -18,7 +18,6 @@ type Pickers = {
 const SAVE_TYPES = [{ description: 'HTML', accept: { 'text/html': ['.html', '.htm'] } }];
 const AUTOSAVE_KEY = 'beeson-autosave';
 const AUTOSAVE_DELAY = 1500;
-const SEND_WAIT = 4000;
 
 const pickers = window as unknown as Pickers;
 export const canPick = (): boolean => typeof pickers.showOpenFilePicker === 'function';
@@ -381,20 +380,8 @@ export function install(app: App): void {
     return `${pageOf()}${query ? `?${query}` : ''}`;
   }
 
-  async function sent(): Promise<void> {
-    let timer = 0;
-    const late = new Promise<never>((_, fail) => {
-      timer = window.setTimeout(() => fail(new Error('Your last changes are not sent yet. Try again once they are saved')), SEND_WAIT);
-    });
-    try {
-      await Promise.race([app.session!.save(), late]);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   async function savedFirst(action: 'present' | 'export' | 'print' | 'pptx'): Promise<boolean> {
-    if (app.session) await sent();
+    if (app.session) await app.session.sent();
     if (!app.dirty || app.session) return true;
     const choice = await askFirst(action);
     if (!choice) return false;
@@ -567,7 +554,7 @@ export function install(app: App): void {
     if (!choice) return null;
     const later = choice === 'save' && !app.session && !tab && !app.handle && !canWrite();
     const show = tab ? null : startShow(app, later ? () => void save().catch((e) => app.fail(e)) : undefined);
-    if (choice === 'save' && !later) await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
+    if (choice === 'save' && !later) await (app.session ? app.session.sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
     if (choice === 'save' && app.dirty && !later && !app.session) {
       show?.end();

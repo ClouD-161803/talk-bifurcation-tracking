@@ -1,8 +1,3 @@
-// the relay: an edit command registered with a local relay serves a guest that loads index.html
-// and sends an operation through it. a wrong secret, an unknown key, and a body over the limit are
-// refused, and a session without pulls is dropped. the timeouts are lowered by the options of
-// startRelay, so that the test does not wait 90 s
-
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -31,7 +26,6 @@ test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) =
   await until(async () => (await guest('index.html')).status === 200, 'the edit command to register with the relay');
 
   await t.test('the guest loads index.html, says hello, and sends an operation', async () => {
-    // a navigation is sent raw, since fetch sets Sec-Fetch-Mode itself
     const navigate = { 'sec-fetch-mode': 'navigate' };
     const page = await raw(relay.port, 'GET', `/${edit.key}/index.html?edit&session`, { headers: navigate });
     assert.equal(page.status, 302);
@@ -70,13 +64,10 @@ test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) =
     const count = relay.sessions();
     await until(() => relay.sessions() === count - 1, 'the session without pulls to be dropped');
     assert.equal((await fetch(`${relay.url}/${key}/index.html`)).status, 502);
-    // the edit command, which pulls, is still registered
     assert.equal((await guest('index.html')).status, 200);
   });
 });
 
-// a talk with scenes of TyCHO written into index.html takes over 20 MB, which is more than a guest
-// may upload. the relay has its limits as it is started
 test('a guest loads and edits a deck of 24 MB through the relay', { timeout: 180_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 5000, pullMs: 1000 });
   t.after(() => relay.close());
@@ -87,7 +78,6 @@ test('a guest loads and edits a deck of 24 MB through the relay', { timeout: 180
   const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
   t.after(() => stopEdit(edit));
   const guest = (path, init) => fetch(`${relay.url}/${edit.key}/${path}`, init);
-  // a file that the talk folder does not have is answered by the edit command, not by the relay
   await until(async () => (await guest('none.txt')).status === 404, 'the edit command to register with the relay');
 
   const navigate = { 'sec-fetch-mode': 'navigate' };
@@ -105,7 +95,6 @@ test('a guest loads and edits a deck of 24 MB through the relay', { timeout: 180
   await until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), 'the operation of the guest to be written');
   assert.equal(relay.held(), 0, 'the relay holds no body once the guest has read the deck');
 
-  // the upload of a guest keeps its limit of 16 MB
   const big = await guest('media/big.png', { method: 'PUT', body: Buffer.alloc(16 * MB + 1) });
   assert.equal(big.status, 413);
 });
@@ -136,7 +125,6 @@ test('the relay reads its secret from --secret-file, and refuses one under 16 ch
   let out = '';
   child.stdout.on('data', (c) => (out += c));
   const port = Number((await until(() => /port (\d+)/.exec(out), 'the relay to listen'))[1]);
-  // the secret of the file, without its newline, registers a session
   const registered = await fetch(`http://127.0.0.1:${port}/host/${'k'.repeat(22)}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
   assert.equal(registered.status, 200);
 });
@@ -155,7 +143,6 @@ test('a second registration of the key of a live session is refused', { timeout:
   const taken = await fetch(`${relay.url}/host/${first.key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
   assert.equal(taken.status, 409);
 
-  // a copy of the talk folder keeps .session/key, and its edit command is told that the key is taken
   const copy = join(root, 'copy');
   cpSync(talk, copy, { recursive: true });
   writeFileSync(join(copy, 'index.html'), DECK.replace('One', 'Copy'));
@@ -166,7 +153,6 @@ test('a second registration of the key of a live session is refused', { timeout:
   for (let i = 0; i < 6; i++) assert.equal(await (await guest()).text(), DECK);
 });
 
-// the names and values of the headers of an answer, as they came on the wire
 const rawHeaders = (url) =>
   new Promise((done, fail) => {
     get(url, (res) => {
@@ -212,7 +198,6 @@ test('the relay does not forward Service-Worker-Allowed or Set-Cookie', { timeou
 });
 
 test('the relay holds the bodies of slow uploads and slow readers within its memory cap', { timeout: 60_000 }, async (t) => {
-  // one session may take the whole cap here, so that the cap itself is tested
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 24 * 1024 * 1024, bodyBytes: 16 * 1024 * 1024, sessionShare: 1 });
   t.after(() => relay.close());
   const key = 'm'.repeat(22);
@@ -221,7 +206,6 @@ test('the relay holds the bodies of slow uploads and slow readers within its mem
   const host = { ...auth, 'x-relay-token': token };
   const sockets = [];
   t.after(() => sockets.forEach((s) => s.destroy()));
-  // a socket that sends head and then the given chunks, and keeps what comes back
   const open = (head, ...chunks) => {
     const socket = connect(relay.port, '127.0.0.1');
     sockets.push(socket);
@@ -246,7 +230,7 @@ test('the relay holds the bodies of slow uploads and slow readers within its mem
     await until(() => relay.held() === 0, 'the place of the closed upload to be given back');
   });
 
-  await t.test('an answer is counted until the guest has read it', async () => {
+  await t.test('an answer is counted until the guest has read it, also on Windows, where a write of any size is copied into the kernel at once', async () => {
     const guest = open(`GET /${key}/big.mp4 HTTP/1.1\r\nHost: relay\r\n\r\n`);
     guest.pause();
     const [item] = await (await fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers: host })).json();
@@ -274,7 +258,6 @@ test('a slow upload through the relay is not cut by the timeout of the answer', 
   let got = '';
   socket.on('data', (d) => (got += d));
   socket.write(`PUT /${edit.key}/.session/media/slow.png?token=${hello.token} HTTP/1.1\r\nHost: relay\r\nContent-Length: 6000\r\nConnection: close\r\n\r\n`);
-  // the body is sent over 2.5 s, longer than guestMs, as on a slow uplink
   for (let i = 0; i < 6; i++) {
     socket.write('x'.repeat(1000));
     if (i < 5) await new Promise((done) => setTimeout(done, 500));
@@ -285,7 +268,6 @@ test('a slow upload through the relay is not cut by the timeout of the answer', 
 });
 
 test('an answer that the relay refuses is pushed again after a registration, or logged', { timeout: 60_000 }, async (t) => {
-  // a fake relay that hands out one request per id in ids, and answers the pushes of an id in turn
   const ids = ['a1', 'b2'];
   const pushAnswers = { a1: [401, 204], b2: [500] };
   const pushes = [];
@@ -331,8 +313,6 @@ test('an answer that the relay refuses is pushed again after a registration, or 
 
 const MB = 1024 * 1024;
 
-// a host of key that registers with the relay, pulls, and pushes by itself, in place of an edit
-// command
 async function fakeHost(relay, key) {
   const auth = { authorization: `Bearer ${SECRET}` };
   const { token } = await (await fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: auth })).json();
@@ -340,13 +320,11 @@ async function fakeHost(relay, key) {
   const queue = [];
   return {
     token,
-    // the next n requests of guests, pulled until they have come
     async next(n = 1) {
       while (queue.length < n) queue.push(...(await (await fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers })).json()));
       return queue.splice(0, n);
     },
     push: async (id, body, status = 200) => (await fetch(`${relay.url}/host/${key}/push/${id}`, { method: 'POST', headers: { ...headers, 'x-relay-status': String(status), 'x-relay-headers': '{}' }, body })).status,
-    // a push of length bytes on a raw socket, which writes sent bytes at once and the others at rest()
     partial(id, length, sent) {
       const socket = connect(relay.port, '127.0.0.1');
       socket.got = '';
@@ -360,7 +338,6 @@ async function fakeHost(relay, key) {
   };
 }
 
-// a raw socket of a guest that sends head and chunks, and keeps what comes back in got
 function rawGuest(t, relay, head, ...chunks) {
   const socket = connect(relay.port, '127.0.0.1');
   t.after(() => socket.destroy());
@@ -390,12 +367,10 @@ test('a push that is cut off gives its place in the memory of the relay back', {
 });
 
 test('one session cannot fill the memory of the relay, and small answers pass when large ones fill it', { timeout: 60_000 }, async (t) => {
-  // a session may hold a quarter of memoryBytes, i.e. 8 MB, and 4 MB are kept for small answers
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 32 * MB });
   t.after(() => relay.close());
   const keys = ['a', 'b', 'c', 'd', 'e'].map((c) => c.repeat(22));
   const hosts = await Promise.all(keys.map((key) => fakeHost(relay, key)));
-  // an upload that is never finished, as from a slow phone or a guest that stopped
   const upload = (key, size) => rawGuest(t, relay, `PUT /${key}/media/v.mp4 HTTP/1.1\r\nHost: relay\r\nTransfer-Encoding: chunked\r\n\r\n`, hex(size));
 
   upload(keys[0], 7 * MB);
@@ -443,7 +418,6 @@ test('a push that the relay refuses is answered to the guest at once, and pushes
     const host = await fakeHost(relay, key);
     const guests = [raw(relay.port, 'GET', `/${key}/a.mp4`, { host: 'relay' }), raw(relay.port, 'GET', `/${key}/b.mp4`, { host: 'relay' })];
     const [a, b] = await host.next(2);
-    // two answers of 9 MB, which together pass the share of 16 MB of the session
     const first = host.partial(a.id, 9 * MB, MB);
     t.after(() => first.destroy());
     await until(() => relay.held() >= MB, 'the relay to hold the first push');
@@ -463,7 +437,6 @@ test('a registration without the token is refused right after the pulls of the s
   const host = await fakeHost(relay, key);
   const register = () => fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } }).then((r) => r.status);
   const guest = raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
-  // the pull is answered at once with the request of the guest, and no other pull waits
   const [item] = await host.next();
   assert.equal(await register(), 409, 'a registration between two pulls takes the session');
   assert.equal(await host.push(item.id, 'deck'), 204, 'the host keeps its token');
@@ -494,7 +467,6 @@ test('a registration without the token is refused while the pulls of the host ar
   const key = 'c'.repeat(22);
   const host = await fakeHost(relay, key);
   const register = () => fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } }).then((r) => r.status);
-  // a pull of the host that the network cuts
   const socket = connect(relay.port, '127.0.0.1');
   socket.on('error', () => {});
   socket.write(`POST /host/${key}/pull HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer ${SECRET}\r\nx-relay-token: ${host.token}\r\nContent-Length: 0\r\n\r\n`);
@@ -502,12 +474,10 @@ test('a registration without the token is refused while the pulls of the host ar
   socket.destroy();
   await sleep(1000);
   assert.equal(await register(), 409, 'a holder of the secret and the key takes the session of a host whose pulls are cut');
-  // the host comes back with its token and keeps its session
   const guest = raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
   const [item] = await host.next();
   assert.equal(await host.push(item.id, 'deck'), 204);
   assert.equal((await guest).text, 'deck');
-  // a session without pulls for idleMs is dropped, after which the key is free
   await until(async () => (await register()) === 200, 'a registration after the session was dropped', 20_000);
 });
 
@@ -521,7 +491,6 @@ test('a page of a session that is not registered says that the host is not runni
   assert.match(page.headers['content-type'], /^text\/html/);
   assert.ok(page.text.includes("The host's edit command is not running. This link works again once the host starts it."), page.text);
   assert.doesNotMatch(page.text, /<script/i);
-  // the requests of the client keep the plain text, which the transport reads as the message
   const plain = 'no edit command is registered for this session';
   for (const [method, path, headers] of [
     ['GET', `/${key}/.session/events?token=t&since=v`, { accept: '*/*' }],
@@ -591,7 +560,6 @@ test('the relay refuses a session over its limit of sessions, and a request over
   await fakeHost(relay, 'g'.repeat(22));
   const third = await fetch(`${relay.url}/host/${'h'.repeat(22)}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
   assert.deepEqual({ status: third.status, text: await third.text() }, { status: 503, text: 'the relay holds too many sessions' });
-  // two requests of guests that the host pulled and does not answer yet
   const guest = () => raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
   const waiting = [guest(), guest()];
   const items = await host.next(2);

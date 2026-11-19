@@ -1,7 +1,3 @@
-// node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]. the module is imported by the
-// tests for the sync core without starting anything, hence the command runs only when this file
-// is the main module
-
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -41,8 +37,6 @@ function openBrowser(url: string): void {
   }
 }
 
-// the times and limits of the version history from SLIDES_HISTORY, a JSON object such as
-// {"quiet":50,"longest":200}, with which a test makes them short
 function historyOptions(): HistoryOptions {
   const out: Record<string, number> = {};
   try {
@@ -76,12 +70,7 @@ async function main(argv: string[]): Promise<void> {
     process.stderr.write(`--port takes a number from 0 to 65535. ${USAGE}\n`);
     process.exit(2);
   }
-  // the signals are caught before the start, so that one sent right after the address still stops
-  // the edit command with its write. one sent during the start stops it once the start is done
   let running: Running | undefined, stopping = false;
-  // a close that the relay or an open connection holds ends 3 s after index.html is written, with
-  // the status of this write. a stop of the disk that hangs, as on a file system that does not
-  // answer, is not ended
   const stop = () => {
     stopping = true;
     if (!running) return;
@@ -97,7 +86,6 @@ async function main(argv: string[]): Promise<void> {
     running = await start({ folder, port, relay, history: historyOptions() });
   } catch (e) {
     if (e instanceof AlreadyRunning) {
-      // the page of the first edit command is opened, and its address printed as a start would
       const { url, port: p, key } = e.found;
       process.stdout.write(`${JSON.stringify({ url, port: p, key })}\n`);
       process.stderr.write(`The edit command already runs for this folder at ${url}index.html?edit&session\n`);
@@ -118,9 +106,8 @@ async function main(argv: string[]): Promise<void> {
   const page = `${running.url}index.html?edit&session`;
   process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
   if (open) openBrowser(page);
-  // a write to a terminal that was closed fails, and must not end the command before its stop
-  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
-  // a fault that escapes every handler still writes index.html before the exit
+  const outliveClosedTerminal = () => {};
+  for (const stream of [process.stdout, process.stderr]) stream.on('error', outliveClosedTerminal);
   const fail = (e: unknown) => {
     process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
     void running!.close().finally(() => process.exit(1));

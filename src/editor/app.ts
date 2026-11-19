@@ -141,7 +141,7 @@ export class App {
   state: State = 'starting';
   dirty = false;
   note: { text: string; warn: boolean } | null = null;
-  session: { status: string | null; save(): Promise<void> | void } | null = null;
+  session: { status: string | null; save(): Promise<void> | void; sent(): Promise<void> } | null = null;
   autosave = false;
   overflow = 0;
   overFigure = 0;
