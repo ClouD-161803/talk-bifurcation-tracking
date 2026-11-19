@@ -93,7 +93,7 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   assert.equal(status({ ...ok, text: 'é'.repeat(4001) }), 413);
   assert.equal(status({ ...ok, text: 'é'.repeat(4000) }), 200);
   assert.equal(status({ ...ok, text: '😀'.repeat(4001) }), 413);
-  assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200);
+  assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200, 'an emoji counts as one character, not as its two UTF-16 code units');
   const people = Array.from({ length: 51 }, (_, i) => `@{${`${i}`.padStart(22, 'P')}}`);
   assert.deepEqual(comments.add(ANN, { ...ok, text: people.join(' ') }), { status: 413, error: 'the comment has more than 50 mentions' });
   assert.equal(status({ ...ok, text: people.slice(1).join(' ') }), 200);
@@ -349,8 +349,8 @@ test('a stop or a change of a thread while a write waits for its temporary file 
   });
   comments.add(ANN, onDeck(authority, 'first'));
   const read = comments.seen(BO, Date.now() - 5);
-  const alive = setInterval(() => {}, 1000);
-  await begun.finally(() => clearInterval(alive));
+  const keepNodeWaiting = setInterval(() => {}, 1000);
+  await begun.finally(() => clearInterval(keepNodeWaiting));
   assert.ok(comments.writing, 'a write is in progress');
   comments.add(ANN, onDeck(authority, 'second'));
   await comments.idle();
@@ -649,7 +649,7 @@ test('a thread on an element of any tag name is read again at a start, and a thr
   });
 });
 
-test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
+function heapGrowthAfterCollections(act, bound) {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
   const used = (collect = true) => {
@@ -659,41 +659,38 @@ test('the texts of removed elements do not keep the earlier texts of the deck in
     }
     return process.memoryUsage().heapUsed;
   };
+  const before = used();
+  act();
+  let grown = used(false) - before;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
+  return grown;
+}
+
+test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
   const n = 100;
   const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
   const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => `<p>Paragraph ${k} of the slide</p>`).join('\n  ')).replace('</body>', `${filler}</body>`);
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p>Paragraph ${k} `), slide: null, text: `p${k}` });
-  const before = used();
-  for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
-  let grown = used(false) - before;
   const bound = (n * deck.length) / 10;
-  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
+  const grown = heapGrowthAfterCollections(() => {
+    for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
+  }, bound);
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
   assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('the checks of removed elements longer than 4 kB do not keep the earlier texts of the deck in memory', (t) => {
-  setFlagsFromString('--expose-gc');
-  const gc = runInNewContext('gc');
-  const used = (collect = true) => {
-    if (collect) {
-      gc();
-      gc();
-    }
-    return process.memoryUsage().heapUsed;
-  };
   const n = 50;
   const long = (k) => `<p class="paragraph-${k}">${'y'.repeat(5000)}</p>`;
   const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
   const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => long(k)).join('\n  ')).replace('</body>', `${filler}</body>`);
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p class="paragraph-${k}">`), slide: null, text: `p${k}` });
-  const before = used();
-  for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
-  let grown = used(false) - before;
   const bound = (n * deck.length) / 10;
-  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
+  const grown = heapGrowthAfterCollections(() => {
+    for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
+  }, bound);
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.tag?.startsWith('<p class="paragraph-')));
   assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
