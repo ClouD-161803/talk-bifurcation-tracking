@@ -334,12 +334,13 @@ export function install(client: Client): void {
   // this page presents while the show is laid over it, or while the presenter view is open
   let playing = false;
   const watched = new WeakSet<Element>();
-  const presenter = new MutationObserver(() => played());
+  // one observer of the children of body, which adds the open attribute of each presenter view
+  const shows = new MutationObserver(() => played());
   const played = () => {
     const dialog = document.querySelector('dialog.beeson-edit-presenter');
     if (dialog && !watched.has(dialog)) {
       watched.add(dialog);
-      presenter.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+      shows.observe(dialog, { attributes: true, attributeFilter: ['open'] });
     }
     const now = !!document.querySelector('body > .beeson-edit-show') || !!dialog?.hasAttribute('open');
     if (now === playing) return;
@@ -347,7 +348,6 @@ export function install(client: Client): void {
     presence()?.set({ mode: now ? 'present' : 'edit' });
     if (now) stop();
   };
-  const shows = new MutationObserver(played);
   shows.observe(document.body, { childList: true });
 
   client.on('resolved', () => {
@@ -368,7 +368,6 @@ export function install(client: Client): void {
     ended = true;
     clearTimeout(noteTimer);
     shows.disconnect();
-    presenter.disconnect();
     onPersonPress(null);
     box.remove();
     live.remove();
