@@ -277,7 +277,7 @@ describe('the keys of PowerPoint in the show', () => {
       await press(page, 'ArrowRight');
       await page.waitFor(`${TAB}.Reveal.getIndices().h === 2`, 5000);
       await press(page, 'Escape');
-      await sleep(300);
+      await page.waitFor(`!document.querySelector('${DISPLAY} .layout:not([hidden])')`);
       assert.ok(await page.evaluate(`!!document.querySelector(${js(DISPLAY)})`), 'Esc while the display is customized ends the display');
       assert.equal(await page.evaluate(tabClosed), false, 'Esc while the display is customized ends the show');
       await press(page, 'Escape');
