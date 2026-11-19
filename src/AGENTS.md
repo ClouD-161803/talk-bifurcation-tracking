@@ -18,6 +18,7 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - Keep the edit command and the relay free of dependencies. They are run on Node 20 and later, on Windows, macOS, and Linux.
 - Do not block the edit command with a long step. Every page of a session waits on its one process.
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`. The TyCHO runtime and the Latin Modern Roman faces are the exceptions, and they are copied by hand. Add libraries that decks load to `scripts/vendor.mjs`, together with their licenses.
+- pdf.js is vendored from its legacy build. Its default build calls methods that are missing in the Safari version before the current one.
 - In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
 - `realpathSync` of Node keeps the short names of Windows, e.g. `RUNNER~1`. `realpathSync.native` and `realpath` of `fs/promises` resolve them.
@@ -30,11 +31,13 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - Do not make users reach for a terminal. Whatever a talk needs from a command is written by the editor as well, e.g. `tex.js` from `npm run tex`.
 - Record the videos of the PowerPoint export as H.264 in MP4, the one video format that every version of PowerPoint can play.
 - Open a file chooser, a folder picker, or a save picker in the handler of the click or the key press, since a picker requested later is refused.
+- The PowerPoint file is written by `scripts/pptx.mjs` without pptxgenjs, since the timing that starts a video by itself is not written by pptxgenjs. Elements out of the order of the schema are refused by PowerPoint.
 - Build menus and selects of DOM elements, since the popup of a native select is missing from a screenshot taken over the DevTools protocol.
 
 ## Theme
 
 - Take every color from the custom properties of `theme/beeson.css`. Use orange for motion and progress, and violet for structure.
+- The output color conversion of three.js is turned off for surfaces, since the sRGB colors of the theme are written as they are by the shaders.
 - Keep the plot palette, `--data-1` to `--data-8` of `theme/beeson.css`, as the Okabe–Ito palette, whose colors can be told apart with color vision deficiency. In the dark mode, its black is replaced by the color of the text. Keep the same colors in the same order in the styles of `styles/`.
 - Keep `axes.formatter.use_mathtext` in the Matplotlib styles. The tick labels are then set as math, since cmr10, the fallback typeface of Matplotlib, does not have a minus sign.
 - Set type in Latin Modern Roman at 22, 28, 36, 48, 64, or 96 px on the design size of 1920 by 1080. Set math in the TeX font of MathJax.
@@ -148,3 +151,5 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - A second page loaded into one iframe adds an entry to the history of the tab.
 - `::highlight` does not read custom properties in every browser. A highlight therefore takes the literal color of its tone.
 - An attribute set to its own value still invalidates the style.
+- The drawing buffer of a WebGL canvas is cleared once its frame is shown. Copy it into a 2D canvas in the same task as its render.
+- Over the DevTools protocol, a load may fail with `net::ERR_ABORTED` before the crash of the network service of Chrome is written to stderr. Hence the crash line is awaited for `CRASH_LINE_WAIT` of `scripts/chrome.mjs` after such a failure.

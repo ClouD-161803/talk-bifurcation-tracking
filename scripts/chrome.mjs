@@ -81,6 +81,8 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
   ];
 }
 
+const CRASH_LINE_WAIT = 2000;
+
 const LOADING = `(() => {
   const loaded = new Set(performance.getEntriesByType('resource').map((e) => e.name));
   const files = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href], img[src], iframe[src], video[src], source[src]')].map((el) => el.src || el.href);
@@ -281,7 +283,7 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
             try {
               if ((await Promise.race([attempt.then(() => 'loaded'), crashed])) === 'loaded') return;
             } catch (error) {
-              if (networkCrashes === seen && error.message.includes('net::ERR_ABORTED')) await Promise.race([crashed, sleep(2000)]);
+              if (networkCrashes === seen && error.message.includes('net::ERR_ABORTED')) await Promise.race([crashed, sleep(CRASH_LINE_WAIT)]);
               if (networkCrashes === seen || n === 2) throw error;
             } finally {
               onNetworkCrash.delete(crash);

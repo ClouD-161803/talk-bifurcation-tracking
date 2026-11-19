@@ -283,7 +283,7 @@ const stubbed = (supported) => ({
   },
 });
 
-test('the software encoder is asked for first, and the encoder of the system after it', { timeout: 60000 }, async () => {
+test('the software encoder is asked for first, since it gives the same file on every system, and the encoder of the system after it', { timeout: 60000 }, async () => {
   assert.equal(rec.acceleration, 'prefer-software');
   const hardware = await recorder(stubbed(`(config) => config.hardwareAcceleration !== 'prefer-software'`), { fps: FPS, scale: 2 });
   assert.equal(hardware.acceleration, 'no-preference');
