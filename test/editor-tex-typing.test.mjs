@@ -122,9 +122,10 @@ test('after the undo of a display, only a closing sign makes the paragraph a dis
   await page.evaluate('window.BeesonEditor.undo()');
   await page.waitFor(`!document.querySelector('.reveal section.present div.math')`);
   await page.evaluate(`(() => { const p = ${para(1)}; p.focus(); getSelection().selectAllChildren(p); getSelection().collapseToEnd(); return true; })()`);
+  await page.evaluate(`(() => { const mj = window.MathJax; const read = mj.tex2svgPromise.bind(mj); window.__texReads = 0; mj.tex2svgPromise = (...args) => (window.__texReads++, read(...args)); return true; })()`);
   await typeKeys(page, ' ');
   await page.waitFor(`/\\s$/.test(${para(1)}.textContent) || !!document.querySelector('.reveal section.present div.math')`);
-  await page.evaluate('window.MathJax.tex2svgPromise("x").then(() => new Promise((done) => setTimeout(() => done(true), 50)))');
+  assert.equal(await page.evaluate('window.__texReads'), 0, 'a space typed after the undo was read as TeX');
   assert.equal(await page.evaluate(`!!document.querySelector('.reveal section.present div.math')`), false, 'a space typed after the undo made the paragraph a display again');
 });
 
