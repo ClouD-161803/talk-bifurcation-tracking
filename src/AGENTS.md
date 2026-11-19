@@ -61,6 +61,7 @@ On a laptop, the whole suite of `npm test` takes over an hour, with every core b
 - Before you call a failure unrelated to your change, run its test file alone on `main`.
 - Before you hand work over, run `npm run build`, `npm run typecheck`, the test files of your change, and `npm run check`. Hand work over only when all of them pass.
 - Run `node --test test/perf.test.mjs` yourself after you change how backdrops are drawn. This test is skipped on CI.
+- Keep `test/helpers/blocking-stdout.mjs` in the options of `npm test`. With `--test-force-exit`, a test file ends with `process.exit()`, and the reports still queued to a pipe would be dropped.
 - In the workflow `check`, `npm test` is run only in beeson-group/slides. In a talk, only the checks of the deck are run.
 - A PR is checked on Ubuntu only: the tests, the deck in Chrome and in Firefox, and the figures. Windows, macOS, and Safari are checked on `main` after each merge.
 - `npm test` is not run on macOS, since WebGL is drawn there by SwiftShader, too slowly for the timings of the tests.
@@ -97,7 +98,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 
 ## Browsers and reveal.js
 
-- Animation frames are not given to hidden or background tabs. Bring a page to the front with `Page.bringToFront` before you wait for its frames.
+- Animation frames are not given to hidden or background tabs. Bring a page to the front, e.g. with `front` of `test/helpers/apply.mjs`, before you wait for its frames.
 - The system clipboard is shared between tests. Stub `navigator.clipboard`, or send copy and paste events with a `DataTransfer` of the page.
 - Over the DevTools protocol, a trusted key runs an editing command, or clicks a button at Enter, only when it is sent with the command or with its text, e.g. `commands: ['selectAll']` or `text: '\r'`. In headless Chrome, a paste event is not fired at Mod+V.
 - In headless Chrome, a file chooser is canceled unless `Page.setInterceptFileChooserDialog` is turned on before the trusted click that opens it. The cancel would race the files set by the test.
