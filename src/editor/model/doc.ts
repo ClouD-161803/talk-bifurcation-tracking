@@ -7,7 +7,7 @@
 
 import type { Entry } from '../history.ts';
 import { contentWithTex, setContentWithTex, type MathLookup } from '../math.ts';
-import { childSpace, detached, renderDeck, renderUnit, type Pairing } from '../render.ts';
+import { childSpace, detached, leadsBack, renderDeck, renderUnit, unitOf, type Pairing } from '../render.ts';
 import { media } from '../media/store.ts';
 import type { Source, SrcEl } from '../source.ts';
 import { mergeEdit, renderTag, stateOf, translateIn, translateText, type TagEdit, type TagState } from '../tags.ts';
@@ -341,6 +341,9 @@ export class Doc {
     if (!pairing.elements.has(parent) || pairing.byLive.has(parent)) throw new Error(`the ${parent.localName} does not take elements`);
     if (!el.parentElement) throw new Error('the element is not on the page');
     const from = { parent: el.parentElement, next: nextKept(el) };
+    const s = pairing.elements.get(el);
+    const u = s && s.parent === pairing.elements.get(from.parent) ? unitOf(s) : null;
+    const lead = u ? s!.source.text.slice(u.lead.start, u.range.start) : null;
     const put = async (p: Element, n: Node | null) => {
       p.insertBefore(el, n && n !== el && n.parentNode === p ? n : null);
       await this.after(el);
@@ -351,7 +354,15 @@ export class Doc {
     } finally {
       done();
     }
-    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent], parents: [from.parent, parent], orders: [from.parent, parent] });
+    const undo = async () => {
+      if (lead !== null) leadsBack.set(el, { parent: from.parent, lead });
+      await put(from.parent, from.next);
+    };
+    const redo = async () => {
+      leadsBack.delete(el);
+      await put(parent, before);
+    };
+    this.host.record({ label, undo, redo, touches: [el, from.parent, parent], parents: [from.parent, parent], orders: [from.parent, parent] });
   }
 
   // el replaced by an element of the tag with the same attributes and content, and with the edit

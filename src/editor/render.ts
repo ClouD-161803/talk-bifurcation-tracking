@@ -363,6 +363,8 @@ export type Rendered = { text: string; edits: Edit[]; changed: TextElement[]; wa
 // of the file. an element taken off the page otherwise, e.g. by a script of the theme, is kept
 export const detached = new WeakSet<Element>();
 
+export const leadsBack = new WeakMap<Element, { parent: Element; lead: string }>();
+
 type Kid = { child: Child; node: SrcNode };
 
 // the children of s with their ranges, without an element that has no bytes in the file
@@ -547,7 +549,8 @@ class Renderer {
       const mt = m.source.text;
       const lead = mt.slice(home.lead.start, home.range.start);
       const inPlace = isFragmentRoot(m) && m.source.fragment?.home === live;
-      put(inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start) + mt.slice(home.range.end, home.end), true);
+      const back = leadsBack.get(c);
+      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start) + mt.slice(home.range.end, home.end), true);
     }
     let tail = within ? text.slice(within.tail.start, within.tail.end) : '';
     if (!units.length && !tail && parts.length) tail = this.eol + this.indent(s);
