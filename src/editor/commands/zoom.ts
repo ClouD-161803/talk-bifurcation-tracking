@@ -1,28 +1,17 @@
-// the commands of View > Zoom: Fit, Actual Size, Zoom to Selection, Zoom In, Zoom Out, and a typed
-// percentage of the canvas, and the zoom of the text of the notes. Zoom In, Zoom Out, and Actual
-// Size change the text of the notes while the focus is in them, since the zoom of PowerPoint acts
-// on the pane in use, and their keys are thus listed once in the menu. on a Mac, Fit, Actual Size,
-// and Zoom to Selection take the keys of Keynote, Cmd+Option+0, Cmd+0, and Cmd+Shift+0. the keys
-// of Figma, Shift+1, Shift+0, and Shift+2, are bound on every platform, since Ctrl+Alt is not
-// bound on Windows and Linux
-
 import type { App, Region } from '../app.ts';
 import { frameRect } from '../canvas/hit.ts';
 import { MAX_ZOOM, MIN_ZOOM } from '../shell/canvas.ts';
 import { ask } from '../ui/dialog.ts';
 import { make } from '../ui/dom.ts';
 
-// the zoom keys are taken everywhere but in a field and a dialog
 const CANVAS_ZOOM: Region[] = ['canvas', 'text', 'navigator', 'inspector', 'notes'];
 
-// the zoom of the text of the notes while the focus is in them, and else of the canvas
 const inNotes = (app: App, way: 1 | -1 | 0): boolean => {
   if (app.region() !== 'notes') return false;
   app.notes.zoomText(way);
   return true;
 };
 
-// the box of the frames of the selected elements, or of the text element of the text, in slide px
 function selectionBox(app: App): { left: number; top: number; width: number; height: number } | null {
   const sel = app.selection;
   const els = sel.kind === 'elements' || sel.kind === 'text' ? sel.items.filter((el) => el.isConnected) : [];
@@ -81,7 +70,6 @@ export function install(app: App): void {
     menu: menu('step', 24),
     run: (a) => void (inNotes(a, -1) || a.stage.zoomOut()),
   });
-  // the Percent field of the Zoom dialog of PowerPoint, clamped to the range of the slider
   c.define({
     id: 'zoom.custom',
     label: 'Zoom…',
@@ -96,7 +84,6 @@ export function install(app: App): void {
       const body = make('label');
       body.append(make('span', '', 'Percent'), field, make('span', '', '%'));
       const asked = ask({ title: 'Zoom', body, className: 'form', buttons: [{ label: 'Cancel', value: 'cancel' }, { label: 'OK', value: 'ok', primary: true }] }, 'input[name="percent"]');
-      // the value is selected, as in PowerPoint, so that a typed value replaces it
       field.select();
       const answer = await asked;
       const typed = parseFloat(field.value);

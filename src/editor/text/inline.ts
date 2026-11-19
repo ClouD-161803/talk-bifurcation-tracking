@@ -1,9 +1,3 @@
-// the formats of the words of a text element, within the scope rule: strong, em, u, s, sup, sub, code, a
-// link, and a span with one class tone-NAME of theme/beeson.css for the color of the words. a format is
-// set on the range of the text, on the word at the caret when nothing is selected, or on the
-// whole text of each selected text element. the change is recorded as the content of the text element before and
-// after, as typing is, and the command around it makes it one entry of the history
-
 import type { App } from '../app.ts';
 import * as flow from './flow.ts';
 import { canSetList, listKind, offsetIn, paragraphStyle, selectedTextElements, selectIn, setList, setStyle, styleOf, textTarget, type ListKind, type ParagraphStyle, type Target } from './elements.ts';
@@ -30,19 +24,13 @@ export type FormatName = keyof typeof FORMATS;
 
 export const isLink: Match = tagIs('a');
 
-// what Clear Formatting takes off, i.e. every format of the editor and of the browser apart from a
-// link, a formula, and a span of the deck such as the class of a colored symbol
 export const CLEARED: Match = (el) => tagIs('strong', 'b', 'em', 'i', 'sup', 'sub', 'code', 'u', 's', 'strike', 'mark')(el) || isTone(el);
 
-// the elements that a format is not wrapped around, whose content is formatted instead
 const BREAKING = 'ul, ol, li, p, div, table, pre, h1, h2, h3, h4, h5, h6, mjx-container';
 const INNER = 'li, p, div, td, th, pre, h1, h2, h3, h4, h5, h6';
 
 const elementOf = (n: Node): Element | null => (n instanceof Element ? n : n.parentElement);
 
-// the range around the word at a collapsed caret strictly inside it, or the range itself. a caret
-// at the edge of a word is left to the typing style of carry.ts, as in Word and PowerPoint, unless
-// edge is set, as for a link and the Format Painter, which take the word at the caret
 function wordRange(range: Range, edge: boolean): Range {
   if (!range.collapsed || !(range.startContainer instanceof Text)) return range;
   const text = range.startContainer;
@@ -58,9 +46,6 @@ function wordRange(range: Range, edge: boolean): Range {
   return r;
 }
 
-// range without the white space at its end, e.g. the space that a double-click on Windows selects
-// after a word, which Word and PowerPoint leave out of a format. a range of white space alone is
-// kept
 function trimEnd(range: Range): Range {
   const end = range.endContainer;
   if (range.collapsed || !(end instanceof Text)) return range;
@@ -73,8 +58,6 @@ function trimEnd(range: Range): Range {
   return r;
 }
 
-// the ranges that a format is set on: the text of the window or the word at its caret, and else
-// the whole text of each selected text element. notes take only bold and italic
 export function inlineTargets(app: App, notes = false, edge = false): Target[] {
   const spanned = flow.spanTargets(app);
   if (spanned.length) return spanned;
@@ -84,8 +67,6 @@ export function inlineTargets(app: App, notes = false, edge = false): Target[] {
     const range = trimEnd(wordRange(t.range, edge));
     return range.collapsed ? [] : [{ host: t.host, range }];
   }
-  // an item takes its nested items too, which are part of its text element, and setFormat cuts the range
-  // at each item
   return selectedTextElements(app).map((host) => {
     const range = document.createRange();
     range.selectNodeContents(host);
@@ -93,7 +74,6 @@ export function inlineTargets(app: App, notes = false, edge = false): Target[] {
   });
 }
 
-// the text nodes of range that are not blank, or the node at a collapsed range
 function textsIn(range: Range): Node[] {
   const root = range.commonAncestorContainer;
   if (root instanceof Text) return [root];
@@ -106,20 +86,15 @@ function textsIn(range: Range): Node[] {
   return out.length ? out : [range.startContainer];
 }
 
-// the element of host around node that matches, if any
 export function around(host: Element, node: Node, match: Match): Element | null {
   for (let el = elementOf(node); el && el !== host && host.contains(el); el = el.parentElement) if (match(el)) return el;
   return null;
 }
 
-// true when every text of range is inside an element of the format
 export function formatted(host: Element, range: Range, match: Match): boolean {
   return textsIn(range).every((n) => around(host, n, match));
 }
 
-// the nodes of range taken out of every element that matches: an element around the whole range
-// is cut into the part before the range, the range, and the part after it, and an element inside
-// the range is unwrapped. the nodes are siblings in order
 function lift(host: Element, range: Range, match: Match): Node[] {
   let outer: Element | null = null;
   for (let el = elementOf(range.commonAncestorContainer); el && el !== host && host.contains(el); el = el.parentElement) if (match(el)) outer = el;
@@ -137,7 +112,6 @@ function lift(host: Element, range: Range, match: Match): Node[] {
     const before = outer.cloneNode(false) as Element;
     before.append(head.extractContents());
     nodes = [...outer.childNodes];
-    // a part of white space alone is not kept in an element of its own
     const part = (el: Element) => (el.textContent!.trim() || el.querySelector('mjx-container, img, br') ? [el] : [...el.childNodes]);
     outer.before(...part(before));
     outer.after(...part(after));
@@ -163,8 +137,6 @@ function lift(host: Element, range: Range, match: Match): Node[] {
   return out;
 }
 
-// each run of inline nodes in nodes wrapped in an element of make, and the content of an element
-// among them that breaks the line formatted in the same way. a run of white space alone is not wrapped
 function wrapRuns(nodes: Node[], make: () => Element): void {
   let run: Node[] = [];
   const flush = () => {
@@ -184,21 +156,16 @@ function wrapRuns(nodes: Node[], make: () => Element): void {
   flush();
 }
 
-// an element of a format left without text by a cut is removed
 function prune(host: Element): void {
   for (const el of [...host.querySelectorAll('strong, em, b, i, u, s, strike, sup, sub, code, span, a')].reverse()) {
     if ((CLEARED(el) || isLink(el)) && !el.textContent && !el.querySelector('mjx-container, br, img')) el.remove();
   }
 }
 
-// the change of a format on each target, recorded in the history as the content of its text element
-// before and after. a target of the window keeps the formatted text selected, or the caret where it
-// was, so that the typing goes on at the caret
 export function edit(app: App, targets: Target[], change: (host: Element, range: Range) => Node[]): void {
   const t = textTarget(app);
   const spanning = flow.active();
   const caret = t?.range.collapsed ? offsetIn(t.host, t.range.startContainer, t.range.startOffset) : null;
-  // an undo and a redo select the text again, as History.selecting does an element
   const kept = app.history.keep(() => {
     const p = flow.places(app);
     return p && (() => flow.select(app, ...p));
@@ -208,7 +175,6 @@ export function edit(app: App, targets: Target[], change: (host: Element, range:
     const nodes = change(host, range);
     prune(host);
     if (spanning) {
-      // the span keeps its places, which a format does not move
     } else if (caret !== null && host === t!.host) selectIn(host, caret);
     else if (t && nodes.length) {
       const connected = nodes.filter((n) => n.isConnected);
@@ -231,8 +197,6 @@ export function edit(app: App, targets: Target[], change: (host: Element, range:
   app.invalidate('content');
 }
 
-// the parts of range in each inner element of host that it touches, e.g. an item and its nested items, so
-// that a format does not cut an item in two
 function innerParts(host: Element, range: Range): Range[] {
   const groups = new Map<Element, Text[]>();
   const root = range.commonAncestorContainer;
@@ -256,7 +220,6 @@ function innerParts(host: Element, range: Range): Range[] {
   });
 }
 
-// the nodes of range taken out of the format of match, and wrapped in an element of make if given
 export function setFormat(host: Element, range: Range, match: Match, make: (() => Element) | null): Node[] {
   const parts = innerParts(host, range);
   if (parts.length > 1) return parts.flatMap((r) => setFormat(host, r, match, make));
@@ -268,8 +231,6 @@ export function setFormat(host: Element, range: Range, match: Match, make: (() =
   return nodes;
 }
 
-// a format is taken off when every text of every target has it, and else put on. superscript and
-// subscript take each other off
 export function toggle(app: App, name: FormatName): void {
   const targets = inlineTargets(app, name === 'bold' || name === 'italic');
   if (!targets.length) return;
@@ -288,7 +249,6 @@ export function isOn(app: App, name: FormatName): boolean {
   return targets.length > 0 && targets.every((t) => formatted(t.host, t.range, FORMATS[name].match));
 }
 
-// the tone of the words at the caret or of the selection, null for the text color of the theme
 export function toneAt(app: App, targets = inlineTargets(app)): Tone | null {
   const t = targets[0] ?? textTarget(app);
   if (!t) return null;
@@ -296,11 +256,8 @@ export function toneAt(app: App, targets = inlineTargets(app)): Tone | null {
   return span ? (span.classList[0].slice(5) as Tone) : null;
 }
 
-// whether the words of host are drawn in a color other than the one that it inherits, as a small
-// paragraph, a caption, and a footnote are
 const ownColor = (host: Element): boolean => !!host.parentElement && getComputedStyle(host).color !== getComputedStyle(host.parentElement).color;
 
-// whether the words at the start of the text are drawn in the text color
 export function textColored(app: App, targets = inlineTargets(app)): boolean {
   const t = targets[0] ?? textTarget(app);
   if (!t) return false;
@@ -308,8 +265,6 @@ export function textColored(app: App, targets = inlineTargets(app)): boolean {
   return span ? span.classList.contains('tone-text') : !ownColor(t.host);
 }
 
-// the words colored in tone, or given the text color of the theme with null. the tone text is a
-// span only in a text element of a color of its own, and else the tone is taken off
 export function setTone(app: App, tone: Tone | null, targets = inlineTargets(app)): void {
   edit(app, targets, (host, range) => {
     const t = tone === 'text' && !ownColor(host) ? null : tone;
@@ -325,7 +280,6 @@ export function clearFormatting(app: App): void {
   edit(app, inlineTargets(app, true), (host, range) => setFormat(host, range, CLEARED, null));
 }
 
-// the range of a link: the whole link around a collapsed caret, and else the range of a format
 function linkTargets(app: App): Target[] {
   const t = textTarget(app);
   if (t && t.range.collapsed && !t.host.matches('aside.notes')) {
@@ -341,7 +295,6 @@ function linkTargets(app: App): Target[] {
 
 export const canLink = (app: App): boolean => linkTargets(app).length > 0;
 
-// the address of the link at the start of the range of a link, or null
 export function linkAt(app: App): string | null {
   const t = linkTargets(app)[0];
   const a = t ? around(t.host, t.range.startContainer, isLink) ?? around(t.host, textsIn(t.range)[0], isLink) : null;
@@ -360,15 +313,10 @@ export function removeLink(app: App): void {
   edit(app, linkTargets(app), (host, range) => setFormat(host, range, isLink, null));
 }
 
-// the kinds of Change Case of PowerPoint
 export type Case = 'sentence' | 'lower' | 'upper' | 'title' | 'toggle';
 
 const isWordChar = (c: string) => /[\p{L}\p{N}]/u.test(c);
 
-// text in the case of kind. before is the text of the text element before it, which tells recase where a
-// word or a sentence starts. a word starts after a character that is not a letter or a digit,
-// apart from an apostrophe inside a word, and a sentence at the start of a text element and after a
-// period, an exclamation mark, or a question mark
 export function recase(text: string, kind: Case, before = ''): string {
   let prev = before.at(-1) ?? '';
   let sentence = !before.trim() || /[.!?]["'”’)\]]*\s*$/.test(before);
@@ -388,16 +336,12 @@ export function recase(text: string, kind: Case, before = ''): string {
   return out;
 }
 
-// the kind that Shift+F3 changes text to, as in PowerPoint: lowercase becomes UPPERCASE, UPPERCASE
-// becomes Capitalize Each Word, and text in any other case becomes lowercase
 export function nextCase(text: string): Case {
   if (text === text.toLowerCase() && text !== text.toUpperCase()) return 'upper';
   if (text === text.toUpperCase() && text !== text.toLowerCase()) return 'title';
   return 'lower';
 }
 
-// the text nodes of range outside a formula. a node cut by an end of range is split there first,
-// hence every node returned is inside range. range is live, and splitText moves its ends
 function splitTexts(range: Range): Text[] {
   const { endContainer: ec, endOffset: eo } = range;
   if (ec instanceof Text && eo > 0 && eo < ec.length) ec.splitText(eo);
@@ -414,10 +358,8 @@ function splitTexts(range: Range): Text[] {
   return out;
 }
 
-// the text of host before node, without its formulas
 function textBefore(host: Element, node: Node): string {
   let out = '';
-  // a nested item starts a sentence of its own
   const item = elementOf(node)?.closest(INNER);
   const walker = document.createTreeWalker(item && host.contains(item) ? item : host, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode() as Text | null; n && n !== node; n = walker.nextNode() as Text | null) {
@@ -432,8 +374,6 @@ const caseTexts = (range: Range): string => {
   return copy.textContent ?? '';
 };
 
-// the words of each target set in the case of kind. with cycle, the kind is the one that nextCase
-// gives for the words of the first target. the formats around the words are kept
 export function changeCase(app: App, kind: Case | 'cycle'): void {
   const targets = inlineTargets(app);
   if (!targets.length) return;
@@ -448,8 +388,6 @@ export function changeCase(app: App, kind: Case | 'cycle'): void {
   });
 }
 
-// the style that Copy Style takes and Paste Style sets: the formats of the words, their tone, and
-// the paragraph style and the kind of list of their text element
 export type TextStyle = {
   formats: Record<FormatName, boolean>;
   tone: Tone | null;
@@ -459,15 +397,12 @@ export type TextStyle = {
 
 const NAMES = Object.keys(FORMATS) as FormatName[];
 
-// true when range covers every text of host
 function covers(host: Element, range: Range): boolean {
   const all = document.createRange();
   all.selectNodeContents(host);
   return range.toString().trim() === all.toString().trim();
 }
 
-// the style of the word at the caret or of the first character of the range of a text, or of the
-// first selected text element. null where neither a text nor a text element is selected
 export function readStyle(app: App): TextStyle | null {
   const t = textTarget(app);
   if (t && t.host.matches('aside.notes')) return null;
@@ -484,8 +419,6 @@ export function readStyle(app: App): TextStyle | null {
   return { formats, tone, paragraph: styleOf(app, host), list };
 }
 
-// each element of made is joined with a sibling of the same tag and class next to it, which paint
-// leaves where the words of a target were cut out of a format
 function joinSame(made: Set<Element>): void {
   const same = (a: Node | null, b: Element): a is Element => a instanceof Element && a.localName === b.localName && a.className === b.className && a.attributes.length === b.attributes.length;
   for (const el of made) {
@@ -499,8 +432,6 @@ function joinSame(made: Set<Element>): void {
   }
 }
 
-// the formats of style set on range in place of its own. every format of CLEARED is taken off,
-// then the formats of style are wrapped around the words, the tone span inside and strong outside
 function paint(host: Element, range: Range, style: TextStyle): Node[] {
   let nodes = setFormat(host, range, CLEARED, null);
   const made = new Set<Element>();
@@ -528,9 +459,6 @@ function paint(host: Element, range: Range, style: TextStyle): Node[] {
 
 export const canPaint = (app: App): boolean => inlineTargets(app, false, true).length > 0;
 
-// style set on the words of the selection, as Paste Style and the Format Painter set it. where the
-// whole text of a text element is selected, the kind of list is set too in a text, as the list commands are,
-// then the paragraph style. a list item hence becomes a paragraph after the style of a paragraph
 export async function pasteStyle(app: App, style: TextStyle): Promise<void> {
   const targets = inlineTargets(app, false, true);
   if (!targets.length) return;

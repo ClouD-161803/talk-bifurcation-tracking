@@ -217,7 +217,7 @@ async function init(): Promise<void> {
     // screen (B, V, the period), fullscreen (F), the help (the question mark), and the speaker view
     // (S) are off. the viewport of reveal.js is laid out again between the bars. a video is held at
     // its poster, as a movie of Keynote in the editing view, and played only from the Video pane
-    d.configure({ transition: 'none', backgroundTransition: 'none', fragments: false, autoPlayMedia: false, keyboard: { 27: null, 79: null, 66: null, 86: null, 190: null, 70: null, 191: null, 83: null } });
+    d.configure({ transition: 'none', backgroundTransition: 'none', fragments: false, autoPlayMedia: false, keyboard: false });
     for (const v of document.querySelectorAll<HTMLVideoElement>('.reveal .slides video')) {
       if (v.paused) continue;
       v.pause();

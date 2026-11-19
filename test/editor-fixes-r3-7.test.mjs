@@ -343,6 +343,8 @@ test('a label of the history is set in the title case of Apple, with short words
   // the first and the last word are capitalized, and a word given with a capital is kept
   assert.equal(titled('a move with Alt'), 'A Move with Alt');
   assert.equal(titled('set up'), 'Set Up');
+  assert.equal(titled('take out of group'), 'Take Out of Group');
+  assert.equal(titled('turn off spelling'), 'Turn Off Spelling');
   assert.equal(titled('insert QR code'), 'Insert QR Code');
   assert.equal(titled('zoom in'), 'Zoom In');
 });

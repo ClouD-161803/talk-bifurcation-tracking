@@ -1,10 +1,3 @@
-// the typing style of Keynote and PowerPoint: with the caret in a text but not in a word, e.g. in a
-// new text box or at the end of a footnote, a format, a tone, a paragraph style, or a kind of list
-// chosen in the Text pane is kept for the text typed next at the same caret, and dropped once the
-// caret moves. in a new box of commands/insert.ts, which is written into the file at its first
-// character, it is set on the written box by applyPending. the size of a code box is its font size
-// of 22 or 18 px, the one size that the scope rule allows on a pre
-
 import type { App } from '../app.ts';
 import * as textElements from './elements.ts';
 import { FORMATS, around, inlineTargets, isTone, setTone, toggle, type FormatName, type Tone } from './inline.ts';
@@ -15,7 +8,6 @@ type Carry = Caret & { formats: Partial<Record<FormatName, boolean>>; tone?: Ton
 const SMALL_CODE = '18px';
 let carry: Carry | null = null;
 
-// the collapsed caret in a text element of the file or in a new box that waits for its first character
 function caretOf(app: App): Caret | null {
   const sel = window.getSelection();
   if (!sel?.rangeCount || !sel.isCollapsed || !sel.anchorNode) return null;
@@ -30,7 +22,6 @@ function caretOf(app: App): Caret | null {
 
 const kindOf = (c: Caret): 'code' | 'foot' | 'text' => (c.host.closest('pre') ? 'code' : c.host.matches('.foot') ? 'foot' : 'text');
 
-// the carry of the caret, while the caret has not moved
 function current(app: App): Carry | null {
   const c = caretOf(app);
   if (!c || !carry || carry.host !== c.host || carry.node !== c.node || carry.offset !== c.offset) return null;
@@ -48,8 +39,6 @@ function changed(app: App): void {
   app.invalidate('selection');
 }
 
-// true where a format chosen now is kept for the text typed next: a caret outside a word in a text
-// that holds formats, i.e. not in a code box, and in the notes only for bold and italic
 export function canFormat(app: App, notes = false): boolean {
   const c = caretOf(app);
   if (!c || kindOf(c) === 'code' || (!notes && c.host.matches('aside.notes'))) return false;
@@ -85,7 +74,6 @@ export function chooseTone(app: App, tone: Tone | null): void {
   changed(app);
 }
 
-// the paragraph style and the kind of list of a new box, which a text element of the file has already
 const pendingText = (app: App): Caret | null => {
   const c = caretOf(app);
   return c?.pending && kindOf(c) !== 'code' ? c : null;
@@ -123,7 +111,6 @@ export function chooseList(app: App, kind: textElements.ListKind): void {
   changed(app);
 }
 
-// the code box at the caret or selected on the canvas, or a new code box
 function codeBox(app: App): { pre: Element | null; small: boolean } | null {
   const c = caretOf(app);
   if (c && kindOf(c) === 'code') {
@@ -154,8 +141,6 @@ export function sizeCode(app: App, up: boolean): void {
   app.invalidate('content');
 }
 
-// the caret at the end of the last text of the selection, inside the formats around it. the
-// selection may end inside this text, once the text after it has been joined to it
 function caretAtLastText(): void {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return;
@@ -168,9 +153,6 @@ function caretAtLastText(): void {
   else sel.collapseToEnd();
 }
 
-// the outermost element of a format that k takes off, around the caret and ending at it, e.g. the
-// sup of a reference number after Superscript is turned off. Chrome types a space at this caret
-// into the element, where it is drawn at the size of a superscript
 function ending(k: Carry): Element | null {
   const off = (Object.keys(k.formats) as FormatName[]).filter((name) => k.formats[name] === false);
   let out: Element | null = null;
@@ -184,7 +166,6 @@ function ending(k: Carry): Element | null {
   return out;
 }
 
-// the first text of the selection that is not in a formula
 function firstText(): Text | null {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return null;
@@ -196,8 +177,6 @@ function firstText(): Text | null {
   return null;
 }
 
-// the tone and the formats of k set on the selected text where they differ from it, the tone
-// inside and bold outside, as Paste Style sets them
 function formatSelection(app: App, k: Carry): void {
   const has = (match: (el: Element) => boolean): boolean | null => {
     const text = firstText();
@@ -217,8 +196,6 @@ function formatSelection(app: App, k: Carry): void {
   }
 }
 
-// the carry of the new box from, now written into the file as the text element to, is set on the text of
-// the text element, within the transaction that writes it
 export async function applyPending(app: App, from: Element, to: Element): Promise<void> {
   const k = carry && carry.host === from ? carry : null;
   carry = null;
@@ -245,9 +222,6 @@ export async function applyPending(app: App, from: Element, to: Element): Promis
 }
 
 export function install(app: App): void {
-  // the first character typed at the caret of a carry is typed with it. a space alone is typed as
-  // it is and keeps the carry, since a format is not set on a run of white space. at the end of a
-  // format that the carry takes off, the space is typed after the element of the format by hand
   let follow: Carry | null = null;
   document.addEventListener('beforeinput', (ev) => {
     follow = null;
@@ -262,8 +236,6 @@ export function install(app: App): void {
       }
       ev.preventDefault();
       app.history.beforeTyping(k.host);
-      // a space before white space or at the end of the text is typed as a no-break space, as
-      // Chrome types it, since a plain space there is not drawn
       const next = out.nextSibling;
       const drawn = next instanceof Text ? /^\S/.test(next.data) : !!next;
       const text = document.createTextNode(drawn ? ev.data : ev.data.replace(/ $/, '\u00a0'));
@@ -282,8 +254,6 @@ export function install(app: App): void {
     const host = k.host;
     app.history.beforeTyping(host);
     const sel = window.getSelection()!;
-    // the no-break space typed above is a plain space once a character follows it, as the file
-    // writes it. a no-break space of Latin Modern Roman is half as wide again as a space
     if (k.nbsp && k.node instanceof Text && k.node.data[k.offset - 1] === '\u00a0') {
       k.node.replaceData(k.offset - 1, 1, ' ');
       sel.collapse(k.node, k.offset);

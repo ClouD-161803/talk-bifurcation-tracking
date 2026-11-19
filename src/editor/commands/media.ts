@@ -1,10 +1,3 @@
-// the commands of image and video files: Image… and Video… of the Insert menu and of the Insert
-// group of the toolbar, Choose File… of the Insert menu as in Keynote, Replace Image…, Match the
-// Mode of a PDF figure, and Capture Poster of Format > Image and of the Image and Video panes, and Save as Picture… of the menu of a
-// picture in PowerPoint. each takes its files from the file chooser of the browser, or from
-// arg.files, e.g. in a test. the install also sets up the drop of files onto the slide, the
-// writing of new files at a save, and the files of a draft
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { display } from '../keymap.ts';
@@ -19,22 +12,17 @@ type Arg = { el?: Element; files?: File[] } | undefined;
 
 const filesOf = (arg: unknown): File[] | null => (arg as Arg)?.files ?? null;
 
-// the PDF figure given as arg.el, else the one of the selection
 const pdfFigureOf = (app: App, arg?: unknown): HTMLImageElement | null => {
   const el = mediaOf(app, arg);
   return el instanceof HTMLImageElement && el.hasAttribute('data-pdf') ? el : null;
 };
 
-// the image or the video given as arg.el, else the one of the selection
 function mediaOf(app: App, arg: unknown): HTMLImageElement | HTMLVideoElement | null {
   const el = (arg as Arg)?.el;
   if (el?.isConnected && (el instanceof HTMLImageElement || el instanceof HTMLVideoElement)) return el;
   return imageOf(app) ?? videoOf(app) ?? hiddenOf(app);
 }
 
-// the file of an image or a video as the deck names it, with the name of its last segment: a new
-// file from the store, a data or blob URL, or a file of the folder of the deck. a file on another
-// server is not offered, since the editor does not fetch anything from the network
 type Picture = { name: string; href: string; tab: boolean };
 
 function pictureOf(el: HTMLImageElement | HTMLVideoElement): Picture | null {
@@ -60,14 +48,10 @@ function pictureOf(el: HTMLImageElement | HTMLVideoElement): Picture | null {
   try {
     name = decodeURIComponent(name);
   } catch {
-    // the name is kept as it is written
   }
-  // a browser does not download a file of a page opened from a file, and it would open the file in
-  // place of the editor, hence the file is opened in a new tab
   return { name: name || fallback, href: url.href, tab: url.protocol === 'file:' };
 }
 
-// the file is downloaded as it is, under its own name, or shown in a new tab where it is saved
 function savePicture(app: App, picture: Picture): void {
   if (picture.tab) {
     window.open(picture.href, '_blank', 'noopener');
@@ -89,10 +73,7 @@ export function install(app: App): void {
   installSave(app);
   installDrop(app);
   installBackdrop(app);
-  // the files of a draft are kept with it, and else IndexedDB is cleared of them
   void media.load(app.drafts.hasDraft()).then((n) => n && media.resolve(app.slides()));
-  // a src or a poster written on the page from the file, e.g. by an undo of a removal or by a
-  // paste, is shown from the store when it names a new file
   new MutationObserver((records) => {
     for (const r of records) {
       if (r.type === 'attributes') media.resolve(r.target as Element);
@@ -124,8 +105,6 @@ export function install(app: App): void {
       run: insert(ACCEPT.video, false),
     },
     {
-      // a backdrop from the gallery of commands/backdrop.ts, at the ground of the slide, or in place
-      // of the drawing of the backdrop of the slide
       id: 'insert.backdrop',
       label: 'Backdrop…',
       menu: { bar: 'Insert', group: 'element', order: 26.5 },
@@ -134,7 +113,6 @@ export function install(app: App): void {
       run: (a, arg) => openGallery(a, arg instanceof Element ? arg : null),
     },
     {
-      // Ctrl+Shift+V is Paste and Match Style outside the Mac, hence the key is only ⇧⌘V there
       id: 'insert.file',
       label: 'Choose File…',
       keys: { mac: ['Mod+Shift+V'] },
@@ -145,7 +123,6 @@ export function install(app: App): void {
     },
     {
       id: 'media.replace',
-      // on a picture that the mode hides, the file is chosen for the other mode
       label: (a) => {
         const h = hiddenOf(a);
         const kind = (h ?? videoOf(a))?.localName === 'video' ? 'Video' : 'Image';
@@ -162,7 +139,6 @@ export function install(app: App): void {
       },
     },
     {
-      // the id is outside media., which a lock turns off, since a save does not change the element
       id: 'picture.save',
       label: (a) => (videoOf(a) ? 'Save Media as…' : 'Save as Picture…'),
       context: ['element'],
@@ -177,7 +153,6 @@ export function install(app: App): void {
       },
     },
     {
-      // the page is arg.page, typed into the Image pane
       id: 'media.pdfPage',
       label: 'PDF Page',
       enabled: (a) => !!pdfFigureOf(a),
@@ -188,7 +163,6 @@ export function install(app: App): void {
       },
     },
     {
-      // a PDF figure with an image for each mode in its tones, or one image in the colors of the PDF
       id: 'media.matchMode',
       label: 'Match the Mode',
       menu: { bar: 'Format', group: 'file', order: 7, submenu: 'Image' },

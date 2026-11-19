@@ -343,7 +343,7 @@ describe('the contrast of the rings around controls', () => {
       test(`the Go to Slide field and the checkboxes of Display Options draw the ring of the editor (${platform}, ${theme})`, async (t) => {
         const page = await load(t, { query: `edit&still&theme=${theme}&edit-platform=${platform}` });
         await exec(page, 'navigate.goTo');
-        await page.waitFor(`document.activeElement.matches('.jump-to-slide-input')`);
+        await page.waitFor(`document.activeElement.matches('.beeson-edit-goto input')`);
         let ring = await page.evaluate(RING);
         assert.equal(ring.color, ring.focus, 'Go to Slide');
         assert.ok(ring.width >= 2 && ring.style === 'solid', JSON.stringify(ring));

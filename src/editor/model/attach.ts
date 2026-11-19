@@ -1,14 +1,3 @@
-// connection lines, as the connectors of PowerPoint: each end of a line of commands/line.ts may be
-// attached to an element of its slide, and it then follows every change of the box of the element.
-// the element gets a name in data-anchor, unique on its slide, and the svg of the line names it in
-// data-from for its start and data-to for its end, with the place of the end in the box of the
-// element as two fractions from 0 to 1, e.g. data-to="a1 0 0.5" for the middle of the left edge.
-// a group takes an attachment as one object, with its name on each member, hence data-anchor is a list of
-// names as data-group is. the theme does not read these attributes. a name is written with the first end attached to its
-// element and taken off with the last. an attached end is put at its place again at the end of each
-// transaction of the history, after each input of typing, and by record() of canvas/drag.ts for a
-// change outside one, in the same entry as the change of the element
-
 import type { App } from '../app.ts';
 import type { Entry } from '../history.ts';
 import { mergeEdit, type TagEdit, type Translate } from '../tags.ts';
@@ -20,13 +9,9 @@ import { groupFrame } from '../canvas/frames.ts';
 import { groupOf } from './groups.ts';
 
 export type End = 'from' | 'to';
-// the elements of an object, i.e. an element or the members of a group, and the place of an end in
-// its box
 export type Attachment = { els: Element[]; fx: number; fy: number };
 
-// an end is put at the middle of an edge of the box within this distance of it, in slide px
 export const REACH = 16;
-// the elements that take an attachment, and the texts that take it once moved as a box
 const TAKES = 'img, video, figure, .figure-box, .qr, .tikz, .shape, table, div.math, tycho-viewer';
 const TEXTS = 'h1, h2, h3, p, ul, ol, dl, pre, blockquote, .caption';
 const MIDDLES: [number, number][] = [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]];
@@ -46,7 +31,6 @@ const shown = (els: Element[]) => {
 };
 const num = (v: number) => String(Math.round(v * 1000) / 1000);
 
-// the name and the place of the attachment of an end, or null
 export function parseEnd(v: string | null): { name: string; fx: number; fy: number } | null {
   const m = /^\s*(\S+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*$/.exec(v ?? '');
   return m ? { name: m[1], fx: parseFloat(m[2]), fy: parseFloat(m[3]) } : null;
@@ -58,19 +42,13 @@ const translateOf = (el: Element): Translate | null => {
   return Number.isFinite(x) && (x || y) ? { x, y: y || 0 } : null;
 };
 
-// the elements named name on slide that are shown, e.g. without the twin of an image in the other
-// mode, or all of them when none is shown
 export const anchorsOf = (slide: Element | null, name: string): Element[] => shown([...(slide?.querySelectorAll(withName(name)) ?? [])]);
 
-// whether el takes an attachment: a shape, a picture or a figure, a table, a formula, a QR code, a video, and
-// a text moved as a box, and not a backdrop, a plate, the chrome, or a line
 export function takesAttachment(el: Element): boolean {
   if (el.matches(`${LINE}, .backdrop, .plate, .foot`)) return false;
   return el.matches(TAKES) || (el.matches(TEXTS) && !!translateOf(el));
 }
 
-// the box of els in slide px before its turn, and the angle it is turned by: of an element, or the
-// frame of a group, turned by the angle of its first member as align.ts frames it
 function boxOf(f: Frame, els: Element[]): { box: Box; deg: number } {
   const top = shown(els).filter((el) => !els.some((o) => o !== el && o.contains(el)));
   if (top.length === 1) return { box: toSlide(f, unturnedRect(top[0]).box), deg: pictureTurn(top[0]) };
@@ -85,14 +63,11 @@ const turn = (box: Box, deg: number, p: Point, back = false): Point => {
   return { x: cx + (p.x - cx) * Math.cos(a) - (p.y - cy) * Math.sin(a), y: cy + (p.x - cx) * Math.sin(a) + (p.y - cy) * Math.cos(a) };
 };
 
-// the point of the place fx, fy in the box of els, in slide px
 export function placeIn(app: App, els: Element[], fx: number, fy: number): Point {
   const { box, deg } = boxOf(frameOf(app), els);
   return turn(box, deg, { x: box.left + fx * box.width, y: box.top + fy * box.height });
 }
 
-// the objects of the current slide that take an attachment outside skip, the topmost first: an element, or
-// the members of a group as one object unless the group holds an element of skip
 function objectsOf(app: App, skip: Element[]): Element[][] {
   const near = (a: Element, b: Element) => a === b || a.contains(b) || b.contains(a);
   const out: Element[][] = [];
@@ -109,9 +84,6 @@ function objectsOf(app: App, skip: Element[]): Element[][] {
   return out;
 }
 
-// the attachment of an end at p in slide px: the topmost object of the current slide that takes an attachment under
-// p, or else the object with the nearest middle of an edge within REACH, outside skip, with p at the
-// middle of its nearest edge within REACH, or at p. at is the point that the end is put at
 export function attachmentAt(app: App, p: Point, skip: Element[] = []): { attachment: Attachment; at: Point } | null {
   const f = frameOf(app);
   let best: { els: Element[]; box: Box; deg: number; q: Point; near: { fx: number; fy: number; d: number } } | null = null;
@@ -136,7 +108,6 @@ export function attachmentAt(app: App, p: Point, skip: Element[] = []): { attach
   return { attachment: g, at: turn(box, deg, { x: box.left + g.fx * box.width, y: box.top + g.fy * box.height }) };
 }
 
-// the outline of the element that an end dragged over it is attached to, with the middles of its edges
 let outline: HTMLElement | null = null;
 export function showTarget(app: App, els: Element[] | null): void {
   if (!outline) {
@@ -155,14 +126,10 @@ export function showTarget(app: App, els: Element[] | null): void {
   [...outline.children].forEach((dot, i) => Object.assign((dot as HTMLElement).style, { left: `${MIDDLES[i][0] * 100}%`, top: `${MIDDLES[i][1] * 100}%` }));
 }
 
-// a writer of attributes and of the translate of a start tag: app.doc.setTag inside a transaction,
-// or a Patch
 export type Writer = (el: Element, attrs: Record<string, string | null>, translate?: Translate | null) => void;
 
 export const recorded = (app: App): Writer => (el, attrs, translate) => app.doc.setTag(el, { attrs, ...(translate !== undefined ? { translate } : {}) }, 'attach');
 
-// the edit written on the page and into the tag edits without an entry of the history, as
-// writePlace of canvas/drag.ts writes a place
 function put(app: App, el: Element, edit: TagEdit): void {
   app.tagEdits.set(el, mergeEdit(app.tagEdits.get(el), edit));
   for (const [k, v] of Object.entries(edit.attrs ?? {})) {
@@ -173,9 +140,6 @@ function put(app: App, el: Element, edit: TagEdit): void {
   app.markDirty();
 }
 
-// writes made outside the history, kept with the values that they replaced, for the entry of the
-// change that made them. the values after them are read at the undo, since later writes of the
-// same run are added to it, e.g. the nudges of arrange.ts less than a second apart
 export class Patch {
   private readonly before = new Map<Element, TagEdit>();
   private after = new Map<Element, TagEdit>();
@@ -186,7 +150,6 @@ export class Patch {
   get empty(): boolean {
     return !this.before.size;
   }
-  // the elements written, which an apply of a session prunes the entry of the patch for
   get touched(): Element[] {
     return [...this.before.keys()];
   }
@@ -207,7 +170,6 @@ export class Patch {
   }
 }
 
-// the stroke of the line svg in slide px, or null for a path that the editor does not write
 const strokeAt = (svg: Element): Stroke | null => parseStroke(strokeOf(svg), translateOf(svg) ?? { x: 0, y: 0 });
 
 export function writeStroke(write: Writer, svg: Element, s: Stroke): void {
@@ -220,12 +182,9 @@ export function writeStroke(write: Writer, svg: Element, s: Stroke): void {
 
 const linesOf = (slide: Element | null): Element[] => [...(slide?.querySelectorAll(`${LINE}[data-from], ${LINE}[data-to]`) ?? [])];
 
-// whether a line of slide names name
 const named = (slide: Element | null, name: string): boolean =>
   linesOf(slide).some((svg) => (['from', 'to'] as End[]).some((e) => parseEnd(svg.getAttribute(attrOf(e)))?.name === name));
 
-// the name of the object els, i.e. a name that only these elements have, or a new one unique on its
-// slide added to each, e.g. a1
 export function nameOf(write: Writer, els: Element[]): string {
   const slide = slideOf(els[0]);
   const own = namesOf(els[0]).find((n) => els.every((el) => namesOf(el).includes(n)) && [...(slide?.querySelectorAll(withName(n)) ?? [])].every((a) => els.includes(a)));
@@ -237,7 +196,6 @@ export function nameOf(write: Writer, els: Element[]): string {
   return `a${i}`;
 }
 
-// the name taken off the elements of slide once no line names it
 function tidy(write: Writer, slide: Element | null, name: string): void {
   if (!slide || named(slide, name)) return;
   for (const el of slide.querySelectorAll(withName(name))) {
@@ -246,7 +204,6 @@ function tidy(write: Writer, slide: Element | null, name: string): void {
   }
 }
 
-// the end of svg attached to g, or let go with null
 export function setEnd(write: Writer, svg: Element, end: End, g: Attachment | null): void {
   const was = parseEnd(svg.getAttribute(attrOf(end)));
   const value = g ? `${nameOf(write, g.els)} ${num(g.fx)} ${num(g.fy)}` : null;
@@ -255,15 +212,11 @@ export function setEnd(write: Writer, svg: Element, end: End, g: Attachment | nu
   if (was) tidy(write, slideOf(svg), was.name);
 }
 
-// the elements of the object of the attachment of an end, none for an end without an attachment
 export function attachedTo(svg: Element, end: End): Element[] {
   const g = parseEnd(svg.getAttribute(attrOf(end)));
   return g ? anchorsOf(slideOf(svg), g.name) : [];
 }
 
-// each attached end of the current slide put at its place in the box of its element, and the attachment of
-// an end whose element is gone taken off. a turned line, and an element that is not laid out, are
-// left as they are
 export function follow(app: App, write: Writer): void {
   const slide = app.current();
   for (const svg of linesOf(slide)) {
@@ -288,8 +241,6 @@ export function follow(app: App, write: Writer): void {
   }
 }
 
-// the attachment of the moved lines taken off at each end whose element was not moved with them, as a
-// move of a whole connector in PowerPoint
 function letGo(write: Writer, moved: Element[]): void {
   for (const svg of moved) {
     if (!svg.matches(LINE)) continue;
@@ -301,10 +252,8 @@ function letGo(write: Writer, moved: Element[]): void {
   }
 }
 
-// the patch of the last record() of canvas/drag.ts, to which the nudges of its run are added
 let recent: Patch | null = null;
 
-// the attachment after a change of the places of moved, recorded with it by record() of canvas/drag.ts
 export function afterMove(app: App, moved: Element[]): Patch {
   const p = new Patch(app);
   letGo(p.write, moved);
@@ -313,14 +262,10 @@ export function afterMove(app: App, moved: Element[]): Patch {
   return p;
 }
 
-// the attached ends followed again after a nudge of the run of the last record()
 export function followAgain(app: App): void {
   if (recent) follow(app, recent.write);
 }
 
-// the copies of one copy of elements attached to each other as their originals are: an end named by
-// a copied line keeps its attachment to a copied element, under a name unique on the slide, and the attachment
-// to an element that was not copied is taken off, as is the name of a copy that no copied line names
 export function relink(app: App, copies: Element[]): void {
   const write = recorded(app);
   const all = copies.flatMap((c) => [c, ...c.querySelectorAll('[data-anchor], svg.line')]);
@@ -356,8 +301,6 @@ export function relink(app: App, copies: Element[]): void {
   for (const [svg, end, g] of ends) if (g && to.get(g.name) !== g.name) write(svg, { [attrOf(end)]: `${to.get(g.name)} ${num(g.fx)} ${num(g.fy)}` });
 }
 
-// the attachment followed at the end of each transaction of the history, in the same entry, and the names
-// that a removed line attached to taken off with it
 export function install(app: App): void {
   const remove = app.doc.remove.bind(app.doc);
   app.doc.remove = async (el, ...rest) => {
@@ -372,8 +315,6 @@ export function install(app: App): void {
     follow(app, p.write);
     if (!p.empty) app.history.push({ label: 'attach', undo: () => p.undo(), redo: () => p.redo(), touches: p.touched });
   });
-  // an element pushed by typed words, e.g. a table in the flow under a paragraph that wraps, is
-  // followed in the entry of the typing. a slide without an attached end is not measured
   const typed = new WeakMap<Entry, Patch>();
   app.history.onTyped((entry) => {
     if (!linesOf(app.current()).length) return;
@@ -389,7 +330,6 @@ export function install(app: App): void {
         await redo.call(entry);
         patch.redo();
       };
-      // the lines that the undo or the redo writes, for prune() of the history
       Object.defineProperty(entry, 'touches', { get: () => patch.touched, configurable: true });
       typed.set(entry, (p = patch));
     }
