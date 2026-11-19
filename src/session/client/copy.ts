@@ -16,7 +16,9 @@ const DB = 'beeson-session';
 const STORE = 'copies';
 // a copy is written once edits have waited this long in ms, and at most this often
 const EVERY = 2000;
-// a record is written again after this long in ms, as the heartbeat of its page
+// the heartbeat of a page in ms. without the Web Locks API, the record is written again, which tells
+// that its page lives. with it, the record is only read, and written again when it is missing, e.g.
+// after Clear site data
 const BEAT = 10_000;
 // without the Web Locks API, the page of a record not written for this long in ms is gone
 const GONE = 60_000;
@@ -389,12 +391,27 @@ export function install(client: Client): void {
   // the lock is held while the page lives, and a new page reads it to tell that this one is not gone
   void locks()?.request(lockOf(st.id), () => new Promise<void>(() => {})).catch(() => {});
 
+  // whether other pages read the locks to tell that this page lives, rather than its heartbeat
+  let locked = false;
+  void locks()?.query().then(() => (locked = true), () => {});
+
   const write = (now: boolean): void => {
     const s = current(client, st);
     if (!s || (!st.stored && s.mine === s.base)) return;
     const t = Date.now();
     const l = st.last;
-    if (l && l.base === s.base && l.v === s.v && l.mine === s.mine && t - st.wroteAt < BEAT) return;
+    const same = !!l && l.base === s.base && l.v === s.v && l.mine === s.mine;
+    if (same && t - st.wroteAt < BEAT) return;
+    if (same && locked) {
+      st.wroteAt = t;
+      const again = (): void => {
+        if (st.last !== l) return;
+        st.last = null;
+        write(true);
+      };
+      void run('readonly', (store) => store.getKey(st.id)).then((k) => k === undefined && again(), again);
+      return;
+    }
     if (!now && t - st.wroteAt < EVERY) return;
     if (s.mine !== st.madeOf) {
       st.madeOf = s.mine;
@@ -416,6 +433,7 @@ export function install(client: Client): void {
       () => {
         // the next tick writes the same copy again, rather than at the heartbeat
         st.wroteAt = 0;
+        if (st.last === s) st.last = null;
         if (st.unavailable) return;
         st.unavailable = true;
         client.refresh();

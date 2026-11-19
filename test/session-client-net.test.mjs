@@ -884,6 +884,45 @@ test('a page whose copy is deleted with the data of the site writes its copy aga
   await page.waitFor(`(${ROWS}).then((rows) => !!rows && rows.some((r) => r.mine.includes(' More')) && !${C}.asking)`, 30_000);
 });
 
+// a script for open() that counts the puts into IndexedDB in window.__puts and the calls of timers
+// of setInterval at 1 s in window.__ticks, as the timer of the copy, and moves Date.now() of the page on by window.__skew ms
+const PUTS = `{
+  const put = IDBObjectStore.prototype.put;
+  const now = Date.now;
+  const every = window.setInterval;
+  window.__puts = 0;
+  window.__ticks = 0;
+  window.__skew = 0;
+  window.setInterval = (fn, ms, ...rest) => every(ms === 1000 ? () => { window.__ticks += 1; fn(); } : fn, ms, ...rest);
+  Date.now = () => now() + window.__skew;
+  IDBObjectStore.prototype.put = function (...args) {
+    window.__puts += 1;
+    return put.apply(this, args);
+  };
+}`;
+
+test('a page offline whose copy does not change does not write it again at the heartbeat', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${PUTS}` });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  const puts = await page.evaluate('window.__puts');
+  // three times BEAT of copy.ts, each passed by a tick of the timer of the copy, once a second
+  for (let i = 0; i < 3; i++) {
+    const ticks = await page.evaluate('(window.__skew += 11_000, window.__ticks)');
+    await page.waitFor(`window.__ticks >= ${ticks + 2}`);
+  }
+  assert.equal(await page.evaluate('window.__puts') - puts, 0, 'the copy is not written again');
+  assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: false, copied: true });
+});
+
 // a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
 // then stops 5 s after this failure, i.e. before the heartbeat of copy.ts (BEAT, 10 s) is due
 const FAIL_ONCE = `{
