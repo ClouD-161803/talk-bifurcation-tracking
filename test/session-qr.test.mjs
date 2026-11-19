@@ -207,7 +207,7 @@ function read(dark) {
 
 const filler = (n) => Array.from({ length: n }, (_, i) => 'abcdefghijklmnopqrstuvwxyz0123456789-./?='[(i * 7) % 41]).join('');
 
-test('a code is read back to its text, for texts of 1 to 200 bytes', () => {
+test('a code is read back to its text by the rules of ISO/IEC 18004, for texts of 1 to 200 bytes', () => {
   const texts = [filler(1), filler(17), filler(60), filler(100), filler(150), filler(200), 'Ana Núñez: Δv ✓ 🚀', 'https://relay.example.org:8443/AbCdEfGhIjKlMnOpQrStUv/index.html?edit&session'];
   const versions = [];
   for (const text of texts) {

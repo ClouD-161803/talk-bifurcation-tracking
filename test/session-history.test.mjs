@@ -449,7 +449,7 @@ test('the mode ends at the time limit of a restore whose operation does not reac
   clean(ann);
 });
 
-const SLOW_REFUSAL = `{
+const WINDOWS_REFUSAL = `{
   const fetched = window.fetch;
   window.fetch = function (...args) {
     return fetched.apply(this, args).catch((e) => new Promise((_, fail) => setTimeout(() => fail(e), 2000)));
@@ -464,7 +464,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const { port } = server.edit;
-  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: SLOW_REFUSAL });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: WINDOWS_REFUSAL });
   await converge(server, [ann]);
   await openPane(ann);
   await press$(ann, PANE, 'Tag this version');
