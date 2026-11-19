@@ -166,6 +166,23 @@ test('the backdrop of a slide that was never shown fills its box in a tile of th
   assert.deepEqual(page.errors, []);
 });
 
+test('the backdrop of a slide that is not shown is drawn again in its tile of the slide sorter in the new mode', { timeout: 300000 }, async (t) => {
+  const page = await editorPage(browser, { query: 'edit&still&theme=dark', clear: true });
+  t.after(() => page.close().catch(() => {}));
+  const at = await page.evaluate(found);
+  const ink = `${INK}(document.querySelectorAll('.beeson-edit-sorter .tile .pic')[${at.last}]?.shadowRoot?.querySelector('.beeson-thumb .backdrop canvas.orbits-base'))`;
+  await page.evaluate(`(() => { window.BeesonEditor.exec('view.lightTable'); return true; })()`);
+  assert.ok(await page.waitFor(`${ink}.drawn > 0`, 20000).then(() => true, () => false), `the backdrop of slide ${at.last} is blank in its tile`);
+  assert.equal(await page.evaluate(`${SLIDES}[${at.last}].classList.contains('present')`), false, 'the slide of the tile is shown, and the case is not checked');
+  const dark = (await page.evaluate(ink)).light;
+  await page.evaluate(`(() => { window.BeesonEditor.exec('view.slideDark'); return true; })()`);
+  await page.waitFor(`document.documentElement.dataset.theme === 'light'`, 60000);
+  const flipped = await page.waitFor(`(() => { const s = ${ink}; return s.drawn > 0 && s.light < ${dark} - 0.05; })()`, 20000).then(() => true, () => false);
+  const now = await page.evaluate(ink);
+  assert.ok(flipped, `the tile of slide ${at.last} draws ${now.drawn} of the pixels of its backdrop, with a lightness of ${now.light} after ${dark}, in the light mode`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the copy of a slide that was never shown, beside its hovered row, draws its backdrop', { timeout: 300000 }, async (t) => {
   const page = await editorPage(browser, { query: 'edit&still&theme=dark', clear: true });
   t.after(() => page.close().catch(() => {}));

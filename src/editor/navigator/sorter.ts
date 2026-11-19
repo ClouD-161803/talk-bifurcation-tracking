@@ -4,7 +4,7 @@ import { icon } from '../ui/icons.ts';
 import { transitionOf } from '../review/transitions.ts';
 import type { MoveSection, RenameSection } from '../commands/slide.ts';
 import { describe, droppedOrder, isHidden, showPlaces, type MoveTo, type Navigator } from './navigator.ts';
-import { Thumbs } from './thumbs.ts';
+import { followTheme, Thumbs } from './thumbs.ts';
 
 const SIZE_KEY = 'beeson-sorter-size';
 const HIDE_KEY = 'beeson-sorter-hide';
@@ -166,8 +166,7 @@ export class Sorter {
     if (!this.el.isConnected) document.body.append(this.el);
     if (!this.thumbs) {
       this.thumbs = new Thumbs(this.app, this.scroller);
-      const thumbs = this.thumbs;
-      new MutationObserver(() => thumbs.all()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      followTheme(this.thumbs);
     }
     this.el.hidden = !on;
     (this.app.nav as Navigator).table = this;

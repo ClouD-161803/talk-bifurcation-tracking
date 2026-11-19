@@ -478,6 +478,10 @@ export function install(app: App): void {
   const nav = app.nav as unknown as { list: HTMLElement; useThumbs(t: Thumbs): void };
   const thumbs = new Thumbs(app, nav.list);
   nav.useThumbs(thumbs);
+  followTheme(thumbs);
+}
+
+export function followTheme(thumbs: Thumbs): void {
   document.addEventListener('beeson:redrawn', () => thumbs.redrawn());
   new MutationObserver(() => thumbs.all()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
