@@ -44,7 +44,7 @@ npm run edit                                # the editor in a session, in which 
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
-npm run pptx                                # slides.pptx, one click per step, with recordings of the scenes and the traced backdrops
+npm run pptx                                # slides.pptx, one click per step, with recordings of the scenes, surfaces, plots, and traced backdrops
 npm run pptx -- --still                     # the same file without recordings, for a browser without an H.264 encoder
 ```
 

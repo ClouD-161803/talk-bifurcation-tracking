@@ -167,6 +167,23 @@ test('a recording is started first with its slide, muted, and the videos are sta
   assert.ok(once.includes('<p:cMediaNode vol="80000" mute="1"><p:cTn id="') && !once.includes('repeatCount'));
 });
 
+test('a video after another lies under it, which is hidden once it has played, and is started from as far before its start', () => {
+  const clip = { data: Buffer.from([1]), poster: Buffer.from([2]), x: 10, y: 20, width: 30, height: 40, duration: 1400, loop: false, muted: true };
+  const loop = { ...clip, data: Buffer.from([3]), duration: 2000, loop: true, after: true };
+  const slide = text(unzip(pptx([{ name: 'Changed', notes: [], images: [Buffer.from([4]), Buffer.from([5])], videos: [clip, loop] }])), 'ppt/slides/slide1.xml');
+  assert.deepEqual(pictures(slide), [['2', 'Step 1'], ['3', 'Step 2'], ['5', 'Video 5'], ['4', 'Video 4']]);
+  // Keynote reads the delay of an effect from the effect before it, and PowerPoint from the group
+  const effects = [...slide.matchAll(/presetClass="(\w+)"[^>]*nodeType="(\w+)"><p:stCondLst><p:cond delay="(\d+)"\/>[^]*?(?:cmd="([^"]+)"[^]*?)?<p:spTgt spid="(\d+)"/g)]
+    .map((m) => m.slice(1).filter(Boolean));
+  assert.deepEqual(effects, [
+    ['mediacall', 'afterEffect', '0', 'playFrom(0.0)', '4'],
+    ['exit', 'withEffect', '1400', '4'],
+    ['mediacall', 'withEffect', '0', 'playFrom(0.600)', '5'],
+    ['entr', 'clickEffect', '0', '3'],
+  ]);
+  assert.doesNotMatch(slide, /presetClass="entr"[^>]*nodeType="(after|with)Effect"/);
+});
+
 test('a click shows the next picture of the words and hides the one before', () => {
   const slide = text(unzip(pptx([recorded()])), 'ppt/slides/slide1.xml');
   // in the main sequence, a click is a lone indefinite condition. the media nodes after the
@@ -512,6 +529,80 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
   assert.match(run.stderr, /--still/);
   const parts = exportDeck('test/pages/scene-record.html', ['--still'], [], { noH264: true });
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
+});
+
+// the file of test/pages/animations-record.html, exported once for the tests of its recordings
+let animationsRun;
+const animationsDeck = () => {
+  animationsRun ??= runExport('test/pages/animations-record.html');
+  assert.equal(animationsRun.run.status, 0, animationsRun.run.stderr);
+  return animationsRun;
+};
+
+// the videos of PowerPoint slide n, each with the stream of its MP4 and whether it is looped
+function playedOf(parts, n) {
+  const slide = text(parts, `ppt/slides/slide${n}.xml`);
+  const shapes = pictures(slide).filter(([, label]) => label.startsWith('Video')).map(([shape]) => shape);
+  return videosOf(parts, n).map((video, k) => {
+    const node = [...slide.matchAll(/<p:cMediaNode [^>]*><p:cTn id="\d+"([^>]*)>[^]*?<p:spTgt spid="(\d+)"/g)].find((m) => m[2] === shapes[k]);
+    return { ...video, shape: shapes[k], stream: mp4Stream(parts.get(video.recording)), looped: node[1].includes('repeatCount="indefinite"') };
+  });
+}
+
+// the surface turns in 2 s, and a step that changes its stage starts a PowerPoint slide of its
+// own. The loop of the new stage lies under the clip of the change, see the test of pptx() above
+test('a surface is recorded as a loop of one turn in its box, and a step that changes its stage as a clip before the loop', { timeout: 300000 }, () => {
+  const { run, parts } = animationsDeck();
+  assertPackage(parts);
+  assert.match(run.stdout, /recorded surfaces and plots: 5 in \d+\.\d s/);
+  assert.equal(slideCount(parts), 5);
+  assert.deepEqual(kinds(parts, 1), ['Step', 'Video']);
+  const [first] = playedOf(parts, 1);
+  const size = [Math.round(first.width), Math.round(first.height)];
+  assert.deepEqual({ ...first.stream, duration: undefined }, { width: size[0], height: size[1], fps: 24, frames: 48, duration: undefined, keys: [1] });
+  assert.equal(first.looped, true);
+  assert.deepEqual(pngSize(parts.get(first.poster)), size);
+  // the step of the stage and the step after it, which keeps the stage, then the same stage again
+  assert.deepEqual(kinds(parts, 2), ['Step', 'Step', 'Step', 'Video', 'Video']);
+  const [loop, clip] = playedOf(parts, 2);
+  assert.deepEqual([loop.looped, loop.stream.frames, loop.x, loop.y], [true, 48, first.x, first.y]);
+  assert.notEqual(loop.recording, first.recording);
+  // the change lasts 1.4 s, and the clip ends once the surface has settled
+  const { frames } = clip.stream;
+  assert.equal(clip.looped, false);
+  assert.ok(frames >= Math.ceil(1.4 * 24) && frames < 3 * 24, `${frames} frames`);
+  const slide = text(parts, 'ppt/slides/slide2.xml');
+  assert.match(slide, new RegExp(`presetClass="exit"[^>]*nodeType="withEffect"><p:stCondLst><p:cond delay="${Math.round(frames / 24 * 1000)}"/>[^]*?<p:spTgt spid="${clip.shape}"/>`));
+  assert.equal(slide.match(/nodeType="clickEffect"/g).length, 2);
+  // the surface that does not turn is left in the picture of its step
+  assert.deepEqual(kinds(parts, 5), ['Step']);
+});
+
+test('a plot is recorded at each step as a loop of its pass and its hold, at twice the size of its box', { timeout: 300000 }, () => {
+  const { parts } = animationsDeck();
+  const [one] = playedOf(parts, 3);
+  const [two] = playedOf(parts, 4);
+  assert.deepEqual([kinds(parts, 3), kinds(parts, 4)], [['Step', 'Video'], ['Step', 'Video']]);
+  assert.notEqual(one.recording, two.recording);
+  for (const video of [one, two]) {
+    const size = [2 * Math.round(video.width), 2 * Math.round(video.height)];
+    // a pass of 1 s and a hold of 0.5 s
+    assert.deepEqual({ ...video.stream, duration: undefined }, { width: size[0], height: size[1], fps: 30, frames: 45, duration: undefined, keys: [1] });
+    assert.equal(video.looped, true);
+    assert.deepEqual(pngSize(parts.get(video.poster)), size);
+  }
+});
+
+test('with --still, the surfaces and the plots are the pictures of their steps, and the export needs no H.264 encoder', { timeout: 300000 }, () => {
+  const parts = exportDeck('test/pages/animations-record.html', ['--still'], [], { noH264: true });
+  assertPackage(parts);
+  assert.equal(slideCount(parts), 7);
+  for (let n = 1; n <= 7; n++) assert.deepEqual(kinds(parts, n), ['Step']);
+  assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
+  const { run } = runExport('test/pages/animations-record.html', [], [], { noH264: true });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /H\.264/);
+  assert.match(run.stderr, /--still to keep the surfaces and the plots as stills/);
 });
 
 // the scene of the demo deck is recorded in 83 s on a Mac, and in minutes on a runner of GitHub,
