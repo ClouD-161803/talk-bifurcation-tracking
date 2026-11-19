@@ -1014,3 +1014,13 @@ test('a key typed in a list item that another person removes from a slide they m
     assert.ok(text.split('\n').every((l) => /^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l)), text);
   }
 });
+
+test('a slide moved past a slide as long as it, after a slide that the mover types in, is the removal and the insertion of the slide moved', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const one = s('Moon 1', ['<p>Same words</p>', '<p>Method 22</p>']), three = s('Halo 3', ['<p>Same words</p>', '<p>Orbit 31</p>']);
+  const two = (li, p) => s('Orbit 2', ['<ul>', '  <li>Intro 22</li>', `  <li>${li}</li>`, '</ul>', ...p]), four = s('Thank you 4', ['<ul>', '  <li></li>', '  <li>Orbit 42</li>', '</ul>']);
+  const base = one + two('Orbit 21', ['<p>Thank you 21</p>']) + '\n' + three + four, moved = two('Orbit21', []) + '\n' + three + '\n' + one + four;
+  const found = changes(base, moved).map((e) => [base.slice(e.start, e.end), e.text]);
+  assert.ok(found.some(([cut, put]) => cut === one && !put) && found.some(([cut, put]) => !cut && put.includes(one)), JSON.stringify(found));
+  assert.ok(found.every(([cut, put]) => !`${cut}${put}`.includes('Halo 3')), JSON.stringify(found));
+});

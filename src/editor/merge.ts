@@ -172,10 +172,11 @@ function markMoved(a: string[], b: string[]): [string[], string[]] | null {
   // hence it is not weighed again
   let end = 0;
   const pairs = [...exact, ...loose].sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
-  // the heaviest run in the same order, by dynamic programming over the slides
+  // the heaviest run in the same order, by dynamic programming over the slides, with the later
+  // slide kept at a tie
   const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
-    if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
+    if (j < i && q[1] < p[1] && best[j] + p[2] >= best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
   }));
   const kept = new Set<number>();
   for (let i = best.indexOf(Math.max(...best)); i >= 0; i = prev[i]) kept.add(i);
@@ -451,9 +452,9 @@ function through(m: Edit[], o: number, after: boolean): number | null {
 
 // the offset in b of the offset o of a, where b is a with its lines moved, reindented, or changed
 // in part, read from the characters of both, or from their lines when they differ in more than 500
-// characters or put another text before o on its line. a line of a is then found in b among the lines equal to it once trimmed, or as the
-// line at its place in a run of changed lines as long in both, whose characters are then diffed.
-// null for an offset inside a change
+// characters or put another text before o on its line. a line of a is then found in b among the
+// lines equal to it once trimmed, or as the line at its place in a run of changed lines as long in
+// both, whose characters are then diffed. null for an offset inside a change
 function across(a: string, b: string, o: number, after: boolean): number | null {
   const m = charEdits(a, b, 500), r = m && through(m, o, after), head = (t: string, i: number) => t.slice(t.lastIndexOf('\n', i - 1) + 1, i);
   if (m && (r === null || (!head(a, o) === !head(b, r) && head(a, o).trim() === head(b, r).trim()))) return r;
