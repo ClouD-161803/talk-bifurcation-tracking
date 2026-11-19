@@ -148,6 +148,21 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(page.errors, []);
   });
 
+  test(`Escape closes the TeX field after a click on its title has taken the focus off the field (${platform})`, async (t) => {
+    const page = await open(platform);
+    t.after(() => page.close?.());
+    await caretInStep2(page);
+    await inlineKey(page, platform);
+    await sleep(200);
+    await click(page, '.beeson-math .title');
+    assert.equal(await page.evaluate(`document.activeElement === document.body`), true, 'the click on the title kept the focus in the sheet');
+    await press(page, 'Escape');
+    await sleep(200);
+    assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false);
+    await byteExact(page);
+    assert.deepEqual(page.errors, []);
+  });
+
   test(`an empty TeX is a gray prompt and not an error (${platform})`, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());

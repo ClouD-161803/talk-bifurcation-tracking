@@ -305,7 +305,7 @@ export class App {
 
   region(): Region {
     const active = document.activeElement;
-    if (!(active instanceof Element) || active === document.body) return 'canvas';
+    if (!(active instanceof Element) || active === document.body) return this.math.isOpen() || this.files.problemsShown() || this.files.askShown() ? 'dialog' : 'canvas';
     if (active.closest('.beeson-math, .beeson-edit-dialog:not([hidden]), dialog[open]:not([data-popover])')) return 'dialog';
     if (active.matches('textarea, input:not([type=range], [type=checkbox], [type=radio], [type=button], [type=color])')) return 'field';
     if (active.closest('aside.notes')) return 'notes';
