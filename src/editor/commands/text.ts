@@ -1,13 +1,3 @@
-// the commands of the text of a slide: the keys of its structure in a text, i.e. Return, Backspace,
-// Delete, Tab, and Shift+Tab, and the Format menu with the formats of the words, their tones, the
-// paragraph styles, the lists, the links, Change Case, and Copy Style and Paste Style with the
-// Format Painter of the Text pane. the Substitutions of the Edit menu switch the smart quotes,
-// dashes, and links of text/substitute.ts. a key of a disabled command is left to the browser,
-// e.g. Return in a heading, which typing.ts writes as a br. a format is set in a text, or on the
-// whole text of the text elements selected on the canvas. with the caret outside a word, a format, a
-// tone, or a style is kept by text/carry.ts for the text typed next. Theorem Kind and Theorem
-// Name of the Text pane write data-kind and data-name of a theorem
-
 import type { App, Region } from '../app.ts';
 import type { Command } from '../commands.ts';
 import * as textElements from '../text/elements.ts';
@@ -23,11 +13,8 @@ import { isShape, isShapeTone, setShapeTone, toneOfShape } from './shape.ts';
 import * as notes from '../notes.ts';
 import { kindsOf, type Kind } from '../../kinds.ts';
 
-// the kinds of theorem of the deck, read at each call, since the tex.js of a deck is written again
-// at a save
 export const deckKinds = (): Record<string, Kind> => kindsOf((window as { beesonTex?: { theorems?: Record<string, Kind> } }).beesonTex?.theorems ?? {});
 
-// the theorem of the file with the caret or selected alone
 export function theoremOf(app: App): HTMLElement | null {
   const els = app.selection.kind === 'text' ? app.selection.items.slice(0, 1) : app.selection.elements();
   const el = els.length === 1 ? els[0].closest('p.theorem') : null;
@@ -37,8 +24,6 @@ export function theoremOf(app: App): HTMLElement | null {
 const TEXT: Region[] = ['text'];
 const FORMAT: Region[] = ['text', 'canvas'];
 
-// whether the caret, the selected text, or a selected text element is in a code box, which does not hold
-// the styles of a text that Paste Style and the Format Painter set
 function inCode(app: App): boolean {
   if (app.selection.kind === 'text') {
     const n = window.getSelection()?.anchorNode;
@@ -48,8 +33,6 @@ function inCode(app: App): boolean {
 }
 
 const TONE_LABELS: Record<inline.Tone, string> = { accent: 'Accent', violet: 'Violet', blue: 'Blue', red: 'Red', subtle: 'Subtle', muted: 'Muted', text: 'Text' };
-// fn run so that an undo and a redo select the text of the slide again, e.g. the caret before an
-// outdent, which the history of the text elements alone puts at the end of the text that changed
 async function marked(app: App, fn: () => void | Promise<void>): Promise<void> {
   const kept = app.history.keep(() => flow.mark(app));
   await fn();
@@ -58,17 +41,13 @@ async function marked(app: App, fn: () => void | Promise<void>): Promise<void> {
 
 const STYLE_LABELS: Record<textElements.ParagraphStyle, string> = { body: 'Body', small: 'Small', subheading: 'Subheading', caption: 'Caption', footnote: 'Footnote' };
 const LIST_LABELS: Record<textElements.ListKind, string> = { none: 'Paragraphs', ul: 'Arrows', dots: 'Dots', dashes: 'Dashes', ol: 'Numbers' };
-// the labels of Change Case in PowerPoint, each written in its case
 const CASE_LABELS: [inline.Case, string][] = [['sentence', 'Sentence case.'], ['lower', 'lowercase'], ['upper', 'UPPERCASE'], ['title', 'Capitalize Each Word'], ['toggle', 'tOGGLE cASE']];
 
-// the brush of the Format Painter at the pointer while it is armed, with its tip at the hot spot
 const BRUSH = `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'><g fill='none' stroke-linejoin='round'><path d='M6 3.5h10v4H6z M16 5.5h1.5v4H11v2.5' stroke='white' stroke-width='3'/><path d='M9.75 12h2.5v5.5h-2.5z' fill='white' stroke='white' stroke-width='2.5'/><path d='M6 3.5h10v4H6z M16 5.5h1.5v4H11v2.5' stroke='black' stroke-width='1.5'/><path d='M9.75 12h2.5v5.5h-2.5z' fill='black' stroke='black' stroke-width='1'/></g><path d='M1.5 1.5v6' stroke='black' stroke-width='1.5'/></svg>`;
 const CSS = `
 html.beeson-painting .reveal .slides, html.beeson-painting .reveal .slides * { cursor: url("data:image/svg+xml,${encodeURIComponent(BRUSH)}") 2 2, copy !important; }
 `;
 
-// tabIn focuses the formula of the text element after the caret, or before it with back, and else puts
-// the caret beside the focused formula, or leaves it where it is
 function tabIn(app: App, back: boolean): void {
   const active = document.activeElement;
   const host = active && app.hostOf(active);
@@ -90,9 +69,6 @@ function tabIn(app: App, back: boolean): void {
   s?.addRange(r);
 }
 
-// the text elements that Left and Center act on: the heading, the paragraph, the list, the caption, or the
-// display of the text or of the selection, and the words of a selected shape, paired with the file,
-// outside a cell and the notes. a list is aligned as a whole
 const ALIGNED = 'h1, h2, h3, p, ul, ol, .caption, div.math';
 function alignTargets(app: App): Element[] {
   const pairing = app.pairing;
@@ -106,7 +82,6 @@ function alignTargets(app: App): Element[] {
   return [...out];
 }
 
-// the theme centers the words of a shape, which the class left aligns to the left
 const inShape = (el: Element): boolean => !!el.parentElement?.matches('div.shape');
 const centered = (el: Element): boolean => (inShape(el) ? !el.classList.contains('left') : el.classList.contains('center'));
 
@@ -126,7 +101,6 @@ export function install(app: App): void {
   const define = (command: Command) => c.define(command);
   const menu = (group: string, order: number, submenu?: string) => ({ bar: 'Format', group, order, ...(submenu ? { submenu } : {}) });
 
-  // in the speaker notes, Return and Backspace act on an item of a dash list of notes.ts
   const inNotes = (a: App) => a.region() === 'notes';
   define({
     id: 'text.newParagraph',
@@ -147,14 +121,10 @@ export function install(app: App): void {
     in: [...TEXT, 'notes'],
     undoable: true,
     enabled: (a) => (inNotes(a) ? notes.canJoinNotesItem(a) : textElements.canJoinBack(a)),
-    // the caret of a drop is kept by joinBackward, since an empty paragraph does not change the
-    // count of characters by which marked() puts it back
     run: (a) => (!inNotes(a) && textElements.joinKind(a) === 'drop' ? textElements.joinBackward(a) : marked(a, () => (inNotes(a) ? notes.joinNotesItem(a) : textElements.joinBackward(a)))),
   });
   define({ id: 'text.joinForward', label: 'Join Paragraphs', keys: { mac: ['Delete'], other: ['Delete'] }, in: TEXT, undoable: true, enabled: textElements.canJoinAhead, run: textElements.joinForward });
 
-  // a display of math is not formatted, since its TeX is the text of its text element
-  // a display framed or edited. a text with the focus, e.g. the notes, is not one
   const onMath = (a: App) => {
     const host = a.hostOf(document.activeElement);
     return host ? host.matches('div.math') : a.selection.elements().some((el) => el.matches('div.math'));
@@ -172,17 +142,11 @@ export function install(app: App): void {
       run: (a) => (carry.canFormat(a, true) ? carry.toggleFormat(a, name) : inline.toggle(a, name)),
       ...(name === 'bold' || name === 'italic' ? { context: ['text' as const] } : {}),
     });
-  // bold and italic are taken in the speaker notes too
   format('bold', 'Bold', 10, { mac: ['Mod+B'], other: ['Mod+B'] }, undefined, [...FORMAT, 'notes']);
   format('italic', 'Italic', 11, { mac: ['Mod+I'], other: ['Mod+I'] }, undefined, [...FORMAT, 'notes']);
-  // the key of Keynote, PowerPoint, and Google Slides
   format('underline', 'Underline', 11.5, { mac: ['Mod+U'], other: ['Mod+U'] });
   format('code', 'Code', 12, {});
-  // the key of Word for a Mac and of Google Slides on a Mac, and the key of Google Slides elsewhere,
-  // since neither Keynote nor PowerPoint for Windows gives Strikethrough a key
   format('strike', 'Strikethrough', 13, { mac: ['Mod+Shift+X'], other: ['Alt+Shift+5'] });
-  // Keynote's keys of Baseline on a Mac, and those of Google Docs elsewhere, since Ctrl+Shift+= is
-  // a zoom of the browser
   format('superscript', 'Superscript', 20, { mac: ['Ctrl+Mod++', 'Ctrl+Mod+='], other: ['Mod+.'] }, 'Baseline');
   format('subscript', 'Subscript', 21, { mac: ['Ctrl+Mod+-'], other: ['Mod+,'] }, 'Baseline');
 
@@ -209,8 +173,6 @@ export function install(app: App): void {
     run: (a) => (carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
   });
 
-  // with shapes selected as boxes, a text color is written as the tone of each shape, and on the
-  // words of the other selected text elements. Subtle is not a tone of a shape
   const boxes = (a: App) => a.selection.elements().filter(isShape);
   const words = (a: App, shapes: Element[]) => inline.inlineTargets(a).filter((t) => !shapes.some((el) => el.contains(t.host)));
   inline.TONES.forEach((tone, i) =>
@@ -260,16 +222,12 @@ export function install(app: App): void {
       enabled: (a) => (notes.notesListKind(a) ? notes.canSetNotesList(a, kind) : textElements.canSetList(a, kind) || carry.canList(a)),
       why: (a) => textElements.listWhy(a, LIST_LABELS[kind]),
       checked: (a) => (notes.notesListKind(a) ?? (carry.canList(a) ? carry.listOf(a) : textElements.listKind(a))) === kind,
-      // an undo and a redo select the text again, as an undo of a format does in Keynote
       run: async (a) => {
         const kept = a.history.keep(() => flow.mark(a));
         await (notes.notesListKind(a) ? notes.setNotesList(a, kind) : carry.canList(a) ? carry.chooseList(a, kind) : textElements.setList(a, kind));
         kept();
       },
     }));
-  // Left and Center of the alignment of Keynote, written as the class center of the theme, or as
-  // the class left in the words of a shape, with Keynote's key of Center on a Mac. its key of Left,
-  // Cmd+{, is taken by the browser, and Ctrl+E and Ctrl+L elsewhere are taken by the editor
   (['left', 'center'] as const).forEach((align, i) =>
     define({
       id: `text.align.${align}`,
@@ -286,26 +244,14 @@ export function install(app: App): void {
       },
       run: (a) => setCenter(a, align === 'center'),
     }));
-  // Start at of the Bullets and Numbering dialog of PowerPoint, typed into the Text pane as
-  // { start: n }
   define({ id: 'text.list.start', label: 'Start At', in: TEXT, undoable: true, enabled: (a) => !!textElements.startList(a), run: (a, arg) => textElements.setStart(a, Number((arg as { start?: unknown } | undefined)?.start)) });
-  // Tab is taken in every item of a list, also where it does not change the level, so that it
-  // does not move the focus out of the text. ⌘] and ⌘[ are Keynote's keys, shown in the menu, and
-  // Ctrl+] and Ctrl+[ those of Google Docs elsewhere, where the menu shows Tab and Shift+Tab, since
-  // ] and [ are typed with AltGr on a German or an Italian keyboard
   define({ id: 'text.indent', label: 'Increase Indent Level', keys: { mac: ['Mod+]', 'Tab'], other: ['Tab', 'Mod+]'] }, in: TEXT, menu: menu('list', 70, 'List'), undoable: true, enabled: (a) => textElements.inList(a) || flow.canLevel(a), run: (a) => marked(a, () => flow.level(a, true)) });
   define({ id: 'text.outdent', label: 'Decrease Indent Level', keys: { mac: ['Mod+[', 'Shift+Tab'], other: ['Shift+Tab', 'Mod+['] }, in: TEXT, menu: menu('list', 71, 'List'), undoable: true, enabled: (a) => textElements.inList(a) || flow.canLevel(a), run: (a) => marked(a, () => flow.level(a, false)) });
-  // Tab and Shift+Tab in a text outside a list and a table keep the focus in the text, as a text
-  // box of Keynote takes them. a tab is not typed, since the theme draws it as a space. the key
-  // stops at each formula of the text element, which Enter opens, and goes on from the last to the text
   for (const back of [false, true]) {
     const key = back ? 'Shift+Tab' : 'Tab';
     define({ id: back ? 'text.tabBack' : 'text.tab', label: key, keys: { mac: [key], other: [key] }, in: TEXT, enabled: (a) => !document.activeElement?.closest('td, th') && !textElements.inList(a) && !flow.canLevel(a), run: (a) => tabIn(a, back) });
   }
 
-  // the link opens its dialog, which makes the change one entry of the history. a test or a script
-  // gives the address as arg, e.g. { href: '#/7' }, or the kind of link shown first, e.g.
-  // { kind: 'email' }
   define({
     id: 'text.link',
     label: (a) => (inline.linkAt(a) ? 'Edit Link…' : 'Add Link…'),
@@ -329,9 +275,6 @@ export function install(app: App): void {
     run: inline.removeLink,
   });
 
-  // the kinds of Change Case of PowerPoint, and its Shift+F3, which goes from lowercase to UPPERCASE
-  // to Capitalize Each Word. it is taken only in a text, where it is Change Case in PowerPoint for
-  // Windows too, since elsewhere it is Find Previous on Windows and Linux
   CASE_LABELS.forEach(([kind, label], i) =>
     define({
       id: `text.case.${kind}`,
@@ -339,10 +282,8 @@ export function install(app: App): void {
       in: FORMAT,
       menu: menu('case', 84 + i / 10, 'Change Case'),
       enabled: inline.canPaint,
-      // one entry named Change Case for every kind, as in the Edit menu of PowerPoint
       run: (a) => a.history.transact('change case', () => inline.changeCase(a, kind)),
     }));
-  // at the head of the submenu, so that its key is seen there and in the sheet of shortcuts
   define({
     id: 'text.case.cycle',
     label: 'Change Case',
@@ -356,7 +297,6 @@ export function install(app: App): void {
 
   installStyles(app, define, menu);
 
-  // PowerPoint's Ctrl+Space elsewhere, which is the switch of the input source on a Mac
   define({
     id: 'text.clear',
     label: 'Clear Formatting',
@@ -369,7 +309,6 @@ export function install(app: App): void {
     run: inline.clearFormatting,
   });
 
-  // arg is the theorem and the value, since a field of the pane commits to the theorem of its pane
   type Arg = { el?: Element; value?: string };
   const target = (a: App, arg?: unknown) => {
     const el = (arg as Arg | undefined)?.el;
@@ -396,13 +335,9 @@ export function install(app: App): void {
 type Define = (command: Command) => Command;
 type MenuOf = (group: string, order: number, submenu?: string) => Command['menu'];
 
-// the style of a figure that Copy Style takes and Paste Style sets, as the Image pane sets it: the
-// classes white-figure and invert of an image, null when taken from a video, and the mode it is shown in
 type FigureStyle = { whiteFigure: boolean | null; invert: boolean | null; mode: Mode };
 type Copied = { text: inline.TextStyle; center: boolean | null } | { figure: FigureStyle };
 
-// the images and videos of the selected elements: a selected one, or the one shown in a selected
-// figure, figure box, or plate
 function figuresOf(app: App): Element[] {
   if (app.selection.kind !== 'elements') return [];
   const open = (m: Element) => !!app.pairing?.elements.get(m)?.open;
@@ -419,7 +354,6 @@ function readFigure(el: Element): FigureStyle {
   return { whiteFigure: image ? el.classList.contains('white-figure') : null, invert: image ? el.classList.contains('invert') : null, mode: modeOf(el) };
 }
 
-// the style of the selected figure, else of the text or the text element
 function readCopied(app: App): Copied | null {
   const [figure] = figuresOf(app);
   if (figure) return { figure: readFigure(figure) };
@@ -428,8 +362,6 @@ function readCopied(app: App): Copied | null {
   return text ? { text, center: textEl ? centered(textEl) : null } : null;
 }
 
-// the mode on every figure, and white-figure and invert on an image, each class changed only where it
-// differs
 function pasteFigure(app: App, style: FigureStyle): void {
   for (const el of figuresOf(app)) {
     const classes: Record<string, boolean> = { 'for-dark': style.mode === 'dark', 'for-light': style.mode === 'light' };
@@ -442,17 +374,9 @@ function pasteFigure(app: App, style: FigureStyle): void {
   }
 }
 
-// the Copy Style and Paste Style of Keynote with its keys on a Mac, and with the keys of the Format
-// Painter of PowerPoint for Windows elsewhere, and the Format Painter of the Text pane. the style of
-// a text goes to a text or a text element, and the style of a figure to a figure. a click on the painter
-// takes the style of the selection, and the next text, text element, or figure clicked or selected on the
-// slide is given it. with sticky, as after a double click on the painter, it stays armed until it
-// is clicked again or Esc is pressed. the switches Smart Quotes, Smart Dashes, and Smart Web and
-// Email Links are in the Substitutions of the Edit menu
 function installStyles(app: App, define: Define, menu: MenuOf): void {
   injectStyle('text-styles', CSS);
   let copied: Copied | null = null;
-  // a text style is pasted on a text outside a code box, and the style of a figure on a figure
   const canPaste = (a: App) => (copied && 'figure' in copied ? figuresOf(a).length > 0 : !!copied && !inCode(a) && inline.canPaint(a));
   const painter = { armed: false, sticky: false };
   const arm = (on: boolean, sticky = false) => {
@@ -484,14 +408,10 @@ function installStyles(app: App, define: Define, menu: MenuOf): void {
     run: (a) => {
       if (!copied) return;
       if ('figure' in copied) return pasteFigure(a, copied.figure);
-      // the alignment is carried with the style of the text, as by the Format Painter of PowerPoint
       if (copied.center !== null) setCenter(a, copied.center);
       return inline.pasteStyle(a, copied.text);
     },
   });
-  // a script or the double click gives { sticky: true }, which arms the painter until it is
-  // switched off. without it, a run switches the painter. an armed painter stays live, so that a
-  // click switches it off
   define({
     id: 'text.formatPainter',
     label: 'Format Painter',
@@ -506,8 +426,6 @@ function installStyles(app: App, define: Define, menu: MenuOf): void {
     },
   });
 
-  // the style is set once the press on the slide is released and the browser has put the caret or
-  // the range, or once a text element is selected by the click
   document.addEventListener('pointerup', (ev) => {
     if (!painter.armed || !(ev.target instanceof Element) || !ev.target.closest('.reveal .slides')) return;
     setTimeout(() => {

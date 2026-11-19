@@ -1,27 +1,3 @@
-// the commands of the tables of the slides, as in Keynote and PowerPoint. Insert > Table… and the
-// Table button of the toolbar open a grid of up to 10 columns by 8 rows, as the Insert Table grid of
-// PowerPoint, and a click puts a table of the size chosen at its place in the layout, with a header
-// row of th and the caret in its first cell. Insert Table… under the grid asks for a larger size. each cell is a text element of the editor. Tab and Shift+Tab
-// go to the next and the previous cell, Tab in the last cell adds a row, and an arrow key at the
-// edge of a cell goes to the cell beside it. rows and columns are added and deleted from Format >
-// Table, the context menu of a cell, the row and column bars around the table, and the Table pane
-// of the inspector. a paste of tab-separated text or of an HTML table onto the slide is written as
-// a new table, and a paste into a cell fills the cells from it on. a range of cells is selected by
-// a drag across cells, a Shift-click, Esc in a cell, or Select Row and Select Column, and is merged
-// and unmerged as a colspan and a rowspan. the widths of the columns are set by a drag of a border
-// in the bar of the columns, Distribute Columns Evenly, and Resize Column to Fit Content, and are
-// written in the style of the cells of the first row. the heights of the rows are set by Distribute
-// Rows Evenly and written in the style of each row. Auto-Align sets the columns of numbers at the
-// right. the handle at the lower right corner of the cells selected as a range is dragged over the
-// cells beside them, which are filled as Autofill of Keynote fills them. each change is one entry
-// of the history, written through app.doc
-//
-// while the caret is in a cell, or a table is selected, the table is drawn as a selected table of
-// Keynote: a bar of the column letters above it and a bar of the row numbers at its left, with the
-// columns and the rows of the caret or of the range marked, a round button at the end of each bar
-// that adds a column or a row, a round button at the upper left that selects the table, and an
-// outline around the cell of the caret or the range
-
 import type { App } from '../app.ts';
 import { overlay, previewPlays } from '../canvas/frames.ts';
 import { CLIPBOARD_REGIONS, keysOf, type Command } from '../commands.ts';
@@ -45,7 +21,6 @@ import { centerPlace, drawnCells, framed, MARGIN, piecesOf, wordBox } from './pl
 import { checkOverlaps } from '../overflow.ts';
 import { MARK } from './slide.ts';
 
-// the widths of the frame of the cell of the caret and of the cells selected as a range
 const FRAME = 2;
 const FRAME_RANGE = 4;
 const CSS = `
@@ -104,20 +79,15 @@ html.beeson-cell-range .reveal *{user-select:none!important;-webkit-user-select:
 .beeson-table-bars .cell.range{border-width:${FRAME_RANGE}px;background:color-mix(in srgb,var(--ed-select) 12%,transparent)}
 `;
 
-// the size of the bars and of their buttons, in screen px, and the gap between a bar and its table
 const BAR = 18;
 const GAP = 6;
-// the width of the grip on the border of two columns, in screen px
 const GRIP = 9;
 
 type Target = { table: HTMLTableElement; cell: HTMLTableCellElement | null; box: Box | null };
-// a size typed into Insert Table… is kept in full, while one from the grid loses the rows that do
-// not fit on the slide
 type Size = { rows: number; columns: number };
 
 const isCell = (el: unknown): el is HTMLTableCellElement => el instanceof HTMLTableCellElement;
 
-// the cell of the caret or of the text selected on the current slide, which is a text element of the file
 export function cellAt(app: App): HTMLTableCellElement | null {
   const sel = app.selection;
   const item = sel.kind === 'text' ? sel.items[0] : app.hostOf(document.activeElement);
@@ -126,13 +96,8 @@ export function cellAt(app: App): HTMLTableCellElement | null {
   return table && app.pairing.elements.get(table)?.open ? item : null;
 }
 
-// the cells selected as a range, as cells selected in Keynote, after Esc in the text of a cell, a
-// drag across cells, or a Shift-click: the table is the selection, and the commands of the table
-// act at the range from the anchor to the focus, grown over merged cells. caretCell is the last
-// cell of the caret, which Esc leaves
 let cellRange: { anchor: HTMLTableCellElement; focus: HTMLTableCellElement } | null = null;
 let caretCell: HTMLTableCellElement | null = null;
-// the range reached by the fill handle while it is dragged, which the Table pane counts
 let reaching: { table: HTMLTableElement; box: Box } | null = null;
 export const fillRange = (table: HTMLTableElement): Box | null => (reaching?.table === table ? reaching.box : null);
 
@@ -147,22 +112,17 @@ function syncCell(app: App): void {
   const kept = (x: Element | null): x is HTMLTableCellElement => !!x?.isConnected && !!only?.contains(x);
   if (!(only instanceof HTMLTableElement)) cellRange = null;
   else if (!cellRange || !kept(cellRange.anchor) || !kept(cellRange.focus)) cellRange = kept(caretCell) ? { anchor: caretCell, focus: caretCell } : null;
-  // Esc blurs the text before it selects the table, and the selection is empty in between
   if (app.selection.kind !== 'none') caretCell = null;
 }
 
 const inside = (a: Box, b: Box) => a.r0 >= b.r0 && a.c0 >= b.c0 && a.r1 <= b.r1 && a.c1 <= b.c1;
 
-// the range of the cells selected as a range in table, or null
 function rangeIn(table: HTMLTableElement): Box | null {
   const a = cellRange && cellRange.anchor.closest('table') === table ? placeOf(cellRange.anchor) : null;
   const f = cellRange && a ? placeOf(cellRange.focus) : null;
   return a && f ? grow(gridOf(table), around(boxOf(a), boxOf(f))) : null;
 }
 
-// the table of the caret, or the one selected table, with the cell given in arg, e.g. by the
-// context menu of a cell or a bar, else the cell of the caret or the focus of the
-// cell range. the box is the cell range where it holds the cell, else its cell
 export function targetOf(app: App, arg?: unknown): Target | null {
   syncCell(app);
   const given = arg && typeof arg === 'object' && 'cell' in arg ? (arg as { cell: unknown }).cell : null;
@@ -178,7 +138,6 @@ export function targetOf(app: App, arg?: unknown): Target | null {
   return null;
 }
 
-// the cells from anchor to focus selected as a range, with the table as the selection
 function selectCells(app: App, anchor: HTMLTableCellElement, focus: HTMLTableCellElement): void {
   const table = anchor.closest('table') as HTMLTableElement;
   const host = app.hostOf(document.activeElement);
@@ -190,7 +149,6 @@ function selectCells(app: App, anchor: HTMLTableCellElement, focus: HTMLTableCel
   app.invalidate('selection');
 }
 
-// the table selected as an object, without a cell selected, as after Select Table of Keynote
 function selectTable(app: App, table: HTMLTableElement): void {
   const host = app.hostOf(document.activeElement);
   if (host instanceof HTMLElement) host.blur();
@@ -201,17 +159,14 @@ function selectTable(app: App, table: HTMLTableElement): void {
   app.invalidate('selection');
 }
 
-// whether table is selected as an object, which its move handle and its edge grips act on
 const asObject = (app: App, table: HTMLTableElement) => app.selection.only() === table && !rangeHeld(app) && !cellAt(app);
 
-// a cell of the file on the current slide at target
 function liveCell(target: EventTarget | null): HTMLTableCellElement | null {
   const app = current;
   const cell = target instanceof Element ? target.closest(CELL) : null;
   return app && isCell(cell) && app.pairing?.byLive.has(cell) && app.current()?.contains(cell) ? cell : null;
 }
 
-// whether cell is in the cell range
 function inRange(cell: HTMLTableCellElement): boolean {
   const app = current;
   if (!app || !rangeHeld(app)) return false;
@@ -220,13 +175,11 @@ function inRange(cell: HTMLTableCellElement): boolean {
   return !!range && !!p && inside(boxOf(p), range);
 }
 
-// true while cells of a table are selected as a range, and not a text
 function rangeHeld(app: App): boolean {
   syncCell(app);
   return !!cellRange && app.selection.only() === cellRange.anchor.closest('table') && !cellAt(app);
 }
 
-// the caret is put into a cell, at its start or its end, or over all of its text
 export function focusCell(cell: Element, at: 'start' | 'end' | 'all' = 'all'): void {
   if (!(cell instanceof HTMLElement)) return;
   if (at !== 'all') return placeCaret(cell, at === 'start' ? 0 : null);
@@ -234,7 +187,6 @@ export function focusCell(cell: Element, at: 'start' | 'end' | 'all' = 'all'): v
   window.getSelection()?.selectAllChildren(cell);
 }
 
-// the collapsed range of the caret in cell, or null for a range or a caret elsewhere
 function caretIn(cell: Element): Range | null {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return null;
@@ -242,7 +194,6 @@ function caretIn(cell: Element): Range | null {
   return r.collapsed && cell.contains(r.startContainer) ? r : null;
 }
 
-// the text of cell before or after the caret, without white space
 function besideCaret(cell: Element, r: Range, way: 'before' | 'after'): string {
   const part = document.createRange();
   part.selectNodeContents(cell);
@@ -252,7 +203,6 @@ function besideCaret(cell: Element, r: Range, way: 'before' | 'after'): string {
   return (frag.textContent ?? '').replace(/\s/g, '') + (frag.querySelector('mjx-container, br, img') ? '*' : '');
 }
 
-// whether the caret in cell is on the first or the last line of its text, or the cell is empty
 function onEdgeLine(cell: Element, r: Range, line: 'first' | 'last'): boolean {
   const caret = r.getClientRects()[0] ?? r.getBoundingClientRect();
   const all = document.createRange();
@@ -262,7 +212,6 @@ function onEdgeLine(cell: Element, r: Range, line: 'first' | 'last'): boolean {
   return line === 'first' ? caret.top - box.top < caret.height / 2 : box.bottom - caret.bottom < caret.height / 2;
 }
 
-// the white space before a child of parent in the file, and the indentation of the deck
 function styleOf(app: App) {
   const source = app.source;
   if (!source) throw new Error('no file is open');
@@ -279,8 +228,6 @@ function baseOf(app: App, parent: Element): string {
 
 const right = (cell: Element) => (cell as HTMLElement).style.textAlign === 'right';
 
-// the text of a cell with a formula read as its TeX, e.g. 2.69 for \(2.69\), or with delimiters
-// set, as the file has it
 function cellText(cell: Element, delimiters = false): string {
   const tex = mathLookup();
   let out = '';
@@ -294,12 +241,8 @@ function cellText(cell: Element, delimiters = false): string {
   return out;
 }
 
-// the columns of numbers of a table, with a formula read as its TeX
 const numbersOf = (table: HTMLTableElement): boolean[] => numericOf(table, cellText);
 
-// the body rows of a table that a sort reorders: the rows of its first tbody after the header rows,
-// i.e. the rows of th only. null when a cell of the body reaches over two rows, since Keynote does
-// not sort the rows of a merged cell, or when fewer than two rows are left
 function sortable(table: HTMLTableElement): HTMLTableRowElement[] | null {
   const body = table.tBodies[0];
   if (!body) return null;
@@ -309,8 +252,6 @@ function sortable(table: HTMLTableElement): HTMLTableRowElement[] | null {
   return rows;
 }
 
-// the body rows of the table of t reordered by the column of its cell, each row moved in the file
-// before the row that takes its place, as one entry of the history
 async function sortRows(app: App, t: Target, descending: boolean): Promise<void> {
   const rows = sortable(t.table);
   const col = t.box?.c0;
@@ -331,7 +272,6 @@ async function sortRows(app: App, t: Target, descending: boolean): Promise<void>
 
 type Line = 'row' | 'column';
 
-// whether a row is a header row: in a thead, or of th only at the start of the table
 function headRows(table: HTMLTableElement): boolean[] {
   let head = true;
   return [...table.rows].map((tr) => {
@@ -340,10 +280,6 @@ function headRows(table: HTMLTableElement): boolean[] {
   });
 }
 
-// whether the rows or the columns lo to hi of table are moved to the gap before line to, as Keynote
-// moves them: to a gap outside them in the table, with header rows and body rows apart. a merged
-// cell of a moved row lies in the moved rows or in the rows that they pass, and a column is
-// moved without a merged cell between lo and to
 function movable(table: HTMLTableElement, kind: Line, lo: number, hi: number, to: number): boolean {
   const g = gridOf(table);
   if (to < 0 || to > (kind === 'row' ? g.grid.length : g.width) || (to >= lo && to <= hi + 1)) return false;
@@ -360,30 +296,22 @@ function movable(table: HTMLTableElement, kind: Line, lo: number, hi: number, to
   return spots.every((x) => !!x && x.rows === 1 && x.span === 1);
 }
 
-// whether the rows or the columns lo to hi of table are moved to any gap
 const movableAnywhere = (table: HTMLTableElement, kind: Line, lo: number, hi: number): boolean =>
   Array.from({ length: (kind === 'row' ? table.rows.length : columnsOf(table)) + 1 }, (_, to) => to).some((to) => movable(table, kind, lo, hi, to));
 
-// the lines moved by a command of the way from the box of t, or null where they are not moved
 function moveOf(t: Target | null, kind: Line, way: -1 | 1): { lo: number; hi: number; to: number } | null {
   const box = t?.box;
   if (!t || !box) return null;
   const [lo, hi] = kind === 'row' ? [box.r0, box.r1] : [box.c0, box.c1];
-  // the next gap that keeps every merged cell whole, i.e. past a merged cell next to the lines,
-  // as a drag moves them
   const end = kind === 'row' ? t.table.rows.length : gridOf(t.table).width;
   for (let to = way < 0 ? lo - 1 : hi + 2; to >= 0 && to <= end; to += way) if (movable(t.table, kind, lo, hi, to)) return { lo, hi, to };
   return null;
 }
 
-// the rows or the columns lo to hi of table moved in the file to the gap before line to. the
-// widths of the columns are written on the first row, hence they stay on the row that is first
-// after a move of rows, and they go with their column in a move of columns
 async function moveLines(app: App, table: HTMLTableElement, kind: Line, lo: number, hi: number, to: number): Promise<void> {
   const label = `move ${kind}`;
   const first = table.rows[0];
   const widths = new Map((gridOf(table).spots[0] ?? []).map((s) => [s.col, app.doc.tagState(s.cell).style.width ?? null]));
-  // the lines after the moved ones and before the gap are moved before them, as the same order
   const lines = (all: Element[]) => (to < lo ? { move: all.slice(lo, hi + 1), before: all[to] } : { move: all.slice(hi + 1, to), before: all[lo] });
   if (kind === 'row') {
     const { move, before } = lines([...table.rows]);
@@ -402,13 +330,8 @@ async function moveLines(app: App, table: HTMLTableElement, kind: Line, lo: numb
   for (const cell of first.cells) if (app.doc.tagState(cell).style.width) app.doc.setTag(cell, { style: { width: null } }, label);
 }
 
-// a table of rows of cells put at its place in the layout of the current slide, and then moved
-// where it fits by placeTable, with every row, or put into the empty figure box into. with markup, each
-// cell of rows is HTML rather than text, and heads are the kinds of the cells of tableHtml
 async function insertTable(app: App, rows: string[][], into: Element | null = null, markup = false, heads: boolean[][] | null = null): Promise<HTMLTableElement> {
   const slide = app.current()!;
-  // the title text of a title or closing slide is held at its foot, hence a table in it would move its
-  // words up. the theme lays out a table of the section, as on a content slide
   const own = slide.matches('.title, .closing') ? { parent: slide, before: slide.querySelector(':scope > .foot, :scope > aside.notes') } : null;
   const { parent, before } = into ? { parent: into, before: null } : own ?? columnPlace(app, slide);
   const [table] = await app.doc.insert(tableHtml(rows, styleOf(app), baseOf(app, parent), markup, heads), parent, before, 'insert table');
@@ -417,8 +340,6 @@ async function insertTable(app: App, rows: string[][], into: Element | null = nu
   return table as HTMLTableElement;
 }
 
-// the columns of a new table in a slot share the inner width of the slot, written on the cells of
-// its first row, since a table of empty cells is otherwise only a few rules wide
 function fillSlot(app: App, table: HTMLTableElement, slot: Element): void {
   const cells = [...(table.rows[0]?.cells ?? [])];
   const s = getComputedStyle(slot);
@@ -430,11 +351,9 @@ function fillSlot(app: App, table: HTMLTableElement, slot: Element): void {
   set(w + (inner - table.offsetWidth) / cells.length);
 }
 
-// a new empty table of size, as one entry of the history, with the caret in its first cell
 async function newTable(app: App, size: Size, into: Element | null = null): Promise<void> {
   const rows = Math.max(1, Math.min(MOST.rows, Math.round(size.rows)));
   const columns = Math.max(1, Math.min(MOST.columns, Math.round(size.columns)));
-  // the table is selected at a redo, as in Keynote
   const table = await app.history.selecting('Insert Table', async () => {
     const t = await insertTable(app, emptyRows(rows, columns), into);
     checkOverlaps(app, app.current(), t);
@@ -445,64 +364,42 @@ async function newTable(app: App, size: Size, into: Element | null = null): Prom
   if (first) placeCaret(first, 0);
 }
 
-// the table picker opened at anchor, e.g. by the table button of the placeholder of an empty figure box,
-// whose table is put into the figure box
 export function pickTableInto(app: App, figureBox: Element, anchor: DOMRect): void {
   const fail = (e: unknown) => app.fail(e);
   const into = (size: Size) => (figureBox.isConnected ? newTable(app, size, figureBox) : Promise.resolve()).catch(fail);
   openPicker(app, anchor, (s) => void into(s), (rested) => void askSize(app, rested).then((s) => s && into(s)).catch(fail));
 }
 
-// the band in slide px over the bottom of the slide, where the slide number is drawn, and over the
-// footnote line, which a new table does not reach into
 const BOTTOM = 40;
-// the step in slide px of the grid on which a new table looks for a free place
 const STEP = 20;
 
-// a new table put where it fits on its slide, with every row, inside the margins of the slide, and
-// with room around it for its bars: under the text elements before it, else at
-// the center of the free area where the layout puts a figure box, else at the free place nearest to it.
-// the space that an element takes is the rule wordBox of place.ts, and a backdrop that is not behind
-// the words of its layout takes its drawn cells. without a free place, the table
-// is put by centerPlace of place.ts at the center of the slide or near it, off the figures and the
-// other tables. the move is a translate in slide px. on a figure slide, the plate as large as the
-// slide is the ground, and what is drawn in it is counted in its place. the layout puts the table
-// under the plate, hence its free place is the one nearest to the center of the slide
 function placeTable(app: App, table: HTMLTableElement): void {
   const slide = table.closest('section');
   const parent = table.parentElement;
   if (!slide || !parent || !table.getClientRects().length) return;
   const t = slideBox(app, table);
-  // the room of the bars in slide px at the Fit zoom of a window of 1600 by 1000, the same at every
-  // size of the window
   const room = (GAP + BAR + 2) / 0.54;
   const w = (slide as HTMLElement).offsetWidth || 1920;
   const h = (slide as HTMLElement).offsetHeight || 1080;
   const foot = [...slide.querySelectorAll(':scope > .foot')].map((f) => takenBox(app, f)).find((b) => !!b);
   const floor = Math.min(h - BOTTOM, foot ? foot.top - BOTTOM : Infinity);
   const ground = (el: Element) => el.matches('.plate') && el.getBoundingClientRect().width >= (slide.getBoundingClientRect().width - 1);
-  // the words of a text element are counted in their place
   const skip = (el: Element) => el === table || el.matches('aside.notes, script, style, .backdrop, .title-text, .sec');
   const taken = (els: Element[]) => els.filter((el) => !skip(el)).map((el) => (framed(el) ? slideBox(app, el) : wordBox(app, el))).filter((b): b is SlideBox => !!b);
   const drawn = slide.matches('.title, .section, .closing') ? [] : [...slide.querySelectorAll(':scope > .backdrop')].flatMap((b) => drawnCells(app, b));
   const above = [...parent.children].slice(0, [...parent.children].indexOf(table)).filter((el) => !el.matches('.run, .foot, [data-generated]'));
   const before = taken(above.filter((el) => !ground(el)));
-  // the words and the tables of the title text of a title, section, or closing slide are counted, also
-  // in the title text that holds the new table
   const kids = [...slide.querySelectorAll(':scope > *, :scope > .col > *, :scope > .text-column > *, :scope > .title-text > *, :scope > .sec > *')].filter((el) => !el.contains(table));
   const others = taken(kids.flatMap((el) => (ground(el) ? [...el.children].filter((c) => c.getClientRects().length) : [el])));
   const tw = t.right - t.left;
   const th = t.bottom - t.top;
   const at = (left: number, top: number): SlideBox => ({ left, top, right: left + tw, bottom: top + th });
   const side = tw + 2 * MARGIN <= w ? MARGIN : room;
-  // a box measured at the zoom of the canvas may pass the floor by a fraction of a slide px
-  // a place off the drawing of a backdrop is looked for first
   let ink = drawn;
   const free = (b: SlideBox) => b.left >= side - 1 && b.top - room >= 0 && b.bottom <= floor + 1 && b.right <= w - side + 1 &&
     !others.some((o) => meets({ left: b.left - room, top: b.top - room, right: b.right + room, bottom: b.bottom + room }, o)) && !ink.some((o) => meets(b, o));
   const head = slide.querySelector(':scope > h2, :scope > h1');
   const headBox = head ? takenBox(app, head) : null;
-  // the bars of a table at the edge of the slide would be outside it
   const left = t.left >= room ? t.left : (headBox?.left ?? room);
   const top = Math.max(t.top, ...before.map((b) => b.bottom + room));
   const center = at((w - tw) / 2, (h - th) / 2);
@@ -510,7 +407,6 @@ function placeTable(app: App, table: HTMLTableElement): void {
   let best: SlideBox | null = null;
   let place: SlideBox | null = null;
   const figureBox = free(at(left, top)) ? null : freeFigureBox(app, slide, table);
-  // the free places on a grid of STEP px under the heading of the slide, the nearest one taken
   const under = head ? (headBox?.bottom ?? 0) + room : room;
   for (const d of drawn.length ? [drawn, []] : [drawn]) {
     ink = d;
@@ -539,9 +435,6 @@ const boxOfTarget = (t: Target): Box | null => t.box;
 
 const spanText = (n: number) => (n > 1 ? String(n) : null);
 
-// a row added above or below the cells of t, or at the end. a cell that reaches across the line of
-// the new row grows by a row, and each other column gets a cell, set at the right in a column of
-// numbers. a row added above a header row is a header row
 async function addRow(app: App, t: Target, below: boolean): Promise<HTMLTableRowElement> {
   const g = gridOf(t.table);
   const rows = [...t.table.rows];
@@ -565,8 +458,6 @@ async function addRow(app: App, t: Target, below: boolean): Promise<HTMLTableRow
   return tr as HTMLTableRowElement;
 }
 
-// a column added before or after the cells of t, or at the end. a cell that reaches across the line
-// of the new column grows by a column, and each other row gets a cell, a th next to a th
 async function addColumn(app: App, t: Target, after: boolean): Promise<HTMLTableCellElement | null> {
   const g = gridOf(t.table);
   const box = boxOfTarget(t);
@@ -591,11 +482,8 @@ async function addColumn(app: App, t: Target, after: boolean): Promise<HTMLTable
   return mine;
 }
 
-// true while the table of t is the selection and its cell is selected as a range, not its text
 const rangeSelected = (app: App, t: Target) => app.selection.only() === t.table && !cellAt(app);
 
-// with the caret in a cell, a part of the open transaction after whose undo the caret is put back at
-// its spot, and after whose redo it is put where it is at the call of the function returned
 function keepCaret(app: App, asRange: boolean): () => void {
   if (asRange) return () => {};
   return app.history.keep(() => {
@@ -607,14 +495,12 @@ function keepCaret(app: App, asRange: boolean): () => void {
   });
 }
 
-// the cell after an edit: selected as a range in the range state, and else with the caret in it
 function land(app: App, cell: Element | null | undefined, at: 'start' | 'end', asRange: boolean): void {
   if (!isCell(cell)) return;
   if (!asRange) return focusCell(cell, at);
   selectCells(app, cell, cell);
 }
 
-// the rows left without a cell taken out, and each cell that reached over one a row shorter
 async function dropEmptyRows(app: App, table: HTMLTableElement, label: string): Promise<void> {
   for (let r = table.rows.length - 1; r >= 0; r--) {
     const tr = table.rows[r];
@@ -625,8 +511,6 @@ async function dropEmptyRows(app: App, table: HTMLTableElement, label: string): 
   }
 }
 
-// one row taken out. a cell that starts in it and reaches below it is moved to the row below, and a
-// cell from a row above that reaches over it gets a row less
 async function removeRow(app: App, table: HTMLTableElement, r: number): Promise<void> {
   const g = gridOf(table);
   for (const s of new Set(g.grid[r].filter((x): x is Place => !!x))) {
@@ -640,7 +524,6 @@ async function removeRow(app: App, table: HTMLTableElement, r: number): Promise<
   await app.doc.remove(table.rows[r], 'delete row');
 }
 
-// the rows of the cells of t taken out, or the table with its last rows
 async function deleteRow(app: App, t: Target): Promise<void> {
   const box = boxOfTarget(t);
   if (!box) return;
@@ -651,7 +534,6 @@ async function deleteRow(app: App, t: Target): Promise<void> {
   land(app, cellOver(t.table, row, box.c0) ?? t.table.rows[row].cells[0], 'end', asRange);
 }
 
-// one column taken out. a cell that reaches over another column gets a column less
 async function removeColumn(app: App, table: HTMLTableElement, c: number): Promise<void> {
   const g = gridOf(table);
   for (const s of new Set(g.grid.map((row) => row[c]).filter((x): x is Place => !!x))) {
@@ -660,9 +542,6 @@ async function removeColumn(app: App, table: HTMLTableElement, c: number): Promi
   }
 }
 
-// the rows or the columns of a table added or taken out at its end, until it has count of them,
-// as the fields Rows and Columns of the Table tab of Keynote set them. the selection is kept, and a
-// cell taken out is dropped from it
 export async function setCount(app: App, table: HTMLTableElement, kind: 'rows' | 'columns', count: number): Promise<void> {
   const n = Math.max(1, Math.min(MOST[kind], Math.round(count)));
   const t = { table, cell: null, box: null };
@@ -676,8 +555,6 @@ export async function setCount(app: App, table: HTMLTableElement, kind: 'rows' |
   await dropEmptyRows(app, table, 'delete column');
 }
 
-// the columns of the cells of t taken out, or the table with its last columns. a cell that reaches
-// over another column gets a column less, and a row left without a cell is taken out
 async function deleteColumn(app: App, t: Target): Promise<void> {
   const box = boxOfTarget(t);
   if (!box) return;
@@ -695,7 +572,6 @@ async function deleteTable(app: App, t: Target): Promise<void> {
   await app.doc.remove(t.table, 'delete table');
 }
 
-// the first row made a row of th, or a row of td again, with the caret kept in its cell
 async function setHeader(app: App, t: Target, on: boolean): Promise<void> {
   const first = t.table.rows[0];
   if (!first) return;
@@ -708,20 +584,16 @@ async function setHeader(app: App, t: Target, on: boolean): Promise<void> {
   if (caret) placeCaret(caret);
 }
 
-// the cells of the columns of numbers set at the right, the header cell included, or every cell
-// set at the left again. with a box, only the cells inside it
 function alignNumbers(app: App, t: Target, on: boolean, box?: Box): void {
   for (const p of misaligned(t, on, box)) app.doc.setTag(p.cell, { style: { 'text-align': right(p.cell) ? null : 'right' } }, 'align numbers');
 }
 
-// the cells that alignNumbers changes
 function misaligned(t: Target, on: boolean, box?: Box): Place[] {
   const numeric = numbersOf(t.table);
   const shown = (p: Place) => !box || (p.row >= box.r0 && p.row <= box.r1 && p.col >= box.c0 && p.col <= box.c1);
   return placesOf(t.table).flat().filter((p) => shown(p) && right(p.cell) !== (on && numeric[p.col]));
 }
 
-// the box of Auto-Align: the range of the cells selected as a range, or the table at one cell
 const alignBox = (t: Target) => (t.box && spotsIn(gridOf(t.table), t.box).length > 1 ? t.box : undefined);
 
 function numbersRight(t: Target | null): boolean {
@@ -731,11 +603,6 @@ function numbersRight(t: Target | null): boolean {
   return cells.length > 0 && cells.every((p) => right(p.cell));
 }
 
-// the cells of the range of t merged into its first cell, as Merge Cells of Keynote. the first cell
-// keeps its tag and its style, and thus its alignment, takes the text of the cells with a text in
-// the order of reading, each on a line of its own after a br, as Keynote and PowerPoint keep it,
-// and is written with the colspan and the rowspan of the range. a row left without a cell is
-// taken out
 async function mergeCells(app: App, t: Target): Promise<void> {
   const box = t.box!;
   const [first, ...rest] = spotsIn(gridOf(t.table), box);
@@ -748,11 +615,6 @@ async function mergeCells(app: App, t: Target): Promise<void> {
   land(app, first.cell, 'end', asRange);
 }
 
-// each merged cell of the range of t split into cells of one row and one column, as Unmerge Cells
-// of Keynote. the merged cell keeps its text at its first row and column, and the new cells are
-// empty, with its tag and its alignment. the place of each new cell is taken from the table before
-// the change, and the merged cells are split in the order of reading, so that the new cells of two
-// merged cells side by side are written in the order of their columns
 async function unmergeCells(app: App, t: Target): Promise<void> {
   const g = gridOf(t.table);
   const box = t.box!;
@@ -775,19 +637,13 @@ async function unmergeCells(app: App, t: Target): Promise<void> {
   else land(app, t.cell, 'end', false);
 }
 
-// whether the range of t holds more than one cell, and whether it holds a merged cell
 const mergeable = (t: Target | null) => !!t?.box && spotsIn(gridOf(t.table), t.box).length > 1;
 const unmergeable = (t: Target | null) => !!t?.box && spotsIn(gridOf(t.table), t.box).some((s) => s.rows > 1 || s.span > 1);
 
-// the smallest width of the content of a column that a drag of its border leaves, in slide px,
-// where its words leave it narrower
 const NARROWEST = 24;
 
-// the width of the content of a cell in slide px, which a width in its style sets, since the theme
-// sizes the cells by their content box
 const contentWidth = (cell: Element) => parseFloat(getComputedStyle(cell).width) || 0;
 
-// the widths of cells of the first row written in px into their style, each that changes
 function writeWidths(app: App, widths: Map<HTMLTableCellElement, number>, label: string): void {
   for (const [cell, w] of widths) {
     const text = `${Math.max(1, Math.round(w))}px`;
@@ -795,17 +651,12 @@ function writeWidths(app: App, widths: Map<HTMLTableCellElement, number>, label:
   }
 }
 
-// the cells of the first row in the columns of the range of t, or in every column where the range
-// is one column wide or there is none. a cell of the first row over more than one column is taken
-// only inside the columns
 function firstRowIn(t: Target): Place[] {
   const g = gridOf(t.table);
   const box = t.box && t.box.c1 > t.box.c0 ? t.box : { c0: 0, c1: g.width - 1 };
   return (g.spots[0] ?? []).filter((s) => s.col >= box.c0 && s.col + s.span - 1 <= box.c1);
 }
 
-// the columns of the range of t, or of the table, made as wide as each other, with the width of
-// all of them kept, as Distribute Columns Evenly of Keynote
 function distributeColumns(app: App, t: Target): void {
   const cells = firstRowIn(t);
   const outer = cells.map((s) => (s.cell as HTMLElement).offsetWidth);
@@ -813,23 +664,17 @@ function distributeColumns(app: App, t: Target): void {
   writeWidths(app, new Map(cells.map((s, i) => [s.cell, each * s.span - (outer[i] - contentWidth(s.cell))])), 'distribute columns');
 }
 
-// the rows of the range of t, or every row where the range is one row high or there is none
 function rowsIn(t: Target): HTMLTableRowElement[] {
   const rows = [...t.table.rows];
   return t.box && t.box.r1 > t.box.r0 ? rows.slice(t.box.r0, t.box.r1 + 1) : rows;
 }
 
-// the rows of the range of t, or of the table, made as high as each other, with the height of all
-// of them kept, as Distribute Rows Evenly of Keynote. a row is not drawn lower than its words, hence
-// the rows are as high as the highest of them where it needs more than the share. the height is
-// written in px on each tr, less what a row is drawn past its written height
 function distributeRows(app: App, t: Target): void {
   const rows = rowsIn(t);
   const slides = app.slides() as HTMLElement;
   const k = slides.offsetWidth ? slides.getBoundingClientRect().width / slides.offsetWidth : 1;
   const high = (r: HTMLTableRowElement) => r.getBoundingClientRect().height / k;
   const outer = rows.map(high);
-  // the height of the words of each row, measured with the row set a px high
   const least = rows.map((r) => {
     const kept = r.style.height;
     r.style.height = '1px';
@@ -846,11 +691,6 @@ function distributeRows(app: App, t: Target): void {
   for (const r of rows) if (Math.abs(high(r) - each) >= 0.5) write(r, 2 * each - high(r));
 }
 
-// the width of the content of each cell of the first row of table, measured with the cell set a
-// px wide, so that its column is as narrow as its cells let it be: as wide as its longest word, or
-// with nowrap as its widest text on one line. the style of each cell is put back before the next
-// frame, and a cell without a style is left without one. a cell of the first row over more than
-// one column is not measured
 function columnWidths(table: HTMLTableElement, nowrap: boolean, from = 0, to = Infinity): Map<HTMLTableCellElement, number> {
   const g = gridOf(table);
   const out = new Map<HTMLTableCellElement, number>();
@@ -869,25 +709,14 @@ function columnWidths(table: HTMLTableElement, nowrap: boolean, from = 0, to = I
   return out;
 }
 
-// the widest text of each column of the cells of t on one line, as Resize Column to Fit Content
-// of Keynote, or of every column of a table selected as an object. a width is written in whole
-// px, hence it is rounded up, since a px less wraps the widest text
 const fitWidths = (t: Target) => new Map([...columnWidths(t.table, true, t.box?.c0, t.box?.c1)].map(([c, w]) => [c, Math.ceil(w - 0.01)]));
 
-// the rows of the range of t, or of the caret, or else every row of the table, and of each the row
-// and the cells that start in it whose style writes a height, which Resize Row to Fit Content of
-// Keynote takes off
 function writtenHeights(app: App, t: Target): Element[] {
   const rows = [...t.table.rows].slice(t.box?.r0 ?? 0, t.box ? t.box.r1 + 1 : undefined);
   return rows.flatMap((tr) => [tr, ...tr.cells]).filter((el) => app.pairing?.elements.get(el)?.open && app.doc.tagState(el).style.height);
 }
 
-// the cells of rows written into the table of cell from cell on, with rows and columns added at the
-// end as they are needed. with asRange set, the cells written are then selected as a range, and
-// with markup set, each cell of rows is HTML rather than text
 async function pasteCells(app: App, cell: HTMLTableCellElement, rows: string[][], asRange = false, markup = false): Promise<void> {
-  // a paste of cells that a refusal refuses, e.g. while another person types in a cell of the
-  // table, writes nothing. it is asked here for the key and for the menu alike
   if (app.commands.refused('edit.paste', { cell })) return;
   const start = placeOf(cell)!;
   const table = cell.closest('table') as HTMLTableElement;
@@ -897,7 +726,6 @@ async function pasteCells(app: App, cell: HTMLTableCellElement, rows: string[][]
   const done = new Set<Element>();
   for (const [i, r] of rows.entries()) {
     for (const [j, text] of r.entries()) {
-      // a merged cell takes the text of its first row and column
       const target = cellOver(table, start.row + i, start.col + j);
       if (!target || done.has(target)) continue;
       done.add(target);
@@ -910,13 +738,8 @@ async function pasteCells(app: App, cell: HTMLTableCellElement, rows: string[][]
   else if (last) focusCell(last, 'end');
 }
 
-// the cells selected as a range, which Cut, Copy, Paste, and Delete of the Edit menu act on as the
-// Delete key does, as in Keynote, and on which Duplicate is dimmed
 export const selectedRange = (app: App): Target | null => (rangeHeld(app) ? targetOf(app) : null);
 
-// the cells of the range of t as tab-separated text and as a table marked with CELLS, with a merged
-// cell in its first row and column and empty cells in its other places. a formula keeps its
-// delimiters, and a cell of the table is its HTML as the file has it
 export function rangeText(t: Target): { plain: string; html: string } {
   const g = gridOf(t.table);
   const b = t.box!;
@@ -939,8 +762,6 @@ export function rangeText(t: Target): { plain: string; html: string } {
   return { plain: plain.join('\n'), html: `<table ${CELLS}>${html.join('')}</table>` };
 }
 
-// a change of the cells selected as a range, after whose undo the range before it is selected
-// again, and after whose redo the range after it
 function keepingRange<T>(app: App, fn: () => Promise<T>): Promise<T> {
   const take = () => (cellRange ? { ...cellRange } : null);
   const put = (b: typeof cellRange) => {
@@ -949,7 +770,6 @@ function keepingRange<T>(app: App, fn: () => Promise<T>): Promise<T> {
   return app.history.keeping('Clear Cells', take, put, fn);
 }
 
-// the text of each cell of the selected range cleared, with the range kept selected
 export function clearRange(app: App): Promise<void> {
   return keepingRange(app, async () => {
     const t = selectedRange(app);
@@ -962,8 +782,6 @@ export function clearRange(app: App): Promise<void> {
   });
 }
 
-// a paste of an HTML table, of tab-separated text, or of lines onto the selected range, from its
-// first cell on. false when no range is selected or there is nothing to paste
 export async function pasteRange(app: App, text: string, html = ''): Promise<boolean> {
   const t = selectedRange(app);
   const lines = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
@@ -975,8 +793,6 @@ export async function pasteRange(app: App, text: string, html = ''): Promise<boo
   return true;
 }
 
-// a paste of an HTML table or of tab-separated text into the cell of the caret, which fills the
-// cells from this cell on, as the paste of the key. false without a cell or a table to paste
 export async function pasteAtCell(app: App, text: string, html = ''): Promise<boolean> {
   const cell = cellAt(app);
   const marked = parseEditorTable(html);
@@ -986,9 +802,6 @@ export async function pasteAtCell(app: App, text: string, html = ''): Promise<bo
   return true;
 }
 
-// a paste of an HTML table or of tab-separated text onto the current slide as a new table, which
-// is selected. a range of the editor keeps the inline elements and the kind of each of its cells.
-// false when the text is not a table
 export async function pasteTable(app: App, text: string, html = ''): Promise<boolean> {
   const marked = parseEditorTable(html);
   const rows = marked ?? parseHtmlTable(html) ?? parseTabular(text);
@@ -1002,9 +815,6 @@ export async function pasteTable(app: App, text: string, html = ''): Promise<boo
 
 let current: App | null = null;
 
-// a key while rows or columns are pressed or dragged by their bar is taken, as in Keynote, and Esc
-// cancels the drag. the listener is added at the import of this module, before RANGE_KEYS and the
-// keys of the editor
 let cancelMove: ((cancel: boolean) => boolean) | null = null;
 window.addEventListener('keydown', (ev) => {
   if (!cancelMove?.(ev.key === 'Escape')) return;
@@ -1012,17 +822,13 @@ window.addEventListener('keydown', (ev) => {
   ev.stopImmediatePropagation();
 }, true);
 
-// the commands of the keys of the cells selected as a range, run before the commands of a
-// selected element, e.g. the arrows before a nudge and Delete before the delete of the table
 const RANGE_KEYS: Command[] = [];
 window.addEventListener('keydown', (ev) => {
   const app = current;
   if (!app || ev.isComposing || menuOpen() || picker || app.region() !== 'canvas' || !rangeHeld(app)) return;
-  // Esc during a preview is left to the preview, which it stops
   if (ev.key === 'Escape' && previewPlays()) return;
   const hit = (x: Command | undefined) => !!x && keysOf(x, app.platform).some((k) => matches(ev, k, app.platform));
   const c = RANGE_KEYS.find(hit);
-  // the key of Duplicate, dimmed on a range, is not left to the browser, where Ctrl+D adds a bookmark
   if (!c && hit(app.commands.get('edit.duplicate'))) ev.preventDefault();
   if (!c) return;
   ev.preventDefault();
@@ -1030,7 +836,6 @@ window.addEventListener('keydown', (ev) => {
   void app.commands.run(c.id).catch((e) => app.fail(e));
 }, true);
 
-// the context menu of a cell, with the commands of the clipboard and of the table
 function cellItems(cell: HTMLTableCellElement): MenuItem[] {
   const arg = { cell };
   const ids = (list: string[]): MenuItem[] => list.map((command) => ({ command, arg }));
@@ -1061,8 +866,6 @@ function openCellMenu(app: App, cell: HTMLTableCellElement, at: { x: number; y: 
   openMenu(app, cellItems(cell), { anchor: at, placement: 'point', label: 'cell menu', className: 'context cell' });
 }
 
-// Shift+F10 and the Menu key in a cell open its menu, before the context menu of a text that
-// shell/shell.ts opens, hence the listener is added at the import of this module
 window.addEventListener('keydown', (ev) => {
   const app = current;
   if (!app || menuOpen() || !(ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey))) return;
@@ -1074,12 +877,8 @@ window.addEventListener('keydown', (ev) => {
   openCellMenu(app, cell, { x: r.left + 8, y: r.top + Math.min(r.height, 24) });
 }, true);
 
-// the close of the open grid of Insert Table, or null
 let picker: ((restore: boolean) => void) | null = null;
 
-// the grid of the Insert Table popover, under its anchor. a cell of the grid chooses the size of
-// the table up to it, shown above the grid as columns by rows, and a click or Return inserts it.
-// it is a popover, hence the toolbar stays enabled and the Table button is drawn pressed under it
 function openPicker(app: App, anchor: DOMRect | null, done: (size: Size) => void, more?: (rested?: Size) => void): void {
   picker?.(false);
   const back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -1098,7 +897,6 @@ function openPicker(app: App, anchor: DOMRect | null, done: (size: Size) => void
   larger.type = 'button';
   box.append(size, grid, make('div', 'foot', 'Choose with the arrow keys, and insert with Return'), larger);
   let pick: Size | null = null;
-  // the size last shown, which Insert Table… opens with after the pointer leaves the grid
   let rested: Size | undefined;
   const show = (next: Size | null) => {
     pick = next;
@@ -1111,7 +909,6 @@ function openPicker(app: App, anchor: DOMRect | null, done: (size: Size) => void
     const i = cells.indexOf(ev.target as HTMLDivElement);
     return i < 0 ? null : { rows: Math.floor(i / GRID.columns) + 1, columns: (i % GRID.columns) + 1 };
   };
-  // the listeners of the window are taken off with the picker
   const off = new AbortController();
   const close = (restore: boolean) => {
     if (off.signal.aborted) return;
@@ -1164,15 +961,12 @@ function openPicker(app: App, anchor: DOMRect | null, done: (size: Size) => void
   setTimeout(() => {
     const signal = off.signal;
     window.addEventListener('pointerdown', (ev) => {
-      // a press on the Table button is left to its click, which closes the grid
       if (!(ev.target instanceof Element) || !(box.contains(ev.target) || button?.contains(ev.target))) close(true);
     }, { capture: true, signal });
     for (const type of ['resize', 'blur']) window.addEventListener(type, () => close(true), { signal });
   }, 0);
 }
 
-// the numbers of columns and rows of a new table, asked in a dialog, or null after Cancel. the
-// dialog opens with start, the size last shown in the grid, and else with the size typed last
 let lastSize: Size = { columns: 4, rows: 6 };
 async function askSize(app: App, start: Size = lastSize): Promise<Size | null> {
   const body = make('div', 'fields');
@@ -1186,7 +980,6 @@ async function askSize(app: App, start: Size = lastSize): Promise<Size | null> {
     input.name = label.toLowerCase();
     const l = make('label', '', label);
     l.htmlFor = input.id = `beeson-table-${input.name}`;
-    // a field reached with Tab is selected, hence a number typed replaces it
     input.addEventListener('focus', () => input.select());
     body.append(l, input);
     return input;
@@ -1201,7 +994,6 @@ async function askSize(app: App, start: Size = lastSize): Promise<Size | null> {
     buttons: [{ label: 'Cancel', value: 'cancel' }, { label: 'Insert', value: 'insert', primary: true }],
   });
   const read = (input: HTMLInputElement, most: number) => Math.max(1, Math.min(most, Math.round(Number(input.value)) || 1));
-  // Return in a field inserts, as the default button of a dialog
   body.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
     ev.preventDefault();
@@ -1220,16 +1012,11 @@ async function askSize(app: App, start: Size = lastSize): Promise<Size | null> {
   }
 }
 
-// the toolbar button of a command when it is shown, as the anchor of its popover
 function toolbarButton(id: string): DOMRect | null {
   const b = document.querySelector<HTMLElement>(`.beeson-edit-top [data-command="${id}"]`);
   return b && b.getClientRects().length ? b.getBoundingClientRect() : null;
 }
 
-// the bars of the table of the caret, drawn again in each frame while it is shown, since the table
-// moves with a drag, a zoom, and a scroll of the canvas
-// whether a refusal refuses a change of table by a drag of its bars or its grips, asked as the
-// command that makes the same change, e.g. while another person types in a cell of the table
 const refusedDrag = (app: App, id: string, table: Element | null): boolean => !!table && app.commands.refused(id, { cell: table, els: [table] });
 
 function installBars(app: App): void {
@@ -1255,21 +1042,14 @@ function installBars(app: App): void {
   const grab = round('Select Table', 'table', (t) => selectTable(app, t.table));
   const addCol = round('Add Column', 'plus', (t) => app.commands.run('table.columnAfter', { cell: lastCell(t.table, 'column') }));
   const addRow = round('Add Row', 'plus', (t) => app.commands.run('table.rowBelow', { cell: lastCell(t.table, 'row') }));
-  // a grip on the border at the right of each cell of the first row, whose drag sets the widths
-  // of the columns on its two sides, or of the last column, and the line of the border while it is
-  // dragged
   const grips = make('div', 'grips');
   const guide = make('div', 'guide');
   guide.hidden = true;
-  // the fill handle at the lower right corner of the cells selected as a range, and the box of the
-  // cells that its drag reaches
   const handle = make('div', 'fill');
   handle.title = 'Drag to fill the cells beside the selection';
   handle.hidden = true;
   const spread = make('div', 'spread');
   spread.hidden = true;
-  // the handles at the other corners of the cells selected as a range, whose drag moves that corner
-  // of the range to the cell under the pointer while the opposite corner stays
   const corners = (['upper-left', 'upper-right', 'lower-left'] as const).map((name) => {
     const c = make('div', 'corner');
     c.dataset.corner = name;
@@ -1277,9 +1057,6 @@ function installBars(app: App): void {
     c.hidden = true;
     return c;
   });
-  // the grips at the left and right edges of a table selected as an object, whose drag sets the
-  // widths of its columns in proportion, which is the only size of a table that the theme lets the
-  // editor write. a drag of the left grip moves the table, so that its right edge stays
   const sides = (['w', 'e'] as const).map((h) => {
     const g = make('div', app.platform === 'mac' ? 'beeson-grip square' : 'beeson-grip');
     g.dataset.handle = h;
@@ -1287,21 +1064,14 @@ function installBars(app: App): void {
     g.hidden = true;
     return g;
   });
-  // the line at the gap where the rows or the columns dragged by their bar land, drawn over the copy
   const gapLine = make('div', 'drop');
   gapLine.hidden = true;
-  // a copy of the rows or the columns dragged by their bar, lifted over the table, which follows the
-  // pointer along their axis while the others stay, as in Keynote
   const lift = make('div', 'lift');
   lift.hidden = true;
   layer.append(cols, rows, grab, addCol, addRow, outline, grips, guide, spread, ...corners, handle, ...sides, lift, gapLine);
   document.body.append(layer);
-  // a press on the bars keeps the caret in its cell
   for (const type of ['pointerdown', 'mousedown']) layer.addEventListener(type, (ev) => ev.preventDefault());
 
-  // a click on a letter or a number selects its column or row as a range, and with Shift the
-  // columns or rows from the range to it, as in Keynote. its arrow and a right-click then open the
-  // menu of the column or the row
   const pick = (ev: MouseEvent, column: boolean) => {
     const seg = ev.target instanceof Element ? ev.target.closest<HTMLElement>('[data-index]') : null;
     if (!seg || !shown || (ev.type === 'click' && dragged)) return;
@@ -1330,14 +1100,8 @@ function installBars(app: App): void {
     bar.addEventListener('contextmenu', (ev) => pick(ev, column));
   }
 
-  // a press on the bar of selected whole rows or columns, moved past a few px, drags them to a gap
-  // among the others, as in Keynote, and a press on a bar that is not selected still selects. the
-  // gap is the one past the row or the column under the pointer, and Esc cancels the drag
   let moving: { kind: Line; table: HTMLTableElement; lo: number; hi: number; x: number; y: number; to: number | null; on: boolean; at: [number, number]; from: [number, number]; grab: [number, number] } | null = null;
   let dragged = false;
-  // the copy of the cells of m, each with the look of its cell, drawn in the slide pixels of the
-  // table and scaled to the screen at each move. from is the offset of the copy from the table and
-  // grab the offset of the press from the copy, both in the pixels of the table, which a zoom keeps
   const lifted = (m: NonNullable<typeof moving>) => {
     const t = m.table.getBoundingClientRect();
     const k = t.width / (m.table.offsetWidth || 1);
@@ -1387,7 +1151,6 @@ function installBars(app: App): void {
     moving = null;
     document.documentElement.classList.remove('beeson-line-moving', 'beeson-line-refused');
     unlift();
-    // a release after the table has left the current slide writes nothing
     const to = ev && m.on && app.current()?.contains(m.table) ? gapAt(m, ev.clientX, ev.clientY) : null;
     if (to === null || refusedDrag(app, m.kind === 'row' ? 'table.moveRowUp' : 'table.moveColumnLeft', m.table)) return;
     const range = cellRange && { ...cellRange };
@@ -1412,14 +1175,12 @@ function installBars(app: App): void {
     bar.addEventListener('pointermove', (ev) => {
       const m = moving;
       if (!m || (!m.on && Math.hypot(ev.clientX - m.x, ev.clientY - m.y) < 4)) return;
-      // a refused move, e.g. of a table that another person types in, ends at its first move
       if (!m.on && refusedDrag(app, m.kind === 'row' ? 'table.moveRowUp' : 'table.moveColumnLeft', m.table)) {
         dragged = true;
         stopMove();
         return;
       }
       m.at = [ev.clientX, ev.clientY];
-      // rows or columns that do not have a gap to go to are not lifted
       if (!m.on && movableAnywhere(m.table, m.kind, m.lo, m.hi)) lifted(m);
       m.on = dragged = true;
       document.documentElement.classList.add(lift.hidden ? 'beeson-line-refused' : 'beeson-line-moving');
@@ -1455,10 +1216,6 @@ function installBars(app: App): void {
       return d;
     }));
 
-  // the drag of a grip: the cells of the first row, the widths of their content and their widths
-  // in the style at the press, the cell at the left of the border, and the scale of the slide
-  // in the style at the press, the narrowest widths that their words leave, the cell at the left
-  // of the border, and the scale of the slide
   let resize: { cells: HTMLTableCellElement[]; widths: number[]; styles: string[]; least: number[]; i: number; x: number; scale: number; on: boolean } | null = null;
   const sized = (ev: PointerEvent): Map<HTMLTableCellElement, number> => {
     const r = resize!;
@@ -1490,7 +1247,6 @@ function installBars(app: App): void {
   });
   grips.addEventListener('pointermove', (ev) => {
     if (!resize || (!resize.on && ev.clientX === resize.x)) return;
-    // a refused resize ends at its first move, before a width is set
     if (!resize.on && refusedDrag(app, 'arrange.setSize', resize.cells[0].closest('table'))) {
       resize = null;
       document.documentElement.classList.remove('beeson-column-resizing');
@@ -1508,7 +1264,6 @@ function installBars(app: App): void {
     r.cells.forEach((c, i) => {
       c.style.width = r.styles[i];
     });
-    // a drag that ends at the widths of the press, e.g. held by the narrowest width, writes nothing
     if (widths && [...widths].some(([c, w]) => Math.abs(w - r.widths[r.cells.indexOf(c)]) >= 0.5) && !refusedDrag(app, 'arrange.setSize', r.cells[0].closest('table'))) {
       void app.history.transact('Resize Column', () => writeWidths(app, widths, 'resize column')).catch((e) => app.fail(e));
     }
@@ -1529,7 +1284,6 @@ function installBars(app: App): void {
     const to = reach(filling.table, filling.from, ev.clientX, ev.clientY);
     Object.assign(filling, { x: ev.clientX, y: ev.clientY });
     if (sameBox(to, filling.to)) return;
-    // a refused autofill ends when it first reaches beyond its cells
     if (sameBox(filling.to, filling.from) && refusedDrag(app, 'edit.paste', filling.table)) {
       filling = null;
       reaching = null;
@@ -1558,7 +1312,6 @@ function installBars(app: App): void {
   handle.addEventListener('pointerup', (ev) => endFill(ev));
   handle.addEventListener('pointercancel', () => endFill(null));
 
-  // the drag of a corner handle: the table and the cell at the corner of the range that stays
   let stretching: { table: HTMLTableElement; row: number; col: number } | null = null;
   for (const c of corners) {
     c.addEventListener('pointerdown', (ev) => {
@@ -1579,8 +1332,6 @@ function installBars(app: App): void {
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) c.addEventListener(type, () => (stretching = null));
   }
 
-  // the drag of an edge grip: the cells of the first row with their outer widths and the widths of
-  // their content, and their styles at the press, the translate of the table, and its width
   let widening: { table: HTMLTableElement; cells: HTMLTableCellElement[]; outer: number[]; content: number[]; styles: string[]; at: number[]; moved: string; left: boolean; x: number; scale: number; width: number; on: boolean } | null = null;
   const widen = (ev: PointerEvent) => {
     const r = widening!;
@@ -1608,7 +1359,6 @@ function installBars(app: App): void {
     g.addEventListener('pointermove', (ev) => {
       const r = widening;
       if (!r || (!r.on && ev.clientX === r.x)) return;
-      // a refused resize ends at its first move, before the table is changed
       if (!r.on && refusedDrag(app, 'arrange.setSize', r.table)) {
         widening = null;
         document.documentElement.classList.remove('beeson-resizing');
@@ -1682,7 +1432,6 @@ function installBars(app: App): void {
       place(gapLine, x - 1.5, box.top, 3, box.height);
     }
     if (moving?.on && moving.table === t.table) follow(moving, box);
-    // the buttons are kept inside the canvas, also for a table at its edge
     const v = app.stage?.viewport;
     const inX = (x: number) => (v ? Math.max(v.left + 2, Math.min(x, v.right - BAR - 2)) : x);
     const inY = (y: number) => (v ? Math.max(v.top + 2, Math.min(y, v.bottom - BAR - 2)) : y);
@@ -1695,8 +1444,6 @@ function installBars(app: App): void {
     handle.hidden = !ranged && !filling;
     if (at) {
       const r = boxRect(t.table, at);
-      // the frame is drawn on the edges of the cells, on the side of each edge with the padding of a
-      // cell, i.e. inside at the right of the theme and outside at the left, off the text on both sides
       const f = ranged ? FRAME_RANGE : FRAME;
       const g = gridOf(t.table).grid;
       const first = g[at.r0]?.[at.c0]?.cell, last = g[at.r1]?.[at.c1]?.cell;
@@ -1704,7 +1451,6 @@ function installBars(app: App): void {
       const out = (c: HTMLElement | undefined, side: 'Left' | 'Top' | 'Right' | 'Bottom') => !c || parseFloat(getComputedStyle(c)[`padding${side}`]) * k < f ? f : 0;
       const x0 = r.left - out(first, 'Left'), y0 = r.top - out(first, 'Top');
       place(outline, x0, y0, r.right + out(last, 'Right') - x0, r.bottom + out(last, 'Bottom') - y0);
-      // the handle is under the pointer while it is dragged
       if (filling) place(handle, filling.x - 5.5, filling.y - 5.5, 11, 11);
       else if (!handle.hidden) place(handle, r.right - 5, r.bottom - 5, 11, 11);
       const ends = { 'upper-left': [r.left, r.top], 'upper-right': [r.right, r.top], 'lower-left': [r.left, r.bottom] };
@@ -1735,7 +1481,6 @@ function installBars(app: App): void {
 
   const refresh = () => {
     const t = targetOf(app);
-    // a change of slide ends the drag of a row or a column as Esc does
     if (moving && !app.current()?.contains(moving.table)) stopMove();
     if (!t || !app.current()?.contains(t.table)) return hide();
     if (shown?.table !== t.table) signature = '';
@@ -1750,8 +1495,6 @@ function installBars(app: App): void {
   });
 }
 
-// the left edge and the right edge of each column of a table on the screen, from the cells that
-// start and end in it
 function columnEdges(table: HTMLTableElement): number[][] {
   const edges = Array.from({ length: columnsOf(table) }, () => [Infinity, -Infinity]);
   for (const p of placesOf(table).flat()) {
@@ -1762,7 +1505,6 @@ function columnEdges(table: HTMLTableElement): number[][] {
   return edges;
 }
 
-// the box on the screen around the cells of a range
 function boxRect(table: HTMLTableElement, at: Box): { left: number; top: number; right: number; bottom: number } {
   const r = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
   for (const p of spotsIn(gridOf(table), at)) {
@@ -1775,7 +1517,6 @@ function boxRect(table: HTMLTableElement, at: Box): { left: number; top: number;
   return r;
 }
 
-// the row and the column of a table at the point x, y, those at its edge for a point outside it
 function spotAt(table: HTMLTableElement, x: number, y: number): { row: number; col: number } {
   const rows = [...table.rows].map((tr) => tr.getBoundingClientRect());
   const edges = columnEdges(table);
@@ -1786,9 +1527,6 @@ function spotAt(table: HTMLTableElement, x: number, y: number): { row: number; c
 
 const sameBox = (a: Box, b: Box) => a.r0 === b.r0 && a.c0 === b.c0 && a.r1 === b.r1 && a.c1 === b.c1;
 
-// the range that a drag of the fill handle to the point x, y reaches from the range from: from
-// grown along one axis, the one in which the point is farther past it in cells, to the row or the
-// column of the point, kept inside the table
 function reach(table: HTMLTableElement, from: Box, x: number, y: number): Box {
   const { row, col } = spotAt(table, x, y);
   const dr = row > from.r1 ? row - from.r1 : row < from.r0 ? from.r0 - row : 0;
@@ -1798,8 +1536,6 @@ function reach(table: HTMLTableElement, from: Box, x: number, y: number): Box {
   return from;
 }
 
-// the cells of to outside from filled from the cells of from, line by line along the axis in which
-// to grows: a series where the cells of a line hold numbers in a step, else copies of the cells
 async function autofill(app: App, table: HTMLTableElement, from: Box, to: Box): Promise<void> {
   const g = gridOf(table);
   if (spotsIn(g, to).some((s) => s.rows > 1 || s.span > 1)) throw new Error('Autofill does not fill merged cells');
@@ -1817,7 +1553,6 @@ async function autofill(app: App, table: HTMLTableElement, from: Box, to: Box): 
   const count = vertical ? to.r1 - to.r0 - (from.r1 - from.r0) : to.c1 - to.c0 - (from.c1 - from.c0);
   for (const across of vertical ? span(from.c0, from.c1) : span(from.r0, from.r1)) {
     const along = vertical ? span(from.r0, from.r1) : span(from.c0, from.c1);
-    // a fill up or to the left goes on from the first cell, hence the line is read backward
     if (!forward) along.reverse();
     const line = along.map((i) => (vertical ? content(i, across) : content(across, i)));
     for (const [k, f] of fillLine(line, count).entries()) {
@@ -1828,8 +1563,6 @@ async function autofill(app: App, table: HTMLTableElement, from: Box, to: Box): 
   }
 }
 
-// the last cell of a table, or the last cell of its first row, after which a row or a column is
-// added by the round buttons of the bars
 function lastCell(table: HTMLTableElement, kind: 'row' | 'column'): HTMLTableCellElement | null {
   const rows = [...table.rows];
   const tr = kind === 'row' ? rows[rows.length - 1] : rows[0];
@@ -1863,13 +1596,10 @@ export function install(app: App): void {
       const size = arg && typeof arg === 'object' && 'rows' in arg ? (arg as Size) : null;
       if (!size && picker) return picker(true);
       if (!size) return openPicker(a, toolbarButton('insert.table'), (s) => void a.commands.run('insert.table', s).catch(fail), (rested) => void a.commands.run('insert.tableSize', rested).catch(fail));
-      // a table fills the first empty slot of the slide, as the table icon of its placeholder does
       await newTable(a, size, emptySlot(a, a.current()!));
     },
   });
 
-  // the Insert Table dialog of PowerPoint, with the numbers of columns and rows, for a table larger
-  // than the grid
   c.define({
     id: 'insert.tableSize',
     label: 'Insert Table…',
@@ -1881,11 +1611,6 @@ export function install(app: App): void {
     },
   });
 
-  // the keys of the rows and the columns are taken while a cell is selected as a range, as in
-  // Keynote, and with the caret in a cell on Windows and Linux, where the text does not use them.
-  // on a Mac, Option with an arrow moves the caret by a word or a paragraph, hence the text keeps
-  // them. on Windows and Linux, Alt with Left or Right is Back or Forward of a browser, which the
-  // command keeps from it
   const rowCommand = (id: string, label: string, order: number, below: boolean, key: string) => c.define({
     id,
     label,
@@ -1926,8 +1651,6 @@ export function install(app: App): void {
   });
   columnCommand('table.columnBefore', 'Add Column Before', 82, false, 'Alt+ArrowLeft');
   columnCommand('table.columnAfter', 'Add Column After', 83, true, 'Alt+ArrowRight');
-  // the rows or the columns of the range, or of the cell of the caret, moved by one line, which
-  // stay selected. they do not have a key, as in Keynote
   const moveCommand = (id: string, label: string, order: number, kind: Line, way: -1 | 1) => c.define({
     id,
     label,
@@ -1998,8 +1721,6 @@ export function install(app: App): void {
       return alignNumbers(a, t, !numbersRight(t));
     },
   });
-  // Auto-Align of Keynote, which sets a number at the right and a text at the left, as the theme
-  // sets it, by the columns of numbers of numbersOf
   c.define({
     id: 'table.autoAlign',
     label: 'Auto-Align',
@@ -2016,7 +1737,6 @@ export function install(app: App): void {
       alignNumbers(a, t, true, alignBox(t));
     },
   });
-  // Sort Ascending and Sort Descending of the column menu of Keynote, by the column of the cell
   const sortCommand = (id: string, label: string, order: number, descending: boolean) => c.define({
     id,
     label,
@@ -2030,7 +1750,6 @@ export function install(app: App): void {
   });
   sortCommand('table.sortAscending', 'Sort Ascending', 87.6, false);
   sortCommand('table.sortDescending', 'Sort Descending', 87.7, true);
-  // the counts of the rows and the columns typed into the fields of the Table pane
   for (const [kind, label] of [['rows', 'Set Row Count'], ['columns', 'Set Column Count']] as const) {
     c.define({
       id: `table.${kind}`,
@@ -2094,7 +1813,6 @@ export function install(app: App): void {
     id: 'table.fitColumn',
     label: 'Resize Column to Fit Content',
     menu: menu('size', 79.9),
-    // a table selected as an object has every column fitted, as Keynote does
     enabled: (a, arg?: unknown) => {
       const t = ready(a) ? targetOf(a, arg) : null;
       return !!t && !!gridOf(t.table).spots[0]?.some((s) => s.span === 1 && (!t.box || (s.col >= t.box.c0 && s.col <= t.box.c1)));
@@ -2119,8 +1837,6 @@ export function install(app: App): void {
     },
   });
 
-  // the rows or the columns of the cells of the target selected as a range, from the first cell
-  // that meets them to the last one
   const selectLine = (a: App, t: Target, kind: 'row' | 'column') => {
     const g = gridOf(t.table);
     const box = t.box!;
@@ -2144,10 +1860,6 @@ export function install(app: App): void {
     run: (a, arg) => selectLine(a, need(a, arg), 'column'),
   });
 
-  // the keys of the cells selected as a range, which the listener of RANGE_KEYS takes before the
-  // keys of a selected element: an arrow selects the cell beside the focus, Shift with an arrow
-  // moves the focus and keeps the anchor, Return puts the caret into the focus, and Delete clears
-  // the text of the cells
   const ways = [['Left', 0, -1], ['Right', 0, 1], ['Up', -1, 0], ['Down', 1, 0]] as const;
   for (const [way, dr, dc] of ways) {
     const beside = (): HTMLTableCellElement | null => {
@@ -2173,8 +1885,6 @@ export function install(app: App): void {
       }));
     }
   }
-  // Esc from the cells selected as a range selects the table as an object, and the next one clears
-  // the selection, as in Keynote
   RANGE_KEYS.push(c.define({
     id: 'table.selectTable',
     label: 'Select Table',
@@ -2206,8 +1916,6 @@ export function install(app: App): void {
     run: (a) => clearRange(a),
   }));
 
-  // Tab and Shift+Tab go to the next and the previous cell, with its text selected, as in
-  // PowerPoint, and Tab in the last cell adds a row below it
   c.define({
     id: 'table.nextCell',
     label: 'Next Cell',
@@ -2235,8 +1943,6 @@ export function install(app: App): void {
     },
   });
 
-  // an arrow key at the edge of the text of a cell goes on to the cell beside it, and inside the
-  // text it moves the caret as the browser moves it
   const edge = (way: 'left' | 'right' | 'up' | 'down') => (a: App): { cell: HTMLTableCellElement; to: HTMLTableCellElement } | null => {
     const cell = inCell(a) ? cellAt(a) : null;
     const r = cell ? caretIn(cell) : null;
@@ -2269,8 +1975,6 @@ export function install(app: App): void {
     });
   }
 
-  // a right-click or a Control-click into a cell opens the menu of the cell in place of the menu of
-  // a text, before the listener of shell/shell.ts on the document
   window.addEventListener('contextmenu', (ev) => {
     const target = ev.target instanceof Element ? ev.target.closest(CELL) : null;
     if (!isCell(target) || !app.pairing?.byLive.has(target) || !app.current()?.contains(target)) return;
@@ -2280,8 +1984,6 @@ export function install(app: App): void {
     openCellMenu(app, target, { x: ev.clientX, y: ev.clientY });
   }, true);
 
-  // a drag from a cell into another one or a Shift-click selects the cells between them as a
-  // range, before canvas/drag.ts on the document. a right press in the range keeps it for the menu
   let press: HTMLTableCellElement | null = null;
   let held = false;
   const stop = (ev: Event) => {
@@ -2291,7 +1993,6 @@ export function install(app: App): void {
   window.addEventListener('pointerdown', (ev) => {
     press = null;
     held = false;
-    // a press on the move handle of a table selects it as an object, as Select Table does
     const moving = ev.target instanceof Element && ev.target.closest('.beeson-handle') ? overlay().current() : null;
     if (moving instanceof HTMLTableElement && ev.button === 0) selectTable(app, moving);
     const cell = liveCell(ev.target);
@@ -2335,9 +2036,6 @@ export function install(app: App): void {
   window.addEventListener('pointerup', release, true);
   window.addEventListener('pointercancel', release, true);
 
-  // a paste of tab-separated text or of an HTML table: onto the slide it is a new table, selected,
-  // and into a cell or onto a range of cells it fills the cells from its first cell on. a paste of
-  // elements or slides of the editor, marked by MARK, is left to commands/clipboard.ts
   window.addEventListener('paste', (ev) => {
     const data = ev.clipboardData;
     if (ev.defaultPrevented || !data || !ready(app)) return;
@@ -2354,7 +2052,6 @@ export function install(app: App): void {
     }
     const cell = region === 'text' ? cellAt(app) : null;
     if (!onSlide && !cell) return;
-    // a range of the editor keeps the inline elements of its cells, in a new table as well
     const marked = parseEditorTable(html);
     const rows = marked ?? parseHtmlTable(html) ?? parseTabular(text);
     if (!rows) return;

@@ -1,10 +1,3 @@
-// the document model of the editor: every structural change of the deck, i.e. a slide or an
-// element inserted, removed, moved, or given another tag, and a change of a start tag. each change
-// is applied to the page and recorded with its inverse as one entry of the history, and the file is
-// written from the page by the renderer of render.ts. new content is a fragment of fragments.ts,
-// and an element taken off the page is kept with the text of its unit, so that it is written again
-// as it was when it is put back, also after a save
-
 import type { Entry } from '../history.ts';
 import { contentWithTex, setContentWithTex, type MathLookup } from '../math.ts';
 import { childSpace, detached, renderDeck, renderUnit, type Pairing } from '../render.ts';
@@ -15,8 +8,6 @@ import { tokenize } from '../tokens.ts';
 import { fragmentRoot, mergePairing, pairFragment, parseFragment } from './fragments.ts';
 import { elementText, layoutText, textStyle, type ElementKind, type ElementOptions, type NewLayout } from './templates.ts';
 
-// what the document model is given by the editor. tags are the start tags changed since the last
-// save, changed is called after each change, and restore puts a text element back with its formulas
 export type DocHost = {
   source(): Source | null;
   pairing(): Pairing | null;
@@ -25,16 +16,12 @@ export type DocHost = {
   record(entry: Entry): void;
   changed(): void;
   restore?(host: Element, content: string): Promise<void>;
-  // the image or video of the other mode beside el, which is given every tag edit of el
   twin?(el: Element): Element | null;
 };
 
-// the attributes and the classes of an image of a dark and light pair that are its own, since they
-// name or describe its file or its mode. every other part of a tag edit is written on both images
 const OWN_ATTRS = ['src', 'srcset', 'poster', 'alt'];
 const OWN_CLASSES = ['for-dark', 'for-light', 'white-figure', 'invert'];
 
-// the part of a normalized edit that is written on the twin of an image as well, or null
 function sharedEdit(e: TagEdit): TagEdit | null {
   const out: TagEdit = { ...e };
   delete out.order;
@@ -44,16 +31,12 @@ function sharedEdit(e: TagEdit): TagEdit | null {
   return Object.keys(out).length ? out : null;
 }
 
-// an element taken off the page, with its place and the text of its unit. the place is given by
-// the siblings before and after it, since one of them may be taken off the page as well
 export type Detached = { node: Element; parent: Element; prev: Node | null; next: Node | null; text: string };
 
 type Page = { Beeson?: { mount?(root: Element): void; refreshChrome?(): void }; Reveal?: { sync?(): void; layout?(): void } };
 
-// a running head and the like, made at run time and filled again by Beeson.refreshChrome
 const generated = (n: Node | null): boolean => n instanceof Element && n.hasAttribute('data-generated');
 
-// the sibling after or before el that stays on the page
 function nextKept(el: Node): Node | null {
   let n = el.nextSibling;
   while (generated(n)) n = n!.nextSibling;
@@ -66,8 +49,6 @@ function prevKept(el: Node): Node | null {
   return n;
 }
 
-// an edit with the class fragment, data-fragment-index, and the declaration translate in the fields
-// fragment, index, and translate, which are read by steps.ts and move.ts
 export function normalizeEdit(edit: TagEdit): TagEdit {
   const out: TagEdit = { ...edit };
   if (edit.classes && 'fragment' in edit.classes) {
@@ -92,7 +73,6 @@ export function normalizeEdit(edit: TagEdit): TagEdit {
   return out;
 }
 
-// the edit that sets back each value that edit sets, from the state before it
 export function inverseEdit(before: TagState, edit: TagEdit): TagEdit {
   const out: TagEdit = { order: { attrs: Object.keys(before.attrs), classes: before.classes, style: Object.keys(before.style) } };
   const pick = <T>(keys: string[], value: (k: string) => T) => Object.fromEntries(keys.map((k) => [k, value(k)]));
@@ -100,14 +80,12 @@ export function inverseEdit(before: TagState, edit: TagEdit): TagEdit {
   if (edit.fragment !== undefined) out.fragment = before.classes.includes('fragment');
   if (edit.attrs) out.attrs = pick(Object.keys(edit.attrs), (n) => before.attrs[n] ?? null);
   if (edit.index !== undefined) {
-    // an index that the field does not write as the file has it is set back as the attribute
     const v = before.attrs['data-fragment-index'];
     if (v === undefined || String(Number(v)) === v) out.index = v === undefined ? null : Number(v);
     else out.attrs = { ...out.attrs, 'data-fragment-index': v };
   }
   if (edit.style) out.style = pick(Object.keys(edit.style), (n) => before.style[n] ?? null);
   if (edit.translate !== undefined) {
-    // and so is a translation, e.g. 1.4px 0px or 0 20px, as the declaration
     const v = before.style.translate;
     const t = v === undefined ? null : translateIn(`translate: ${v}`);
     if (v === undefined || (t && translateText(t) === v)) out.translate = t;
@@ -116,7 +94,6 @@ export function inverseEdit(before: TagState, edit: TagEdit): TagEdit {
   return out;
 }
 
-// the edit applied to the element on the page
 function applyLive(el: Element, edit: TagEdit): void {
   for (const [c, on] of Object.entries(edit.classes ?? {})) el.classList.toggle(c, on);
   if (edit.fragment !== undefined) el.classList.toggle('fragment', edit.fragment);
@@ -139,8 +116,6 @@ function applyLive(el: Element, edit: TagEdit): void {
 
 export class Doc {
   private readonly host: DocHost;
-  // the operations in flight, e.g. an insert that waits for MathJax, and the calls of idle() that
-  // wait for their end
   private running = 0;
   private readonly waiting: (() => void)[] = [];
 
@@ -148,17 +123,14 @@ export class Doc {
     this.host = host;
   }
 
-  // whether an operation of the model is in flight
   get busy(): boolean {
     return this.running > 0;
   }
 
-  // resolved once no operation of the model is in flight
   idle(): Promise<void> {
     return this.running ? new Promise((done) => this.waiting.push(done)) : Promise.resolve();
   }
 
-  // counts an operation in flight until the function returned is called
   private enter(): () => void {
     this.running += 1;
     return () => {
@@ -189,14 +161,11 @@ export class Doc {
     return textStyle(this.need().source.text);
   }
 
-  // the text of the file with the edits of the page
   render(): string {
     const { source, pairing } = this.need();
     return renderDeck(source, pairing, this.host.math(), this.host.tags).text;
   }
 
-  // the text of the unit of el, i.e. its lead, the element with its edits, and the end comment of
-  // its marker pair, and the text of the element alone
   unitText(el: Element): string {
     const u = this.unit(el);
     return u.lead + u.body + u.trail;
@@ -213,15 +182,11 @@ export class Doc {
     return u;
   }
 
-  // the state of the start tag of el with its edits, i.e. its classes, attributes, and declarations
   tagState(el: Element): TagState {
     const s = this.srcOf(el);
     return stateOf(s.attrs, this.host.tags.get(el) ?? {});
   }
 
-  // sets the given classes, attributes, and declarations of the start tag of el, and the shared
-  // part of them on the twin of el. the inverse sets the values before the edit, hence it holds
-  // after a save as well
   setTag(el: Element, edit: TagEdit, label = 'tag'): void {
     const e = normalizeEdit(edit);
     const twin = this.host.twin?.(el) ?? null;
@@ -242,8 +207,6 @@ export class Doc {
     if (!s.open) throw new Error(`the ${el.localName} does not have a start tag in the file`);
     const e = { ...edit };
     const back = inverseEdit(this.tagState(el), e);
-    // the edit keeps the attributes, the classes, and the declarations of the tag in their order, as
-    // its undo does, hence a redo writes the tag of the edit again
     e.order ??= back.order;
     return { el, e, back };
   }
@@ -258,8 +221,6 @@ export class Doc {
     this.setTag(slide, { attrs: { 'data-visibility': hidden ? 'hidden' : null } }, hidden ? 'hide' : 'show');
   }
 
-  // inserts the units of texts into parent before the node before, as one entry of the history. a
-  // text is an element without the white space before it, which is that of the units of parent
   async insert(texts: string | string[], parent: Element, before: Node | null = null, label = 'insert'): Promise<Element[]> {
     const done = this.enter();
     try {
@@ -290,7 +251,6 @@ export class Doc {
     }
   }
 
-  // a new slide of the layout before the slide before, or at the end
   async insertSlide(layout: NewLayout, before: Element | null = null): Promise<Element> {
     const { pairing } = this.need();
     if (!pairing.root) throw new Error('the deck does not have a div.slides element');
@@ -299,12 +259,10 @@ export class Doc {
     return slide;
   }
 
-  // a new element of the kind in parent before the node before, or at the end
   async insertElement(kind: ElementKind, parent: Element, before: Node | null = null, options: ElementOptions = {}): Promise<Element[]> {
     return this.insert(elementText(kind, this.style(), this.childIndent(parent), options), parent, before, `new ${kind}`);
   }
 
-  // a copy of el after it, with each id renamed
   async duplicate(el: Element): Promise<Element> {
     const parent = el.parentElement;
     if (!parent) throw new Error('the element is not on the page');
@@ -334,7 +292,6 @@ export class Doc {
     }
   }
 
-  // moves el into parent before the node before, or at the end
   async move(el: Element, parent: Element, before: Node | null = null, label = 'move'): Promise<void> {
     const { pairing } = this.need();
     if (el === parent || el.contains(parent)) throw new Error('an element is not moved into itself');
@@ -354,8 +311,6 @@ export class Doc {
     this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent], parents: [from.parent, parent], orders: [from.parent, parent] });
   }
 
-  // el replaced by an element of the tag with the same attributes and content, and with the edit
-  // applied to its start tag, e.g. a p made an h3
   async retag(el: Element, tag: string, edit: TagEdit = {}, label = 'retag'): Promise<Element> {
     const old = el.localName;
     return this.rewrite(el, (text) => {
@@ -370,8 +325,6 @@ export class Doc {
     }, label);
   }
 
-  // el replaced by the element of the text that edit makes of its text, with the lead and the trail
-  // of its unit kept, e.g. the line of the svg of a line made a path
   async rewrite(el: Element, edit: (body: string) => string, label = 'rewrite'): Promise<Element> {
     const parent = el.parentElement;
     if (!parent) throw new Error('the element is not on the page');
@@ -404,7 +357,6 @@ export class Doc {
     }
   }
 
-  // the content of a text element set to a text with each formula as its TeX, as one entry of the history
   async setContent(textEl: Element, content: string, label = 'content'): Promise<void> {
     const before = contentWithTex(textEl);
     const put = async (c: string) => {
@@ -421,7 +373,6 @@ export class Doc {
     this.host.record({ label, undo: () => put(before), redo: () => put(content), els: [textEl] });
   }
 
-  // takes el off the page, with the text of its unit. its unit is then left out of the file
   detach(el: Element): Detached {
     const parent = el.parentElement;
     if (!parent) throw new Error('the element is not on the page');
@@ -432,8 +383,6 @@ export class Doc {
     return rec;
   }
 
-  // puts an element taken off the page back. after a save it is no longer in the file, and it is
-  // then paired with the text of its unit as a fragment
   async attach(rec: Detached, refresh = true): Promise<void> {
     const { pairing, source } = this.need();
     const { node, parent } = rec;
@@ -450,7 +399,6 @@ export class Doc {
     }
   }
 
-  // an id that is not on the page, in the file, or in taken, from base
   uniqueId(base: string, taken?: Set<string>): string {
     const stem = base.replace(/-\d+$/, '');
     const text = this.host.source()?.text ?? '';
@@ -460,8 +408,6 @@ export class Doc {
     }
   }
 
-  // text with each id for which rename holds renamed, together with the plots that name it. each
-  // new id is handed out once, so that the two markers of a copied slide get two ids
   freshIds(text: string, rename: (id: string) => boolean = () => true): string {
     const ids = new Set([...text.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
     const taken = new Set(ids);
@@ -470,33 +416,24 @@ export class Doc {
       if (!rename(m)) continue;
       const id = this.uniqueId(m, taken);
       taken.add(id);
-      // only the attribute id is renamed, and a data-id equal to it is kept for Magic Move
       out = out.replace(/(\s)id="([^"]+)"/g, (all, space, v) => (v === m ? `${space}id="${id}"` : all)).split(`data-plot="${m}"`).join(`data-plot="${id}"`);
     }
     return out;
   }
 
-  // the indentation of the children of parent in the file
   private childIndent(parent: Element): string {
     const space = childSpace(this.srcOf(parent), this.eol(), this.style().step);
     return space.slice(space.lastIndexOf('\n') + 1);
   }
 
-  // the new element made from text and paired as a fragment, inserted before the node before. lead
-  // is the white space and the comments before it, by default those of the units of parent
   private async place(text: string, parent: Element, before: Node | null, lead?: string): Promise<Element> {
     const { source, pairing } = this.need();
     const container = pairing.elements.get(parent);
     if (!container || pairing.byLive.has(parent)) throw new Error(`the ${parent.localName} does not take elements`);
     const fragment = parseFragment((lead ?? childSpace(container, this.eol(), this.style().step)) + text, source.crlf, parent);
     const node = document.importNode(fragmentRoot(fragment)!.node, true) as Element;
-    // an image of a file not yet saved is shown from its object URL before the browser asks the
-    // server for its path, which it does only once the task has run
     media.resolve(node);
     parent.insertBefore(node, before && before.parentNode === parent ? before : null);
-    // every step is shown while the deck is edited, which reveal.js marks only on the fragments of
-    // its start, hence the highlights of a new slide are colored once its fragments are marked. an
-    // element is left unmarked, since a marked paragraph is not a body paragraph of text/elements.ts
     if (node.localName === 'section') for (const f of node.querySelectorAll('.fragment')) f.classList.add('visible');
     const mj = window.MathJax;
     if (mj?.typesetPromise) await mj.typesetPromise([node]);
@@ -513,8 +450,6 @@ export class Doc {
     this.host.changed();
   }
 
-  // the backdrops, plots, surfaces, and QR codes under root drawn, the running heads and the
-  // outlines filled again, and the slides of reveal.js read again
   private async after(root: Element): Promise<void> {
     const page = window as unknown as Page;
     if (root.isConnected) page.Beeson?.mount?.(root);
