@@ -1,8 +1,3 @@
-// the Table pane of the Format tab, as the Table tab of Keynote: the size of the table and the cell
-// of the caret or the cell range, the cells merged and unmerged, the
-// header row, the rows and the columns added, deleted, and sorted, the heights of the rows and the
-// widths of the columns, the numbers at the right with Auto-Align, and the delete of the table
-
 import type { App } from '../app.ts';
 import { fillRange, targetOf } from '../commands/table.ts';
 import { MOST, boxOf, columnName, columnsOf, placeOf } from '../table.ts';
@@ -21,8 +16,6 @@ export function tablePane(app: App, run: Run): Control[] {
     const where = !b ? '' : one ? `, cell ${name(b.r0, b.c0)}` : `, cells ${name(b.r0, b.c0)}:${name(b.r1, b.c1)}`;
     return `${plural(t.table.rows.length, 'row')}, ${plural(columnsOf(t.table), 'column')}${where}`;
   };
-  // the fields Rows and Columns of the Table tab of Keynote, which add or take out rows and columns
-  // at the end of the table
   const count = (label: string, kind: 'rows' | 'columns') => numberField(app, {
     label,
     unit: '',
@@ -63,8 +56,6 @@ export function tablePane(app: App, run: Run): Control[] {
         { command: 'table.columnAfter', text: 'After', title: 'Add Column After' },
       ], 'Add Column')], 'Add'),
       row([button(app, run, { command: 'table.deleteColumn', text: 'Delete Column' })]),
-      // the widths of the columns, on a row of their own as Merge and Unmerge, since the two
-      // buttons do not fit beside a label in the width of the inspector
       row([
         button(app, run, { command: 'table.distributeColumns', text: 'Distribute Evenly', title: 'Distribute Columns Evenly' }),
         button(app, run, { command: 'table.fitColumn', text: 'Fit to Content', title: 'Resize Column to Fit Content' }),

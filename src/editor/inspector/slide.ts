@@ -1,9 +1,3 @@
-// the Slide pane of the Format tab, shown with nothing selected, as the Slide pane of Keynote: the
-// layout of the slide in the button of its chooser, the width of the text column of a content slide as the class
-// narrow or wide of its section, whether the slide is hidden and has a footnote, and the running
-// head, i.e. the data-run of a section slide. the commands of the width, the footnote, and the
-// running head are defined here, the width also in Slide > Text Column
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { contentWithTex } from '../math.ts';
@@ -21,7 +15,6 @@ const LAYOUT_NAMES: Record<string, string> = { title: 'Title', section: 'Section
 export const layoutOf = (slide: Element | null): string => LAYOUT_CLASSES.find((c) => slide?.classList.contains(c)) ?? 'content';
 export const widthOf = (slide: Element): Width => (slide.classList.contains('narrow') ? 'narrow' : slide.classList.contains('wide') ? 'wide' : 'normal');
 
-// the slides of the commands: those selected in the navigator, else the current one
 function slidesOf(app: App): Element[] {
   const picked = app.selection.kind === 'slides' ? [...app.selection.items] : [app.current()].filter((s): s is Element => !!s);
   return picked.filter((s) => !!app.pairing?.elements.get(s)?.open);
@@ -32,7 +25,6 @@ const contentSlides = (app: App) => {
   return list.length && list.every((s) => layoutOf(s) === 'content') ? list : [];
 };
 
-// the name of the layout of a slide, with the width of a content slide
 const nameOf = (s: Element | null) => {
   const name = LAYOUT_NAMES[layoutOf(s)];
   return s && layoutOf(s) === 'content' && widthOf(s) !== 'normal' ? `${name}, ${widthOf(s) === 'narrow' ? 'Narrow' : 'Wide'}` : name;
@@ -65,7 +57,6 @@ export function commands(): Command[] {
     },
   }));
   list.push({
-    // arg is { value, el }. an empty text takes data-run off, and the heading is the running head
     id: 'slide.runningHead',
     label: 'Running Head',
     undoable: true,
@@ -79,8 +70,6 @@ export function commands(): Command[] {
     },
   });
   list.push({
-    // the footnote of the slide is added by insert.footnote of the Insert menu, with the caret in it,
-    // and taken off with its text
     id: 'slide.footnote',
     label: 'Footnote',
     undoable: true,
@@ -95,7 +84,6 @@ export function commands(): Command[] {
   return list;
 }
 
-// a sketch of a layout, in the tokens of the chrome: the slide, its words, and its figure
 function sketch(layout: string, width: Width): SVGSVGElement {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', '0 0 64 36');
@@ -135,11 +123,8 @@ function sketch(layout: string, width: Width): SVGSVGElement {
       rect(31, 6, 29, 24, faint);
       break;
     default: {
-      // the text column of a wide slide runs over the place of the figure box, up to the right margin
       const w = width === 'narrow' ? 22 : width === 'wide' ? 54 : 30;
       words(5, 5, w, 5);
-      // the backdrop of a narrow slide runs from 920 px of 1920 to the right edge at full height,
-      // as in its tile, and its left corners are square
       if (width === 'narrow') {
         rect(920 / 30, 0.5, 63.5 - 920 / 30, 35, faint, 3);
         rect(920 / 30, 0.5, 3, 35, faint, 0);
@@ -150,26 +135,18 @@ function sketch(layout: string, width: Width): SVGSVGElement {
   return svg;
 }
 
-// the typeset notes of the Slide pane shown last, whose formulas are taken out of the list of
-// MathJax when the pane is built again, since the inspector drops the old pane
 let typesetNotes: HTMLElement[] = [];
 
-// the selected slides of several layouts show Multiple Layouts, and the controls of one layout
-// are shown only when every selected slide has it
 const mixed = (app: App) => new Set(slidesOf(app).map(nameOf)).size > 1;
 
-// the layout whose sections the Slide pane shows, which inspector.ts adds to the key of the pane,
-// hence the pane is built again when the selected slides or their layouts change it
 export const paneLayout = (app: App): string => (mixed(app) ? 'mixed' : layoutOf(app.current()));
 
-// the Slide pane for the current slide
 export function slidePane(app: App, run: Run): Control[] {
   untypeset(typesetNotes);
   typesetNotes = [];
   const slide = app.current();
   const layout = paneLayout(app);
   const layoutChooser = chooserButton(() => sketch(layoutOf(app.current()), slide ? widthOf(slide) : 'normal'), 'Slide Layout', () => (mixed(app) ? 'Multiple Layouts' : nameOf(app.current())));
-  // this button is the button of the chooser of the layouts of commands/layout.ts
   const chooser = layoutChooser.el;
   chooser.classList.add('ed-chooser');
   chooser.setAttribute('role', 'button');
@@ -205,9 +182,6 @@ export function slidePane(app: App, run: Run): Control[] {
   };
   hidden.sync();
   if (layout !== 'mixed') {
-    // the backdrop of the slide, selected from here as well as by a click on it. the pane is kept
-    // while the slide and the selection stay the same, hence the row is made again at a sync for
-    // another backdrop, e.g. once the file is opened, and at an undo of Add Backdrop
     const sec = section('Backdrop', []);
     let back: HTMLElement | null | undefined;
     let line: Control | null = null;
@@ -253,14 +227,12 @@ export function slidePane(app: App, run: Run): Control[] {
   return parts;
 }
 
-// the text of el with its formulas as their TeX, as the file has it
 function sourceText(el: Element): string {
   const t = document.createElement('template');
   t.innerHTML = contentWithTex(el);
   return (t.content.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
-// a note whose text is typeset, e.g. a running head with math
 function typesetNote(text: () => string, name: string): Control {
   const { el } = note(() => '');
   el.classList.add(name);

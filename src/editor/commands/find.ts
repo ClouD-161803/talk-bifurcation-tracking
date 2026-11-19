@@ -1,6 +1,6 @@
 import type { App, Region } from '../app.ts';
-import { createFinder, type FindOptions, type Scope } from '../find.ts';
-import { closeMenus, openMenu } from '../ui/menu.ts';
+import { createFinder, type Scope } from '../find.ts';
+import type { FindOptions } from '../find-match.ts';
 
 const IN: Region[] = ['canvas', 'text', 'field', 'navigator', 'notes', 'inspector'];
 const NEXT = { mac: ['Mod+G'], other: ['F3'] };
@@ -9,7 +9,7 @@ const PREVIOUS = { mac: ['Mod+Shift+G'], other: ['Mod+Shift+F3'] };
 const queryOf = (arg: unknown): string | undefined => (typeof arg === 'string' ? arg : undefined);
 
 export function install(app: App): void {
-  const finder = createFinder(app, { next: NEXT[app.platform], previous: PREVIOUS[app.platform] }, { open: openMenu, close: closeMenus });
+  const finder = createFinder(app, { next: NEXT[app.platform], previous: PREVIOUS[app.platform] });
   const c = app.commands;
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'F3' && !ev.altKey) ev.preventDefault();

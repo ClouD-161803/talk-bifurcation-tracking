@@ -1,28 +1,16 @@
-// the text of index.html as a tree with the bytes of each node. the tree is parsed with DOMParser,
-// i.e. with the same parser as the deck, and the tokens of tokens.ts are matched to its nodes in
-// document order inside div.slides. a node that cannot be matched is an error, and nothing is then
-// edited, rather than a wrong place in the file
-
 import { RAW_TEXT, classesOf, tokenize, type Attr, type Range, type Token } from './tokens.ts';
 
-// one run of the raw text of a node: literal characters, or one character reference, or a CR LF
-// pair, with its range in the file and in the decoded text
 export type Segment = { raw: Range; dec: Range; literal: boolean };
 
-// a part of a text node as shown on the page: a run of text, or one formula with its delimiters,
-// whose TeX is in inner. the ranges are in the decoded text of the node
 export type Piece = { kind: 'text'; dec: Range } | { kind: 'math'; dec: Range; inner: Range };
 
 export type SrcText = {
   kind: 'text';
   node: Text;
-  // range is the whole text in the file, and lead is the length of a newline at its start that the
-  // parser drops after the start tag of a pre, which is not in decoded
   range: Range;
   lead: number;
   decoded: string;
   segments: Segment[];
-  // recorded when the node is matched to the page, see render.ts
   pieces: Piece[] | null;
 };
 export type SrcComment = { kind: 'comment'; node: Comment; range: Range };
@@ -30,31 +18,22 @@ export type SrcEl = {
   kind: 'element';
   node: Element;
   tag: string;
-  // open is null for an element without a start tag in the file, e.g. the tbody of a table, and
-  // attrs are the attributes of the start tag with their bytes
   open: Range | null;
   attrs: Attr[];
   close: Range | null;
   children: SrcNode[];
-  // the element of the file around this one, null for div.slides, and the text it was read from
   parent: SrcEl | null;
   source: Source;
 };
 export type SrcNode = SrcText | SrcComment | SrcEl;
 
-// the text of a file, or of a new fragment of content inserted on the page, see model/fragments.ts.
-// the home of a fragment is the element of the page that it was inserted into
 export type Source = { text: string; crlf: boolean; doc: Document; slides: SrcEl; fragment?: { home: Element | null } };
 
 export const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
-// a newline right after the start tag of these elements is dropped by the parser
 const PRE_LIKE = new Set(['pre', 'textarea', 'listing']);
 
 let box: HTMLTextAreaElement | null = null;
 
-// decodes the character references of a run of text with the parser of the browser, which has
-// the full table of named references. the sentinel keeps a leading newline, which a textarea
-// would drop
 export function decode(raw: string): string {
   box ??= document.createElement('textarea');
   box.innerHTML = `.${raw}`;
@@ -95,7 +74,6 @@ function fail(text: string, at: number, what: string): never {
 function walkChildren(el: Element, out: SrcEl, cursor: { i: number }, tokens: Token[], text: string): void {
   const raw = RAW_TEXT.has(el.localName);
   for (const child of el.childNodes) {
-    // a token without a node, e.g. a doctype in the body, is skipped
     while (tokens[cursor.i]?.type === 'other' && child.nodeType !== Node.COMMENT_NODE) cursor.i += 1;
     const token = tokens[cursor.i];
     if (child.nodeType === Node.ELEMENT_NODE) {
@@ -148,9 +126,6 @@ function walkChildren(el: Element, out: SrcEl, cursor: { i: number }, tokens: To
 
 const REFERENCE = /&(?:#[xX][0-9a-fA-F]+;?|#[0-9]+;?|[A-Za-z][A-Za-z0-9]*;?)/y;
 
-// splits the raw text of a node into segments, so that a range of the decoded text can be traced
-// to the file. when the segments do not give the decoded text, the node is one segment, and a
-// change to any part of it rewrites all of it
 export function segmentsOf(raw: string, base: number, isRaw: boolean, decoded: string): Segment[] {
   const out: Segment[] = [];
   const whole: Segment[] = [{ raw: { start: base, end: base + raw.length }, dec: { start: 0, end: decoded.length }, literal: false }];
@@ -195,8 +170,6 @@ export function segmentsOf(raw: string, base: number, isRaw: boolean, decoded: s
   return parts.join('') === decoded ? out : whole;
 }
 
-// the range in the file of a range of the decoded text of a node. a boundary inside a character
-// reference is moved outward
 export function rawRange(s: SrcText, dec: Range): Range {
   const at = (pos: number, isEnd: boolean): number => {
     for (const seg of s.segments) {
@@ -211,15 +184,12 @@ export function rawRange(s: SrcText, dec: Range): Range {
   return { start: at(dec.start, false), end: at(dec.end, true) };
 }
 
-// the range of an element in its text, from its start tag to its end tag. an element without a
-// start tag, e.g. the tbody of a table, starts at its first child, and one without any bytes is null
 export function elementRange(s: SrcEl): Range | null {
   const start = s.open?.start ?? firstStart(s);
   const end = s.close?.end ?? lastEnd(s);
   return start === null || end < start ? null : { start, end };
 }
 
-// the range of the content of an element, between its tags
 export function contentRange(s: SrcEl): Range | null {
   const start = s.open ? s.open.end : firstStart(s);
   if (start === null) return null;
@@ -235,7 +205,6 @@ function firstStart(s: SrcEl): number | null {
   return null;
 }
 
-// the end of the last token inside s, for an element without an end tag
 export function lastEnd(s: SrcEl): number {
   const last = s.children[s.children.length - 1];
   if (!last) return s.open?.end ?? -1;
@@ -243,5 +212,4 @@ export function lastEnd(s: SrcEl): number {
   return last.range.end;
 }
 
-// the root of a fragment, i.e. the element of new content that was inserted on the page
 export const isFragmentRoot = (s: SrcEl): boolean => !!s.source.fragment && s.parent === s.source.slides;

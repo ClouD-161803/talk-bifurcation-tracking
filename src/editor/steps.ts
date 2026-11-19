@@ -1,12 +1,3 @@
-// the Steps tab of the inspector: the steps of the current slide, i.e. which of its elements are
-// reveal.js fragments and in which order, as the Animation Pane of PowerPoint and the Build Order of
-// Keynote. each step is a step with a row per element shown at it, and the elements shown with the
-// slide are listed under the steps. a row is dragged to another place in the order, and its step
-// chip opens a menu of its step, its start, its effect, and Show Last. Preview Steps plays the steps
-// of the slide in place. the number of the step of each element is drawn at its upper left on the
-// slide. every change is a command of commands/steps.ts, written through app.doc as one entry of
-// the history
-
 import type { App } from './app.ts';
 import type { Entry } from './history.ts';
 import type { Pairing } from './render.ts';
@@ -29,20 +20,12 @@ export type Ctx = {
   edits: Map<Element, TagEdit>;
   markDirty(): void;
   layout(): void;
-  // the slide of el is shown, for an undo from another slide
   show(el: Element): void;
   record(entry: Entry): void;
-  // the TeX of an mjx-container, or null
   tex(el: Element): string | null;
-  // the steps of the slide were changed, which may change the ranges of its steps shown at once
   changed(): void;
 };
 
-// the elements of a slide that can be a step, outside the notes and the backdrop, and not inside
-// another such element, e.g. an image inside a paragraph, which is shown with the paragraph. a
-// heading and the footnote can be a step too, as any text box in PowerPoint, but One by one
-// leaves them with the slide. a list is a step of its own only when it is shown all at once, and
-// otherwise its items are the steps
 const CANDIDATES = 'h1, h2, h3, p, li, ul.fragment, ol.fragment, table, pre, blockquote, div.math, figure, .figure-box, .plate, .qr, .tikz, tycho-viewer, .caption, .foot, img, video, svg.line, .shape';
 export const WITH_SLIDE = 'h1, h2, h3, .foot';
 const OUTSIDE = 'aside.notes, .backdrop';
@@ -55,11 +38,6 @@ export function candidates(slide: Element, pairing: Pairing): Element[] {
   });
 }
 
-// the items of the step model of a slide: its candidates and every other fragment on it, e.g. a
-// row of a table, a span in a paragraph, a backdrop, or a step of a plot, in document order, since
-// their indexes are one order. a fragment that is not paired with a tag, e.g. a span in the text of
-// a text element, is locked, since its tag is not written
-// a list of the slide is given in extra with its items, so that a change of its delivery sees both
 export function stepElements(slide: Element, pairing: Pairing, extra: Element[] = []): Element[] {
   const listed = new Set([...candidates(slide, pairing), ...extra]);
   return [...slide.querySelectorAll('*')].filter((el) => listed.has(el) || (el.classList.contains('fragment') && !el.closest('aside.notes') && el.closest('section') === slide));
@@ -71,24 +49,14 @@ export function itemOf(state: TagState): Item {
   return { fragment: state.classes.includes('fragment'), index, final: 'data-final' in state.attrs };
 }
 
-// the effects of reveal.js that the Steps tab replaces, and the five that it writes: Fade In, the
-// plain fragment, Play, Fade Out, Only at Its Step, and Dim, which semi-fade-out draws at the
-// opacity of a faint element from its step on. Play is the class play of the theme on a video or a tycho
-// viewer, which shows its poster or its first frame with the slide and starts it at its step, as
-// the animation Play of PowerPoint
 const EFFECT_CLASSES = ['fade-in', 'fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'fade-in-then-out', 'fade-in-then-semi-out', 'semi-fade-out', 'current-visible', 'play'];
 export type Effect = 'in' | 'play' | 'out' | 'only' | 'dim';
 export const EFFECTS: [Effect, string][] = [['in', 'Fade In'], ['play', 'Play'], ['out', 'Fade Out'], ['only', 'Only at Its Step'], ['dim', 'Dim']];
 
-// the elements started at their step by the effect Play
 export const PLAYED = 'video, tycho-viewer';
 
-// the effects offered in the menu of a row, Play only for a video or a tycho viewer. with several
-// rows selected, the command sets Play only on these
 export const effectsFor = (el: Element | undefined): [Effect, string][] => EFFECTS.filter(([id]) => id !== 'play' || !!el?.matches(PLAYED));
 
-// the effect of a fragment with its label. an effect that the tab does not write, e.g. fade-up,
-// keeps its name
 export function effectOf(classes: string[]): { id: Effect | null; label: string } {
   if (classes.includes('play')) return { id: 'play', label: 'Play' };
   if (classes.includes('fade-out')) return { id: 'out', label: 'Fade Out' };
@@ -99,19 +67,10 @@ export function effectOf(classes: string[]): { id: Effect | null; label: string 
   return { id: 'in', label: 'Fade In' };
 }
 
-// the classes of el in the file, or on the page for a fragment that is not paired with a tag
 export const classesOf = (app: App, el: Element): string[] => (app.pairing?.elements.get(el)?.open ? app.doc.tagState(el).classes : [...el.classList]);
 
-// a line step of a code box, i.e. a group of lines of data-line-numbers after the first. the
-// highlight plugin of reveal.js appends a copy of the code to the pre for each of them, a fragment
-// at the index of the code and at each next index, or without an index when the code has none. a
-// line step is an item of the model at the place of its copy, with the code as its element, and
-// it is locked, since it is set in the Code pane and its index is that of the code
 export type LineStep = { code: Element; group: number; lines: string };
 
-// the steps of the current slide as the model reads them. an image or a video of a dark and light
-// pair is one item with its twin, since every tag edit of one is written on the other. the item is
-// the one shown, or else the first, and twins maps it to the other
 export type Model = { slide: Element; els: Element[]; items: Item[]; locked: boolean[]; lines: (LineStep | null)[]; plan: Plan; twins?: Map<Element, Element> };
 
 const intOf = (v: string | undefined): number | null => (v !== undefined && /^\s*-?\d+\s*$/.test(v) ? Number(v) : null);
@@ -152,21 +111,17 @@ export function modelOf(app: App, slide: Element | null = app.current(), extra: 
   return { slide, els, items, locked, lines, plan: planOf(items), twins };
 }
 
-// the position of el among the items of m, or of the item of its pair, apart from the line steps
-// of a code
 export const indexIn = (m: Model, el: Element): number => {
   const item = [...(m.twins ?? [])].find(([, twin]) => twin === el)?.[0] ?? el;
   return m.els.findIndex((x, k) => x === item && !m.lines[k]);
 };
 
-// the model of the slide of el, with the position of el among its items
 export function modelAt(app: App, el: Element): (Model & { i: number }) | null {
   const m = modelOf(app, el.closest('section'));
   const i = m ? indexIn(m, el) : -1;
   return m && i >= 0 ? { ...m, i } : null;
 }
 
-// the line steps of the codes of m in their order, by code, as positions among its items
 function lineRuns(m: Model): Map<Element, number[]> {
   const out = new Map<Element, number[]>();
   m.lines.forEach((l, i) => {
@@ -175,10 +130,6 @@ function lineRuns(m: Model): Map<Element, number[]> {
   return out;
 }
 
-// the index written on a code for its line steps after the items were written as after. the line
-// steps of a code are at consecutive indexes from the index of the code. a code without an index
-// keeps none while its line steps are the last steps of the slide, each alone, since reveal.js
-// shows the fragments without an index after the others
 function codeIndex(app: App, m: Model, plan: Plan, after: Item[], code: Element, run: number[]): number | null {
   const at = run.map((i) => after[i].index);
   if (at.some((x) => x === null)) throw new Error('The line steps of a code box are set in its Code pane, and each of them stays a step of the slide');
@@ -189,16 +140,11 @@ function codeIndex(app: App, m: Model, plan: Plan, after: Item[], code: Element,
   return at[0] as number;
 }
 
-// the delivery of a list, as in Keynote and in the Effect Options of PowerPoint: All at Once, i.e.
-// As One Object, is the list as one fragment, and By Item, i.e. By Bullet or By Paragraph, is each
-// item of the list a fragment of its own step. a list is delivered only at the top of a slide,
-// i.e. not inside an item or a paragraph, and a nested list is shown with its item
 export type Delivery = 'all' | 'item';
 export const DELIVERIES: [Delivery, string][] = [['all', 'List All at Once'], ['item', 'List Item by Item']];
 
 export const listItems = (list: Element): Element[] => [...list.children].filter((c) => c.localName === 'li');
 
-// the list at the top of the slide around el, or el itself when it is one
 export function listOf(el: Element | null): Element | null {
   for (let up = el; up && up.localName !== 'section'; up = up.parentElement) {
     if (!up.matches('ul, ol')) continue;
@@ -213,11 +159,6 @@ export function deliveryOf(app: App, list: Element): Delivery | null {
   return listItems(list).some((li) => classesOf(app, li).includes('fragment')) ? 'item' : null;
 }
 
-// the plan with the list delivered by. the list and its items are taken out of the plan, and put
-// back at the first step of any of them: the list alone for all, or each item at a step of its own
-// from there on, the later steps moved down. the first one joins the other elements of that step.
-// a list that is not a step becomes the last steps, a list shown last stays last, and null shows
-// the list with the slide
 export function deliverPlan(plan: Plan, list: number, items: number[], by: Delivery | null): Plan {
   const members = new Set([list, ...items]);
   const k = plan.groups.findIndex((g) => g.some((x) => members.has(x)));
@@ -235,9 +176,6 @@ export function deliverPlan(plan: Plan, list: number, items: number[], by: Deliv
   return { groups, finals };
 }
 
-// the delays of the steps of before carried to the steps of after, through standIn, the item of
-// after that takes the place of an item of before. the first step of before that lands on a step
-// of after gives it its delay
 export function carryDelays(before: Plan, after: Plan, delays: Map<number, number>, standIn: Map<number, number>): Map<number, number> {
   const out = new Map<number, number>();
   const end = delays.get(-1);
@@ -256,12 +194,6 @@ export function carryDelays(before: Plan, after: Plan, delays: Map<number, numbe
   return out;
 }
 
-// a step that starts After Previous, as in PowerPoint, or After Build, as in Keynote, is shown by
-// itself a delay after the step before it. reveal.js offers this as data-autoslide on a fragment,
-// the milliseconds after which the next step is shown once the fragment is the current one. the
-// delay is thus written on the first fragment of the step before, and read back as the start of
-// the first item of the next step. a delay on the last step moves on to the next slide, and it is
-// kept on the last step at -1. reveal.js reads 0 as no delay, hence the shortest delay is 0.1 s
 export type StartKind = Start | 'after';
 export const AUTOSLIDE = 'data-autoslide';
 export const MIN_DELAY = 100;
@@ -273,8 +205,6 @@ function autoslideOf(app: App, m: Model, i: number): number | null {
   return raw != null && /^\s*\d+\s*$/.test(raw) ? Number(raw) : null;
 }
 
-// the delays in ms of the steps that start after the step before, keyed by the first item of the
-// step in document order, and by -1 for the next slide after the last step
 export function delaysOf(app: App, m: Model): Map<number, number> {
   const out = new Map<number, number>();
   m.plan.groups.forEach((g, k) => {
@@ -286,7 +216,6 @@ export function delaysOf(app: App, m: Model): Map<number, number> {
   return out;
 }
 
-// the start of item i, with its delay in ms for After Previous
 export function startAt(app: App, m: Model, i: number, delays: Map<number, number> = delaysOf(app, m)): { start: StartKind | null; delay: number | null } {
   const start = startOf(m.plan, i);
   const g = m.plan.groups.findIndex((g) => g.includes(i));
@@ -294,11 +223,6 @@ export function startAt(app: App, m: Model, i: number, delays: Map<number, numbe
   return delay === undefined ? { start, delay: null } : { start: 'after', delay };
 }
 
-// the plan written into the tags of the slide: the class fragment, data-fragment-index, and
-// data-final of each item that changes, the effect classes of an item taken out of the steps, and
-// each data-keep of a number, which follows its step to its new index. the delays of the steps
-// that start After Previous follow the first item of their step. the changes are recorded with an
-// entry that shows the slide at an undo, and false is returned when nothing changes
 export function writePlan(app: App, m: Model, plan: Plan, extra: Map<Element, TagEdit> = new Map(), delays: Map<number, number> = delaysOf(app, m)): boolean {
   const after = itemsOf(m.items, plan);
   const moved = m.els.find((_, i) => m.locked[i] && !m.lines[i] && (after[i].index !== m.items[i].index || after[i].fragment !== m.items[i].fragment || after[i].final !== m.items[i].final));
@@ -327,8 +251,6 @@ export function writePlan(app: App, m: Model, plan: Plan, extra: Map<Element, Ta
     const n = remapKeep(Number(value), m.items, after);
     if (n !== Number(value)) add(el, { attrs: { 'data-keep': String(n) } });
   }
-  // the data-autoslide of each step before a step with a delay, on its first fragment with a tag,
-  // and on no other fragment of a step before or after the change
   const want = new Map<number, number>();
   const firstTagged = (g: number[]) => [...g].sort((a, b) => a - b).find((i) => !m.locked[i]);
   plan.groups.forEach((g, k) => {
@@ -354,7 +276,6 @@ export function writePlan(app: App, m: Model, plan: Plan, extra: Map<Element, Ta
   const changed = [...edits].filter(([, e]) => Object.keys(e).length);
   if (!changed.length) return false;
   const first = changed[0][0];
-  // the selected step stays selected through an undo and a redo, which may change another element
   const held = app.history.holding();
   app.history.push({ label: 'steps', undo: () => app.showSlide(first), redo: () => app.showSlide(first) });
   for (const [el, e] of changed) app.doc.setTag(el, e, 'steps');
@@ -362,8 +283,6 @@ export function writePlan(app: App, m: Model, plan: Plan, extra: Map<Element, Ta
   return true;
 }
 
-// the classes of an effect written into the tag of el, and the others of EFFECT_CLASSES taken off.
-// Play takes data-autoplay off, since a video of the class play is started at its step
 export function effectEdit(state: TagState, effect: Effect): TagEdit {
   const want = effect === 'out' ? 'fade-out' : effect === 'only' ? 'current-visible' : effect === 'dim' ? 'semi-fade-out' : effect === 'play' ? 'play' : null;
   const classes: Record<string, boolean> = {};
@@ -376,7 +295,6 @@ export function effectEdit(state: TagState, effect: Effect): TagEdit {
 
 const KINDS: [string, string][] = [['h1, h2, h3', 'Heading'], ['.foot', 'Footnote'], ['li', 'Item'], ['ul, ol', 'List'], ['td, th', 'Table cell'], ['cite', 'Citation'], ['p', 'Paragraph'], ['div.math', 'Formula'], ['table', 'Table'], ['tr', 'Table row'], ['pre, code', 'Code'], ['blockquote', 'Quotation'], ['video', 'Video'], ['tycho-viewer', 'Scene'], ['.qr', 'QR code'], ['.caption', 'Caption'], ['.backdrop', 'Backdrop'], ['.surface', 'Surface'], ['.plot', 'Plot'], ['[data-plot-show], [data-plot-tab], [data-plot-hide]', 'Plot step'], ['[data-surface-state]', 'Surface step'], ['.tikz > [data-part]', 'Figure step'], ['.tikz', 'TikZ figure'], ['img, figure, .figure-box, .plate', 'Figure'], ['svg.line', 'Line'], ['.shape', 'Shape']];
 
-// the text of el with each formula given by its TeX, since an mjx-container does not have text
 function textOf(el: Element, tex: Ctx['tex']): string {
   let out = '';
   for (const child of el.childNodes) {
@@ -386,7 +304,6 @@ function textOf(el: Element, tex: Ctx['tex']): string {
   return out;
 }
 
-// the title of a tycho scene, read from the JSON of its scene script, or the name of its file
 function sceneTitle(el: Element): string {
   const script = el.querySelector('script[data-tycho="scene"]');
   try {
@@ -396,22 +313,17 @@ function sceneTitle(el: Element): string {
       const title = (JSON.parse(json) as { title?: unknown }).title;
       if (typeof title === 'string' && title) return title;
     }
-  } catch {
-    // a scene that is not JSON is named by its file
-  }
+  } catch {}
   return el.getAttribute('src')?.split('/').pop() ?? 'tycho scene';
 }
 
 export function describe(el: Element, tex: Ctx['tex']): { kind: string; text: string } {
-  // a theorem is named by the title of its kind, as in the Theorem pane, e.g. Lemma
   const theorem = el.matches('p.theorem') ? deckKinds()[el.getAttribute('data-kind') || 'theorem']?.title ?? 'Theorem' : null;
   const kind = theorem ?? KINDS.find(([selector]) => el.matches(selector))?.[1] ?? (el.localName === 'span' ? 'Text' : el.localName);
   const media = el.matches('img, video') ? el : el.querySelector('img, video');
   let text = textOf(el, tex).replace(/\s+/g, ' ').trim();
-  // a new picture is shown from an object URL, hence it is named by the path of its file
   if (!text && media) text = media.getAttribute('alt') || (store.pathOf(media.getAttribute('src') ?? media.querySelector('source')?.getAttribute('src') ?? null) ?? '').split('/').pop() || '';
   if (!text && el.matches('tycho-viewer')) text = sceneTitle(el);
-  // a citation is empty, and the theme draws its number from data-n
   if (!text && el.matches('cite')) text = el.getAttribute('data-n') || el.getAttribute('data-key') || '';
   if (!text) {
     const named = [['data-plot-show', 'Show'], ['data-plot-hide', 'Hide'], ['data-plot-tab', 'Tab'], ['data-surface-state', 'State'], ['data-part', 'Part'], ['data-backdrop', 'Backdrop'], ['data-trajectories', 'Trajectories']].find(([a]) => el.hasAttribute(a));
@@ -420,7 +332,6 @@ export function describe(el: Element, tex: Ctx['tex']): { kind: string; text: st
   return { kind, text: text.length > 90 ? `${text.slice(0, 90)}…` : text };
 }
 
-// the kind and the text of the row of a line step: its lines, and the first of them
 export function describeLines(l: LineStep): { kind: string; text: string } {
   const first = Math.min(...[...linesOf(l.lines)]);
   const text = (l.code.textContent ?? '').split('\n')[first - 1]?.trim() ?? '';
@@ -430,11 +341,8 @@ export function describeLines(l: LineStep): { kind: string; text: string } {
 
 export const STARTS: [StartKind, string][] = [['click', 'On Click'], ['with', 'With Previous'], ['after', 'After Previous']];
 
-// a delay in ms as seconds with at most one decimal
 const seconds = (ms: number): string => String(Math.round(ms / 100) / 10);
 
-// the text of a row, cut with an ellipsis where the pane is too narrow and then shown whole in its
-// tooltip, as in the Animation Pane of PowerPoint
 function fullText(text: string): HTMLElement {
   const el = make('span', 'text', text);
   if (text) el.title = text;
@@ -444,8 +352,6 @@ function fullText(text: string): HTMLElement {
 export const startLabel = (start: StartKind | null, delay: number | null): string =>
   start === 'after' ? `After Previous, ${seconds(delay ?? 0)} s` : start === 'with' ? 'With Previous' : 'On Click';
 
-// item i can start After Previous when the step before its own has a fragment with a tag, on
-// which the delay is written, or when it is shown with others and gets a step of its own
 export function afterable(m: Model, i: number): boolean {
   const g = m.plan.groups.findIndex((g) => g.includes(i));
   if (g < 0) return false;
@@ -453,8 +359,6 @@ export function afterable(m: Model, i: number): boolean {
   return !!before?.some((x) => !m.locked[x]);
 }
 
-// the mark of a start in a chip, 9 px on the grid of the icons of ui/icons.ts: a plus for With
-// Previous, and a clock for After Previous
 function startGlyph(start: 'with' | 'after'): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 10 10');
@@ -472,19 +376,12 @@ function startGlyph(start: 'with' | 'after'): SVGSVGElement {
   return svg;
 }
 
-// the box under which the menu of a chip is opened: the column of the chip over the height of its
-// row, so that the menu is put under the row at the chip, or over the row when there is no room
-// under it, and never over the second line of the row
 export const rowAnchor = (chip: Element, row: Element): DOMRect => {
   const c = chip.getBoundingClientRect();
   const r = row.getBoundingClientRect();
   return new DOMRect(c.left, r.top, c.width, r.height);
 };
 
-// a menu that still covers row, since it fits neither under nor over it, is put beside the row on
-// the side of the canvas, level with the row, as a popover of Keynote is put beside its control.
-// with beside set, the menu is put there in any case, e.g. for the head of a list, whose items are
-// the rows under it
 export function popover(menu: HTMLElement, row: Element, beside = false): void {
   const m = menu.getBoundingClientRect();
   const r = row.getBoundingClientRect();
@@ -496,8 +393,6 @@ export function popover(menu: HTMLElement, row: Element, beside = false): void {
   menu.style.top = `${Math.round(top)}px`;
 }
 
-// the menu is moved with its row when the row moves after the menu was opened, e.g. when the box
-// of the transition above the rows is hidden at the release of the press that selected the row
 function follow(menu: HTMLElement, row: Element): void {
   const top = row.getBoundingClientRect().top;
   const shift = () => {
@@ -508,7 +403,6 @@ function follow(menu: HTMLElement, row: Element): void {
   window.addEventListener('pointerup', shift, { once: true, capture: true });
 }
 
-// the six dots of a drag handle, in the grid of the icons of ui/icons.ts
 function grip(): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 8 14');
@@ -619,8 +513,6 @@ html.beeson-editing.beeson-previewing .reveal .slides section .fragment.beeson-p
 @media (prefers-reduced-motion: reduce) { html.beeson-editing.beeson-previewing .reveal .slides section .fragment { transition: none !important; } }
 `;
 
-// the selected TikZ figure of slide and the parts of its output without a span, which the Steps pane
-// lists as rows that make a part a step
 function freeParts(app: App, slide: Element): { figure: Element; parts: string[] } | null {
   const figure = app.selection.only()?.closest('.tikz');
   if (!figure || figure.closest('section') !== slide) return null;
@@ -629,9 +521,6 @@ function freeParts(app: App, slide: Element): { figure: Element; parts: string[]
   return parts.length ? { figure, parts } : null;
 }
 
-// the lists of the slide delivered by item whose items are consecutive steps, each alone at its
-// step but the first, which may share its step. such a list is shown as one row with its items
-// nested under it, as a build By Bullet in Keynote
 type Run = { list: Element; items: number[]; from: number };
 function runsOf(m: Model): Run[] {
   const out: Run[] = [];
@@ -649,12 +538,6 @@ function runsOf(m: Model): Run[] {
   return out;
 }
 
-// the videos of slide that the show plays at their step, i.e. of the style play or with
-// data-autoplay in a fragment, for a preview of the Steps pane or of the toolbar. update starts each
-// video that shown gives from its start, as src/video.ts starts it, and pauses and rewinds it to its
-// poster when its step is undone. stop rewinds every video started. the tycho viewers of the style
-// play are started and held by stepViewers of the theme. they are held from the start, so that each
-// preview starts them anew, and played again at the stop, as the editor shows a kiosk viewer
 export function stepVideos(slide: Element): { update(shown: (v: Element) => boolean): void; stop(): void } {
   const videos = [...slide.querySelectorAll('video')].filter((v) => v.closest('section') === slide && !!v.closest('.fragment') && (v.hasAttribute('data-autoplay') || !!v.closest('.fragment.play')));
   const started = new Set<HTMLVideoElement>();
@@ -683,22 +566,18 @@ export function stepVideos(slide: Element): { update(shown: (v: Element) => bool
   };
 }
 
-// the seconds of a step of a preview, and of the last frame, in which every element is restored
 const STEP_MS = 800;
 const END_MS = 700;
-// the widest ghost of a dragged row, in CSS px
 const GHOST_WIDTH = 240;
 
 type Row = { el: Element; i: number; row: HTMLElement; chip: HTMLButtonElement };
 type Head = { list: Element; head: HTMLElement; chip: HTMLButtonElement; run: Run };
-// the facts of a row that the fields under the rows show
 type Facts = { el: Element; stepped: boolean; start: StartKind | null; delay: number | null; effect: { id: Effect | null; label: string }; final: boolean };
 
 export class Steps {
   readonly pane = make('div', 'beeson-edit-side');
   readonly badges = make('div', 'beeson-badges');
   readonly button = make('button', '', 'Steps');
-  // the place of the transition of the slide at the head of the pane, filled by review/animate.ts
   readonly slot = make('div', 'slot');
   private readonly list = make('div', 'rows');
   private readonly detail = make('div', 'detail off');
@@ -708,10 +587,7 @@ export class Steps {
   private readonly ctx: Ctx;
   private app: App | null = null;
   private on = false;
-  // what the rows show, so that they are built again only when it changes, since a menu that is
-  // open on a chip would be lost
   private key = '';
-  // a number for each element of a row in the key, since the twin of a pair has the same words
   private readonly ids = new WeakMap<Element, number>();
   private lastId = 0;
   private idOf(el: Element): number {
@@ -721,15 +597,12 @@ export class Steps {
   private rows: Row[] = [];
   private heads: Head[] = [];
   private model: Model | null = null;
-  // the row last chosen by a press or a key, from which Play From plays while it is selected
   private current: Row | null = null;
   private start: HTMLButtonElement | null = null;
   private effect: HTMLButtonElement | null = null;
   private final: HTMLInputElement | null = null;
   private delay: ReturnType<typeof numberField> | null = null;
-  // the preview that is played, which stop ends on the last step of the slide
   private playing: { stop(): void; done: Promise<void> } | null = null;
-  // the row that a drag has started from, and the step that it is dropped into
   private dragging = false;
 
   constructor(ctx: Ctx) {
@@ -755,7 +628,6 @@ export class Steps {
     this.list.addEventListener('keydown', (ev) => this.key_(ev));
   }
 
-  // the commands of commands/steps.ts, given the app at their install
   attach(app: App): void {
     this.app = app;
     const run = (id: string) => () => void app.commands.run(id).catch((e) => app.fail(e));
@@ -773,10 +645,6 @@ export class Steps {
       text: () => STARTS.find(([v]) => v === this.selected()?.start)?.[1] ?? '—',
       onChange: (v) => this.runOn('steps.start', { start: v }),
     });
-    // the delay of After Previous in seconds, with the stepper of the number fields of the Arrange
-    // pane in steps of 0.1 s, as the Delay of the Timing of PowerPoint and of Build Order in Keynote.
-    // a value is committed with Return, at a blur, or by the stepper, into each selected row that
-    // starts After Previous. the field is empty while these rows differ
     const after = () => this.picked().filter((s) => s.start === 'after' && !s.final);
     const shared = () => {
       const ms = new Set(after().map((s) => s.delay));
@@ -822,7 +690,6 @@ export class Steps {
     this.detail.append(label);
     app.listen('slide', () => this.stop());
     app.selection.listen(() => this.mark());
-    // a flip of the mode shows the other twin of a dark and light pair, to which the rows are bound
     new MutationObserver(() => this.refresh()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
 
@@ -839,8 +706,6 @@ export class Steps {
     return this.on;
   }
 
-  // the numbers on the slide follow its layout, and the rows are built again when the slide or
-  // its steps change
   refresh(): void {
     this.badges.replaceChildren();
     const app = this.app;
@@ -857,14 +722,11 @@ export class Steps {
     const at = (i: number) => stepAt(plan, i);
     if (!this.playing) {
       els.forEach((el, i) => {
-        // an element hidden at the steps shown is hidden, and so is its number
         if (at(i) < 0 || el.closest(`.${OFF}`)) return;
-        // the number of a pair is drawn at the image of the mode shown
         const twin = m.twins?.get(el);
         const shown = twin && !el.getClientRects().length ? twin : el;
         let rect = shown.getBoundingClientRect();
         if (!rect.width && !rect.height) return;
-        // the number of a line step is drawn at the left edge of the box, level with its first line
         const line = m.lines[i];
         if (line) {
           const first = lineRect(line.code, Math.min(...linesOf(line.lines)));
@@ -924,13 +786,10 @@ export class Steps {
       const how = step < 0 ? 'With the slide' : [final ? 'Last' : startLabel(start, delay), effects[i]].join(' · ');
       chip.title = line ? `Step ${step + 1}, the ${kind.toLowerCase()} of the code box, set in its Code pane. Click to play the steps from it` : locked ? `Step ${step + 1}, set in its text element` : step < 0 ? 'Shown with the slide. Click to choose a step' : `Step ${step + 1}, ${final ? 'last' : startLabel(start, delay)}. Click to change its step, start, or effect`;
       chip.disabled = locked;
-      // the start is marked in the chip as in the Animation Pane of PowerPoint: a number at a click,
-      // a plus with the step before, and a clock after it
       const mark = step < 0 || final ? null : start === 'with' ? startGlyph('with') : start === 'after' ? startGlyph('after') : null;
       if (mark) chip.append(mark);
       chip.dataset.start = step < 0 ? '' : final ? 'last' : (start ?? '');
       chip.append(step < 0 ? '–' : final ? 'Last' : String(step + 1), icon('chevron-down', 9));
-      // a chip with a start mark or Last widens the chip column of every row, to keep the texts aligned
       if (final || mark) {
         chip.style.width = '44px';
         this.list.classList.add('wide');
@@ -943,7 +802,6 @@ export class Steps {
       handle.append(grip());
       r.append(handle, chip, body);
       r.setAttribute('aria-label', `${step < 0 ? 'With the slide' : final ? 'Last step' : `Step ${step + 1}`}, ${kind}${text ? `: ${text}` : ''}`);
-      // a line step points at its box, and dims the other lines of the box as the Code pane does
       const target = line ? (line.code.closest('pre') ?? el) : el;
       r.addEventListener('pointerenter', () => {
         if (this.dragging) return;
@@ -1013,7 +871,6 @@ export class Steps {
     this.current = was ? (this.rows.find((r) => r.i === was.i && r.el === was.el) ?? null) : null;
   }
 
-  // the row of a part of a figure without a span, whose chip makes the part a step with a new span
   private partRow(figure: Element, part: string, steps: number): HTMLElement {
     const app = this.app as App;
     const r = make('div', 'row slide');
@@ -1037,8 +894,6 @@ export class Steps {
     return r;
   }
 
-  // the row of a list delivered by item, above its items. a press selects the list, and its chip
-  // opens the menu of its delivery
   private head(run: Run, described: { kind: string; text: string }[]): HTMLElement {
     const app = this.app as App;
     const n = run.items.length;
@@ -1079,7 +934,6 @@ export class Steps {
     return head;
   }
 
-  // the items of the delivery of the list of an element, for the menu of its chip
   private deliveryItems(el: Element): MenuItem[] {
     const app = this.app as App;
     const list = listOf(el);
@@ -1098,19 +952,14 @@ export class Steps {
     if (!keyboard) follow(menu, h.head);
   }
 
-  // the rows of the selected elements are marked, and so are their numbers on the slide
   private mark(): void {
     const app = this.app;
     if (!app) return;
     const sel = app.selection;
     const items = sel.kind === 'elements' || sel.kind === 'text' ? sel.items : [];
-    // the row of a pair is bound to the twin shown, and the selection may hold the other one after
-    // a flip of the mode
     const twins = this.model?.twins;
     const hit = (el: Element) => [el, twins?.get(el)].some((e) => e && items.some((s) => s === e || s.contains(e) || e.contains(s)));
     const lines = this.model?.lines ?? [];
-    // a line row is marked while it is the row last chosen and its box is selected, in place of the
-    // row of the box
     const cur = this.current && lines[this.current.i] && hit(this.current.el) ? this.current : null;
     let first: Row | null = null;
     for (const r of this.rows) {
@@ -1126,12 +975,10 @@ export class Steps {
     this.syncDetail();
   }
 
-  // the facts of the first selected row, for the fields under the rows
   private selected(): Facts | null {
     return this.picked()[0] ?? null;
   }
 
-  // the facts of each selected row, apart from the rows of lines
   private picked(): Facts[] {
     const m = this.model;
     const app = this.app;
@@ -1152,7 +999,6 @@ export class Steps {
     this.delay?.sync();
     if (this.delay) this.delay.input.placeholder = new Set(this.picked().filter((r) => r.start === 'after' && !r.final).map((r) => r.delay)).size > 1 ? 'Multiple' : '';
     if (this.effect) {
-      // an effect chosen for an element shown with the slide makes it the last step
       this.effect.disabled = !s;
       (this.effect as HTMLButtonElement & { refresh(): void }).refresh();
     }
@@ -1168,7 +1014,6 @@ export class Steps {
     this.none.disabled = !steps;
   }
 
-  // with several rows selected, a command of the fields acts on each of their elements
   private runOn(id: string, arg: Record<string, unknown>): void {
     const s = this.selected();
     const app = this.app;
@@ -1182,12 +1027,10 @@ export class Steps {
   private select(r: Row): void {
     this.current = r;
     const line = this.model?.lines[r.i];
-    // a change of the steps shown drops the selection, hence it is made first
     this.app?.shownSteps.reveal(r.el);
     this.app?.selection.set('elements', [line ? (r.el.parentElement as Element) : r.el]);
   }
 
-  // the step of the row last chosen, 0 for the first, while it is marked, or null
   selectedStep(): number | null {
     const m = this.model;
     if (!this.on || !m) return null;
@@ -1196,20 +1039,16 @@ export class Steps {
     return k >= 0 ? k : null;
   }
 
-  // the menu of a chip: the steps of the slide, two new steps, the start, the effect, and Show Last
   private openChip(r: Row, keyboard: boolean): void {
     const app = this.app;
     const m = this.model;
     if (!app || !m) return;
-    // the menu of a row among several selected rows acts on each of them
     const many = this.several() && r.row.classList.contains('selected') && !m.lines[r.i];
     if (!many) this.select(r);
     const { plan } = m;
     const at = stepAt(plan, r.i);
-    // Play From plays the steps of the slide from this one, as in the Animation Pane of PowerPoint
     const play: MenuItem = { label: at < 0 ? 'Play From Step' : `Play From Step ${at + 1}`, disabled: at < 0, run: () => void app.commands.run('steps.playFrom', { step: at }).catch((e) => app.fail(e)) };
     if (m.lines[r.i]) {
-      // a line step is set in the Code pane of its box, hence its menu only plays it
       const menu = openMenu(app, [play], { anchor: rowAnchor(r.chip, r.row), placement: 'below', owner: r.chip, keyboard, label: 'Step', className: 'select steps' }).el;
       popover(menu, r.row);
       if (!keyboard) follow(menu, r.row);
@@ -1243,10 +1082,6 @@ export class Steps {
     if (!keyboard) follow(menu, r.row);
   }
 
-  // a press on a row selects its element. a press on its chip opens the menu of the chip, and a
-  // press elsewhere that is moved by 4 px drags the row to another place in the order. with Shift,
-  // the element is added to the selection, and with ⌘ (Ctrl) it is added or taken off, as in the
-  // Animation Pane of PowerPoint
   private press(ev: PointerEvent, r: Row): void {
     if (ev.button !== 0 || !this.app || !this.model) return;
     ev.preventDefault();
@@ -1262,7 +1097,6 @@ export class Steps {
     }
     if ((ev.shiftKey || (this.app.platform === 'mac' ? ev.metaKey : ev.ctrlKey)) && !this.model.lines[r.i]) {
       const sel = this.app.selection;
-      // the row of a pair is bound to the twin shown, and the selection may hold the other one
       const twin = this.model.twins?.get(r.el);
       const held = twin && sel.items.includes(twin) && !sel.items.includes(r.el) ? twin : r.el;
       if (!ev.shiftKey) sel.toggle(held);
@@ -1310,9 +1144,6 @@ export class Steps {
         r.row.classList.add('dragging');
         document.documentElement.classList.add('beeson-dragging-step');
       }
-      // the ghost is held at the left of the list, centered on the pointer, so that the drop line
-      // and the rows on either side of it stay in view, as in the Animation Pane of PowerPoint. in
-      // a window without room at the left, it is put under the pointer
       const lr = this.list.getBoundingClientRect();
       const left = lr.left - ghost.offsetWidth - 12;
       ghost.style.left = `${left >= 4 ? left : e.clientX + 16}px`;
@@ -1339,8 +1170,6 @@ export class Steps {
     window.addEventListener('keydown', esc, true);
   }
 
-  // the gap of the plan nearest to y, drawn as a line between the steps, or null over the
-  // elements shown with the slide. undefined is a drop that does not change the order
   private dropAt(y: number, r: Row, m: Model, line: HTMLElement): number | null | undefined {
     const zone = this.list.querySelector('.slide-zone');
     const lr = this.list.getBoundingClientRect();
@@ -1353,7 +1182,6 @@ export class Steps {
       line.hidden = true;
       return stepAt(m.plan, r.i) < 0 ? undefined : null;
     }
-    // the edges between the steps, each the gap of the step after it
     const edges: { y: number; gap: number }[] = [];
     stepBoxes.forEach((c, k) => {
       const b = c.getBoundingClientRect();
@@ -1369,8 +1197,6 @@ export class Steps {
     return best.gap;
   }
 
-  // the arrow keys move between the rows, Return or Space opens the menu of the chip, and Delete
-  // puts the element back with the slide
   private key_(ev: KeyboardEvent): void {
     const i = this.rows.findIndex((r) => r.row === document.activeElement);
     if (i < 0 || ev.altKey || ev.metaKey || ev.ctrlKey) return;
@@ -1392,8 +1218,6 @@ export class Steps {
     ev.stopPropagation();
   }
 
-  // the button reads Play From while a row of a step is chosen, as Play From and Play All in the
-  // Animation Pane of PowerPoint
   private setPlaying(on: boolean): void {
     const from = on ? null : this.selectedStep();
     const label = on ? 'Stop' : from !== null ? 'Play From' : 'Preview Steps';
@@ -1407,10 +1231,6 @@ export class Steps {
     return !!this.playing;
   }
 
-  // the steps of the current slide are played in place, with the effect of each fragment, from
-  // the slide shown up to step from, 0 for the slide without its steps, to its last step, after
-  // which every fragment is restored. the editor then shows the slide at its last step. a second
-  // call stops the preview
   preview(from = 0): Promise<void> {
     if (this.playing) {
       this.stop();
@@ -1418,8 +1238,6 @@ export class Steps {
     }
     const slide = this.ctx.slide();
     if (!slide) return Promise.resolve();
-    // the steps are read from the model of the slide, which has the line steps of its code boxes,
-    // or from its fragments where the model does not have them all
     const raw = fragmentsOf(slide);
     const m = this.app ? modelOf(this.app, slide) : null;
     const at = raw.map((f) => {
@@ -1433,7 +1251,6 @@ export class Steps {
     const html = document.documentElement;
     const last = Math.max(...frags.map((f) => f.step), ...lines.map((l) => l.step));
     const first = Math.max(0, Math.min(from, last - 1));
-    // the lines of a box are dimmed but for its last group reached, or its first group before
     const dim = (k: number) => {
       const reached = lines.filter((l) => l.step <= k);
       const l = reached.length ? reached.reduce((a, b) => (b.step > a.step ? b : a)) : lines[0];
@@ -1465,9 +1282,6 @@ export class Steps {
       e.stopImmediatePropagation();
       finish();
     };
-    // a fragment inside another one is dimmed with it, and a fragment with data-keep is held at
-    // full opacity through the next step, or through the step of the index of its number, as the
-    // theme does with the indexes of the page in src/steps.ts
     const nested = (el: Element) => !!el.parentElement?.closest('.fragment');
     const stepOf = new Map(frags.map((f) => [fragmentIndex(f.el)?.trim(), f.step]));
     const held = (f: { el: Element; step: number }, k: number) => {
@@ -1477,9 +1291,6 @@ export class Steps {
     };
     const frame = (k: number, restored = false) => {
       for (const f of frags) {
-        // a dimmed step is seen from the start, and a faint element keeps its opacity of the theme. a video
-        // of the style play shows its poster from the start, and a video is not dimmed, as in the
-        // show
         const dims = f.el.classList.contains('semi-fade-out');
         const shown = dims || f.el.classList.contains('play') || shownAt(f, k);
         f.el.classList.toggle('beeson-pv-off', !shown);
@@ -1499,7 +1310,6 @@ export class Steps {
     this.setPlaying(true);
     window.addEventListener('keydown', esc, true);
     frame(first);
-    // a step after a step with data-autoslide is played at its delay, as reveal.js plays it
     const delayAfter = (k: number) => {
       const ms = frags.filter((f) => f.step === k).map((f) => Number.parseInt(f.el.getAttribute(AUTOSLIDE) ?? '', 10)).find((v) => v > 0);
       return ms ?? STEP_MS;
@@ -1520,11 +1330,8 @@ export class Steps {
   }
 }
 
-// the arguments of the commands of a row, passed by the tab and by the tests
 export type RowArg = { el: Element };
 
-// the plan of the model of the slide of el after change, written as one change. the steps tab is
-// refreshed by the change of the document
 export function changePlan(app: App, el: Element, change: (plan: Plan, i: number) => Plan): boolean {
   const m = modelAt(app, el);
   if (!m) return false;

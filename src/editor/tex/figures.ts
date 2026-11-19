@@ -1,10 +1,3 @@
-// the TikZ figures of a session in theme/editor-tex.js: a new figure from a CSV file, a .tex file,
-// or a blank drawing, and the Edit Source sheet of a figure. the edit command writes each source
-// into figures/ under a free name and compiles the figure once the deck holds it. a pause in
-// typing in the sheet compiles the source as a preview, which is drawn on the slide in place of the
-// output until Cancel, or until the compile of the source applied ends, with its output or with the
-// last good output after an error
-
 import type { FigureError } from '../../session/protocol.ts';
 import type { FigureOutput } from '../../tikz.ts';
 import type { FigureLink } from '../session/port.ts';
@@ -33,7 +26,6 @@ dialog.beeson-edit-dialog.beeson-edit-tikz::backdrop { background: transparent; 
 }
 `;
 
-// a small drawing in the colors of styles/beeson-tikz.sty, with sizes left to the style
 const BLANK = `\\begin{tikzpicture}
 \\draw[line] (0,0) rectangle (4,3);
 \\draw[accent, ->] (0.5,0.5) .. controls (1.5,2.8) and (2.5,0.2) .. (3.5,2.5);
@@ -41,33 +33,27 @@ const BLANK = `\\begin{tikzpicture}
 \\node[ink, above] at (2,3) {A TikZ figure};
 \\end{tikzpicture}
 `;
-// the pause in typing after which the source is compiled as a preview, in ms
 const PAUSE = 1000;
-// the box of a new figure, which Insert puts on the slide in this size
 const NEW_BOX = { width: 800, height: 600 };
 
 type Answer = { status: number; value: Record<string, unknown> | null };
 type Preview = { figure?: FigureOutput; errors?: FigureError[]; superseded?: true };
 
-/** The answer of the route figures/route of the edit command to body with the token of the page. */
 export async function post(link: FigureLink, route: string, body: object): Promise<Answer> {
   const r = await fetch(new URL(`.session/figures/${route}`, location.href), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: link.token(), ...body }) });
   return { status: r.status, value: await r.json().catch(() => null) };
 }
 
-// the error of an answer that is not OK, as a sentence of a note
 export const failure = (a: Answer): Error => {
   const text = typeof a.value?.error === 'string' ? a.value.error : `the edit command answered ${a.status}`;
   return new Error(text[0].toUpperCase() + text.slice(1));
 };
 
-/** The text of figures/name.tex as the edit command serves it, or null without one. */
 export async function sourceOf(name: string): Promise<string | null> {
   const r = await fetch(new URL(`figures/${name}.tex`, location.href), { cache: 'no-store' });
   return r.ok ? r.text() : null;
 }
 
-// the line of an error, e.g. "Line 6: " for the source and "preamble.tex, line 3: " for another file
 export function errorLine(name: string, e: FigureError): string {
   const own = !e.file || e.file === `figures/${name}.tex`;
   const at = e.line === null ? (own ? '' : e.file) : own ? `Line ${e.line}` : `${e.file}, line ${e.line}`;
@@ -112,15 +98,10 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
   dialog.hidden = true;
   document.body.append(dialog);
 
-  // the figure being edited, or null for a new figure of Blank, which Insert writes and puts on the
-  // slide, and the text that the sheet opened with. theirs is the text of another person after a
-  // refused apply
   let at: { el: HTMLElement | null; name: string; base: string | null } | null = null;
   let theirs: string | null | undefined;
   let back: HTMLElement | null = null;
   let timer = 0;
-  // the count of the previews asked for, by which an answer to an older one is passed over, and
-  // the source of the preview drawn
   let asked = 0;
   let drawn: string | null = null;
   let marked = new Set<number>();
@@ -151,11 +132,8 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     field.scrollTop = Math.max(0, (n - 3) * 18);
     lines();
   };
-  // the box of the style, which the edit command compiles the output in
   const px = (v: string): number | null => Number(/^([\d.]+)px$/.exec(v.trim())?.[1] ?? NaN) || null;
   const boxOf = (el: HTMLElement) => ({ width: px(el.style.width), height: px(el.style.height) });
-  // the previews kept after Apply, by the time of the last compile of their figure then. each is
-  // taken off once the figure is compiled again with errors. a new output takes it off itself
   const kept = new Map<string, number | undefined>();
   let listening = false;
   const settle = (s: { compiling: string | null; compiled: Record<string, number>; errors: Record<string, FigureError[]> }): void => {
@@ -178,7 +156,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     if (v.superseded) return;
     said.textContent = '';
     showErrors(v.errors ?? []);
-    // a new figure is not on the slide yet, hence its preview lists its errors alone
     if (!v.figure || !at.el) return;
     drawn = source;
     figuresApi().preview?.(at.name, v.figure);
@@ -194,7 +171,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     if (back?.isConnected) back.focus({ preventScroll: true });
     back = null;
   };
-  // the output drawn again
   const cancel = (): void => {
     if (at?.el) figuresApi().preview?.(at.name, null);
     close();
@@ -208,7 +184,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     applyButton.disabled = true;
     try {
       if (!opened.el) {
-        // a new figure is written under a free name and put on the slide
         const made = await post(link, 'source', { stem: opened.name, source, base: null });
         const name = made.value?.name;
         if (at !== opened) return;
@@ -225,7 +200,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
         return;
       }
       if (answer.status !== 200) return void (said.textContent = failure(answer).message);
-      // the preview of this text is kept until its compile ends, which a text on disk already does not start
       if (drawn !== source || source === (theirs === undefined ? opened.base : theirs)) figuresApi().preview?.(opened.name, null);
       else {
         kept.set(opened.name, link.state()?.compiled[opened.name]);
@@ -265,7 +239,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     else if (ev.key === 'Enter' && mod) void apply();
     else if (ev.key === 'Tab' && ev.target !== field) trapTab(dialog, ev);
     else {
-      // the keys that press a button are kept from the key handler of reveal.js
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target instanceof HTMLButtonElement) ev.stopPropagation();
       return;
     }
@@ -273,7 +246,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     ev.stopPropagation();
   });
 
-  // the sheet on the figure el, or on text for a new figure of Blank
   async function editSource(el: HTMLElement | null, text: string | null = null): Promise<void> {
     const name = el ? (el.dataset.figure ?? '') : 'figure';
     if (!/^[\w-]+$/.test(name)) return note('This TikZ figure does not have a name in data-figure');
@@ -306,7 +278,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
       const link = host.link();
       if (!link) return;
       try {
-        // a blank drawing is written and put on the slide at Insert
         if (from === 'blank') return await editSource(null, BLANK);
         if (!file) return;
         let stem = file.name.replace(/\.tex$/i, '');
@@ -316,7 +287,6 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
           const data = await post(link, 'data', { stem: file.name, text });
           const path = data.value?.path;
           if (data.status !== 200 || typeof path !== 'string') throw failure(data);
-          // the figure is named after the CSV file as the edit command wrote it
           stem = path.slice('figures/'.length, -'.csv'.length);
           source = writeFigure(fromHeader(path, columns));
         }

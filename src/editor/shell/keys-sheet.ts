@@ -1,9 +1,3 @@
-// the sheet of the keyboard shortcuts, opened with ? or from the Help menu. it is built from the
-// registry each time it is opened: the menus of the menu bar, then the menus that other modules
-// add, e.g. Play, each with the commands that have a key on the platform of the editor, in the
-// order of the menu and its submenus. a command without a menu, e.g. Next Slide on an arrow key,
-// is listed with the command of its label in a menu, and else in the group Other
-
 import type { App, Region } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { DEFAULT_REGIONS, boundKeys, keysOf } from '../commands.ts';
@@ -36,7 +30,6 @@ const CSS = `
 
 export type SheetRow = { bar: string; label: string; keys: string[]; commands: Command[] };
 
-// the commands of the items of a menu and of its submenus, in their order
 function commandsOf(app: App, items: MenuItem[]): Command[] {
   const out: Command[] = [];
   for (const item of items) {
@@ -48,20 +41,12 @@ function commandsOf(app: App, items: MenuItem[]): Command[] {
   return out;
 }
 
-// the modifiers of a drag on the canvas, as canvas/drag.ts and commands/line.ts read them, one row
-// per modifier in the group Mouse after the menus, as Keynote describes them. Shift locks a move to
-// an axis, a rotation to steps of 15 degrees, and a line to steps of 45, and turns Constrain
-// Proportions over on a corner. the free modifier turns the snapping off, also the hold of a
-// rotation at the multiples of 45 degrees, and the copy modifier drops a copy of a move or resizes
-// about the center
 const MOUSE: [label: string, mac: string, other: string][] = [
   ['Lock Axis or Angle, Toggle Aspect', '⇧-drag', 'Shift+drag'],
   ['Move, Resize, or Rotate Without Snapping', '⌘-drag', 'Alt+drag'],
   ['Drag a Copy, Resize About the Center', '⌥-drag', 'Ctrl+drag'],
 ];
 
-// the rows of the sheet: one per label of each menu, with the keys of every command of the label,
-// then the modifiers of a drag
 export function sheetRows(app: App): SheetRow[] {
   const platform = app.platform;
   const label = (c: Command) => (typeof c.label === 'string' ? c.label : c.label(app));
@@ -93,11 +78,6 @@ export function sheetRows(app: App): SheetRow[] {
   return [...sorted, ...MOUSE.map(([name, mac, other]) => ({ bar: 'Mouse', label: name, keys: [platform === 'mac' ? mac : other], commands: [] }))];
 }
 
-// the keys listed at two rows of the menus whose commands are taken in one place, each as the key
-// and its rows, e.g. Shift+F3: Edit > Find Previous, Format > Change Case. the slide list is one
-// place, a text with the notes a second, and the slide with the inspector the third. Delete may
-// thus be listed at Delete and at Delete Slide, and Ctrl+] at Increase Indent Level of a text and
-// at Bring Forward of an element, as in PowerPoint. the rows of Other and Mouse are not counted
 export function sheetClashes(app: App): string[] {
   const place = (region: Region) => (region === 'navigator' ? 'navigator' : region === 'text' || region === 'notes' ? 'text' : 'slide');
   const inText = (c: Command) => c.inText === true || (Array.isArray(c.inText) && c.inText.includes(app.platform));
@@ -112,12 +92,6 @@ export function sheetClashes(app: App): string[] {
   return out;
 }
 
-// the keys of the sheet that run two enabled commands in the region of the focus, each as the key
-// and the ids of its commands, e.g. ⇧F3: find.previous, text.case.cycle. a key is meant to run one
-// command in each state of the editor, the first enabled one that the registry finds. with shared
-// set, the keys listed at two items of one menu or of one context menu, enabled or not, each as
-// the menu, the key, and the ids, e.g. Insert: ⌥⌘E: insert.formula, math.inline, which the menu
-// would show as one key of two commands
 export function keyClashes(app: App, shared = false): string[] {
   const platform = app.platform;
   const listed = new Set(sheetRows(app).flatMap((r) => r.keys));
@@ -142,7 +116,6 @@ export function keyClashes(app: App, shared = false): string[] {
   return out;
 }
 
-// the groups split in their order into n columns, with the tallest column as short as it can be
 function columns<T>(groups: T[], height: (g: T) => number, n: number): T[][] {
   const h = groups.map(height);
   const best = new Map<string, { cost: number; cut: number }>();
@@ -174,9 +147,6 @@ function columns<T>(groups: T[], height: (g: T) => number, n: number): T[][] {
 
 type Group = { bar: string; rows: SheetRow[] };
 
-// the groups laid in their order into n columns of about one height, with the heading of a group
-// counted as two rows. a group that does not fit into the rest of its column is continued in the
-// next one under its name, with three rows or more on each side
 function balanced(groups: Group[], n: number): Group[][] {
   const fill = (limit: number): Group[][] => {
     const out: Group[][] = [[]];
@@ -187,7 +157,6 @@ function balanced(groups: Group[], n: number): Group[][] {
         const room = limit - used - 2;
         const take = room >= rows.length ? rows.length : Math.min(room, rows.length - 3);
         if (take >= Math.min(3, rows.length) || !used) {
-          // a column too short for three rows takes its group whole
           const count = take >= 3 || take === rows.length ? take : rows.length;
           out.at(-1)!.push({ bar, rows: rows.slice(0, count) });
           used += count + 2;
@@ -227,8 +196,6 @@ export function install(app: App): void {
     if (back instanceof HTMLElement && back !== document.body && back.isConnected) back.focus();
     else (document.activeElement as HTMLElement | null)?.blur();
   });
-  // Tab stays in the sheet, and Esc closes it here, since the browser may ignore the cancel of a
-  // dialog that was not used since a former cancel
   sheet.addEventListener('keydown', (ev) => {
     if (ev.key === 'Tab') trapTab(sheet, ev);
     else if (ev.key === 'Escape') {
@@ -236,7 +203,6 @@ export function install(app: App): void {
       sheet.close();
     }
   });
-  // a click on the backdrop, outside the box of the sheet, closes it
   sheet.addEventListener('click', (ev) => {
     if (ev.target === sheet) sheet.close();
   });
@@ -249,8 +215,6 @@ export function install(app: App): void {
       if (last?.bar === row.bar) last.rows.push(row);
       else groups.push({ bar: row.bar, rows: [row] });
     }
-    // columns of about 290 px each, as many as the window has room for up to three, with the
-    // heading of a group counted as two rows
     const fit = (width: number) => Math.max(1, Math.floor((Math.min(width, innerWidth - 32) - 32) / 290));
     const units = (g: Group) => g.rows.length + 2;
     const draw = (lists: Group[][]) => body.replaceChildren(
@@ -275,14 +239,9 @@ export function install(app: App): void {
     let n = Math.min(3, fit(980));
     draw(columns(groups, units, n));
     back = document.activeElement;
-    // the sheet is centered with a margin above it that clears the menu bar, as a dialog of
-    // Keynote is not drawn over the titles of the menu bar
     const bar = document.querySelector('.beeson-edit-menubar')?.getBoundingClientRect().bottom ?? 0;
     sheet.style.maxHeight = `calc(100vh - ${2 * Math.max(16, Math.ceil(bar) + 8)}px)`;
     sheet.showModal();
-    // the sheet is measured once shown. while its rows are taller than the window, it gets a fourth
-    // column in a wider sheet, then tighter rows, then columns of one height with a long group
-    // continued in the next one, and else its body scrolls
     const over = () => body.scrollHeight > body.clientHeight;
     if (over() && fit(1280) >= 4) {
       sheet.classList.add('four');

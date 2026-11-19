@@ -1,10 +1,3 @@
-// the Preamble and Bibliography sheets of the File menu, built into theme/editor-tex.js and loaded
-// by tex/install.ts at their first use. a sheet edits preamble.tex or references.bib next to the
-// deck with a live effect on the open deck, and a save writes the changed sources and tex.js, with
-// the text that npm run tex writes. the files are read over http, from the folder of the deck in
-// Chrome and Edge, or from the files chosen with a file input elsewhere. the list of the
-// bibliography of tex/cite.ts reads the same files through the store
-
 import { readBibtex, type Bibliography, type Entry } from '../../bibtex.ts';
 import { readPreamble, type MacroDef, type Preamble, type Resolve, type Skipped } from '../../preamble.ts';
 import { matches, referenceOf, referenceParts } from '../../reference.ts';
@@ -51,16 +44,12 @@ dialog.beeson-edit-dialog.beeson-edit-tex { width: min(920px, calc(100vw - 32px)
 
 const SOURCE: Record<Which, string> = { preamble: 'preamble.tex', bibliography: 'references.bib' };
 const LABEL: Record<Which, string> = { preamble: 'Edit Preamble', bibliography: 'Edit Bibliography' };
-// as in TeX and in npm run tex, a file is looked up next to the preamble, and \input adds .tex to
-// a name without an extension
 const NAMES: Record<'input' | 'package' | 'class', (name: string) => string[]> = {
   input: (name) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
   package: (name) => [`${name}.sty`],
   class: (name) => [`${name}.cls`],
 };
-// the inputs of one source less than this apart, in ms, are one entry of the history, as typing is
 const PAUSE = 1000;
-// MathJax reads a formula again from this state, i.e. before it is compiled
 const COMPILED = 20;
 
 type Reader = (name: string) => Promise<string | null>;
@@ -77,7 +66,6 @@ type MathJaxTex = {
   };
 };
 
-// a save of a session refused by the edit command, since name changed since the sheet read it
 class Refused extends Error {
   readonly file: string;
   readonly text: string;
@@ -92,7 +80,6 @@ const listed = (names: string[]): string => (names.length < 3 ? names.join(' and
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-// the text of a file over http, null when the server does not have it
 const fetched: Reader = async (name) => {
   const response = await fetch(new URL(name, location.href), { cache: 'no-store' });
   if (response.ok) return await response.text();
@@ -114,9 +101,6 @@ function inFolder(folder: FileSystemDirectoryHandle): Reader {
   };
 }
 
-// a file chosen with the file input, by its name. a file that is not chosen is not read, since a
-// browser does not tell whether it is next to the deck, apart from a package or a class, which is
-// taken as one of the TeX installation, e.g. physics.sty
 function chosenFiles(files: Map<string, File>): Reader {
   return async (name) => {
     const file = files.get(name) ?? files.get(name.slice(name.lastIndexOf('/') + 1));
@@ -126,7 +110,6 @@ function chosenFiles(files: Map<string, File>): Reader {
   };
 }
 
-// the TeX that defines a macro or an environment of the preamble at run time
 function newcommand(name: string, def: MacroDef): string {
   const [body, args = 0, preset] = Array.isArray(def) ? def : [def];
   return `\\newcommand{\\${name}}${args ? `[${args}]` : ''}${preset === undefined ? '' : `[${preset}]`}{${body}}`;
@@ -139,24 +122,18 @@ function sheets(host: TexHost): TexSheets {
   const app: App = host.app;
   const start = host.start;
   injectStyle('tex', CSS);
-  // in a session, the edit command writes the sources and tex.js, for the host and for a guest
   const session = (): boolean => !!app.session && !!host.link();
 
-  // the files next to the deck by name: the text, null for a file that is not there, and undefined
-  // for a file that could not be read
   const files = new Map<string, string | null | undefined>();
   let reader: Reader | null = null;
   let loading: Promise<void> | null = null;
   let loaded = false;
   const text: Record<Which, string> = { preamble: '', bibliography: '' };
   const saved: Record<Which, string> = { preamble: '', bibliography: '' };
-  // the tex.js next to the deck, as it was read or last written
   let known: string | null = null;
   let preamble: Preamble = readPreamble('');
-  // the files that the preamble follows and that are not read
   let unreadFollowed: string[] = [];
   let bib: Bibliography = readBibtex('');
-  // the entry of the bibliography in its sheet, from start up to end in its text
   let range = { start: -1, end: -1 };
 
   const read = async (name: string): Promise<string | null | undefined> => {
@@ -173,7 +150,6 @@ function sheets(host: TexHost): TexSheets {
   };
   const unreadSource = (which: Which): boolean => files.has(SOURCE[which]) && files.get(SOURCE[which]) === undefined;
 
-  // the preamble read with the files that it follows, and the files that are not read yet
   function scan(): { preamble: Preamble; wanted: string[]; unread: string[] } {
     const wanted = new Set<string>();
     const unread = new Set<string>();
@@ -218,7 +194,6 @@ function sheets(host: TexHost): TexSheets {
 
   async function load(): Promise<void> {
     const [p, b, t] = await Promise.all([SOURCE.preamble, SOURCE.bibliography, 'tex.js'].map(read));
-    // a source read again keeps the edits of its sheet, whose save then finds the newer text
     for (const [which, found] of [['preamble', p], ['bibliography', b]] as const) {
       if (loaded && text[which] !== saved[which]) continue;
       if (loaded && which === 'bibliography') refind(found ?? '');
@@ -232,7 +207,6 @@ function sheets(host: TexHost): TexSheets {
     loaded = true;
   }
 
-  // the sheet, one dialog for both sources
   const dialog = make('dialog', 'beeson-edit-dialog beeson-edit-tex') as HTMLDialogElement;
   dialog.setAttribute('aria-modal', 'true');
   const heading = make('h3');
@@ -288,14 +262,11 @@ function sheets(host: TexHost): TexSheets {
     if (session()) void push();
   };
   done.addEventListener('click', close);
-  // the cancel of the file input bubbles up to the sheet, which stays open
   dialog.addEventListener('cancel', (ev) => {
     if (ev.target !== dialog) return;
     ev.preventDefault();
     close();
   });
-  // Esc closes the sheet, and the keys of the history undo the edits of the sources with the other
-  // edits of the deck, since the region of a dialog does not take them
   dialog.addEventListener('keydown', (ev) => {
     const mod = app.platform === 'mac' ? ev.metaKey || ev.ctrlKey : ev.ctrlKey;
     const key = ev.key.toLowerCase();
@@ -304,7 +275,6 @@ function sheets(host: TexHost): TexSheets {
     else if (mod && !ev.altKey && key === 'z') void (ev.shiftKey ? app.history.redo() : app.history.undo());
     else if (mod && !ev.altKey && key === 'y' && app.platform !== 'mac') void app.history.redo();
     else {
-      // the keys that press a button are kept from the key handler of reveal.js
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target instanceof HTMLButtonElement) ev.stopPropagation();
       return;
     }
@@ -312,9 +282,6 @@ function sheets(host: TexHost): TexSheets {
     ev.stopPropagation();
   });
 
-  // the store, read once with the reader of the page. a deck opened from a file is read from its
-  // folder in Chrome and Edge, and from the files chosen with the input elsewhere
-  // the files chosen with the input, which can be chosen again to add a file that is not read
   const picked = new Map<string, File>();
   let choosing = false;
   async function more(list: FileList): Promise<void> {
@@ -331,7 +298,6 @@ function sheets(host: TexHost): TexSheets {
     }
     await update();
   }
-  // quiet, for a save, the files are not asked for in the sheet, which is not open
   function choose(quiet = false): Promise<Reader> {
     if (/^https?:$/.test(location.protocol)) return Promise.resolve(fetched);
     const chosen = new Promise<Reader>((resolve) => {
@@ -360,8 +326,6 @@ function sheets(host: TexHost): TexSheets {
       return load();
     }));
 
-  // the deck drawn with the sources as they are now: tex.js in window.beesonTex, the macros and the
-  // environments in MathJax, the theorems numbered, and the references drawn
   let queue: Promise<unknown> = Promise.resolve();
   const has = { macros: { ...start?.macros }, environments: { ...start?.environments }, packages: new Set(start?.packages ?? []) };
   const mathjax = (): MathJaxTex | null => {
@@ -370,8 +334,6 @@ function sheets(host: TexHost): TexSheets {
   };
   const refresh = (): void => (window as unknown as { Beeson?: { refreshChrome?(): void } }).Beeson?.refreshChrome?.();
 
-  // the definitions that differ from those of MathJax are given to it, and the formulas that use
-  // them are typeset again. a macro taken out of the preamble is taken out of the maps of MathJax
   function define(tex: Tex): Promise<unknown> {
     return (queue = queue.then(async () => {
       const mj = mathjax();
@@ -422,15 +384,12 @@ function sheets(host: TexHost): TexSheets {
         if (!uses(item.math) && !(errors && item.typesetRoot?.querySelector('[data-mjx-error], [fill="red"]'))) continue;
         try {
           item.rerender(doc, COMPILED);
-        } catch {
-          // a formula that MathJax cannot typeset again keeps its former drawing
-        }
+        } catch {}
       }
       app.invalidate('content');
     }).catch(() => null));
   }
 
-  // the sample of a macro, typeset once for each definition
   const samples = new Map<string, Promise<Element | null>>();
   function sample(name: string, def: MacroDef): Promise<Element | null> {
     const key = `${name} ${JSON.stringify(def)}`;
@@ -453,10 +412,6 @@ function sheets(host: TexHost): TexSheets {
     void define(tex);
   }
 
-  // the deck drawn with the tex.js next to it, which changed on disk, e.g. in a session. its text
-  // is not JSON, hence it is run as an inline script. the redraws run one at a time, so that an
-  // older text is not drawn last. a text that does not parse, e.g. one read while npm run tex writes
-  // it, is not run, since the end of the write is a change of tex.js on disk that is drawn again
   let redrawing: Promise<void> = Promise.resolve();
   const parses = (text: string): boolean => {
     try {
@@ -484,7 +439,6 @@ function sheets(host: TexHost): TexSheets {
       fill();
     }));
 
-  // the lists of the sheets
   const line = (attrs: Record<string, string>, ...parts: (string | Node)[]): HTMLElement => {
     const div = make('div');
     for (const [name, value] of Object.entries(attrs)) div.setAttribute(name, value);
@@ -581,7 +535,6 @@ function sheets(host: TexHost): TexSheets {
     }
   }
 
-  // the lists, the live effect, and the files that the preamble follows, after a change
   let timer = 0;
   let version = 0;
   async function update(): Promise<void> {
@@ -598,8 +551,6 @@ function sheets(host: TexHost): TexSheets {
     timer = window.setTimeout(() => void update(), 150);
   };
 
-  // an edit of a source is one entry of the history, and the inputs of one source less than PAUSE
-  // apart are one entry, as the typing into a text element is
   let typing: { which: Which; at: number; entry: Step; after: State } | null = null;
   const stateOf = (which: Which): State => ({ text: text[which], ...(which === 'bibliography' ? range : { start: -1, end: -1 }) });
   function put(which: Which, state: State): void {
@@ -637,8 +588,6 @@ function sheets(host: TexHost): TexSheets {
   });
   search.addEventListener('input', fillEntries);
 
-  // the files to save for the text of the deck: the changed sources, and tex.js when it differs
-  // from the one next to the deck. tex.js is not written while a file of the preamble is not read
   function pending(deck: string): { out: [string, string][]; why: string } {
     const out: [string, string][] = [];
     for (const which of ['preamble', 'bibliography'] as Which[]) if (text[which] !== saved[which] && !unreadSource(which) && held[which] === null) out.push([SOURCE[which], text[which]]);
@@ -650,9 +599,6 @@ function sheets(host: TexHost): TexSheets {
     if (script !== known) out.push(['tex.js', script]);
     return { out, why: '' };
   }
-  // the files of the folder of the deck read again before they are written. a source without
-  // edits in its sheet and a followed file are taken as they are now, and the sources whose edits
-  // would be written over a newer file are returned
   async function reread(folder: FileSystemDirectoryHandle): Promise<[Which, string][]> {
     const now = async (name: string): Promise<string | null> => {
       try {
@@ -688,7 +634,6 @@ function sheets(host: TexHost): TexSheets {
     if (changed) await update();
     return kept;
   }
-  // the entry chosen in the Bibliography sheet found again by its key in the text next
   function refind(next: string): void {
     const key = bib.entries.find((e) => e.start === range.start)?.key;
     const entry = readBibtex(next).entries.find((e) => key !== undefined && e.key === key);
@@ -703,15 +648,12 @@ function sheets(host: TexHost): TexSheets {
   }
   const sentence = (parts: string[]): string => parts.filter(Boolean).join('. ');
 
-  // the changed sources, and outside a session tex.js, written into folder, or in a session into
-  // the talk folder through the edit command
   async function write(deck: string, handle: FileSystemFileHandle | null): Promise<string> {
     if (!loaded) return '';
     await follow();
     let { out, why } = pending(deck);
     if (out.length) {
       const folder = session() ? talkFolder() : await host.folder(handle!, listed(out.map(([name]) => name)));
-      // the files next to the deck may have been changed since they were read, e.g. by an agent
       const kept = await reread(folder);
       ({ out, why } = pending(deck));
       const names = kept.map(([which]) => SOURCE[which]);
@@ -731,8 +673,6 @@ function sheets(host: TexHost): TexSheets {
     return sentence([out.length ? `${listed(out.map(([name]) => name))} written` : '', why]);
   }
 
-  // the talk folder of a session as a folder of the deck: a file is read with GET, and a source is
-  // written with PUT at the edit command, over the text that its sheet read
   function talkFolder(): FileSystemDirectoryHandle {
     const file = (name: string) => ({
       async getFile() {
@@ -757,11 +697,7 @@ function sheets(host: TexHost): TexSheets {
     return { getFileHandle: async (name: string) => file(name) } as unknown as FileSystemDirectoryHandle;
   }
 
-  // in a session, a source is saved after a pause in its edits, at the close of its sheet, and at
-  // once for a paper added to the bibliography. a source whose save clashed with the text of
-  // another person is held until the person keeps their text or takes the other
   const held: Record<Which, string | null> = { preamble: null, bibliography: null };
-  // the note of the last save of a session, e.g. its failure
   let said = '';
   let saveTimer = 0;
   let saving: Promise<void> = Promise.resolve();
@@ -790,8 +726,6 @@ function sheets(host: TexHost): TexSheets {
       fill();
     }));
   }
-  // the text of another person saved since the sheet read the source, merged with the edits of the
-  // sheet. edits that clash with it hold the source
   function conflict(which: Which, theirs: string): void {
     const base = saved[which];
     const merged = merge(base, edits(base, text[which]), theirs, 'theirs');
@@ -823,8 +757,6 @@ function sheets(host: TexHost): TexSheets {
     void push();
   });
 
-  // the store as the list of the bibliography reads it. an entry pasted into the list is added to
-  // references.bib at once, so that its reference is drawn before the sheet reads the text again
   const picker = (): boolean => !!app.handle && 'showDirectoryPicker' in window && !!window.showDirectoryPicker;
   const store: Store = {
     app,
@@ -882,7 +814,6 @@ function sheets(host: TexHost): TexSheets {
       if (dialog.open && shown === which) (which === 'preamble' ? source : search).focus({ preventScroll: true });
     },
     loaded: () => loaded,
-    // a save does not wait for the files that a sheet asks for, which are chosen in the sheet
     async prepare() {
       if (!loaded && choosing) return false;
       try {

@@ -1,10 +1,3 @@
-// the Surface pane of the inspector, for a selected `.surface`: the camera, i.e. its azimuth,
-// elevation, and zoom, the seconds per turn, and the scale of the heights, each written to an
-// attribute of the start tag, and Use Current View, which writes the camera as it was turned by a
-// drag. a drag on a surface turns its camera, as in the deck, and a drag from its frame moves it.
-// a surface with the attributes of the surface on the slide before, apart from data-surface-state, is shown
-// under its camera, hence each write is made to every surface of that chain on the slides around
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { CONTAINER, onCanvas } from '../canvas/hit.ts';
@@ -17,9 +10,6 @@ type Written = { azimuth: number; elevation: number; zoom: number; turn: number;
 type Live = { el: HTMLElement; turn(dx: number, dy: number): void; view(): { azimuth: number; elevation: number; zoom: number; written: Written }; configure(): void };
 type Page = { Beeson?: { surfaces?: Live[] } };
 
-// the azimuth and the elevation that a drag in the editor left on a surface and that are not
-// written, which its fields show until Use Current View writes them or an attribute changes, and
-// the fields drawn again at each move of the drag
 const turned = new WeakMap<Element, { azimuth: number; elevation: number }>();
 const followers = new Map<HTMLElement, () => void>();
 const follow = () => {
@@ -28,7 +18,6 @@ const follow = () => {
 
 const liveOf = (el: Element | null): Live | null => (el ? ((window as unknown as Page).Beeson?.surfaces?.find((s) => s.el === el) ?? null) : null);
 
-// the surface that the selection is or holds alone in a figure box or a plate
 export function surfaceOf(app: App): HTMLElement | null {
   const el = app.selection.only();
   if (!el) return null;
@@ -39,11 +28,8 @@ export function surfaceOf(app: App): HTMLElement | null {
   return found.length === 1 ? found[0] : null;
 }
 
-// the key of main.ts by which a surface takes the camera of the surface on the slide before
 const keyOf = (el: HTMLElement) => JSON.stringify(Object.entries(el.dataset).filter(([k]) => k !== 'surfaceState' && k !== 'shown').sort());
 
-// the surfaces whose camera is that of el: el, and the surfaces with its key on the slides next to
-// it, in the order of the slides
 export function chainOf(app: App, el: HTMLElement): HTMLElement[] {
   const slides = [...app.slides().querySelectorAll('section')].filter((s) => !s.querySelector('section'));
   const at = slides.findIndex((s) => s.contains(el));
@@ -66,7 +52,6 @@ export const FIELDS = {
 type Field = keyof typeof FIELDS;
 
 const round = (v: number, digits: number) => Number(v.toFixed(digits));
-// an azimuth in whole degrees in the range from -180 to 180, where -180 is written as 180
 const azimuth = (deg: number) => {
   const a = round(((((deg + 180) % 360) + 360) % 360) - 180, 0);
   return a === -180 ? 180 : a;
@@ -78,7 +63,6 @@ const clean = (field: Field, v: number) => {
 };
 const text = (v: number) => String(Object.is(v, -0) ? 0 : v);
 
-// the attributes of values written on the surfaces of the chain of el, as one entry of the history
 function writeAll(app: App, el: HTMLElement, attrs: Record<string, string | null>): void {
   for (const s of chainOf(app, el)) {
     const changed = Object.entries(attrs).filter(([k, v]) => s.getAttribute(k) !== v);
@@ -95,7 +79,6 @@ const surfaceMenu = (order: number): Command['menu'] => ({ bar: 'Format', group:
 
 export function commands(): Command[] {
   const fields = (Object.keys(FIELDS) as Field[]).map((field): Command => ({
-    // arg { value, el }, from a field of the Surface pane
     id: `surface.${field}`,
     label: `Surface ${FIELDS[field].label}`,
     undoable: true,
@@ -110,8 +93,6 @@ export function commands(): Command[] {
   return [
     ...fields,
     {
-      // the camera drawn now, as a drag in the editor turned it, written as the camera of the deck.
-      // a zoom of 1 is the default, which is not written on a surface without data-zoom
       id: 'surface.useView',
       label: 'Use Current View',
       menu: surfaceMenu(10),
@@ -152,7 +133,6 @@ export function commands(): Command[] {
 
 let fieldCount = 0;
 
-// a number field as numberField of controls.ts, with digits after the point and a step of its own
 function decimalField(app: App, run: Run, el: HTMLElement | null, field: Field): Control {
   const f = FIELDS[field];
   const box = make('div', 'box');
@@ -254,13 +234,10 @@ export function surfacePane(app: App, run: Run): Control[] {
       followed(note(() => (el && turned.has(el) && liveOf(el) ? 'The view turned by the drag is shown in the fields. Choose Use Current View to write it.' : 'Drag the surface to turn it, and then use its view. A turn of 0 s keeps it still.'))),
       note(linked),
     ]),
-    // an empty cell beside Z Scale keeps the field at the width of the fields above. a strip bundle
-    // does not have heights
     ...(el?.hasAttribute('data-bundle') ? [] : [section('Heights', [row([decimalField(app, run, el, 'zscale'), { el: make('div', 'ed-num'), sync: () => {} }])])]),
   ];
 }
 
-// the band at the edge of a surface, in screen pixels, from which a drag moves it
 const EDGE = 8;
 
 function onEdge(el: Element, x: number, y: number): boolean {
@@ -269,7 +246,6 @@ function onEdge(el: Element, x: number, y: number): boolean {
   return !inside && x >= r.left - EDGE && x <= r.right + EDGE && y >= r.top - EDGE && y <= r.bottom + EDGE;
 }
 
-// the surface of the current slide under the point x, y or with its edge there, apart from a label
 function surfaceAt(app: App, target: Element, x: number, y: number): HTMLElement | null {
   const slide = app.current();
   if (!slide || !app.pairing || app.hostOf(target) || !onCanvas(target, app, { x, y })) return null;
@@ -282,9 +258,6 @@ function surfaceAt(app: App, target: Element, x: number, y: number): HTMLElement
 export function install(app: App): void {
   injectStyle('surface-pane', '.beeson-edit-inspector .ed-num.turned input { color: var(--ed-select); }');
   for (const c of commands()) app.commands.define(c);
-  // a press on a surface selects it. a drag inside it turns its camera, and a drag from its edge is
-  // handed to canvas/drag.ts as a drag of its handle, which moves it with the snapping of the slide
-  // the press handed to canvas/drag.ts is not trusted, and it is left to it
   window.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0 || !ev.isTrusted || !(ev.target instanceof Element)) return;
     const el = surfaceAt(app, ev.target, ev.clientX, ev.clientY);
@@ -306,7 +279,6 @@ export function install(app: App): void {
     const live = liveOf(el);
     if (!live) return;
     let x = ev.clientX, y = ev.clientY;
-    // the angles of the camera at the pointer, as the angle of a rotation is shown
     const move = (e: PointerEvent) => {
       live.turn(e.clientX - x, e.clientY - y);
       x = e.clientX;
@@ -329,7 +301,6 @@ export function install(app: App): void {
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', up, true);
   }, true);
-  // a right-click on a surface opens the menu of an element with the surface selected
   window.addEventListener('contextmenu', (ev) => {
     if (!(ev.target instanceof Element)) return;
     const el = surfaceAt(app, ev.target, ev.clientX, ev.clientY);
@@ -339,7 +310,6 @@ export function install(app: App): void {
     if (!app.selection.has(el)) app.selection.set('elements', [el]);
     openContextMenu(app, 'element', el, { x: ev.clientX, y: ev.clientY });
   }, true);
-  // a surface reads its camera again after a change of its attributes, also at an undo
   new MutationObserver((records) => {
     const seen = new Set<Element>();
     for (const r of records) if (r.target instanceof HTMLElement && r.target.matches('.surface') && !seen.has(r.target)) {

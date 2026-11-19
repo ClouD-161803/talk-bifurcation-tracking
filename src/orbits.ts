@@ -457,6 +457,34 @@ export class Orbits {
     return { cx: this.cx, cy: this.cy, half: this.half };
   }
 
+  get fittedToTrajectories(): boolean {
+    return this.fitted;
+  }
+
+  setWindow(view: { cx: number; cy: number; half: number } | null): void {
+    if (view) {
+      this.fitted = false;
+      ({ cx: this.cx, cy: this.cy, half: this.half } = view);
+    } else {
+      this.fitted = this.el.dataset.trajectories !== undefined;
+      this.fittedFor = '';
+    }
+    this.fit();
+  }
+
+  get extent(): { x0: number; x1: number; y0: number; y1: number } | null {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const { pts } of this.trajectories) {
+      for (let i = 0; i + 1 < pts.length; i += 2) {
+        if (pts[i] < x0) x0 = pts[i];
+        if (pts[i] > x1) x1 = pts[i];
+        if (pts[i + 1] < y0) y0 = pts[i + 1];
+        if (pts[i + 1] > y1) y1 = pts[i + 1];
+      }
+    }
+    return x0 <= x1 ? { x0, x1, y0, y1 } : null;
+  }
+
   get done(): boolean {
     return this.finished || this.loop;
   }

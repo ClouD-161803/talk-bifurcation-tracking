@@ -1,9 +1,3 @@
-// the transition of the slide at the head of the Steps tab, as in the Animate inspector of Keynote
-// with no element selected: None, Fade, Magic Move, or Push from the slide to the next slide,
-// Magic Move to a copy of the slide, Preview Transition, and the time of the slide in the last rehearsal. each button
-// runs a command of commands/review.ts, and the transition box is hidden while an element or a text is
-// selected
-
 import type { App } from '../app.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
@@ -66,9 +60,6 @@ export function install(app: App): void {
   const note = make('p', 'note');
   box.append(make('h5', '', 'Transition'), seg, acts, note);
   slot.replaceChildren(box);
-  // the transition box is kept while the pane is pressed or holds the focus, e.g. after a row is pressed and
-  // its element selected, so that the rows do not move under the pointer, and it follows the
-  // selection again once the focus leaves the pane
   let held = false;
   const pane = slot.parentElement ?? slot;
   const inside = () => held || pane.contains(document.activeElement);

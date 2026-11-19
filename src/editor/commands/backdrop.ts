@@ -3,13 +3,13 @@ import type { Command } from '../commands.ts';
 import { frameOf } from '../canvas/hit.ts';
 import type { Handle } from '../canvas/snap.ts';
 import { setPreview, view as frameView } from '../canvas/frames.ts';
-import { begin, editing, extentOf, markCuts, orbitOf, setView, syncBackdrops, windowAttrs } from '../canvas/mask.ts';
+import { begin, editing, markCuts, orbitOf, syncBackdrops, windowAttrs } from '../canvas/mask.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
-export type Live = { el: HTMLElement; view: View; done: boolean; tracing: boolean; ready: Promise<void>; fileTrajectories?: TrajectoryData[] | null; fit(): void; reset(): void; start(): void; complete(): void; destroy(): void };
+export type Live = { el: HTMLElement; view: View; extent: { x0: number; x1: number; y0: number; y1: number } | null; setWindow(view: View | null): void; done: boolean; tracing: boolean; ready: Promise<void>; fileTrajectories?: TrajectoryData[] | null; fit(): void; reset(): void; start(): void; complete(): void; destroy(): void };
 type Hooks = { backdrops?: Live[]; remount?(el: HTMLElement): Live; preview?(el: HTMLElement): Live; fitWindow?(el: HTMLElement, box?: Box): Promise<View | null> };
 const hooks = (): Hooks => (window as unknown as { Beeson?: Hooks }).Beeson ?? {};
 
@@ -444,7 +444,7 @@ export function pressBackdrop(app: App, ev: PointerEvent, el: HTMLElement, handl
     const dx = (e.clientX - sx) / f.scale, dy = (e.clientY - sy) / f.scale;
     if (!handle) {
       next = { view: { ...v0, cx: v0.cx - dx / per, cy: v0.cy + dy / per }, box: null };
-      setView(o as never, next.view);
+      o.setWindow(next.view);
     } else {
       let L = b0.left, R = b0.left + b0.width, T = b0.top, B = b0.top + b0.height;
       if (handle.includes('w')) L = Math.min(R - LEAST, L + dx);
@@ -456,7 +456,7 @@ export function pressBackdrop(app: App, ev: PointerEvent, el: HTMLElement, handl
       const view = { half: box.height / 2 / per, cx: v0.cx + (L + R - 2 * b0.left - b0.width) / 2 / per, cy: v0.cy - (T + B - 2 * b0.top - b0.height) / 2 / per };
       next = { view, box };
       Object.assign(el.style, { translate: `${t0.x + L - b0.left}px ${t0.y + T - b0.top}px`, width: `${box.width}px`, height: `${box.height}px` });
-      setView(o as never, view);
+      o.setWindow(view);
       frameView.readout = { text: `w: ${box.width} px  h: ${box.height} px`, x: e.clientX + 14, y: e.clientY + 18, at: 'pointer' };
     }
     app.invalidate('layout');
@@ -735,7 +735,7 @@ function cuts(app: App): void {
     }
     const v = app.stage?.viewport;
     if (v) layer.style.clipPath = `inset(${v.top}px ${innerWidth - v.right}px ${innerHeight - v.bottom}px ${v.left}px)`;
-    marks = markCuts(app, el, o.view, extentOf(o as never), layer, marks);
+    marks = markCuts(app, el, o.view, o.extent, layer, marks);
   };
   app.selection.listen(draw);
   app.onRefresh(['layout', 'slide', 'content'], draw);
