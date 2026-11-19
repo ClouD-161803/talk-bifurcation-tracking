@@ -57,8 +57,8 @@ export const STATE = `document.querySelector('.beeson-session-state')?.getAttrib
  * the folder, and the edit command on it. start() starts it again, e.g. after a kill, with more
  * arguments given after the earlier ones, so that a later --port wins.
  */
-export async function talk(t, { args = [], env = {} } = {}) {
-  const folder = talkFolder(t, TALK);
+export async function talk(t, { args = [], env = {}, deck = TALK } = {}) {
+  const folder = talkFolder(t, deck);
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   const file = join(folder.talk, 'index.html');
   const server = {

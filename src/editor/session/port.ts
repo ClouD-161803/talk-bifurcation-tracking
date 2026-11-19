@@ -36,7 +36,8 @@ export type Applied = { reload: boolean; changed: Element[] };
 // its text after the applies, after which the client loads the page again. they get the text that
 // the deck was meant to read, with these edits, when it is known. copy() reads the deck
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
-// rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
+// places() are the offsets of the text last read at which the page put or took off an element, see
+// Rendered of render.ts. rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
 // into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
 // draws the deck again with the tex.js next to it, after the edit command counted a change of it,
 // and rejects when it fails. reloadFigure() loads the output of a TikZ figure again unless the one
@@ -44,6 +45,7 @@ export type Applied = { reload: boolean; changed: Element[] };
 // commands/origin.ts
 export type Port = {
   text(): string;
+  places(): number[];
   copy(): string;
   apply(text: string): Promise<Applied>;
   rebase(): Promise<Applied>;
@@ -70,7 +72,7 @@ export const figureLink = (): FigureLink | null => figures;
 
 // the members of the port from the engine, and reported(), which resolves once every change of the
 // person is reported through onChange, and no apply runs or waits
-export type Engine = Pick<Port, 'text' | 'copy' | 'apply' | 'rebase' | 'onChange' | 'onReload'> & { reported(): Promise<void> };
+export type Engine = Pick<Port, 'text' | 'places' | 'copy' | 'apply' | 'rebase' | 'onChange' | 'onReload'> & { reported(): Promise<void> };
 
 // what the engine takes over at its install. clean holds while the source reads as the deck, and
 // handed is the text last handed to the client, see install of session.ts
@@ -139,6 +141,7 @@ export function install(app: App): Port {
 
   const port: Port = {
     text: absent,
+    places: () => [],
     copy: absent,
     apply: absent,
     rebase: absent,

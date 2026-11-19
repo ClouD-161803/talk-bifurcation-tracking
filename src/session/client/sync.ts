@@ -55,10 +55,11 @@ export class Sync {
     return this.replica.blocked;
   }
 
-  // the text of the deck after a change by the person. returns the text that the deck must read as
-  // when the replica repaired it, i.e. a lone surrogate, and null otherwise
-  edit(text: string): string | null {
-    return this.replica.edit(text);
+  // the text of the deck after a change by the person, and the offsets of it at which the editor put
+  // or took off an element. returns the text that the deck must read as when the replica repaired
+  // it, i.e. a lone surrogate, and null otherwise
+  edit(text: string, places?: readonly number[]): string | null {
+    return this.replica.edit(text, places);
   }
 
   outgoing(token: Token, held?: (text: string) => string[]): OpPost | null {

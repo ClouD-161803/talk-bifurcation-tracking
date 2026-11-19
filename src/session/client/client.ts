@@ -476,7 +476,7 @@ export class Client {
           this.dirty = false;
           const text = this.read();
           if (text !== null) {
-            if (sync.edit(text) !== null) stale = true;
+            if (sync.edit(text, this.port.places()) !== null) stale = true;
             this.handed = text;
           }
         }

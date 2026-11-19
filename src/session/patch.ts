@@ -546,3 +546,133 @@ export function checksum(text: string): string {
   }
   return `${text.length.toString(16)}-${(h >>> 0).toString(16).padStart(8, '0')}`;
 }
+
+// the start of the line of offset i of text when only spaces and tabs come before i on it, else i
+function lineStart(text: string, i: number): number {
+  let s = i;
+  while (s > 0 && (text[s - 1] === ' ' || text[s - 1] === '\t')) s--;
+  return s === 0 || text[s - 1] === '\n' ? s : i;
+}
+
+// p moved by k characters, or null when the text with it would differ, i.e. when the text that a
+// removal takes, or the text next to an insertion, does not repeat over k characters
+function slid(base: string, p: Patch, k: number): Patch | null {
+  const s = p.start + k, e = p.end + k;
+  if (s < 0 || e > base.length) return null;
+  if (p.start < p.end) {
+    const same = k < 0 ? base.slice(s, p.start) === base.slice(e, p.end) : base.slice(p.start, s) === base.slice(p.end, e);
+    return same ? { start: s, end: e, text: '' } : null;
+  }
+  const around = k < 0 ? base.slice(s, p.start) + p.text : p.text + base.slice(p.start, s);
+  const text = k < 0 ? around.slice(0, p.text.length) : around.slice(k);
+  return (k < 0 ? around.slice(p.text.length) === base.slice(s, p.start) : around.slice(0, k) === base.slice(p.start, s)) ? { start: s, end: s, text } : null;
+}
+
+const pure = (p: Patch) => (p.start === p.end ? p.text !== '' : p.text === '');
+
+// the removal or insertion that p makes, without the characters at its start or its end that it
+// takes and puts back, e.g. a tag that widen() took into a removal next to it, or null
+export function coreOf(base: string, p: Patch): Patch | null {
+  if (pure(p)) return p;
+  const old = base.slice(p.start, p.end), n = Math.min(old.length, p.text.length);
+  let head = 0;
+  while (head < n && old.charCodeAt(head) === p.text.charCodeAt(head)) head++;
+  let tail = 0;
+  while (tail < n - head && old.charCodeAt(old.length - 1 - tail) === p.text.charCodeAt(p.text.length - 1 - tail)) tail++;
+  const c = { start: p.start + head, end: p.end - tail, text: p.text.slice(head, p.text.length - tail) };
+  return pure(c) ? c : null;
+}
+
+const LINE = /(?<=\n)/;
+const sum = (patches: Patch[]) => patches.reduce((n, p) => n + p.text.length - (p.end - p.start), 0);
+
+// a removal or insertion that may move, with the patches that make the rest of a patch before and
+// after it
+type Way = { pure: Patch; before: Patch[]; after: Patch[] };
+
+// the ways to make p with a removal or insertion that may move: p itself or its core, or for a patch
+// over whole lines, the removal or insertion of whole lines at its start or its end and the patches
+// of the lines left, which pair one to one, e.g. a removed line that changes() joined with a changed
+// line next to it. such a p is widened to whole lines first
+function ways(base: string, p: Patch): Way[] {
+  const c = coreOf(base, p);
+  if (c) return [{ pure: c, before: [], after: [] }];
+  const s = base.lastIndexOf('\n', p.start - 1) + 1, e = base.indexOf('\n', p.end) + 1 || base.length;
+  p = { start: s, end: e, text: base.slice(s, p.start) + p.text + base.slice(p.end, e) };
+  const old = base.slice(p.start, p.end).split(LINE), next = p.text.split(LINE);
+  const d = old.length - next.length;
+  if (d === 0) return [];
+  const pairs = (start: number, end: number, text: string) => widen(base, byLine(base, { start, end, text }));
+  if (d > 0) {
+    const head = p.start + old.slice(0, d).join('').length, tail = p.end - old.slice(old.length - d).join('').length;
+    return [
+      { pure: { start: p.start, end: head, text: '' }, before: [], after: pairs(head, p.end, p.text) },
+      { pure: { start: tail, end: p.end, text: '' }, before: pairs(p.start, tail, p.text), after: [] },
+    ];
+  }
+  const head = next.slice(0, -d).join(''), tail = next.slice(next.length + d).join('');
+  return [
+    { pure: { start: p.start, end: p.start, text: head }, before: [], after: pairs(p.start, p.end, p.text.slice(head.length)) },
+    { pure: { start: p.end, end: p.end, text: tail }, before: pairs(p.start, p.end, p.text.slice(0, p.text.length - tail.length)), after: [] },
+  ];
+}
+
+// the patches of diff(base, text) with each removal and each insertion that could be made at another
+// place with the same text moved to one of places, the offsets of text at which the editor put or
+// removed an element, or to the start of the line of one when its indentation alone comes before it.
+// diff() places a change as late as it can, hence without places the removal of the first of two
+// equal elements reads as the removal of the second, and its comments move to the first. a patch that
+// changes() joined with a changed line next to it is split first
+export function placed(base: string, patches: Patch[], places: readonly number[], text: string): Patch[] {
+  if (!places.length) return patches;
+  const marks = places.flatMap((h) => [lineStart(text, h), h]);
+  const out: Patch[] = [];
+  let delta = 0;
+  patches.forEach((p, i) => {
+    const lo = out.length ? out[out.length - 1].end : 0, hi = i + 1 < patches.length ? patches[i + 1].start : base.length;
+    const found = ways(base, p).some(({ pure, before, after }) => {
+      const at = pure.start + delta + sum(before);
+      if ((before[0] ?? after[0])?.start < lo || (after[after.length - 1] ?? before[before.length - 1])?.end > hi) return false;
+      const from = before.length ? before[before.length - 1].end : lo, to = after.length ? after[0].start : hi;
+      for (const h of marks) {
+        const k = h - at;
+        const moved = k === 0 ? pure : Math.abs(k) <= 4 * LONG && slid(base, pure, k);
+        const [w] = moved ? widen(base, [moved]) : [];
+        if (!w || w.start < from || w.end > to) continue;
+        // a pure patch at its place is kept as diff() gave it
+        out.push(...(k === 0 && !before.length && !after.length ? [p] : [...before, w, ...after]));
+        return true;
+      }
+      return false;
+    });
+    if (!found) out.push(p);
+    delta += p.text.length - (p.end - p.start);
+  });
+  return out;
+}
+
+// offsets of a moved onto b: those before the first character that differs stay, those after the
+// last one move with the end, and those between are dropped
+export function moveOffsets(offsets: readonly number[], a: string, b: string): number[] {
+  if (!offsets.length || a === b) return [...offsets];
+  const n = Math.min(a.length, b.length);
+  const head = sharedStart(a, b, n), tail = a.length - sharedEnd(a, b, n - head);
+  return offsets.flatMap((h) => (h <= head ? [h] : h >= tail ? [h + b.length - a.length] : []));
+}
+
+// the patches of theirs with each that is the same change as a patch of ours, made at another place
+// of base, moved onto the place of ours, e.g. the removal of one of two equal elements that a diff
+// placed late. a resync takes the difference of two texts, which does not tell the place
+export function alignTo(base: string, theirs: Patch[], ours: Patch[]): Patch[] {
+  const used = new Set<Patch>();
+  const out = theirs.map((t) => {
+    if (!pure(t)) return t;
+    const o = ours.find((o) => !used.has(o) && o.start !== t.start && o.end - o.start === t.end - t.start && slid(base, t, o.start - t.start)?.text === o.text);
+    if (!o) return t;
+    used.add(o);
+    return o;
+  });
+  if (!used.size) return theirs;
+  out.sort((a, b) => a.start - b.start || a.end - b.end);
+  return valid(out, base.length) ? out : theirs;
+}

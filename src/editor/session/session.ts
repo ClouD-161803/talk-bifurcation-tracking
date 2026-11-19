@@ -90,8 +90,17 @@ export function install(app: App, tracked: Tracked): Engine {
   const reload = (): Applied => ({ reload: true, changed: [] });
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
   const busy = () => !app.history.settled || app.doc.busy;
+  // the places of the last render, and of the text last handed when it is this render, see Rendered
+  let rendered: number[] = [];
+  let places: number[] = [];
   // the text of the deck now, with the edits of the person
-  const current = (): string => (clean ? app.source!.text : app.files.render());
+  const current = (): string => {
+    rendered = [];
+    if (clean) return app.source!.text;
+    const r = renderDeck(app.source!, app.pairing!, mathLookup(), app.tagEdits);
+    rendered = r.places;
+    return r.text;
+  };
   // the text of the deck with the changes held back, which arrived before the edits of the person,
   // hence go first where both insert at one point, as at the authority. an edit of the person equal
   // to one of them is taken once
@@ -548,8 +557,11 @@ export function install(app: App, tracked: Tracked): Engine {
       if (handed !== null && (busy() || applying || queued)) return handed;
       lateRest();
       if (rest !== null && !composition()) rest = null;
-      return (handed = virtual(rest ?? current()));
+      handed = virtual(rest ?? current());
+      places = rest === null && !behind ? rendered : [];
+      return handed;
     },
+    places: () => places,
     copy: () => {
       if (!ready()) throw new Error('no file is open');
       return virtual(current());

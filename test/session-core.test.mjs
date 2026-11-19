@@ -13,6 +13,7 @@ import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
 import { charEdits, edits, fine, mergeEdits } from '../src/editor/merge.ts';
 import { widen } from '../src/session/patch.ts';
+import { moveAnchors } from '../src/session/anchor.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
 
@@ -1528,4 +1529,130 @@ test('random edits of two or three people, in every order of arrival and in the 
     if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
   }
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
+});
+
+// a slide with three equal paragraphs, and an edit of one person: the removal of the paragraph k,
+// or a copy of it put before it. places are the offsets of the text that the editor gives, i.e. the
+// start tag after a removed paragraph and the start tag of a copy
+const EQUAL = ['<section>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Same</p>\n', '  <p>Other</p>\n', '</section>\n'];
+function equalEdit(kind, k, lines = EQUAL) {
+  const out = [...lines];
+  if (kind === 'remove') out.splice(1 + k, 1);
+  else out.splice(1 + k, 0, lines[1 + k]);
+  return { text: out.join(''), places: [out.slice(0, 1 + k).join('').length + 2] };
+}
+
+// replicas that each make one edit of base at once, over a network where the answers and the
+// broadcasts of each replica arrive in an order that the seed picks. with typing, the replicas
+// also type a letter after Other at random steps
+function crowd(base, edits, seed, typing = false) {
+  const r = generator(seed);
+  const authority = new Authority(base, { epoch: 'E' });
+  const replicas = edits.map((_, i) => new Replica(`r${i}aaaaaaa`, base, 'E.0'));
+  replicas.forEach((replica, i) => replica.edit(edits[i].text, edits[i].places));
+  const sent = replicas.map(() => []), ops = replicas.map(() => []), answers = replicas.map(() => []);
+  for (let step = 0; step < 2000; step++) {
+    replicas.forEach((replica, i) => {
+      const request = replica.outgoing();
+      if (request) sent[i].push(request);
+    });
+    const choices = replicas.flatMap((_, i) => [sent[i].length && ['submit', i], ops[i].length && ['op', i], answers[i].length && ['answer', i]].filter(Boolean));
+    if (!choices.length) break;
+    const [kind, i] = r.pick(choices);
+    if (typing && step < 100 && r.chance(0.2)) {
+      const j = r.int(replicas.length);
+      replicas[j].edit(replicas[j].mine.replace('Other', `Other${'xyz'[j]}`));
+    }
+    if (kind === 'submit') {
+      const request = sent[i].shift();
+      const { answer, op } = authority.submit(request, replicas[i].client);
+      if (op) ops.forEach((list) => list.push(op));
+      answers[i].push({ request, answer });
+    } else if (kind === 'op') replicas[i].receive(ops[i].shift());
+    else {
+      const { request, answer } = answers[i].shift();
+      replicas[i].answer(request, answer);
+    }
+  }
+  for (const replica of replicas) assert.equal(replica.mine, authority.text, `seed ${seed}: a replica did not converge`);
+  return { text: authority.text, ops: authority.since('E.0') ?? [] };
+}
+
+// the anchors of threads on the start tags at offsets of base, moved over ops as the edit command
+// moves them, with null for a thread whose element was removed
+function follow(base, ops, offsets) {
+  let text = base;
+  const slide = { start: 0, end: '<section>'.length, tag: 'section' };
+  let items = offsets.map((start) => ({ anchor: { start, end: base.indexOf('>', start) + 1, tag: 'p' }, slide }));
+  for (const op of ops) {
+    const after = apply(text, op.patches);
+    items = moveAnchors(text, op.patches, after, items).items;
+    text = after;
+  }
+  return items.map((i) => (i.anchor && i.anchor.tag === 'p' ? i.anchor.start : null));
+}
+
+const starts = (text) => [...text.matchAll(/<p>Same/g)].map((m) => m.index);
+
+test('a thread on an element stays on it when another person removes an equal element before it, or puts an equal copy before it, also on one line and for equal slides', () => {
+  const base = EQUAL.join('');
+  const threads = starts(base);
+  for (const [kind, k, want] of [['remove', 0, [null, 0, 1]], ['remove', 1, [0, null, 1]], ['copy', 0, [1, 2, 3]], ['copy', 1, [0, 2, 3]]]) {
+    const { ops, text } = crowd(base, [equalEdit(kind, k)], 1);
+    const at = starts(text);
+    assert.deepEqual(follow(base, ops, threads), want.map((j) => (j === null ? null : at[j])), `${kind} ${k}`);
+  }
+  const line = '<section><p>Same</p><p>Same</p></section>\n';
+  const one = crowd(line, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
+  assert.deepEqual(follow(line, one.ops, starts(line)), [null, starts(one.text)[0]]);
+  // two elements with the same start tag on one line, which are not equal
+  const tags = '<section><p>A</p><p>Same</p></section>\n';
+  const first = crowd(tags, [{ text: '<section><p>Same</p></section>\n', places: ['<section>'.length] }], 1);
+  assert.deepEqual(follow(tags, first.ops, starts(tags)), starts(first.text));
+  const slides = '<section>\n  <p>Same</p>\n</section>\n<section>\n  <p>Same</p>\n</section>\n';
+  const half = slides.length / 2;
+  const gone = crowd(slides, [{ text: slides.slice(half), places: [0] }], 1);
+  assert.deepEqual(gone.ops.flatMap((op) => op.patches), [{ start: 0, end: half, text: '' }]);
+});
+
+test('two people who remove the same one of three equal elements at once remove it once, and two who remove two equal elements next to each other remove both, in every order of arrival', () => {
+  const base = EQUAL.join('');
+  for (let seed = 1; seed <= 60; seed++) {
+    const same = crowd(base, [equalEdit('remove', 0), equalEdit('remove', 0)], seed);
+    assert.equal(starts(same.text).length, 2, `seed ${seed}: the same element removed by two people`);
+    const next = crowd(base, [equalEdit('remove', 0), equalEdit('remove', 1)], seed);
+    assert.equal(starts(next.text).length, 1, `seed ${seed}: two elements next to each other removed by two people`);
+    assert.deepEqual(follow(base, next.ops, starts(base)), [null, null, starts(next.text)[0]], `seed ${seed}`);
+  }
+});
+
+test('the threads on three equal elements that nobody removes end on their own element through removals and copies of two or three people at once, in every order of arrival', () => {
+  const base = EQUAL.join('');
+  for (let seed = 1; seed <= 1000; seed++) {
+    const r = generator(seed);
+    const people = 2 + r.int(2);
+    const chosen = Array.from({ length: people }, () => [r.pick(['remove', 'copy']), r.int(3)]);
+    const { text, ops } = crowd(base, chosen.map(([kind, k]) => equalEdit(kind, k)), seed, seed % 2 === 0);
+    // the elements in the order of the text: the index in base of each that stays, and -1 for a copy
+    const removed = new Set(chosen.filter(([kind]) => kind === 'remove').map(([, k]) => k));
+    const order = [0, 1, 2].flatMap((k) => [...chosen.filter(([kind, j]) => kind === 'copy' && j === k).map(() => -1), ...(removed.has(k) ? [] : [k])]);
+    const at = starts(text);
+    assert.equal(at.length, order.length, `seed ${seed}: ${JSON.stringify(chosen)} ends with ${at.length} elements`);
+    // the thread of a removed element may attach to a copy put in later, as to an undone removal
+    const kept = [0, 1, 2].filter((k) => !removed.has(k));
+    const moved = follow(base, ops, starts(base));
+    assert.deepEqual(kept.map((k) => moved[k]), kept.map((k) => at[order.indexOf(k)]), `seed ${seed}: ${JSON.stringify(chosen)}`);
+  }
+});
+
+test('a resync keeps one removal when the whole text lacks the element that the page removed, and the difference of the texts places this removal elsewhere', () => {
+  const base = EQUAL.join('');
+  const mine = equalEdit('remove', 0);
+  for (const flight of [false, true]) {
+    const r = new Replica('meaaaaaa', base, 'E.3');
+    r.edit(mine.text, mine.places);
+    if (flight) r.outgoing();
+    assert.equal(r.resync(mine.text, 'F.0'), null, flight ? 'with the operation in flight' : 'with the edit unsent');
+    assert.equal(starts(r.mine).length, 2);
+  }
 });

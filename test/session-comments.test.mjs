@@ -142,10 +142,10 @@ async function comment(page, text, how = 'key') {
   return label;
 }
 
-async function pair(t, names = ['Ann', 'Ben'], script = '') {
+async function pair(t, names = ['Ann', 'Ben'], script = '', deck = undefined) {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t);
+  const server = await talk(t, { deck });
   const pages = [];
   for (const name of names) pages.push(await open(browser, sessionUrl(server.edit), { name, script }));
   await converge(server, pages);
@@ -303,6 +303,33 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   assert.equal(await converge(server, [a, b]), before);
   await badge(a, 'Two', 'p', '1');
   await sees(a, THREADS, thread('On Paragraph: Second slide'));
+  clean(a);
+  clean(b);
+});
+
+// the deck of a talk with two equal paragraphs on lines of their own on slide Two, and two on one
+// line without white space between them on slide One
+const TWINS = TALK.replace('  <p>Second slide</p>\n', '  <p>Same</p>\n  <p>Same</p>\n').replace('  <p>First slide</p>\n', '  <p>Twin</p><p>Twin</p>\n');
+
+test('a thread on the second of two equal elements stays on it when another person removes the first, on lines of their own and on one line', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t, ['Ann', 'Ben'], '', TWINS);
+  for (const [heading, text, slide] of [['Two', 'Same', 2], ['One', 'Twin', 1]]) {
+    const second = `.reveal .slides > section:nth-child(${slide}) > p:nth-of-type(2)`;
+    await show(a, heading);
+    await click(a, second);
+    await comment(a, `On the second ${text}`);
+    await converge(server, [a, b]);
+    await until(() => b.evaluate(`!window.BeesonSession.presence().holderOf(document.querySelector('${second}'))`), 'the paragraph that Ann left to be free on the page of Ben');
+    await show(b, heading);
+    await clickText(b, `.reveal section.present > p`);
+    await press(b, 'Escape');
+    await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
+    await until(() => server.read().split(`<p>${text}</p>`).length === 2, `the removal of the first ${text} to reach index.html`);
+    await converge(server, [a, b]);
+    await openPane(a);
+    await badge(a, heading, 'p', '1');
+    await sees(a, `${THREADS}.filter((t) => t.texts[0] === 'On the second ${text}')`, [{ anchor: `On Paragraph: ${text}`, texts: [`On the second ${text}`] }]);
+  }
   clean(a);
   clean(b);
 });
