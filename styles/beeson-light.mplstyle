@@ -34,4 +34,4 @@ axes.spines.top: False
 axes.spines.right: False
 legend.frameon: False
 
-axes.prop_cycle: cycler('color', ['E69F00', '56B4E9', '009E73', 'F0E442', '0072B2', 'D55E00', 'CC79A7', '141413'])
+axes.prop_cycle: cycler('color', ['E69F00', '56B4E9', '009E73', 'F0E442', '0072B2', 'D55E00', 'CC79A7', '000000'])

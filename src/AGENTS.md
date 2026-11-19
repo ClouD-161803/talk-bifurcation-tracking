@@ -25,7 +25,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 ## Theme
 
 - Take every color from the custom properties of `theme/beeson.css`. Use orange for motion and progress, and violet for structure.
-- Keep the plot palette, `--data-1` to `--data-8` of `theme/beeson.css`, as the Okabe–Ito palette, whose colors can be told apart with color vision deficiency, with the color of the text in place of black. Keep the same colors in the same order in the styles of `styles/`.
+- Keep the plot palette, `--data-1` to `--data-8` of `theme/beeson.css`, as the Okabe–Ito palette, whose colors can be told apart with color vision deficiency. In the dark mode, its black is replaced by the color of the text. Keep the same colors in the same order in the styles of `styles/`.
 - Keep `axes.formatter.use_mathtext` in the Matplotlib styles. The tick labels are then set as math, since cmr10, the fallback typeface of Matplotlib, does not have a minus sign.
 - Set type in Latin Modern Roman at 22, 28, 36, 48, 64, or 96 px on the design size of 1920 by 1080. Set math in the TeX font of MathJax.
 - Keep body text at 48 px, i.e. the 24 points of the AIAA guideline for a slide 7.5 in high. Keep captions and tables at 36 px, and code boxes at 22 px.
