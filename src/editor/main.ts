@@ -64,6 +64,9 @@ import { install as installSession, loadEngine } from './session/port.ts';
 import { load as loadSession } from './session/load.ts';
 import { install as installObjects } from './navigator/objects.ts';
 import { Doc } from './model/doc.ts';
+import { locateEditor } from './ui/script.ts';
+
+locateEditor((document.currentScript as HTMLScriptElement | null)?.src ?? '');
 
 const app = new App();
 
