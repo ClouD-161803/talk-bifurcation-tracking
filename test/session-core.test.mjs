@@ -1037,6 +1037,26 @@ test('shift and mergePatches take a time linear in the number of patches, and an
   assert.equal(valid(at(2001, 0), text.length), false);
 });
 
+test('the text of the oldest version of a full log of a deck of 5 MB is rebuilt in a time near that of a version ten operations back', () => {
+  const big = deck.replace('</body>', `<!-- ${'x'.repeat(5 * 1024 * 1024)} -->\n</body>`);
+  const a = new Authority(big, { epoch: 'E' });
+  const r = generator(7);
+  const texts = new Map([[0, big]]);
+  for (let i = 1; i <= 1000; i++) {
+    const at = big.indexOf('<!-- x') + 5 + r.int(5 * 1024 * 1024 - 8);
+    a.enter([{ start: at, end: at + (i % 3 === 0 ? 2 : 0), text: `w${i} ` }], 'Ann');
+    if (i === 990) texts.set(990, a.text);
+  }
+  assert.equal(a.oldest, 0);
+  assert.equal(a.textAt(0), texts.get(0));
+  assert.equal(a.textAt(990), texts.get(990));
+  // the time grows with the operations undone only by the cost of their patches, not by a copy of the text for each
+  const ratio = () => timeOf(() => a.textAt(0)) / timeOf(() => a.textAt(990));
+  let k = ratio();
+  if (k >= 20) k = ratio();
+  assert.ok(k < 20, `the oldest version took ${k.toFixed(1)} times as long as a version 10 operations back`);
+});
+
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
   const base = '<section>\n<div class="box" style="left: 10px; top: 4px">A</div>\n</section>\n';
   const a = base.replace('10px', '20px'), b = base.replace('10px', '15px');

@@ -70,6 +70,42 @@ export function apply(text: string, patches: Patch[]): string {
   return parts.join('');
 }
 
+// the text after each list of patches in turn. the text is kept as pieces, i.e. slices of the texts
+// before, and joined once, hence many lists cost the length of the text once and not once each
+export function applyEach(text: string, lists: Iterable<Patch[]>): string {
+  let pieces = [text];
+  for (const patches of lists) {
+    if (!patches.length) continue;
+    const out: string[] = [];
+    let i = 0, o = 0, at = 0;
+    const walk = (n: number, keep: boolean) => {
+      while (n > 0) {
+        const p = pieces[i], rest = p.length - o;
+        if (rest <= n) {
+          if (keep) out.push(o ? p.slice(o) : p);
+          n -= rest;
+          i++;
+          o = 0;
+        } else {
+          if (keep) out.push(p.slice(o, o + n));
+          o += n;
+          n = 0;
+        }
+      }
+    };
+    for (const p of patches) {
+      walk(p.start - at, true);
+      walk(p.end - p.start, false);
+      if (p.text) out.push(p.text);
+      at = p.end;
+    }
+    if (i < pieces.length) out.push(o ? pieces[i].slice(o) : pieces[i]);
+    for (let k = i + 1; k < pieces.length; k++) out.push(pieces[k]);
+    pieces = out;
+  }
+  return pieces.length === 1 ? pieces[0] : pieces.join('');
+}
+
 export function conflict(a: Patch, b: Patch): boolean {
   if (a.start < b.end && b.start < a.end) return true;
   if (a.start === a.end && b.start < a.start && a.start < b.end) return true;
