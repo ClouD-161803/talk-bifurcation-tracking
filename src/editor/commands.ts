@@ -4,7 +4,7 @@
 // are thus not listed in any file. installKeys installs the one keyboard handler of the editor,
 // which runs the command of a key
 
-import type { App, Deck, Platform, Region } from './app.ts';
+import type { App, Platform, Region } from './app.ts';
 import { display, fallback, matches, type KeyEvent } from './keymap.ts';
 
 export type Context = 'element' | 'text' | 'canvas' | 'slide' | 'navigator';
@@ -275,12 +275,6 @@ export function installKeys(app: App): void {
     ev.stopPropagation();
     void app.commands.run(command.id).catch((e) => app.fail(e));
   }, true);
-  // the options of reveal.js are set by main.ts once it is ready, before the resize that follows
-  // them, hence the keyboard is turned off at a resize
-  app.listen('resize', () => {
-    const d = app.deck() as (Deck & { getConfig?(): { keyboard?: unknown } }) | undefined;
-    if (d?.isReady() && d.getConfig?.().keyboard !== false) d.configure({ keyboard: false });
-  });
 }
 
 // the keys of the dialogs of today, which are not commands yet: Enter on a formula opens its TeX,
