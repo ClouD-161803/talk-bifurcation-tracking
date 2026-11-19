@@ -1,6 +1,3 @@
-// Return and Backspace at an empty or first list item, which cut a list, end it, or take an item
-// out one level
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,11 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R11.2 on both platforms with trusted input: Return on an empty item in the
-// middle of a list, Bigger, Smaller, and the paragraph style on several blocks, Shift+click and the
-// column of the caret across the items of a list, and the delay of several steps. after each edit
-// the text is checked byte for byte after an undo, the edit again after a redo, and after a save
-// and an open
 describe('Return on an empty item mid-list', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -38,7 +30,6 @@ describe('Return on an empty item mid-list', () => {
   const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let saves = 0;
 
-  // the editor on slide n of the demo deck, counted from 0, served over HTTP
   async function load(t, platform, n = 4) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -56,8 +47,6 @@ describe('Return on an empty item mid-list', () => {
     return page;
   }
 
-  // roundTrip checks the text in page.source byte for byte after undos undos, the edit after as many
-  // redos, and an open of the saved edit without problems, whose text becomes page.source
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -72,11 +61,8 @@ describe('Return on an empty item mid-list', () => {
     return edited;
   }
 
-  // the shown element of selector that holds needle, as an expression
   const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
 
-  // the client point of the character at offset k of needle, 2 px inside its left edge with edge,
-  // else at its center
   const pointOf = (page, selector, needle, k = 0, edge = false) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -91,7 +77,6 @@ describe('Return on an empty item mid-list', () => {
   }
 })()`);
 
-  // the caret put after k characters of needle, in the text node that holds it
   const caretAt = (page, selector, needle, k) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -110,7 +95,6 @@ describe('Return on an empty item mid-list', () => {
   ];
   const SMALL_ITEMS = ITEMS.map((li) => li.replace('<li class="fragment"', '<li class="fragment small"'));
 
-  // the caret put at the end of the text of item i of the lists of the slide, counted in page order
   const caretAtEnd = (page, i) => page.evaluate(`(() => {
   const li = document.querySelectorAll(${js(ITEM)})[${i}];
   const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
@@ -120,19 +104,14 @@ describe('Return on an empty item mid-list', () => {
   getSelection().collapse(last, last.length);
 })()`);
 
-  // the tag and the text of the editing host of the caret
   const caretElement = (page) => page.evaluate(`(() => {
   const n = getSelection().focusNode;
   const host = (n.nodeType === 1 ? n : n.parentElement).closest('[contenteditable="true"]');
   return host ? { tag: host.localName, text: host.textContent.trim() } : null;
 })()`);
 
-  // the line of the file that holds the start of the text head
   const line = (text, head) => text.split('\n').find((l) => l.includes(`>${head}`))?.trim();
 
-  // difference 1 of R11.2: Return on an empty item in the middle of a list of the first level added
-  // one more empty item. in Keynote and PowerPoint it takes the bullet off the line, which becomes a
-  // paragraph between the items before it and the items after it
   for (const platform of PLATFORMS) {
     for (const kind of ['ul', 'ol']) {
       test(`Return on an empty item in the middle of a list of kind ${kind} cuts the list at a new paragraph (${platform})`, async (t) => {
@@ -143,7 +122,6 @@ describe('Return on an empty item mid-list', () => {
           page.source = await render(page);
         }
         const open = `<${kind} style="translate: 0px 20px">`;
-        // the second part of a numbered list goes on with its count
         const second = kind === 'ol' ? open.replace('>', ' start="2">') : open;
         assert.ok(page.source.includes(open));
         await caretAtEnd(page, 0);
@@ -174,7 +152,6 @@ describe('Return on an empty item mid-list', () => {
       });
     }
 
-    // an empty first item is taken off its list, which then starts at the item after it
     test(`Return on an empty first item of a list makes it a paragraph before the list (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
@@ -189,8 +166,6 @@ describe('Return on an empty item mid-list', () => {
       await roundTrip(page);
     });
 
-    // R9.6 moves an empty nested item out one level at the end of its list. in the middle of a list
-    // it does the same, and the items after it go into a list at its end, as with Shift+Tab
     test(`Return on an empty nested item in the middle of its list moves it out one level (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
@@ -206,14 +181,11 @@ describe('Return on an empty item mid-list', () => {
       const out = await render(page);
       assert.match(out, /for-light<\/code>\.\s*<ul>\s*<li class="fragment" data-fragment-index="2">You might[^\n]*<\/li>\s*<\/ul>\s*<\/li>\s*<li class="fragment" data-fragment-index="2">\s*<ul>\s*<li class="fragment" data-fragment-index="3">You should/, `the empty item is not moved out one level: ${out.match(/for-light<\/code>\.[\s\S]{0,300}/)?.[0]}`);
       assert.equal(await undoLabel(page), 'Undo New Paragraph');
-      // the caret is in the outdented item. this item does not have a text of its own before its
-      // nested list, hence the browser puts the caret at the start of the nested list
       assert.equal(await page.evaluate(`(() => { const n = getSelection().focusNode; const li = (n.nodeType === 1 ? n : n.parentElement).closest('[contenteditable="true"]'); return li.localName === 'li' && li.textContent.trim().startsWith('You should') && !li.parentElement.closest('li'); })()`), true, 'the caret is not in the outdented item');
       await roundTrip(page);
     });
   }
 
-  // the trusted key Mod+Shift with key on a US layout, which press() does not know
   async function modShift(page, platform, key, code, keyCode) {
     const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers: (platform === 'mac' ? 4 : 2) | 8 };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
@@ -222,7 +194,6 @@ describe('Return on an empty item mid-list', () => {
   const SMALLER = ['<', 'Comma', 188];
   const BIGGER = ['>', 'Period', 190];
 
-  // the paragraph and the list of slide 5 selected as objects, by a click, Esc, and a Shift+click
   async function selectBoth(page) {
     await clickText(page, await pointOf(page, PARA, 'figure', 2));
     await press(page, 'Escape');
@@ -231,8 +202,6 @@ describe('Return on an empty item mid-list', () => {
     await frames(page);
   }
 
-  // difference 2 of R11.2: Bigger, Smaller, and the paragraph style on several selected blocks and
-  // on a text selected over several items acted on one block
   for (const platform of PLATFORMS) {
     test(`Smaller and Bigger on a paragraph and a list selected as objects act on every block, as one entry each (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -276,7 +245,6 @@ describe('Return on an empty item mid-list', () => {
         assert.equal(line(text, 'Dark and'), ITEMS[0], 'the item before the selection is changed');
         assert.equal(line(text, 'You might'), SMALL_ITEMS[1], 'the first item of the selection is not Small');
         assert.equal(line(text, 'You should'), SMALL_ITEMS[2], 'the last item of the selection is not Small');
-        // Backspace deletes the same selection over the two items after the change
         await press(page, 'Backspace');
         assert.equal(line(await render(page), 'You might'), SMALL_ITEMS[1].replace('slide.</li>', 'sl should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>'), 'the selection over the two items is not kept');
         await undo(page);
@@ -300,14 +268,12 @@ describe('Return on an empty item mid-list', () => {
     }
   }
 
-  // the left of the caret in the window, in CSS pixels
   const caretX = (page) => page.evaluate(`(() => {
   const r = getSelection().getRangeAt(0).cloneRange();
   const box = r.getClientRects()[0] ?? r.getBoundingClientRect();
   return box.left;
 })()`);
 
-  // the caret put at the client x on the last or the first line of item i
   const caretOnLine = (page, i, x, last) => page.evaluate(`(() => {
   const li = document.querySelectorAll(${js(ITEM)})[${i}];
   const r = document.createRange();
@@ -320,7 +286,6 @@ describe('Return on an empty item mid-list', () => {
   getSelection().collapse(...q);
 })()`);
 
-  // the right of the last line and of the first line of item i, in CSS pixels
   const lineEnds = (page, i) => page.evaluate(`(() => {
   const li = document.querySelectorAll(${js(ITEM)})[${i}];
   const r = document.createRange();
@@ -331,8 +296,6 @@ describe('Return on an empty item mid-list', () => {
   return { last: Math.max(...lines.filter((b) => b.bottom > bottom - 4).map((b) => b.right)), first: Math.max(...lines.filter((b) => b.top < top + 4).map((b) => b.right)) };
 })()`);
 
-  // the caret keeps its column over a short item between two long ones: the short item takes the
-  // caret to its end, and the next arrow puts the caret back in its column, as in a text editor
   for (const platform of PLATFORMS) {
     test(`ArrowDown and ArrowUp keep the column of the caret across a short item (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -359,7 +322,6 @@ describe('Return on an empty item mid-list', () => {
       assert.match((await caretElement(page)).text, /^Dark and light/);
       const x2 = await caretX(page);
       assert.ok(Math.abs(x2 - x0) < 20, `ArrowUp puts the caret at x ${x2}, away from its column at ${x0}`);
-      // a caret moved by ArrowLeft takes a new column
       await press(page, 'ArrowLeft');
       await press(page, 'ArrowLeft');
       const x3 = await caretX(page);
@@ -371,8 +333,6 @@ describe('Return on an empty item mid-list', () => {
     });
   }
 
-  // difference 3 of R11.2: with several rows of the Steps list selected, a delay typed into the field
-  // was written only into the first row
   const ROW = (text) => `[...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.text').textContent.startsWith(${js(text)}))`;
   const pointIn = (page, el, fx = 0.5) => page.evaluate(`(() => { const el = ${el}; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width * ${fx}, y: r.top + r.height / 2 }; })()`);
   const openSteps = async (page) => {
@@ -388,7 +348,6 @@ describe('Return on an empty item mid-list', () => {
     test(`a delay typed with several rows selected is written into each row, as one entry, and a mixed delay shows Multiple (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
       await openSteps(page);
-      // the second and the third item of the slide start after the step before, at 1 s and 2 s
       await exec(page, 'steps.start', `{ start: 'after', el: ${LI(1)} }`);
       await exec(page, 'steps.start', `{ start: 'after', el: ${LI(2)} }`);
       await exec(page, 'steps.delay', `{ delay: 1, el: ${LI(1)} }`);
@@ -414,10 +373,6 @@ describe('Return on an empty item mid-list', () => {
   }
 });
 
-// regression tests of R13.6 on both platforms with trusted input: the caret after an undo and a
-// redo of Remove Bullet, the name of the outdent of Backspace, and Backspace at the start of a first
-// item with a nested list. after each edit the text is checked byte for byte after an undo, the edit again
-// after a redo, and after a save and an open
 describe('Remove Bullet undone, Backspace at a first item', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -457,8 +412,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     return page;
   }
 
-  // command sends Mod+Z or Mod+Shift+Z with the editing command of the browser, which a key event of
-  // the DevTools protocol runs only when the command is named
   async function command(page, name) {
     const modifiers = (page.platform === 'mac' ? 4 : 2) | (name === 'redo' ? 8 : 0);
     const base = { key: name === 'redo' ? 'Z' : 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers };
@@ -470,7 +423,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
 
   const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
 
-  // the client point 2 px inside the left edge of the character at offset k of needle
   const pointOf = (page, selector, needle, k = 0) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -487,9 +439,7 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
 
   const ITEM = '.reveal section.present ul > li';
 
-  // finding 1: after an undo or a redo of Remove Bullet, the focus was on body and the typing was lost
   for (const platform of PLATFORMS) {
-    // the paragraph takes the translate of a moved list, as the list of slide 5
     for (const [n, needle, place] of [
       [2, 'Each step is', ''],
       [4, 'Dark and light mode', ' style="translate: 0px 20px"'],
@@ -508,7 +458,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
         assert.ok((await render(page)).includes(`<li class="fragment" data-fragment-index="1">Q${needle}`), `the Q is not the first character of the item, the focus is in ${await page.evaluate('document.activeElement.localName')}`);
         await command(page, 'undo');
         await byteExact(page);
-        // a typing clears the redos, hence the bullet is taken off again for the redo
         await clickText(page, await pointOf(page, ITEM, needle));
         await press(page, 'Home');
         await press(page, 'Backspace');
@@ -525,8 +474,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     }
   }
 
-  // roundTrip checks page.source byte for byte after undos undos, the edit after as many redos, and
-  // an open of the saved edit without problems
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -539,13 +486,11 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     assert.deepEqual(errors(page), []);
   }
 
-  // the part of the file from the h2 of slide 5 to its figure
   const listPart = (text) => {
     const at = text.indexOf('<h2>Figures are first');
     return text.slice(at, text.indexOf('<figure class="figure-box">', at));
   };
 
-  // the item "You might..." of slide 5 made the first item of a list nested in "Dark and light..."
   async function nested(t, platform) {
     const page = await load(t, platform, 4);
     await clickText(page, await pointOf(page, ITEM, 'You might'));
@@ -555,7 +500,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     return page;
   }
 
-  // finding 4: Backspace at the start of a nested first item outdents it, and was named Join Paragraphs
   for (const platform of PLATFORMS) {
     test(`Backspace at the start of a nested first item is named as the outdent, Decrease Indent Level (${platform})`, async (t) => {
       const page = await nested(t, platform);
@@ -563,7 +507,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
       await press(page, 'Home');
       await press(page, 'Backspace');
       assert.equal(await undoLabel(page), 'Undo Decrease Indent Level');
-      // the outdent takes back the Tab
       await byteExact(page);
       await page.evaluate('window.BeesonEditor.undo()');
       assert.match(listPart(await render(page)), /for-light<\/code>\.\n {6}<ul>\n {8}<li class="fragment" data-fragment-index="2">You might/);
@@ -572,7 +515,6 @@ describe('Remove Bullet undone, Backspace at a first item', () => {
     });
   }
 
-  // finding 5: Backspace at the start of a first item with a nested list did nothing
   for (const platform of PLATFORMS) {
     test(`Backspace at the start of a first item with a nested list takes its dash off and keeps the nested items in the list (${platform})`, async (t) => {
       const page = await nested(t, platform);

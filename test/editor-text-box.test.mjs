@@ -1,7 +1,3 @@
-// regression tests of Insert > Text Box: a new text box left without text is kept on the slide and
-// written into the file as an empty paragraph, and the insert opens the Format tab of the
-// inspector, also from the Steps tab
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -10,7 +6,6 @@ import { byteExact, click, clickText, editorPage, press, type, typeKeys } from '
 import { serve } from '../scripts/webdriver.mjs';
 
 const DECK = 'test/pages/editor-layouts.html';
-// the slide of DECK with a heading, a paragraph, and a list
 const TEXT = 2;
 
 let browser;
@@ -28,7 +23,6 @@ const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.ex
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const checked = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).checked`);
 const PENDING = `document.querySelector('.reveal section.present .beeson-pending')`;
-// the paragraphs of the file without text, i.e. a new text box left empty
 const emptyParagraphs = (text) => text.match(/<p( [^>]*)?><\/p>/g) ?? [];
 
 async function load(t) {
@@ -59,7 +53,6 @@ test('a new text box left without text by a click on the canvas is kept, and is 
   const page = await load(t);
   await exec(page, 'insert.text');
   await frames(page);
-  // a click on an empty point of the canvas, left of the slide
   const at = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present').getBoundingClientRect(); return { x: r.left - 20, y: r.top + r.height / 2 }; })()`);
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
   await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
@@ -90,8 +83,6 @@ test('Insert Text Box opens the Format tab, from a closed inspector and from the
   assert.equal(await checked(page, 'view.steps'), false);
 });
 
-// regression tests of R17.2 on both platforms: a new text box after an undo of its first letter,
-// Edit > Paste of the menu bar as its first input, and a new text box emptied and left
 describe('the first letter undone and a first Paste', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -114,7 +105,6 @@ describe('the first letter undone and a first Paste', () => {
   const undo = (page) => press(page, 'Mod+Z').then(() => sleep(250));
   const redo = (page) => press(page, 'Mod+Shift+Z').then(() => sleep(250));
 
-  // the editor on slide n of the demo deck, served over HTTP
   async function load(t, platform, n = 0) {
     const text = readFileSync('test-deck.html', 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -133,8 +123,6 @@ describe('the first letter undone and a first Paste', () => {
     return page;
   }
 
-  // the new text box of the current slide, i.e. the empty box or the paragraph that starts with
-  // mark, with its text, its place on the screen, and whether it has the focus and the caret
   const BOX = (mark) => `(() => {
   const s = Reveal.getCurrentSlide();
   const p = s.querySelector('p.beeson-pending') ?? [...s.querySelectorAll('p')].find((e) => e.textContent.startsWith(${js(mark)}));
@@ -156,8 +144,6 @@ describe('the first letter undone and a first Paste', () => {
     return empty;
   }
 
-  // an item of a menu of the menu bar, chosen with the mouse. Paste comes before Paste and Match
-  // Style in the Edit menu, hence the first item that starts with the name is taken
   async function menu(page, bar, item) {
     await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((e) => e.textContent.trim() === ${js(bar)}); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await sleep(250);
@@ -167,9 +153,6 @@ describe('the first letter undone and a first Paste', () => {
     await frames(page);
   }
 
-  // requirement 3h and N15 of round 7: an undo after the first letter of a new text box took the
-  // whole box away and left the focus on the body. in Keynote and PowerPoint this undo takes the
-  // letter and leaves the empty box with the caret in it, and a second undo takes the box
   for (const platform of PLATFORMS) {
     test(`an undo of the first letter of a new text box leaves the empty box with the caret (${platform})`, async (t) => {
       for (const n of [4, 0, 11]) {
@@ -190,7 +173,6 @@ describe('the first letter undone and a first Paste', () => {
         const again = await boxOf(page, 'h');
         assert.deepEqual(again && { text: again.text, pending: again.pending, caret: again.caret }, { text: 'h', pending: false, caret: true }, `a redo of the letter on slide ${n + 1} does not put the caret into the text`);
         kept(empty, again, `a redo of the letter on slide ${n + 1}`);
-        // two undos take the letter and then the box, and two redos give both back
         await undo(page);
         await undo(page);
         assert.equal(await boxOf(page, 'h'), null, `a second undo on slide ${n + 1} does not take the box`);
@@ -201,7 +183,6 @@ describe('the first letter undone and a first Paste', () => {
         await redo(page);
         assert.equal(await render(page), written);
         assert.equal((await boxOf(page, 'h'))?.caret, true);
-        // a key typed after an undo of the first letter goes into the empty box
         await undo(page);
         await type(page, 'k');
         await sleep(300);
@@ -213,9 +194,6 @@ describe('the first letter undone and a first Paste', () => {
     });
   }
 
-  // a word typed into a new text box one key after the other is one entry with its first letter, as in
-  // Keynote, hence one undo leaves the empty box. a key after the pause of the typing of history.ts
-  // is an entry of its own
   for (const platform of PLATFORMS) {
     test(`an undo of a word typed into a new text box leaves the empty box (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -238,8 +216,6 @@ describe('the first letter undone and a first Paste', () => {
     });
   }
 
-  // requirement 3h and N14 of round 7: Edit > Paste of the menu bar as the first input of a new text
-  // box drew the words without writing them, and they were lost at the next click
   for (const platform of PLATFORMS) {
     test(`Edit > Paste of the menu bar writes a new text box (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -271,9 +247,6 @@ describe('the first letter undone and a first Paste', () => {
     });
   }
 
-  // N16 of round 7: a new text box emptied by Backspace and left with Esc was kept in the file as an
-  // empty paragraph, with a translate on some slides. a new text box left empty is taken out of the
-  // file, together with its entries while they are the last ones of the history
   for (const platform of PLATFORMS) {
     test(`a new text box emptied by Backspace is taken out of the file when it is left (${platform})`, async (t) => {
       for (const n of [4, 11]) {
@@ -318,7 +291,6 @@ describe('the first letter undone and a first Paste', () => {
       await newBox(page);
       await type(page, 'h');
       await sleep(300);
-      // the heading is typed into, hence the entries of the box are no longer the last ones
       await clickText(page, 'section.present h2');
       await press(page, 'End');
       await type(page, 'Z');
@@ -334,7 +306,6 @@ describe('the first letter undone and a first Paste', () => {
       const left = await render(page);
       assert.doesNotMatch(left, /<p( style="[^"]*")?>(<br>)?<\/p>/, 'the emptied box is kept in the file');
       assert.equal(left, typed.replace(/\n[ \t]*<p( style="[^"]*")?>h<\/p>/, ''));
-      // the removal is one entry, and the undo before it takes the Backspace
       await undo(page);
       assert.match(await render(page), /<p( style="[^"]*")?>(<br>)?<\/p>/, 'one undo does not give the emptied box back');
       await undo(page);
@@ -343,8 +314,6 @@ describe('the first letter undone and a first Paste', () => {
     });
   }
 
-  // the boxes in slide px of the new text box of the current slide and of the drawn words and
-  // formulas of the other texts, i.e. the rectangles of their lines and of their MathJax containers
   const INK = `(() => {
   const s = document.querySelector('.reveal .slides');
   const S = s.getBoundingClientRect(), k = S.width / s.offsetWidth;
@@ -362,10 +331,6 @@ describe('the first letter undone and a first Paste', () => {
 })()`;
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  // N17 of round 7: a new text box on slide 8 was put at the center of the slide, over the display of
-  // U_c and over the surface. its text column is full and the surface fills the right of the slide,
-  // hence a place off every text and figure does not exist, and the box is drawn narrower off the
-  // words and the formulas, over the surface, which a text box may lie over
   for (const platform of PLATFORMS) {
     test(`a new text box on slide 8 is put off the words and the formulas (${platform})`, async (t) => {
       const page = await load(t, platform, 7);
@@ -388,9 +353,6 @@ describe('the first letter undone and a first Paste', () => {
   }
 });
 
-// regression tests of R19.1 on both platforms: a click elsewhere that leaves an emptied new text
-// box acts as it does with a box that is not emptied, and a new text box left empty after an undo
-// of its first letter does not leave an entry of the box on either stack
 describe('an emptied new text box clicked away', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -415,7 +377,6 @@ describe('an emptied new text box clicked away', () => {
   const labels = (page) => page.evaluate(`(() => { const u = window.BeesonEditor.state('edit.undo'), r = window.BeesonEditor.state('edit.redo'); return { undo: u.label, redo: r.label, undoOn: !!u.enabled, redoOn: !!r.enabled }; })()`);
   const pendings = (page) => page.evaluate(`document.querySelectorAll('.reveal .slides p.beeson-pending').length`);
 
-  // the editor on slide n of the demo deck, served over HTTP, with a record of the slides shown
   async function load(t, platform, n = 0) {
     const text = readFileSync('test-deck.html', 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -434,8 +395,6 @@ describe('an emptied new text box clicked away', () => {
     return page;
   }
 
-  // a new text box with the letter h typed into it and taken out again by Backspace, with the
-  // Backspace in the typing of h or after the pause of the typing
   async function emptied(page, pause) {
     await click(page, '.beeson-edit-top [data-command="insert.text"]');
     await sleep(300);
@@ -446,9 +405,6 @@ describe('an emptied new text box clicked away', () => {
     assert.equal(await pendings(page), 0);
   }
 
-  // D1 of review part 2 of round 7: a click that left an emptied new text box lost its target. the
-  // caret was not left in the clicked text, and a click on a row of the navigator went back to the
-  // slide of the box
   for (const platform of PLATFORMS) {
     test(`a click into another text that leaves an emptied text box leaves the caret there (${platform})`, async (t) => {
       for (const [n, pause] of [[4, 300], [4, 1300], [0, 300]]) {
@@ -473,7 +429,6 @@ describe('an emptied new text box clicked away', () => {
     });
 
     test(`a click on a row of the navigator that leaves an emptied text box shows its slide (${platform})`, async (t) => {
-      // the first child of the list of the navigator is not a row, hence row k is slide k - 1
       for (const [n, row] of [[4, 2], [0, 4]]) {
         const page = await load(t, platform, n);
         await emptied(page, 300);
@@ -488,14 +443,10 @@ describe('an emptied new text box clicked away', () => {
     });
   }
 
-  // D2 of review part 2 of round 7: a new text box left empty after an undo of its first letter left
-  // the first letter on the redo stack, whose redo wrote a box without an insert under it. the box
-  // left empty is written as an empty paragraph in the entry of its insert
   for (const platform of PLATFORMS) {
     test(`a text box left empty after an undo of its first letter leaves nothing to redo (${platform})`, async (t) => {
       for (const leaveBy of ['Escape', 'click']) {
         const page = await load(t, platform, 4);
-        // an older entry, which stays undoable
         await clickText(page, 'section.present h2');
         await press(page, 'End');
         await type(page, 'Q');

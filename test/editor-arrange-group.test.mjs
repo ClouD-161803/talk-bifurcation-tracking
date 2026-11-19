@@ -1,6 +1,3 @@
-// a group in the Arrange pane: the readout of its resize, its X and Y, a typed Width or Height of a
-// turned group that reads back as typed, and Align and Distribute of a whole group as one object
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,15 +6,9 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { snapMove } from '../src/editor/canvas/snap.ts';
 
-// regression tests of R7.1 on both platforms with trusted input: the readout of a resize of a group,
-// the place of a new text box on a slide without room under its text, and the load of a deck in a
-// second tab.
-// after each edit the text is checked byte for byte, after an undo and a redo, and after a save and
-// an open
 describe('readouts and X and Y of a group', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // the slide of the deck of layouts with an ordered list and a figure with a caption
   const MATH = 3;
   const IMG = '.reveal section.present figure.figure-box img:not([hidden])';
 
@@ -40,12 +31,9 @@ describe('readouts and X and Y of a group', () => {
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
   const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on the slide n of a deck served over HTTP, with the Format tab shown
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
-    // an earlier test that keeps its page open 1 s after its last edit leaves a draft in the storage
-    // of the origin, and the dialog of this draft then covers the slide of the next page of the deck
     await page.send('Storage.clearDataForOrigin', { origin: server.origin, storageTypes: 'local_storage' });
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
@@ -59,8 +47,6 @@ describe('readouts and X and Y of a group', () => {
     return page;
   }
 
-  // roundTrip checks the edits in the text, then the text before byte for byte after an undo, the
-  // edit after a redo, and an open of the saved edit without problems
   let saves = 0;
   async function roundTrip(page, edits) {
     await byteExact(page, edits);
@@ -74,16 +60,11 @@ describe('readouts and X and Y of a group', () => {
     page.source = text;
   }
 
-  // fieldsOf returns the values of the fields Width and Height of the Arrange pane
   const fieldsOf = (page) =>
     page.evaluate(`(() => { const v = (n) => document.querySelector('#beeson-edit-panel-format input[name="' + n + '"]')?.value ?? null; return { w: Number(v('Width')), h: Number(v('Height')) }; })()`);
-  // readoutOf returns the size in the readout at the pointer, or null while the readout is hidden
   const readoutOf = (page) =>
     page.evaluate(`(() => { const t = document.querySelector('.beeson-offset:not([hidden])')?.textContent ?? ''; const m = t.match(/w: (\\d+) px  h: (\\d+) px/); return m ? { w: Number(m[1]), h: Number(m[2]), text: t } : null; })()`);
 
-  // item 1 of R7.1: in R6.8, a corner grip of a group of a figure and a paragraph moved by -120 by
-  // -90 px gave 1446 × 706 in the readout, the box asked for, while the members reached 1524 × 800,
-  // since the height of a figure box is set by its layout
   for (const platform of PLATFORMS) {
     test(`the readout of a resize of a group gives the size of W and H (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
@@ -111,9 +92,6 @@ describe('readouts and X and Y of a group', () => {
     });
   }
 
-  // placedOf returns the box in slide px of the new text box, or of the paragraph Typed once it is
-  // written, the boxes of the footnotes and of the text of the other blocks of the current slide, the
-  // size of the slide, and the visible part of the slide in the canvas
   const placedOf = (page) =>
     page.evaluate(`(() => {
     const slides = document.querySelector('.reveal .slides');
@@ -131,10 +109,6 @@ describe('readouts and X and Y of a group', () => {
     return { box: box(el.getBoundingClientRect()), feet: [...sec.querySelectorAll('.foot')].map((f) => box(f.getBoundingClientRect())), texts, w, h, visible };
   })()`);
 
-  // item 2 of R7.1: on a slide without room under its text column, a new text box was put under the
-  // lowest block, over the footnote or under the slide. it is put at the center of the visible part
-  // of the slide, as Keynote puts a new object, moved up off the footnote and into the slide. a box
-  // centered over a text is put in the free space nearest to the center, the rule of R9.9
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const SMALL = '.reveal section.present > p.small';
   for (const platform of PLATFORMS) {
@@ -145,7 +119,6 @@ describe('readouts and X and Y of a group', () => {
     ]) {
       test(`a new text box that would be ${name} is put at the center of the visible slide (${platform})`, async (t) => {
         const page = await load(t, platform, { n: 2 });
-        // the small paragraph under the list is selected and moved down to the top y
         await clickText(page, SMALL);
         await press(page, 'Escape');
         await exec(page, 'arrange.setPosition', { y });
@@ -164,7 +137,6 @@ describe('readouts and X and Y of a group', () => {
           for (const x of texts) assert.ok(!meets(box, x), `the ${what} at ${js(box)} is over a text at ${js(x)}`);
           assert.ok(box.left >= -1 && box.top >= -1 && box.right <= w + 1 && box.bottom <= h + 1, `the ${what} at ${js(box)} is off the slide of ${w} by ${h}`);
           for (const f of feet) assert.ok(!meets(box, f), `the ${what} at ${js(box)} is over the footnote at ${js(f)}`);
-          // the center of the visible part, moved as little as it takes to keep the box in the slide
           const bw = box.right - box.left, bh = box.bottom - box.top;
           const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
           const cx = clamp((visible.left + visible.right) / 2, bw / 2, w - bw / 2);
@@ -172,7 +144,6 @@ describe('readouts and X and Y of a group', () => {
           const centered = { left: cx - bw / 2, right: cx + bw / 2, top: cy - bh / 2, bottom: cy + bh / 2 };
           if (texts.some((x) => meets(centered, x))) return;
           assert.ok(Math.abs((box.left + box.right) / 2 - cx) <= 2, `the ${what} at ${js(box)} is not centered at x ${cx} of the visible part ${js(visible)}`);
-          // a box centered over a footnote is moved up until it is clear of the footnote
           const under = feet.filter((f) => meets(centered, f));
           if (!under.length) assert.ok(Math.abs((box.top + box.bottom) / 2 - cy) <= 2, `the ${what} at ${js(box)} is not centered at y ${cy} of the visible part ${js(visible)}`);
           else assert.ok(box.bottom >= Math.min(...under.map((f) => f.top)) - 40, `the ${what} at ${js(box)} is moved further up than the footnote at ${js(under)}`);
@@ -192,17 +163,10 @@ describe('readouts and X and Y of a group', () => {
     }
   }
 
-  // frameOf returns the size in slide px of the one frame of a selected group, without the 8 px that
-  // it is drawn outside a group that holds a caption, or null
   const frameOf = (page) =>
     page.evaluate(`(() => { const slides = document.querySelector('.reveal .slides'); const s = slides.getBoundingClientRect().width / slides.offsetWidth; const f = document.querySelector('.beeson-frame.union.group:not([hidden])'); if (!f) return null; const r = f.getBoundingClientRect(); return { w: (r.width - 16) / s, h: (r.height - 16) / s }; })()`);
 
-  // item 4 of R7.1: in picture 178-group-resize of round 3, a group of the paragraph and the image
-  // of the slide of figures of index.html was resized, and the readout and the frame read 1443 px
-  // wide while W read 1434
   const FIGURES = 4;
-  // the image shown of a pair of a dark and a light image, whose figure is added to the selection by
-  // a Shift click on it
   const grouped = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present [data-group]')].map((e) => e.localName).sort()`);
   const DEMO_IMG = '.reveal section.present figure.figure-box img:not([hidden])';
   for (const platform of PLATFORMS) {
@@ -214,7 +178,6 @@ describe('readouts and X and Y of a group', () => {
       await exec(page, 'arrange.group');
       await frames(page);
       assert.deepEqual(await grouped(page), ['figure', 'p'], 'the paragraph and the figure are not grouped');
-      // a click on an empty point of the slide, then on the image, selects the group
       const empty = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present').getBoundingClientRect(); return { x: r.left + r.width * 0.3, y: r.top + r.height * 0.9 }; })()`);
       await clickText(page, empty);
       await clickText(page, DEMO_IMG);
@@ -232,7 +195,6 @@ describe('readouts and X and Y of a group', () => {
       assert.ok(readout, 'a readout is shown during the resize');
       const during = await fieldsOf(page);
       same('during the resize, the readout and the fields', readout, during);
-      // the frame is drawn through the resize at the size of the readout
       same('during the resize, the frame and the fields', await frameOf(page), during);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: se.x - 120, y: se.y - 90, button: 'left', clickCount: 1 });
       await frames(page);
@@ -243,19 +205,13 @@ describe('readouts and X and Y of a group', () => {
     });
   }
 
-  // positionFieldsOf returns the values of the fields X and Y of the Arrange pane, '' for an empty one
   const positionFieldsOf = (page) =>
     page.evaluate(`(() => { const v = (n) => document.querySelector('#beeson-edit-panel-format input[name="' + n + '"]')?.value ?? null; return { x: v('X'), y: v('Y') }; })()`);
-  // cornerOfFrame returns the upper left corner in slide px of the one frame of a selected group,
-  // which holds a caption, without the 8 px that the frame is drawn outside it
   const cornerOfFrame = (page) =>
     page.evaluate(`(() => { const slides = document.querySelector('.reveal .slides'); const o = slides.getBoundingClientRect(); const s = o.width / slides.offsetWidth; const r = document.querySelector('.beeson-frame.union.group:not([hidden])').getBoundingClientRect(); return { x: (r.left + 8 - o.left) / s, y: (r.top + 8 - o.top) / s }; })()`);
-  // membersOf returns the upper left corners in slide px of the selected elements
   const membersOf = (page) =>
     page.evaluate(`(() => { const slides = document.querySelector('.reveal .slides'); const o = slides.getBoundingClientRect(); const s = o.width / slides.offsetWidth; return window.BeesonEditor.selection().map((e) => { const r = e.getBoundingClientRect(); return { x: (r.left - o.left) / s, y: (r.top - o.top) / s }; }); })()`);
 
-  // item 5 of R7.1: in picture 178-group-resize of round 3, X and Y of the Arrange pane were empty for
-  // a group, which Keynote and PowerPoint give as the upper left corner of the group
   for (const platform of PLATFORMS) {
     test(`X and Y give the corner of a group, and a typed X or Y moves the whole group as one entry (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test-deck.html', n: FIGURES });
@@ -285,7 +241,6 @@ describe('readouts and X and Y of a group', () => {
       const after = await membersOf(page);
       for (const [i, m] of after.entries()) assert.ok(Math.abs(m.x - before[i].x + 40) <= 1 && Math.abs(m.y - before[i].y - 30) <= 1, `member ${i} moved from ${js(before[i])} to ${js(m)}`);
       assert.deepEqual(await grouped(page), ['figure', 'p'], 'the group is taken apart');
-      // the two typed values are two entries of the history, each of which moves both members
       const typed = await render(page);
       await page.evaluate('window.BeesonEditor.undo()');
       await frames(page);
@@ -302,9 +257,6 @@ describe('readouts and X and Y of a group', () => {
     });
   }
 
-  // item 5 of R7.1: Keynote shows the Style tab with "Multiple Object Types" for several ungrouped
-  // objects (raw/keynote-live/006-select-several.png), and neither reference gives their bounding
-  // box in X and Y, hence X and Y stay empty for a paragraph and an image at different corners
   for (const platform of PLATFORMS) {
     test(`X and Y stay empty for several ungrouped elements at different corners (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test-deck.html', n: FIGURES });
@@ -320,8 +272,6 @@ describe('readouts and X and Y of a group', () => {
     });
   }
 
-  // loadTime returns the ms from the navigation of a new tab with the editor to its ready editor.
-  // with busy, the tab first computes for busy ms at the start of its document, as on a crowded machine
   async function loadTime(t, platform, busy = 0) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -333,11 +283,6 @@ describe('readouts and X and Y of a group', () => {
     return { page, ms: Date.now() - t0 };
   }
 
-  // item 3 of R7.1: a second tab of the deck of layouts, opened while the first was open, took about
-  // 15 s to load, since the two clips of 12 MB in demo/ held the connections of the first tab. the
-  // second tab is compared with the first, which takes about 0.6 s here and several s on a slow machine.
-  // with paused, the first load of the second tab is slowed by a pause of the machine. both tabs are
-  // closed before the next pair, since an open tab of the deck slows the loads of the next one
   async function tabPair(t, platform, paused) {
     const first = await loadTime(t, platform);
     await first.page.evaluate(`window.BeesonEditor.open(${js(readFileSync(LAYOUTS, 'utf8'))})`);
@@ -349,8 +294,6 @@ describe('readouts and X and Y of a group', () => {
 
   async function secondTab(t, platform, paused = false) {
     let pair = await tabPair(t, platform, paused);
-    // a time over its bound is measured again with a new pair of tabs, twice at most, and the pair
-    // with the lowest ratio counts
     for (let again = 0; again < 2 && pair.second >= 2 * pair.first; again++) {
       const next = await tabPair(t, platform, false);
       if (next.second / next.first < pair.second / pair.first) pair = next;
@@ -366,12 +309,8 @@ describe('readouts and X and Y of a group', () => {
   test('a second tab slowed once by a pause of the machine is measured again before the test fails', (t) => secondTab(t, 'other', true));
 });
 
-// regression tests of R14.5 on both platforms: a typed Width or Height of a turned group reads
-// back as typed, and the same value typed again leaves the file as it is. the readout of a corner
-// resize of a turned figure with a caption gives the size that the fields give after the release
 describe('Width and Height of a turned group', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const PLATFORMS = ['mac', 'other'];
@@ -426,8 +365,6 @@ describe('Width and Height of a turned group', () => {
     return page;
   }
 
-  // an undo gives the text before and a redo the edited text byte for byte, and the saved text is
-  // opened again without problems
   async function checkEdit(page, name, before) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -439,7 +376,6 @@ describe('Width and Height of a turned group', () => {
     assert.equal(text, edited);
   }
 
-  // the paragraph and the figure of the figures slide made one group with the key of Group
   async function groupOnFigures(page, platform) {
     await click(page, IMG);
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
@@ -490,7 +426,6 @@ describe('Width and Height of a turned group', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D17 of round 6: a typed Height of 975 read back as 974, with the picture written 716 px wide
     test(`a typed Height of a figure with a caption reads back as typed (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, IMG);
@@ -503,7 +438,6 @@ describe('Width and Height of a turned group', () => {
       await checkEdit(page, `r14-5-height-${platform}.html`, last);
       assert.deepEqual(errors(page), []);
     });
-    // the width 1 px either side of the written one is tried for the typed height, and not under 1 px
     test(`a typed Height of 1 of a figure with a caption does not write a width of 0 (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, IMG);
@@ -515,14 +449,8 @@ describe('Width and Height of a turned group', () => {
   }
 });
 
-// the work of R12.5 on both platforms: Align and Distribute of a whole group as one object, a
-// typed width that keeps the upper left corner of a QR code, an undo or a redo that shows the slide
-// that it changes, the cursor of a held grip, the rotate handle of a multi-selection, and the gap
-// arrows of a drag drawn clear of the center guide. each edit of the file is checked byte for byte,
-// after an undo and a redo, and after a save and an open
 describe('Align of groups, and slides shown by undo', () => {
   const DECK = 'test-deck.html';
-  // the indexes of the figures slide and of the closing slide with its QR code in index.html
   const FIGURES = 4;
   const CLOSING = 12;
   const PLATFORMS = ['mac', 'other'];
@@ -547,7 +475,6 @@ describe('Align of groups, and slides shown by undo', () => {
   const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   const shown = (page) => page.evaluate('Reveal.getIndices().h');
-  // the box in slide pixels of the first shown element of selector on the current slide
   const boxOf = (page, selector) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides').getBoundingClientRect(), k = s.width / 1920;
   const e = [...Reveal.getCurrentSlide().querySelectorAll(${js(selector)})].find((e) => e.getClientRects().length && e.getBoundingClientRect().width);
@@ -555,7 +482,6 @@ describe('Align of groups, and slides shown by undo', () => {
   const r = e.getBoundingClientRect();
   return { left: (r.left - s.left) / k, top: (r.top - s.top) / k, width: r.width / k, height: r.height / k };
 })()`);
-  // whether every selected element is on the shown slide
   const selectionShown = (page) => page.evaluate('window.BeesonEditor.selection().every((el) => Reveal.getCurrentSlide().contains(el))');
 
   const PANEL = '#beeson-edit-panel-format';
@@ -571,8 +497,6 @@ describe('Align of groups, and slides shown by undo', () => {
     await press(page, 'Enter');
     await frames(page);
   }
-  // the box in slide pixels of the picture of the figure of the current slide, fitted into its image
-  // box at its center, and with caption set the union of it and the caption
   const figureBox = (page, caption = true) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides').getBoundingClientRect(), k = s.width / 1920;
   const img = Reveal.getCurrentSlide().querySelector('figure img.for-light'), i = img.getBoundingClientRect();
@@ -600,8 +524,6 @@ describe('Align of groups, and slides shown by undo', () => {
     return page;
   }
 
-  // an undo gives the text before and a redo the edited text byte for byte, and the saved text is
-  // opened again without problems
   async function checkEdit(page, name, before = page.source) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -613,8 +535,6 @@ describe('Align of groups, and slides shown by undo', () => {
     assert.equal(text, edited);
   }
 
-  // the paragraph and the figure of the figures slide made a group by the key of Group, with the
-  // group selected
   async function groupOnFigures(page) {
     await clickText(page, 'section.present figure img.for-light');
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
@@ -630,7 +550,6 @@ describe('Align of groups, and slides shown by undo', () => {
       await groupOnFigures(page);
       const grouped = await render(page);
       const p0 = await boxOf(page, ':scope > p'), f0 = await boxOf(page, ':scope > figure');
-      // one whole group is aligned to the slide, as one object of Keynote is
       await exec(page, 'arrange.alignTo.selection');
       await exec(page, 'arrange.align.left');
       await frames(page);
@@ -646,7 +565,6 @@ describe('Align of groups, and slides shown by undo', () => {
       await groupOnFigures(page);
       const grouped = await render(page);
       const p0 = await boxOf(page, ':scope > p'), f0 = await boxOf(page, ':scope > figure');
-      // the group, the heading, and the list spaced vertically with the group kept whole
       await clickText(page, 'section.present figure img.for-light');
       await click(page, 'section.present h2', { modifiers: 'Shift' });
       await click(page, 'section.present > ul > li', { modifiers: 'Shift' });
@@ -714,8 +632,6 @@ describe('Align of groups, and slides shown by undo', () => {
       for (let i = 1; i <= 8; i++) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: grip.x - 15 * i, y: grip.y - 4 * i, button: 'left', buttons: 1 });
       await frames(page);
       assert.equal(await cursor(grip.x - 120, grip.y - 32), 'nwse-resize', 'the held grip keeps its cursor');
-      // the readout of the resize of a figure selected as one object gives the height of the field H,
-      // i.e. of the picture with its caption
       const readout = await page.evaluate(`document.querySelector('.beeson-offset').textContent`);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: grip.x - 120, y: grip.y - 32, button: 'left', buttons: 0, clickCount: 1 });
       await frames(page);
@@ -735,16 +651,12 @@ describe('Align of groups, and slides shown by undo', () => {
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName)'), ['p', 'figure']);
       const centerOf = (selector) => page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       const p0 = await centerOf(':scope > p'), i0 = await centerOf('figure img.for-light'), q0 = await centerOf('figcaption');
-      // the center on the screen of the picture with its caption, about which the figure is turned
       const s = await page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return { left: r.left, top: r.top, k: r.width / 1920 }; })()`);
       const f = await figureBox(page), c = { x: s.left + (f.left + f.width / 2) * s.k, y: s.top + (f.top + f.height / 2) * s.k };
       const rotor = await page.evaluate(`(() => { const r = document.querySelector('.beeson-rotor'); if (!r || r.hidden || !r.getClientRects().length) return null; const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
       assert.ok(rotor, 'the rotate handle is drawn');
-      // a drag of the handle from above the center of the paragraph to its right, with Shift for
-      // steps of 15 degrees, turns it by 90 degrees
       await drag(page, rotor, { dx: p0.x - rotor.x + (p0.y - rotor.y), dy: p0.y - rotor.y, steps: 12, modifiers: 'Shift' });
       await frames(page);
-      // the figure is turned as one object, its picture and its caption about the center of both
       const angles = await page.evaluate(`[Reveal.getCurrentSlide().querySelector(':scope > p'), Reveal.getCurrentSlide().querySelector('figure.figure-box')].map((el) => el.style.rotate)`);
       assert.deepEqual(angles, ['90deg', '90deg']);
       const p1 = await centerOf(':scope > p'), i1 = await centerOf('figure img.for-light'), q1 = await centerOf('figcaption');
@@ -762,13 +674,11 @@ describe('Align of groups, and slides shown by undo', () => {
       for (const [id, v] of [['x', f0.left], ['y', f0.top], ['width', f0.width], ['height', f0.height]]) {
         assert.ok(near(await fieldValue(page, id), v, 1), `${id} reads ${await fieldValue(page, id)}, not ${Math.round(v)} of the frame`);
       }
-      // a typed Height sets the picture so that the picture with its caption has this height
       await typeField(page, 'height', 700);
       const f1 = await figureBox(page);
       assert.ok(near(f1.height, 700, 3) && near(f1.left, f0.left) && near(f1.top, f0.top), `the frame is ${js(f1)}`);
       assert.ok(near(await fieldValue(page, 'height'), 700, 3), `Height reads ${await fieldValue(page, 'height')}`);
       await checkEdit(page, `r12-5-figure-height-${platform}.html`);
-      // the picture alone, selected by a second click, gives its own height
       await clickText(page, { x: 10, y: 10 });
       await clickText(page, 'section.present figure img.for-light');
       await clickText(page, 'section.present figure img.for-light');
@@ -801,8 +711,6 @@ describe('Align of groups, and slides shown by undo', () => {
     });
   }
 
-  // the marks of equal gaps are drawn under the boxes, clear of the guide of their centers and of
-  // their lower edges, as PowerPoint draws them (P22), since a mark on a guide merges with it
   test('the marks of equal gaps are drawn clear of the guides along the same axis', () => {
     const box = (left, top, width, height) => ({ left, top, width, height });
     const slide = { width: 1920, height: 1080 };

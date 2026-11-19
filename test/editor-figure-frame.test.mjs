@@ -1,6 +1,3 @@
-// the frame of a figure around its shown picture and its caption, as used by the fields, Align,
-// Distribute, and the snap, and a plot handled as an opaque figure
-
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -10,12 +7,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R8.7 on both platforms and in both modes, with trusted input. the box of a
-// figure is its frame, i.e. its shown picture with the caption that it holds, as the frame with its
-// grips is drawn, in the X and Y fields, the readouts, Align, Distribute, the snap, Zoom to
-// Selection, a group, and Size and Position…. the figures are a pair of images and one image, in a
-// figure box of a content slide and in the plate of a figure slide. after each command the file is
-// checked byte for byte after an undo and the edit again after a redo
 describe('the figure frame in fields, Align, and snap', () => {
   const PLATFORMS = ['mac', 'other'];
   const MODES = ['dark', 'light'];
@@ -55,13 +46,9 @@ describe('the figure frame in fields, Align, and snap', () => {
 
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...[...el.classList].filter((c) => /^(figure-box|plate|caption|for-dark|for-light)$/.test(c))].join('.'))`);
 
-  // the upper left corner of the slide on the screen, and the screen px per slide px in k
   const SCALE = `(() => { const s = document.querySelector('.reveal .slides'); const r = s.getBoundingClientRect(); return { left: r.left, top: r.top, k: r.width / s.offsetWidth }; })()`;
   const scaleOf = (page) => page.evaluate(SCALE);
 
-  // the box of the first shown element of selector, or of the frame of the selected element el, in slide px
-  // the frame of a figure with a caption, or of a group that holds one, is drawn CAPTIONED px outside
-  // it, and measured without them
   const CAPTIONED = 8;
   const inset = (el) => `(${el}.querySelector(':scope > figcaption, :scope > .caption') ? ${CAPTIONED} : 0)`;
   const boxIn = (page, selector) => page.evaluate(`(() => {
@@ -86,7 +73,6 @@ describe('the figure frame in fields, Align, and snap', () => {
   async function load(t, platform, mode, n, deck = DECK) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
-    // without this, headless Chrome cancels the file chooser, and the cancel races the file of choose
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
     const url = `${server.origin}/${deck}?edit&still&edit-platform=${platform}`;
     await page.goto(url);
@@ -105,7 +91,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     return page;
   }
 
-  // the figure selected by a click on its picture
   async function pick(page) {
     await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
     for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
@@ -115,7 +100,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     assert.deepEqual(await selected(page), [page.figure], 'the figure is not selected by a click on its picture');
   }
 
-  // the edit is in the scope rule wherever the text before it is
   function inScope(edited, source) {
     const now = textProblems(edited, THEME);
     for (const p of textProblems(source, THEME)) {
@@ -125,8 +109,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     assert.deepEqual(now, [], 'the edit writes outside the scope rule');
   }
 
-  // the edit, the file byte for byte after an undo, the edit again after a redo, and the file again
-  // after a second undo, from which the next command starts
   async function roundTrip(page, edited) {
     assert.notEqual(edited, page.source, 'the command does not change the file');
     inScope(edited, page.source);
@@ -159,7 +141,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     await frames(page);
   }
 
-  // the edge or center of box b that Align puts at that of the box ref, by the side aligned to
   const ALIGNED = {
     left: (b, ref) => [b.left, ref.left],
     center: (b, ref) => [cx(b), cx(ref)],
@@ -170,13 +151,10 @@ describe('the figure frame in fields, Align, and snap', () => {
   };
   const WHOLE = { left: 0, top: 0, width: SLIDE.width, height: SLIDE.height };
 
-  // the readout of the frames, next to the pointer or the frame
   const readout = (page) => page.evaluate(`(() => { const r = document.querySelector('.beeson-overlay > .beeson-offset'); return r && !r.hidden ? r.textContent : null; })()`);
 
-  // whether a vertical guide is drawn at x, in slide px
   const guideAt = (page, f, x) => page.evaluate(`[...document.querySelectorAll('.beeson-overlay > .beeson-guide.v')].some((g) => !g.hidden && Math.abs(g.getBoundingClientRect().left - ${f.left + x * f.k}) < 1.5)`);
 
-  // a point on the text of the heading on the screen
   const headingPoint = (page) => page.evaluate(`(() => { const r = document.querySelector(${js(HEADING)}).getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
 
   const release = (page, x, y, modifiers = 0) => page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, modifiers });
@@ -203,7 +181,6 @@ describe('the figure frame in fields, Align, and snap', () => {
             assert.ok(near(at, to), `Align ${side} of ${where} puts its frame at ${show(now)}`);
             assert.deepEqual(await selected(page), [page.figure], `Align ${side} of ${where} changes the selection`);
             const edited = await render(page);
-            // a frame at the edge already is not moved
             if (edited !== page.source) await roundTrip(page, edited);
             const back = await boxIn(page, FRAME);
             assert.ok(near(back.left, frame.left) && near(back.top, frame.top), `an undo of Align ${side} of ${where} leaves the frame at ${show(back)}`);
@@ -222,7 +199,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.ok(near(typed.left, 100) && near(typed.top, 140), `a typed X and Y of ${where} put its frame at ${show(typed)}`);
           assert.equal(await fieldValue(page, 'x'), 100);
           assert.equal(await fieldValue(page, 'y'), 140);
-          // the two fields are two entries of the history
           const edited = await render(page);
           await undo(page);
           await frames(page);
@@ -232,7 +208,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           await frames(page);
           assert.equal(await render(page), edited);
           assert.deepEqual(errors(page), []);
-          // closed before the next page, which would offer its unsaved edits on a dialog
           await page.close();
         }
       });
@@ -260,8 +235,6 @@ describe('the figure frame in fields, Align, and snap', () => {
             await roundTrip(page, await render(page));
           }
           if (n === FIGURE_BOX_PAIR || n === FIGURE_BOX_ONE) {
-            // the heading, a paragraph, and the figure distributed with the first and the last of
-            // them in the order of their tops kept in place, and each kept in the span of the three
             await click(page, '.reveal section.present > p', { modifiers: 'Shift' });
             await frames(page);
             assert.equal((await selected(page)).length, 3);
@@ -276,7 +249,6 @@ describe('the figure frame in fields, Align, and snap', () => {
             await roundTrip(page, await render(page));
           }
           assert.deepEqual(errors(page), []);
-          // closed before the next page, which would offer its unsaved edits on a dialog
           await page.close();
         }
       });
@@ -295,7 +267,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.equal(await readout(page), `x: ${Math.round(nudged.left)} px  y: ${Math.round(nudged.top)} px`, `the readout of a nudge of ${where}, whose frame is at ${show(nudged)}`);
           await roundTrip(page, await render(page));
 
-          // a drag without the snap, with ⌘ on a Mac and Alt elsewhere
           const at = toScreen(f, cx(frame), cy(frame));
           const d = { x: 41, y: 27 };
           const free = platform === 'mac' ? 'Meta' : 'Alt';
@@ -327,7 +298,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.equal(await fieldValue(page, 'x'), Math.round(union.left), `X of a group of ${where}`);
           assert.equal(await fieldValue(page, 'y'), Math.round(union.top), `Y of a group of ${where}`);
           assert.deepEqual(errors(page), []);
-          // closed before the next page, which would offer its unsaved edits on a dialog
           await page.close();
         }
       });
@@ -340,7 +310,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           const frame = await boxIn(page, FRAME);
           const f = await scaleOf(page);
 
-          // the center of the frame dragged to 2 px right of the center of the slide, nearer than any other line
           const at = toScreen(f, cx(frame), cy(frame));
           const dx = SLIDE.width / 2 + 2 - cx(frame);
           await drag(page, at, { dx: dx * f.k, dy: 0, hold: true });
@@ -353,8 +322,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.ok(guide, `a drag of ${where} to the center of the slide draws no guide at its center`);
           await roundTrip(page, await render(page));
 
-          // the heading selected as a block and dragged by its handle to 2 px right of the center
-          // of the frame
           const h = await boxIn(page, HEADING);
           await clickText(page, await headingPoint(page));
           await press(page, 'Escape');
@@ -371,14 +338,12 @@ describe('the figure frame in fields, Align, and snap', () => {
           assert.ok(line, `a drag of the heading to the center of the frame of ${where} draws no guide there`);
           await roundTrip(page, await render(page));
           assert.deepEqual(errors(page), []);
-          // closed before the next page, which would offer its unsaved edits on a dialog
           await page.close();
         }
       });
     }
   }
 
-  // the items of the open context menu, each with its text and whether it is dimmed
   const menuItems = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.getClientRects().length).map((i) => ({ text: i.textContent.trim().replace(/\\s+/g, ' '), off: i.classList.contains('disabled') || i.getAttribute('aria-disabled') === 'true' }))`);
   const KIND_ITEMS = ['Replace Image…', 'Edit Alt Text…', 'Edit Mask'];
 
@@ -428,7 +393,6 @@ describe('the figure frame in fields, Align, and snap', () => {
         await press(page, 'Escape');
         await page.close();
 
-        // a figure without a step takes it on its tag
         const other = await load(t, platform, mode, FIGURE_BOX_ONE);
         await pick(other);
         assert.equal((await state(other, 'steps.add')).enabled, true, `${ADD} is dimmed on a figure without a step`);
@@ -464,10 +428,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     });
   }
 
-  // a trusted press of the command modifier with a letter, sent with the editing command that the
-  // browser makes of it. Chrome on a Mac turns ⌘X into Cut in its Edit menu, and Chrome on Windows
-  // and Linux turns Ctrl+X into Cut in the page, and over the DevTools protocol a key without its
-  // command is not turned into one on a Mac
   async function pressEdit(page, platform, letter, command) {
     const base = { key: letter, code: `Key${letter.toUpperCase()}`, windowsVirtualKeyCode: letter.toUpperCase().charCodeAt(0), modifiers: platform === 'mac' ? 4 : 2 };
     await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: [command] });
@@ -513,7 +473,6 @@ describe('the figure frame in fields, Align, and snap', () => {
           const pasted = await render(page);
           assert.equal(count(slideOf(pasted, EMPTY), img), 1, `the keys of Copy and Paste do not put ${where} on another slide`);
           assert.equal(count(slideOf(pasted, EMPTY), caption), n === FIGURE_BOX_PAIR ? 1 : 0, `the keys of Copy and Paste of ${where} do not bring the caption that it holds`);
-          // a plate pasted onto a content slide is made a figure box
           assert.deepEqual(await selected(page), [n === FIGURE_BOX_PAIR ? 'figure.figure-box' : 'div.figure-box'], `the figure pasted from ${where} is not selected`);
           await roundTrip(page, pasted);
           assert.deepEqual(errors(page), []);
@@ -523,13 +482,11 @@ describe('the figure frame in fields, Align, and snap', () => {
     }
   }
 
-  // the text of slide n
   function slideOf(text, n) {
     const at = [...text.matchAll(/<section[ >]/g)][n].index;
     return text.slice(at, text.indexOf('</section>', at));
   }
 
-  // the file chosen for an insert of a picture, given to the file chooser of the page
   async function choose(page, id, file) {
     const chosen = exec(page, id);
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
@@ -538,8 +495,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     await chosen;
   }
 
-  // each insert whose kind the placeholder of an empty slot offers, as its name, its run, and the
-  // start of the tag of its element in the file
   const SLOTTED = [
     ['Insert > Table', (page) => exec(page, 'insert.table', { rows: 3, columns: 3 }), 'table', '<table'],
     ['Insert > QR Code', (page) => exec(page, 'insert.qr'), '.qr', '<div class="qr"'],
@@ -555,9 +510,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     await frames(page);
   };
 
-  // gap 5 of R8.7: Insert > Table and Insert > QR Code put their element over the empty slot of a
-  // new figure or split slide, with the placeholder of the slot drawn through it. each insert that
-  // the placeholder offers fills the slot, as the icon of its kind does, and the placeholder is gone
   for (const platform of PLATFORMS) {
     for (const layout of ['figure', 'split']) {
       test(`every insert of a kind of the placeholder fills the empty slot of a new ${layout} slide, on ${platform}`, async (t) => {
@@ -566,7 +518,6 @@ describe('the figure frame in fields, Align, and snap', () => {
         for (const [what, run, el, tag] of SLOTTED) {
           await exec(page, `slide.new.${layout}`);
           await frames(page);
-          // the caret of the new slide is in its title, and the second Esc leaves its block
           await press(page, 'Escape');
           await press(page, 'Escape');
           await frames(page);
@@ -595,7 +546,6 @@ describe('the figure frame in fields, Align, and snap', () => {
     }
   }
 
-  // on a slide with two empty slots, an insert fills the first, and the icon of a slot fills its slot
   const TWO = 'test/pages/editor-two-slots.html';
   for (const platform of PLATFORMS) {
     test(`an insert fills the first of two empty slots and an icon fills its own, on ${platform}`, async (t) => {
@@ -631,9 +581,6 @@ describe('the figure frame in fields, Align, and snap', () => {
   }
 });
 
-// tests of R20.1 on both platforms with trusted input: the plot features cut from the editor. a
-// div.plot of a deck is an opaque figure, which is selected, moved, duplicated, deleted, locked,
-// and given a step as other figures are. its JSON script is not written by the editor
 describe('a plot handled as an opaque figure', () => {
   const PLATFORMS = ['mac', 'other'];
   const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -688,7 +635,6 @@ describe('a plot handled as an opaque figure', () => {
     return page;
   }
 
-  // the labels of the menu bar's menu named bar, opened by a trusted click and closed again
   async function openMenu(page, bar) {
     await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)})`));
     await wait(page, 200);
@@ -698,7 +644,6 @@ describe('a plot handled as an opaque figure', () => {
     return labels;
   }
 
-  // the last edit undone to the file before and redone, and the edited file returned
   async function roundTrip(page, before) {
     const edited = await render(page);
     assert.notEqual(edited, before, 'the action does not change the file');
@@ -758,7 +703,6 @@ describe('a plot handled as an opaque figure', () => {
       assert.ok(!labels.some((l) => /Plot/.test(l)), `the menu of a plot has a plot item: ${labels.join(', ')}`);
       await press(page, 'Escape');
       await wait(page, 100);
-      // a drag writes translate into the tag of the div.plot alone
       await drag(page, await center(page, `${SLIDE} .plot`), { dx: -120, dy: 40 });
       await wait(page);
       const moved = await render(page);
@@ -769,7 +713,6 @@ describe('a plot handled as an opaque figure', () => {
       await undo(page);
       await wait(page, 100);
       await byteExact(page);
-      // Mod+D copies the div.plot alone, and the copy names the same block
       await click(page, `${SLIDE} .plot`);
       await press(page, 'Mod+D');
       await wait(page);
@@ -778,7 +721,6 @@ describe('a plot handled as an opaque figure', () => {
       assert.equal(copied.split(BLOCK).length, 2, 'Mod+D copies the JSON script');
       assert.equal(await page.evaluate(`document.querySelectorAll('${SLIDE} .plot .plot-body').length`), 2, 'the copy is not drawn from the block');
       await roundTrip(page, source);
-      // a delete of the copy gives the file back
       await press(page, platform === 'mac' ? 'Backspace' : 'Delete');
       await wait(page);
       assert.equal(await render(page), source, 'the delete of the copy does not give the file back');
@@ -788,7 +730,6 @@ describe('a plot handled as an opaque figure', () => {
       await undo(page);
       await wait(page, 100);
       await byteExact(page);
-      // a delete of the plot keeps its JSON script and its step span in the file
       await click(page, `${SLIDE} .plot`);
       await press(page, platform === 'mac' ? 'Backspace' : 'Delete');
       await wait(page);
@@ -808,7 +749,6 @@ describe('a plot handled as an opaque figure', () => {
       const p = await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} > p').getBoundingClientRect(), s = document.querySelector('${SLIDE}').getBoundingClientRect(), k = 1920 / s.width; return { x: Math.round((r.left - s.left) * k), y: Math.round((r.top - s.top) * k) }; })()`);
       await exec(page, 'arrange.setPosition', p);
       await wait(page);
-      // the report is made after a change of the layout, and not after a move by the user
       await exec(page, 'slide.layout.wide');
       await wait(page, 400);
       assert.match(await title(page), /1 text is under a plot\b/);
@@ -838,7 +778,6 @@ describe('a plot handled as an opaque figure', () => {
       await exec(page, 'steps.add');
       await wait(page);
       const stepped = await render(page);
-      // the plot becomes the third step, after the two step spans of the plot, which are numbered
       await byteExact(page, [[PLATE, '<div class="plot plate fragment" data-plot="plate-plot" data-fragment-index="3">'],
         ['<span class="fragment" data-plot-show="right">', '<span class="fragment" data-plot-show="right" data-fragment-index="1">'],
         ['<span class="fragment" data-plot-tab="two">', '<span class="fragment" data-plot-tab="two" data-fragment-index="2">']]);
