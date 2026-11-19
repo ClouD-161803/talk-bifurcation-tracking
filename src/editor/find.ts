@@ -13,64 +13,15 @@ import { mathLookup, type MathInfo, type MathLookup } from './math.ts';
 import { display } from './keymap.ts';
 import { paired } from './review/transitions.ts';
 import { injectStyle, make } from './ui/dom.ts';
-import type { MenuItem, MenuOptions, OpenMenu } from './ui/menu.ts';
-
-export type FindOptions = { matchCase: boolean; wholeWords: boolean; tex: boolean };
+import { closeMenus, openMenu, type MenuItem } from './ui/menu.ts';
+import { type FindOptions, type Span, pattern, spans, splice } from './find-match.ts';
 
 // the texts searched: the text elements of the slides and of the notes, the notes only, or the alt texts
 export type Scope = 'all' | 'notes' | 'alt';
 
-// a match as the offsets of its first and its past-the-end character in the text of its text element
-export type Span = { start: number; end: number };
-
 // the text of a formula is set off by this character, which a query does not contain, so that a
 // match does not run from a text into a formula
 export const MARK = '￼';
-
-const WORD = '[\\p{L}\\p{N}_]';
-
-// the pattern of a query, or null for an empty query. a run of white space in the query matches
-// any run of white space, since the source of a text element breaks its lines where the slide does not
-export function pattern(query: string, options: Pick<FindOptions, 'matchCase' | 'wholeWords'>): RegExp | null {
-  if (!query) return null;
-  const body = query
-    .split(/\s+/u)
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&'))
-    .join('\\s+');
-  const source = options.wholeWords ? `(?<!${WORD})(?:${body})(?!${WORD})` : body;
-  return new RegExp(source, `gu${options.matchCase ? '' : 'i'}`);
-}
-
-export function spans(text: string, re: RegExp | null): Span[] {
-  if (!re) return [];
-  const out: Span[] = [];
-  re.lastIndex = 0;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    if (!m[0].length) {
-      re.lastIndex++;
-      continue;
-    }
-    out.push({ start: m.index, end: m.index + m[0].length });
-  }
-  return out;
-}
-
-// text is the piece of a text element that starts at the offset from. each span of list, sorted and not
-// overlapping, is cut from it, and replacement is put where a span starts inside the piece. a
-// span that starts in an earlier piece is only cut, since its replacement is in that piece
-export function splice(text: string, from: number, list: Span[], replacement: string): string {
-  let out = '';
-  let at = 0;
-  for (const s of list) {
-    const a = Math.max(s.start - from, 0);
-    const b = Math.min(s.end - from, text.length);
-    if (b < 0 || a > text.length) continue;
-    out += text.slice(at, a);
-    if (s.start >= from) out += replacement;
-    at = Math.max(at, b);
-  }
-  return out + text.slice(at);
-}
 
 // a piece of the text of a text element: a text node, a formula, or a line break
 type Piece =
@@ -277,11 +228,7 @@ export type Finder = {
 // the keys of Next and Previous, shown in the titles of their buttons
 type Keys = { next: string[]; previous: string[] };
 
-// openMenu and closeMenus of ui/menu.ts, given by commands/find.ts, since ui/menu.ts listens on
-// window at its import and this module is imported by the pure tests under node
-export type Menus = { open(app: App, items: MenuItem[], options: MenuOptions): OpenMenu; close(): void };
-
-export function createFinder(app: App, keys: Keys, menus: Menus): Finder {
+export function createFinder(app: App, keys: Keys): Finder {
   injectStyle('find', CSS);
   const options: FindOptions = { matchCase: false, wholeWords: false, tex: false };
   let scope: Scope = 'all';
@@ -379,11 +326,11 @@ export function createFinder(app: App, keys: Keys, menus: Menus): Finder {
     { rule: true },
     { command: 'find.tex' },
   ];
-  const openOptions = (keyboard: boolean) => menus.open(app, menuOf(), { anchor: gear.getBoundingClientRect(), placement: 'below', owner: gear, keyboard, label: 'Options', className: 'find-options' });
+  const openOptions = (keyboard: boolean) => openMenu(app, menuOf(), { anchor: gear.getBoundingClientRect(), placement: 'below', owner: gear, keyboard, label: 'Options', className: 'find-options' });
   const optionsOpen = () => gear.getAttribute('aria-expanded') === 'true';
   gear.addEventListener('pointerdown', (ev) => {
     ev.preventDefault();
-    if (optionsOpen()) menus.close();
+    if (optionsOpen()) closeMenus();
     else openOptions(false);
   });
   gear.addEventListener('click', (ev) => {
@@ -598,7 +545,7 @@ export function createFinder(app: App, keys: Keys, menus: Menus): Finder {
   // over, as in Keynote
   function hide(): void {
     if (panel.hidden) return;
-    if (optionsOpen()) menus.close();
+    if (optionsOpen()) closeMenus();
     const had = panel.contains(document.activeElement);
     panel.hidden = true;
     sync();
