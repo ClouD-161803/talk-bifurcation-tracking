@@ -227,6 +227,7 @@ for (const platform of ['mac', 'other']) {
   test(`Backspace deletes a slide with the comment above it (${platform})`, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());
+    assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes('<!-- content, the default layout'), 'the deck has the comment above the slide');
     await click(page, await row(page, 2));
     await press(page, 'Backspace');
     await settle(page);

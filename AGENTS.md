@@ -95,7 +95,7 @@ PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write 
 ## Documentation
 
 - Write each fact in one place, and link to it from the others.
-- Do not write comments or docstrings in any file of the repository. Write what a reader needs to know into a name, a test, `REFERENCE.md`, or `src/AGENTS.md`. `test/comments.test.mjs` fails on every comment, apart from the license banner at the top of each bundle.
+- Do not write comments or docstrings in any file of the repository. Write what a reader needs to know into a name, a test, `REFERENCE.md`, or `src/AGENTS.md`. `test/comments.test.mjs` fails on every comment, apart from the license banner at the top of each bundle and the HTML comments of `test-deck.html`. These stand for the comments of a talk, which the editor keeps.
 - `README.md` is hand-written for human readers by the maintainers, in their voice. If you have to edit it, keep this voice, and do not restyle it to the rules of this file.
 
 ## Terms
