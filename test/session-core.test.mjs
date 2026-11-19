@@ -1416,9 +1416,10 @@ function editOf(r, d, p, k, kind = r.pick(['key', 'letter', 'add', 'delete', 'mo
     if (!e || touch(e).has(i)) return null;
     return { ...e, kind: e.kind === 'slide' ? 'keyed slide' : 'keyed', mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [...e.want, mark] };
   }
-  if (kind === 'key' || kind === 'letter') {
+  if (kind === 'key' || kind === 'letter' || kind === 'entity' || kind === 'paste') {
     const i = r.pick(texts), m = lines[i].match(TEXT);
-    if (kind === 'key') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [mark] };
+    const typed = kind === 'entity' ? ` R&D &amp; ${mark}` : kind === 'paste' ? ` ${Array.from({ length: 300 }, () => r.pick(['orbit', 'R&amp;D', 'x &lt; y', 'halo'])).join(' ')} ${mark}` : ` ${mark}`;
+    if (kind !== 'letter') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]}${typed}${m[4]}` }, want: [mark] };
     const j = r.int(m[3].length);
     if (m[3].length < 2) return null;
     const line = `${m[1]}${m[3].slice(0, j)}${m[3].slice(j + 1)}${m[4]}`;
@@ -1474,12 +1475,12 @@ function textOf(d, list) {
 }
 
 // a deck and the edits of 2 or 3 people, 1 to 3 each, that touch different lines
-function roundOf(seed) {
+function roundOf(seed, kinds) {
   const r = generator(seed), d = deckOf(r), all = [];
   for (let p = 2 + r.int(2); p > 0; p--) {
     const list = [];
     for (let k = 1 + r.int(3), tries = 0; list.length < k && tries < 20; tries++) {
-      const e = editOf(r, d, all.length, list.length);
+      const e = editOf(r, d, all.length, list.length, kinds && r.pick(kinds));
       if (e && list.every((f) => disjoint(touch(e), touch(f)))) list.push({ ...e, p: all.length });
     }
     all.push(list);
@@ -1569,9 +1570,9 @@ function broken({ d, all, base, texts }) {
   const alone = flat.filter((e) => e.kind.startsWith('key') && flat.every((f) => f === e || disjoint(touch(f), new Set(Object.keys(e.mod).flatMap(inner)))));
   for (const [how, text] of Object.entries(res)) {
     if (text === null) bad.push(`${how}: the pages differ`);
-    // three people can end with an element twice, or without it, after two races in a row, a known
-    // limit
-    if (text === null || (texts.length === 3 && how.startsWith('order'))) continue;
+    if (text === null) continue;
+    const torn = text.split(/\r?\n/).find((l) => !/^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l));
+    if (torn !== undefined) bad.push(`${how}: the line ${torn.trim().slice(0, 80)} is torn`);
     for (const e of alone) if (!text.includes(e.want.at(-1))) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${e.want.at(-1)}`);
     if (!clean) continue;
     // a key typed next to a line is not a loss of this line
@@ -1583,12 +1584,18 @@ function broken({ d, all, base, texts }) {
 }
 
 test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command, keep each edit apart from the others and each line of the base that nobody removed, and the edits of the editor keep each move whole', () => {
-  // the line merge of fe435eb2 loses a key or a line of 89 and 291 as well. edits() gives the
-  // heading typed in and the paragraphs moved out of a slide of 936 as one change. 1850 and 2932 lose a key without the gate
-  const known = new Set([89, 291, 936]);
   const failed = [];
   for (const seed of [...Array(1500).keys()].map((i) => i + 1).concat(1850, 2932)) {
-    const bad = known.has(seed) ? [] : broken(roundOf(seed));
+    const bad = broken(roundOf(seed));
+    if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
+  }
+  assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
+});
+
+test('random edits of two or three people with character references, bare ampersands, and long pastes among them keep the same in every order of arrival and in the merge of the editor', () => {
+  const failed = [];
+  for (let seed = 1; seed <= 1000; seed++) {
+    const bad = broken(roundOf(seed, ['key', 'entity', 'paste', 'letter', 'add', 'delete', 'move', 'several', 'slide', 'slides', 'keyed']));
     if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
   }
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
