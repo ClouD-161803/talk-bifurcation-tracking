@@ -89,7 +89,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Pass `drafts: true` to a page only in tests of the unsaved edits. These edits are offered on a dialog to the next page of the same test.
 - Do not export `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_INDEX_FILE` in a test. Git then works on the repository that they name.
 
-## Browsers under test
+## Browsers and reveal.js
 
 - Animation frames are not given to hidden or background tabs. Bring a page to the front with `Page.bringToFront` before you wait for its frames.
 - The system clipboard is shared between tests. Stub `navigator.clipboard`, or send copy and paste events with a `DataTransfer` of the page.
@@ -103,3 +103,9 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - reveal.js answers `isReady()` one timer before `.reveal` is given the class `ready`, and an Esc in between opens its overview. Wait for `.reveal.ready` before you send a key.
 - A crash of a page may cancel the keepalive requests of the other pages of its renderer. In a test of a crash, send these requests by hand.
 - A page opened with `open()` of `test/helpers/client.mjs` reads as visible behind another page, as the page of a person on another machine does. Set `window.__visibility` to `'hidden'` or `'real'` to change this.
+- ⌘L and ⌥⌘L are taken by Safari before the page, and Shift+F3 and Ctrl+F3 by Chrome and Edge. A command bound to such a key has a second key as well, which is listed first in the menus of the browser that takes the first key.
+- Outside a Mac, ] and [ need AltGr on German and Italian keyboards. Hence a menu lists first the key typed without AltGr. On a Mac, Option with an arrow and the Control keys of macOS, e.g. Control-D, are left to the text.
+- The clipboard is read and written only through its events, which are allowed in every browser. Text read from it may come from any page. The folders in the path of a session page are its key, hence they are hashed before they are written.
+- A page opened from `file:` cannot download a file, and `crypto.subtle` is missing outside a secure context.
+- In Chrome, a space typed at the end of a text becomes a no-break space, and a character typed at the end of an inline element is put into this element. A space after the caret at the start of a text is dropped, and `selectionchange` is held back while keys come quickly.
+- reveal.js marks only the fragments of the slide that it starts on. Its highlight plugin replaces the elements of a code box, hence code is colored in the editor with the CSS Custom Highlight API.
