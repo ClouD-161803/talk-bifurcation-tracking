@@ -8,7 +8,6 @@ import { connect, createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { startRelay } from '../scripts/relay.mjs';
-import { GAP } from '../src/edit/people.ts';
 import { DECK, EDIT, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const text = (file) => readFileSync(file, 'utf8');
@@ -1145,8 +1144,9 @@ test('a page that said bye is not brought back by a poll or a presence that arri
   assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
 });
 
-test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
+test('a page is answered at most ten times a second while operations come back to back', { timeout: 120_000 }, async (t) => {
   const ANSWERS = 4;
+  const MOST_ANSWERS_PER_SECOND = 10;
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -1172,7 +1172,7 @@ test('a page is answered at most once per GAP of its polls while operations come
     v = answer.v;
   }
   const span = (await polling) - started;
-  assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
+  assert.ok(span >= ((answers - 1) * 1000) / MOST_ANSWERS_PER_SECOND, `${answers} answers in ${Math.round(span)} ms`);
 });
 
 test('a hello that retires the token of a closed page refuses the operations and the polls of this page that arrive after it', { timeout: 90_000 }, async (t) => {

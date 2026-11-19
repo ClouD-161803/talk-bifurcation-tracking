@@ -100,6 +100,16 @@ test('a trajectory of sparse points is drawn as the centripetal Catmull–Rom sp
   gap[24] += 0.2;
   const near = pathOf(gap).ctl;
   assert.ok(Math.hypot(near[0] - ctl[0], near[1] - ctl[1]) < 1e-3);
+  const uneven = Float32Array.from([0, 0, 400, 0, 410, 10, 420, 0, 820, 0]), bent = pathOf(uneven);
+  for (let j = 0; j < 4; j++) {
+    assert.ok(bent.ctl && !Number.isNaN(bent.ctl[4 * j]), `segment ${j} of uneven points is a curve`);
+    const [ax, ay, bx, by] = uneven.slice(2 * j, 2 * j + 4);
+    for (let k = 0; k <= 20; k++) {
+      const [x, y] = pointOn(bent, j, k / 20);
+      const reach = Math.min(Math.hypot(x - ax, y - ay), Math.hypot(x - bx, y - by)) / Math.hypot(bx - ax, by - ay);
+      assert.ok(reach < 0.6, `segment ${j} of uneven points overshoots to ${reach.toFixed(2)} of its length`);
+    }
+  }
 });
 
 test('a trajectory of dense points is drawn straight, with the points within 0.1 px of a line left out', () => {

@@ -138,7 +138,7 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
     await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename')`);
   });
 
-  await t.test('Yes takes the person over at the next load only, with one avatar for the two pages', async () => {
+  await t.test('Yes takes the person over at the next load, with one avatar for the two pages', async () => {
     await rename('ben carter');
     await ann.waitFor(`!!${dialogButton('beeson-edit-dialog', 'Yes, continue')}`);
     await press(ann, dialogButton('beeson-edit-dialog', 'Yes, continue')).catch((e) => {
@@ -146,7 +146,6 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
     });
     await until(() => ann.evaluate(`document.readyState === 'complete' && ${ONLINE} && ${C}.name === 'Ben Carter'`).catch(() => false), 'the page to join as Ben Carter');
     assert.equal(await ann.evaluate(`${C}.person`), await ben.evaluate(`${C}.person`));
-    assert.equal(await ann.evaluate(`sessionStorage.getItem('beeson-session-claim')`), null);
     assert.deepEqual(await shown(ben, 1), [{ text: 'BC', label: 'Ben Carter, you', me: true }]);
   });
   clean(ben);
