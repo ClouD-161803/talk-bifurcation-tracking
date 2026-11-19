@@ -215,40 +215,40 @@ test('the top folder of the zip is named after the talk folder without the chara
 
 test('a talk folder named after a device of Windows, with a long name, or with a character that Windows or Chrome does not take in a name, gives a zip and a top folder that both take', { skip: !unix, timeout: 180_000 }, async (t) => {
   const names = [
-    ['aux', 'aux-'],
-    ['COM1.talk', 'COM1-.talk'],
-    ['auxiliary', 'auxiliary'],
-    ['LPT\u00b9', 'LPT\u00b9-'],
-    ['com\u00b3.x', 'com\u00b3-.x'],
-    ['con .txt', 'con- .txt'],
-    ['x'.repeat(100), 'x'.repeat(64)],
-    [`${'y'.repeat(63)}. a long name`, 'y'.repeat(63)],
-    ['\u{1f600}'.repeat(40), '\u{1f600}'.repeat(32)],
-    [`${'z'.repeat(63)}\u{1f600}`, 'z'.repeat(63)],
-    ['CONIN$', 'CONIN$-'],
-    ['conout$.x', 'conout$-.x'],
-    ['clock$', 'clock$-'],
-    [`COM1.${'a'.repeat(59)}`, `COM1-.${'a'.repeat(58)}`],
-    [`con${' '.repeat(59)}.x`, 'con-'],
-    [`aux${' '.repeat(61)}x`, 'aux-'],
-    ['.talk', 'talk'],
-    [' talk', 'talk'],
-    ['~talk', 'talk'],
-    ['...', 'talk'],
-    ['cafe\u0301', 'caf\u00e9'],
-    ['a\u007fb\u0085c', 'a-b-c'],
-    ['talk\u202egpj.exe', 'talk-gpj.exe'],
-    ['ta\u200dlk', 'ta-lk'],
+    ['aux', 'aux-', 'a device of Windows'],
+    ['COM1.talk', 'COM1-.talk', 'a device of Windows with an extension'],
+    ['auxiliary', 'auxiliary', 'a name that only begins with a device'],
+    ['LPT\u00b9', 'LPT\u00b9-', 'a digit that Windows reserves for a device as well'],
+    ['com\u00b3.x', 'com\u00b3-.x', 'a digit that Windows reserves for a device as well'],
+    ['con .txt', 'con- .txt', 'a device with spaces before the dot'],
+    ['x'.repeat(100), 'x'.repeat(64), 'a long name, cut to 64 since the zip is unzipped by Extract All of Windows into a folder of its name, in a path of at most 259 characters'],
+    [`${'y'.repeat(63)}. a long name`, 'y'.repeat(63), 'a cut name that would end with a dot or a space'],
+    ['\u{1f600}'.repeat(40), '\u{1f600}'.repeat(32), 'a path of Windows counted in UTF-16 code units, two for an emoji'],
+    [`${'z'.repeat(63)}\u{1f600}`, 'z'.repeat(63), 'an emoji that is not cut in half'],
+    ['CONIN$', 'CONIN$-', 'a device of Windows'],
+    ['conout$.x', 'conout$-.x', 'a device of Windows'],
+    ['clock$', 'clock$-', 'a device of Windows'],
+    [`COM1.${'a'.repeat(59)}`, `COM1-.${'a'.repeat(58)}`, 'the - after a device, which counts in the 64 characters'],
+    [`con${' '.repeat(59)}.x`, 'con-', 'a name cut to a device'],
+    [`aux${' '.repeat(61)}x`, 'aux-', 'a name cut to a device'],
+    ['.talk', 'talk', 'a dot at the start'],
+    [' talk', 'talk', 'a space at the start'],
+    ['~talk', 'talk', 'a ~ at the start, which Chrome replaces in the name of a download'],
+    ['...', 'talk', 'a name of which nothing is left'],
+    ['cafe\u0301', 'caf\u00e9', 'a decomposed name, which is composed on every system'],
+    ['a\u007fb\u0085c', 'a-b-c', 'control characters, which Chrome replaces'],
+    ['talk\u202egpj.exe', 'talk-gpj.exe', 'a format character, which Chrome replaces'],
+    ['ta\u200dlk', 'ta-lk', 'a joiner, which Chrome replaces'],
   ];
-  for (const [folder, name] of names) {
+  for (const [folder, name, why] of names) {
     const { root } = talkFolder(t);
     const talk = join(root, 'devices', folder);
     put(talk, 'index.html', DECK);
     const running = await inProcess(t, root, talk);
     const token = await hello(t, running.port, running.key, 'Ann');
     const got = await download(running.port, running.key, token);
-    assert.equal(got.name, `${name}.zip`);
-    assert.equal(entries(got.zip)[0].name, `${name}/index.html`);
+    assert.equal(got.name, `${name}.zip`, why);
+    assert.equal(entries(got.zip)[0].name, `${name}/index.html`, why);
   }
 });
 
@@ -277,11 +277,12 @@ test('an entry has the time of its file to 2 s, and a time outside the years of 
   at('now.txt', new Date(2026, 4, 17, 13, 45, 31));
   at('early.txt', new Date(1975, 0, 1, 12));
   put(talk, 'late.txt', 'late.txt');
+  const wrappedByNodeOnWindows = new Date(2200, 5, 15, 10, 20, 30);
   const { stat, lstat } = fsp;
   for (const [name, real] of [['stat', stat], ['lstat', lstat]]) {
     fsp[name] = async (file, ...rest) => {
       const info = await real(file, ...rest);
-      if (String(file).endsWith('late.txt')) info.mtime = new Date(2200, 5, 15, 10, 20, 30);
+      if (String(file).endsWith('late.txt')) info.mtime = wrappedByNodeOnWindows;
       return info;
     };
   }
@@ -375,7 +376,7 @@ test('tex.js of the zip is the one of the text of the session, before the edit c
   assert.equal(readFileSync(join(talk, 'tex.js'), 'utf8'), tex);
 });
 
-test('a tex.js that the talk folder holds under a name in another case is zipped as tex.js on a disk that does not tell the cases apart', { timeout: 60_000 }, async (t) => {
+test('a tex.js that the talk folder holds under a name in another case, or with a long s that the disk of a Mac reads as an s, is zipped as tex.js on a disk that does not tell the cases apart', { timeout: 60_000 }, async (t) => {
   for (const name of ['Tex.js', 'tex.j\u017f']) {
     const { root, talk } = talkFolder(t, DECK.replace('</body>', '<section><p>A paper <cite data-key="ann2020"></cite></p></section>\n</body>'));
     put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
@@ -483,31 +484,31 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
   const token = await hello(t, running.port, running.key, 'Ann');
   const got = byName((await download(running.port, running.key, token)).zip);
 
-  assert.equal(got.get('index.html').bytes.toString('utf8'), deckOf(1));
+  assert.equal(got.get('index.html').bytes.toString('utf8'), deckOf(1), 'a path ends at the first ? or #, also after an & or at a character reference, and a path from the root of the address or with a scheme is not of the talk folder');
   for (const n of wrapped) {
     const original = readFileSync(join(talk, 'orbits', `${n}.json`));
     assert.ok(got.get(`orbits/${n}.json`).bytes.equals(original), `orbits/${n}.json is kept`);
     assert.equal(got.get(`orbits/${n}.json.js`)?.bytes.toString('utf8'), `Beeson.trajectories(${original});\n`, `orbits/${n}.json.js`);
     assert.equal(got.get(`orbits/${n}.json.js`).mode, 0o644);
   }
-  assert.equal(got.get('orbits/k.json.js').bytes.toString('utf8'), 'a script of the talk folder');
+  assert.equal(got.get('orbits/k.json.js').bytes.toString('utf8'), 'a script of the talk folder', 'a script of the talk folder is not written over');
   assert.equal(got.get('orbits/k.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'k.json'))});\n`);
-  assert.equal(got.get('orbits/case.json.js').bytes.toString('utf8'), 'another script of the talk folder');
+  assert.equal(got.get('orbits/case.json.js').bytes.toString('utf8'), 'another script of the talk folder', 'nor is the script of the same name on a disk that does not tell the cases apart');
   assert.equal(got.get('orbits/Case.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'Case.json'))});\n`);
   assert.equal(got.has('orbits/Case.json.js'), false);
   assert.equal(got.get('orbits/dir.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'dir.json'))});\n`);
-  assert.equal(got.get('orbits/dir.json.js/a.txt').bytes.toString('utf8'), 'a file in a folder');
+  assert.equal(got.get('orbits/dir.json.js/a.txt').bytes.toString('utf8'), 'a file in a folder', 'nor is the name of a folder taken');
   assert.equal(got.has('orbits/dir.json.js'), false);
-  assert.equal(got.get('orbits/Stra\u00dfe.json.js').bytes.toString('utf8'), 'a script with a sharp s');
+  assert.equal(got.get('orbits/Stra\u00dfe.json.js').bytes.toString('utf8'), 'a script with a sharp s', 'nor is the script that the disk of a Mac takes for STRASSE.json.js');
   assert.equal(got.get('orbits/STRASSE.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'STRASSE.json'))});\n`);
   assert.equal(got.has('orbits/STRASSE.json.js'), false);
-  assert.equal(got.get('orbits/\u03aa\u0301.json.js').bytes.toString('utf8'), 'a script with an iota');
+  assert.equal(got.get('orbits/\u03aa\u0301.json.js').bytes.toString('utf8'), 'a script with an iota', 'nor is the script named after the capital of an iota with a dialytika and a tonos, which is three characters');
   assert.equal(got.get('orbits/\u0390.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u0390.json'))});\n`);
   assert.equal(got.has('orbits/\u0390.json.js'), false);
-  assert.equal(got.get('orbits/\u1fbc\u0342.json.js').bytes.toString('utf8'), 'a script with an iota below');
+  assert.equal(got.get('orbits/\u1fbc\u0342.json.js').bytes.toString('utf8'), 'a script with an iota below', 'nor is the script that the disk of a Mac takes for the same name with the two accents of the alpha in the other order');
   assert.equal(got.get('orbits/\u1fb7.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u1fb7.json'))});\n`);
   assert.equal(got.has('orbits/\u1fb7.json.js'), false);
-  assert.equal(got.get('orbits/e.json.js').bytes.toString('utf8'), 'a script without the accent');
+  assert.equal(got.get('orbits/e.json.js').bytes.toString('utf8'), 'a script without the accent', 'nor is a script whose name differs only in its accents, since an exFAT disk of a Mac takes two such names for one next to a Hangul vowel');
   assert.equal(got.get('orbits/\u00e9.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u00e9.json'))});\n`);
   assert.equal(got.has('orbits/\u00e9.json.js'), false);
   for (const n of ['orbits/js.js.js', 'orbits/missing.json.js', 'outside.json.js', 'orbits/m1.json.js', 'orbits/m2.json.js', 'orbits/m3.json.js', 'orbits/out.json.js', 'orbits/out.json']) assert.equal(got.has(n), false, n);
@@ -587,8 +588,9 @@ test('a zip that is kept holds about its bytes in memory, also the zip of a fold
     gc();
     return process.memoryUsage().arrayBuffers;
   };
+  const NODE_26_POOL_SIZE = 64 * 1024;
   const { poolSize } = Buffer;
-  Buffer.poolSize = 64 * 1024;
+  Buffer.poolSize = NODE_26_POOL_SIZE;
   t.after(() => (Buffer.poolSize = poolSize));
   const before = held();
   const made = await makeZip(port, key, token);
@@ -818,9 +820,10 @@ test('through the relay, a folder over 64 MB is refused, and a download gives th
   await until(() => relay.held() === 0, 'the relay to hold nothing');
 });
 
-test('a folder of more files than a zip holds is refused', { skip: !unix, timeout: 900_000 }, async (t) => {
+test('a folder of more files than a zip holds is refused', { skip: !unix && '65,535 files take minutes on Windows', timeout: 900_000 }, async (t) => {
+  const FILES_A_ZIP_HOLDS = 65_535;
   const { root, talk } = talkFolder(t);
-  for (let n = 0; n < 65_534; n++) {
+  for (let n = 0; n < FILES_A_ZIP_HOLDS - 1; n++) {
     if (n % 256 === 0) mkdirSync(join(talk, String(n >> 8)));
     writeFileSync(join(talk, String(n >> 8), String(n & 255)), '');
   }
@@ -829,14 +832,15 @@ test('a folder of more files than a zip holds is refused', { skip: !unix, timeou
   const token = await hello(t, port, key, 'Ann');
   const calls = ['lstat', 'stat', 'realpath', 'readdir', 'readFile'];
   const real = Object.fromEntries(calls.map((name) => [name, fsp[name]]));
-  for (const name of calls) fsp[name] = async (...rest) => (await new Promise((done) => setTimeout(done, 1)), real[name](...rest));
+  const asOnABusyDisk = () => new Promise((done) => setTimeout(done, 1));
+  for (const name of calls) fsp[name] = async (...rest) => (await asOnABusyDisk(), real[name](...rest));
   syncBuiltinESMExports();
   t.after(() => {
     Object.assign(fsp, real);
     syncBuiltinESMExports();
   });
   const { zip } = await download(port, key, token, 240_000);
-  assert.equal(entries(zip).length, 65_535);
+  assert.equal(entries(zip).length, FILES_A_ZIP_HOLDS);
   put(talk, 'one more.txt', '');
   const over = await makeZip(port, key, token, 240_000);
   assert.equal(over.status, 413);

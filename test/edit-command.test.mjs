@@ -422,7 +422,7 @@ test('the end of sharing tells the guests and keeps the session of the host', { 
   assert.equal(op.ok, true, 'the edit command keeps running for the host');
 });
 
-test('the address of a relay is https, or http on this computer', { timeout: 60_000 }, async (t) => {
+test('the address of a relay is https, or http on this computer, since a guest needs a secure context', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -645,7 +645,7 @@ test('.session/ is ignored by git in a talk whose .gitignore does not name it', 
   if (hasGit) assert.deepEqual(git('status', '--porcelain', '-uall').stdout.split('\n').filter((l) => l.includes('.session')), []);
 });
 
-test('a dot folder or node_modules is not served under another spelling of its path', { timeout: 60_000 }, async (t) => {
+test('a dot folder or node_modules is not served under another spelling of its path, such as a trailing dot or a short name of Windows', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(talk, '.git'));

@@ -230,7 +230,7 @@ test('the relay holds the bodies of slow uploads and slow readers within its mem
     await until(() => relay.held() === 0, 'the place of the closed upload to be given back');
   });
 
-  await t.test('an answer is counted until the guest has read it', async () => {
+  await t.test('an answer is counted until the guest has read it, also on Windows, where a write of any size is copied into the kernel at once', async () => {
     const guest = open(`GET /${key}/big.mp4 HTTP/1.1\r\nHost: relay\r\n\r\n`);
     guest.pause();
     const [item] = await (await fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers: host })).json();

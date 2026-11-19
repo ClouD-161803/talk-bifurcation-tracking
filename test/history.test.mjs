@@ -504,8 +504,8 @@ test('a redo drops an entry of typing that cannot be redone, tells refused of it
   assert.deepEqual(state, { a: 1 });
 });
 
-for (const word of [' two', ' one']) {
-  test(`a redo of "${word}" right after its undo puts it back before an insertion of another person after the typing had ended`, async () => {
+for (const [word, ending] of [[' two', 'which does not end with the e of "slide"'], [' one', 'which ends with the e of "slide"']]) {
+  test(`a redo of "${word}", ${ending}, right after its undo puts it back before an insertion of another person after the typing had ended`, async () => {
     const { h } = texts();
     const el = textEl('Second slide');
     h.track(el);

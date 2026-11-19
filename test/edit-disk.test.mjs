@@ -544,13 +544,13 @@ test('a stop that a paused relay and an unfinished request hold past 3 s exits n
 test('a symbolic link index.html is written through to its target, the mode of the file is kept, and a temporary file of an earlier run is removed', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const posix = process.platform !== 'win32';
+  const linksAndModes = process.platform !== 'win32';
   const file = join(dir, 'index.html'), target = join(dir, 'real.html');
-  const stale = join(dir, `.${posix ? 'real' : 'index'}.html.0123456789ab.tmp`), other = join(dir, 'notes.tmp');
+  const stale = join(dir, `.${linksAndModes ? 'real' : 'index'}.html.0123456789ab.tmp`), other = join(dir, 'notes.tmp');
   writeFileSync(stale, 'half a deck');
   writeFileSync(other, 'notes');
-  writeFileSync(posix ? target : file, DECK);
-  if (posix) {
+  writeFileSync(linksAndModes ? target : file, DECK);
+  if (linksAndModes) {
     chmodSync(target, 0o444);
     symlinkSync('real.html', file);
   }
@@ -559,7 +559,7 @@ test('a symbolic link index.html is written through to its target, the mode of t
   t.after(() => disk.stop());
   assert.equal(existsSync(stale), false, 'the temporary file of an earlier run is still there');
   assert.equal(existsSync(other), true, 'a file that the disk did not write was removed');
-  if (!posix) return;
+  if (!linksAndModes) return;
   insert(authority, '<h2>One', 'ONE ');
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
   assert.ok(lstatSync(file).isSymbolicLink(), 'index.html is no longer a symbolic link');

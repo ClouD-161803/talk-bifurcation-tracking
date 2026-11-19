@@ -119,7 +119,7 @@ test('a preview is compiled without a write, and a saved source is compiled into
   assert.equal(again.figures.outputs.orbit, state.outputs.orbit);
 });
 
-test('only the host changes a TikZ figure, and every route of the figures refuses a guest', { timeout: 60_000 }, async (t) => {
+test('only the host changes a TikZ figure, since TeX reads every file that the account of the host may read, and every route of the figures refuses a guest', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t, DECK);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'no-tex'));
