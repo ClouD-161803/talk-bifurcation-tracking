@@ -153,13 +153,19 @@ export function hashComments(text) {
   return [...text.matchAll(/^[ \t]*#(?!!).*|(?<=[ \t])#[ \t].*/gm)].map((m) => ({ at: m.index + m[0].search(/#/), text: m[0].trimStart() }));
 }
 
+export function docstrings(text) {
+  const after = String.raw`(?<=^(?:[ \t]*(?:#.*)?\n)*|(?:^|\n)[ \t]*(?:async[ \t]+)?(?:def|class)\b[^\n]*:[ \t]*\n(?:[ \t]*\n)*|\)(?:[ \t]*->[^\n]*)?:[ \t]*\n(?:[ \t]*\n)*)`;
+  return [...text.matchAll(new RegExp(after + String.raw`[ \t]*[rRuU]?(?:"""|'''|"|').*`, 'g'))].map((m) => ({ at: m.index + m[0].search(/\S/), text: m[0].trim() }));
+}
+
 export function commentsOf(path, text) {
   if (/\.(?:[cm]?js|ts)$/.test(path)) return scriptComments(text);
   if (/\.json$/.test(path)) return scriptComments(text);
   if (/\.css$/.test(path)) return styleComments(text);
   if (/\.html$/.test(path)) return markupComments(text);
   if (/\.(?:tex|sty|bib)$/.test(path)) return texComments(text);
-  if (/\.(?:ya?ml|toml|py|mplstyle|sh|command|cff)$|(?:^|\/)\.git(?:ignore|attributes)$/.test(path)) return hashComments(text);
+  if (/\.py$/.test(path)) return [...hashComments(text), ...docstrings(text)].sort((a, b) => a.at - b.at);
+  if (/\.(?:ya?ml|toml|mplstyle|sh|command|cff)$|(?:^|\/)\.git(?:ignore|attributes)$/.test(path)) return hashComments(text);
   if (/\.cmd$/.test(path)) return [...text.matchAll(/^[ \t]*(?:rem\b|::).*/gim)].map((m) => ({ at: m.index + m[0].search(/\S/), text: m[0].trimStart() }));
   return [];
 }

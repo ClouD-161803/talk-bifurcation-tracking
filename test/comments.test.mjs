@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { commentsOf, hashComments, markupComments, scriptComments, styleComments, texComments } from './helpers/comments.mjs';
+import { commentsOf, docstrings, hashComments, markupComments, scriptComments, styleComments, texComments } from './helpers/comments.mjs';
 
 const root = join(import.meta.dirname, '..');
 const BUNDLES = /^theme\/(?:beeson|editor|editor-tex|editor-pdf|editor-session|session)\.js$|^theme\/edit\.mjs$/;
@@ -56,4 +56,10 @@ test('a comment is found in markup, style, TeX, and a file of hash comments', ()
   assert.deepEqual(styleComments('a { content: "/* x */"; } /* one */').map((c) => c.text), ['/* one */']);
   assert.deepEqual(texComments('50\\% of a % one\n\\\\% two').map((c) => c.text), ['% one', '% two']);
   assert.deepEqual(hashComments('#!/bin/sh\n# one\nrun: a "#b" # two').map((c) => c.text), ['# one', '# two']);
+});
+
+test('a docstring of a module, a function, or a class is found in Python, but not a string assigned to a name', () => {
+  const python = ['"""one', 'more"""', 'import a', 'x = """not', '"""', 'def f(a,', '      b):', "    'two'", '    return {', '        "k":', '            "not"}', 'class C:', '', '    r\'\'\'three\'\'\''].join('\n');
+  assert.deepEqual(docstrings(python).map((c) => c.text), ['"""one', "'two'", "r'''three'''"]);
+  assert.deepEqual(commentsOf('a.py', '# four\n' + python).map((c) => c.text), ['# four', '"""one', "'two'", "r'''three'''"]);
 });
