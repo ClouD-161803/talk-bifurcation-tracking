@@ -348,8 +348,9 @@ function check(browser, deck, out, limit) {
   });
 }
 
-// the answers of safaridriver when remote automation is off, or when another session holds Safari
-const SAFARI_OFF = /Allow remote automation|safaridriver --enable|did not start|session not created|Could not create a session/i;
+// the answers of safaridriver when remote automation is off, when another session holds Safari, or
+// when the window of Safari is hidden, e.g. behind a locked screen
+const SAFARI_OFF = /Allow remote automation|safaridriver --enable|did not start|session not created|Could not create a session|the page is hidden/i;
 
 // the warnings of the console of a page of Chrome, kept in window.__warnings
 const WARNINGS = `window.__warnings = [];
@@ -493,15 +494,15 @@ test('a guest downloads the talk folder through the relay with its last edit, an
       t.diagnostic(`${name}: check.mjs ran ${((Date.now() - start) / 1000).toFixed(1)} s`);
       if (name === 'safari' && code !== 0 && SAFARI_OFF.test(output)) {
         off = true;
-        t.diagnostic(`safari: not run, since safaridriver did not start a session:\n${output.slice(-600)}`);
-        s.skip('safaridriver did not start a session');
+        t.diagnostic(`safari: not run, since Safari could not be driven:\n${output.slice(-600)}`);
+        s.skip('Safari could not be driven');
         return;
       }
       assert.equal(code, 0, output);
       assert.match(output, /no page errors/);
       assert.match(output, /dark: 5 slides saved/);
     });
-    await t.test(titles[1], { skip: off && 'safaridriver did not start a session', timeout: 240_000 }, async () => {
+    await t.test(titles[1], { skip: off && 'Safari could not be driven', timeout: 240_000 }, async () => {
       assert.ok(deckFile, 'the deck was unzipped');
       await backdropsDrawn(name, deckFile);
     });

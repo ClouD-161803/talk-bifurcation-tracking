@@ -2,8 +2,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { driverOf, serve } from '../scripts/webdriver.mjs';
+import { driverOf, launch, serve } from '../scripts/webdriver.mjs';
 
 const firefoxOptions = (env) => driverOf('firefox', env).capabilities['moz:firefoxOptions'];
 
@@ -53,4 +54,22 @@ test('a folder is served on a local port, without the files outside it', async (
   } finally {
     close();
   }
+});
+
+test('a page of Safari in a hidden window, e.g. minimized or behind a locked screen, fails its load at once with the reason, since it draws no frames', { skip: (process.platform !== 'darwin' || !existsSync('/usr/bin/safaridriver')) && 'Safari runs on macOS only', timeout: 120_000 }, async (t) => {
+  const { origin, close } = await serve('test/pages');
+  t.after(close);
+  let browser;
+  try {
+    browser = await launch('safari', { timeout: 20_000 });
+  } catch (error) {
+    t.skip(`safaridriver did not start a session: ${String(error).split('\n')[0]}`);
+    return;
+  }
+  t.after(() => browser.close());
+  await browser.session('POST', '/window/minimize', {});
+  const page = browser.newPage();
+  const start = Date.now();
+  await assert.rejects(page.goto(`${origin}/shapes.html`), /safari: the page is hidden, e.g. minimized or behind a locked screen, and it draws no frames/);
+  assert.ok(Date.now() - start < 10_000, `the load failed after ${Date.now() - start} ms`);
 });
