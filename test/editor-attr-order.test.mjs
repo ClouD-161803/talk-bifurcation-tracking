@@ -23,6 +23,17 @@ test('the state of a tag without a class lists the class of a new step before it
   assert.deepEqual(Object.keys(stateOf(tagOf(html).attrs, edit).attrs), ['class', 'data-fragment-index']);
 });
 
+test('a new step written with the class of its effect has the class fragment first, as reveal.js writes it', () => {
+  const edit = { fragment: true, index: 2, classes: { play: true } };
+  for (const [html, written] of [
+    ['<video src="a.mp4"></video>', '<video src="a.mp4" class="fragment play" data-fragment-index="2"></video>'],
+    ['<video class="for-dark" src="a.mp4"></video>', '<video class="for-dark fragment play" src="a.mp4" data-fragment-index="2"></video>'],
+  ]) {
+    assert.equal(render(html, edit), written);
+    assert.deepEqual(ordered(stateOf(tagOf(html).attrs, edit)), readBack(written));
+  }
+});
+
 test('the state lists the classes and the declarations in the order of the tag that is written', () => {
   const html = '<p class="fragment small" style="translate: 10px 0px; width: 2px">a</p>';
   const edit = { fragment: true, translate: { x: 20, y: 0 } };

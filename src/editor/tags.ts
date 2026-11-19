@@ -115,7 +115,9 @@ export function stateOf(attrs: Attr[], edit: TagEdit = {}): TagState {
 }
 
 function classesOf(edit: TagEdit): Record<string, boolean> {
-  return edit.fragment === undefined ? { ...edit.classes } : { ...edit.classes, fragment: edit.fragment };
+  if (edit.fragment === undefined) return { ...edit.classes };
+  const { fragment: _, ...classes } = edit.classes ?? {};
+  return { fragment: edit.fragment, ...classes };
 }
 function styleOf(edit: TagEdit): Record<string, string | null> {
   if (edit.translate === undefined) return { ...edit.style };
