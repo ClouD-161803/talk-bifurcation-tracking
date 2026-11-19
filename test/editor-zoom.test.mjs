@@ -37,6 +37,7 @@ async function open(t, platform, width = 1600) {
 
 const frames = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
 const stage = (page) => page.evaluate(`(() => { const s = window.BeesonEditorShell.stage; return { zoom: s.zoom, scale: s.scale, fit: s.fitScale(), viewport: s.viewport.toJSON(), left: s.el.scrollLeft, top: s.el.scrollTop }; })()`);
+const LAID_OUT_AT_ZOOM = 'Reveal.getScale() === window.BeesonEditorShell.stage.scale';
 const setZoom = async (page, z) => { await page.evaluate(`window.BeesonEditorShell.stage.setZoom(${z})`); await frames(page); };
 
 const rectOf = (page, selector) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${JSON.stringify(selector)})].map((e) => e.getBoundingClientRect()).find((r) => r.width && r.height); return r && r.toJSON(); })()`);
@@ -500,7 +501,7 @@ describe('the lag of the zoom slider', () => {
       await loaded(page);
       const at = JSON.stringify(await page.evaluate('window.BeesonEditorShell.stage.zoom'));
       const measured = await bounded(t, page, async () => (await setZoom(page, at), pinchWheel(page)));
-      await page.evaluate('new Promise((done) => setTimeout(done, 400))');
+      await page.waitFor(LAID_OUT_AT_ZOOM);
       await frames(page);
       const got = await page.evaluate(STATE);
       assert.equal(await page.evaluate('Reveal.getScale()'), got.zoom);
@@ -547,7 +548,7 @@ describe('a slow pinch and zoom during a drag', () => {
       await mouse(page, 'mouseWheel', x, y, { deltaX: 0, deltaY: delta, modifiers: 2 });
       await frames(page);
     }
-    await wait(page, 400);
+    await page.waitFor(LAID_OUT_AT_ZOOM);
     await frames(page);
     return zoomOf(page);
   }
