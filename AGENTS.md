@@ -34,7 +34,6 @@ Hard invariants are never traded away for other goals. When a change would break
 - Do not write `data-moves-on`. It is set by the theme when the deck is started.
 - Someone may have the deck open in the editor while you change `index.html`. The editor then loads your change. At the next save, the unsaved edits of this person are merged into it.
 - When you copy a newer `theme/` into a talk, convert every class and attribute listed under "Avoid" in `GLOSSARY.md` to its new name. The theme reads only the new names.
-- Read PowerPoint files from their XML. Do not script PowerPoint, Keynote, or any other desktop app.
 
 ## Commands
 
