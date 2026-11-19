@@ -15,7 +15,7 @@ import type * as store from '../media/store.ts';
 import type * as tags from '../tags.ts';
 import type * as tokens from '../tokens.ts';
 
-export type Host = Pick<typeof caret, 'caretOf' | 'mapOffset' | 'markOf' | 'moved' | 'putCaret' | 'textIn'> &
+export type Host = Pick<typeof caret, 'caretOf' | 'mapOffset' | 'markOf' | 'moved' | 'putCaret' | 'runsOf' | 'textIn'> &
   Pick<typeof fragments, 'fragmentRoot' | 'parseFragment'> &
   Pick<typeof history, 'refreshHeads'> &
   Pick<typeof math, 'mathIn' | 'mathLookup' | 'setContentWithTex'> &
@@ -26,7 +26,7 @@ export type Host = Pick<typeof caret, 'caretOf' | 'mapOffset' | 'markOf' | 'move
   Pick<typeof tags, 'stateOf'> &
   Pick<typeof tokens, 'RAW_TEXT' | 'tokenize'>;
 
-export let caretOf: Host['caretOf'], mapOffset: Host['mapOffset'], markOf: Host['markOf'], moved: Host['moved'], putCaret: Host['putCaret'], textIn: Host['textIn'];
+export let caretOf: Host['caretOf'], mapOffset: Host['mapOffset'], markOf: Host['markOf'], moved: Host['moved'], putCaret: Host['putCaret'], runsOf: Host['runsOf'], textIn: Host['textIn'];
 export let fragmentRoot: Host['fragmentRoot'], parseFragment: Host['parseFragment'];
 export let refreshHeads: Host['refreshHeads'];
 export let mathIn: Host['mathIn'], mathLookup: Host['mathLookup'], setContentWithTex: Host['setContentWithTex'];
@@ -38,7 +38,7 @@ export let stateOf: Host['stateOf'];
 export let RAW_TEXT: Host['RAW_TEXT'], tokenize: Host['tokenize'];
 
 export function take(h: Host): void {
-  ({ caretOf, mapOffset, markOf, moved, putCaret, textIn } = h);
+  ({ caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn } = h);
   ({ fragmentRoot, parseFragment } = h);
   ({ refreshHeads } = h);
   ({ mathIn, mathLookup, setContentWithTex } = h);

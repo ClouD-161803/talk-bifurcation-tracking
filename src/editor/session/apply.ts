@@ -11,7 +11,7 @@ import type { MathLookup } from '../math.ts';
 import type { Pairing, TextElement } from '../render.ts';
 import type { Piece, Source, SrcEl, SrcText } from '../source.ts';
 import type { Attr } from '../tokens.ts';
-import { caretOf, charEdits, contentRange, detached, elementRange, isTextElement, mapOffset, mathIn, mathLookup, media, pair, pairElement, parseSource, putCaret, RAW_TEXT, refreshHeads, renderDeck, renderTextElement, setContentWithTex, stateOf, textIn, unitsWithin, virtualChildren, VOID } from './host.ts';
+import { caretOf, contentRange, detached, elementRange, isTextElement, mapOffset, mathIn, mathLookup, media, pair, pairElement, parseSource, putCaret, RAW_TEXT, refreshHeads, renderDeck, renderTextElement, runsOf, setContentWithTex, stateOf, textIn, unitsWithin, virtualChildren, VOID } from './host.ts';
 import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, startTag, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;
@@ -145,10 +145,17 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   // a dollar or a backslash typed, removed, or beside the change may start a formula, which MathJax
   // then typesets. one that the change leaves apart already failed to start one
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
-  // one replaceData per edit, from the last, keeps a caret between two edits at its characters. a
+  // one replaceData per run, from the last, keeps a caret between two runs at its characters. a
   // caret at an insertion stays before it, hence two people who take turns at one point each keep a
-  // run of their own
-  for (const e of (charEdits(was, now, 500) ?? [{ start: q, end: q + cut, text: ins }]).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
+  // run of their own. an end of the selection inside a run, which replaceData puts at its start, is
+  // put at its end by mapOffset, as through the other applies
+  const sel = getSelection();
+  const ends = sel?.rangeCount ? ([[sel.anchorNode, sel.anchorOffset], [sel.focusNode, sel.focusOffset]] as const) : null;
+  for (const e of runsOf(was, now).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
+  if (sel && ends?.some(([n]) => n === lp.node)) {
+    const [[an, ao], [fn, fo]] = ends.map(([n, o]) => [n, n === lp.node ? mapOffset(o, was, now) : o] as const);
+    if (an && fn && (sel.anchorOffset !== ao || sel.focusOffset !== fo)) sel.setBaseAndExtent(an, ao, fn, fo);
+  }
   const grow = ins.length - cut;
   k.pieces = k.pieces.map((q, i) => (i < j ? q : i === j ? { kind: 'text', dec: { start: q.dec.start, end: q.dec.end + grow } } : shiftPiece(q, grow)));
   retext(ctx.source, at.parent, at.index, ctx.text, decoded);

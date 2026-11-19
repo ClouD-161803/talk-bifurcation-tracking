@@ -58,21 +58,42 @@ export function caretOf(host: Element, math: MathLookup, br = false): { offset: 
 
 export const textIn = (host: Element, math: MathLookup, br = false): string => walk(host, math, [], br).text;
 
+// letters, marks, and digits, which make up a word
+const WORD = /^[\p{L}\p{M}\p{N}]+$/u;
+
+// the runs of changed characters that turn before into after, one run from the first changed
+// character to the last when more than 500 units differ. a run that takes letters out of a word and
+// puts only letters in grows to the whole word, and runs in one word become one, hence a caret in a
+// word that another person replaces goes to the end of the new word, e.g. after cha in chart to the
+// end of graph. an insertion alone keeps its run
+export function runsOf(before: string, after: string): Edit[] {
+  let runs = charEdits(before, after, 500);
+  if (!runs) {
+    const [head, tail] = shared(before, after);
+    runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
+  }
+  const letter = (i: number) => WORD.test(before.charAt(i));
+  const out: Edit[] = [];
+  runs.forEach((r, i) => {
+    const p = out.at(-1);
+    if (r.end === r.start || !WORD.test(before.slice(r.start, r.end)) || (r.text && !WORD.test(r.text))) return void out.push(r);
+    let { start, end } = r;
+    while (start > (p?.end ?? 0) && letter(start - 1)) start--;
+    while (end < (runs[i + 1]?.start ?? before.length) && letter(end)) end++;
+    const grown = { start, end, text: before.slice(start, r.start) + r.text + before.slice(r.end, end) };
+    if (p && p.end === start && p.end > p.start && letter(start - 1)) out[out.length - 1] = { start: p.start, end, text: p.text + grown.text };
+    else out.push(grown);
+  });
+  return out;
+}
+
 let last: { before: string; after: string; runs: Edit[] } | null = null;
 
-// the offset of the caret moved with a change of before into after: kept before each run of changed
-// characters, moved by its length after it, and put at its end inside it. the runs are one, from
-// the first changed character to the last, when more than 500 units differ. the runs of the last
-// pair of texts are kept, since both ends of a selection are moved with one change
+// the offset of the caret moved with a change of before into after: kept before each run of
+// runsOf(), moved by its length after it, and put at its end inside it. the runs of the last pair of
+// texts are kept, since both ends of a selection are moved with one change
 export function mapOffset(offset: number, before: string, after: string): number {
-  if (last?.before !== before || last.after !== after) {
-    let runs = charEdits(before, after, 500);
-    if (!runs) {
-      const [head, tail] = shared(before, after);
-      runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
-    }
-    last = { before, after, runs };
-  }
+  if (last?.before !== before || last.after !== after) last = { before, after, runs: runsOf(before, after) };
   let shift = 0;
   for (const run of last.runs) {
     if (offset <= run.start) break;

@@ -18,10 +18,10 @@ import { stateOf } from '../tags.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
 import { RAW_TEXT, tokenize } from '../tokens.ts';
 import { script } from '../ui/script.ts';
-import { caretOf, mapOffset, markOf, moved, putCaret, textIn } from './caret.ts';
+import { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn } from './caret.ts';
 import type { Host } from './host.ts';
 
-const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
+const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
 // be made to read as the text, after which the client loads the page again
