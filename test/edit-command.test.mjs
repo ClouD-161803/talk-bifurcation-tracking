@@ -190,6 +190,9 @@ test('the edit command serves a session and writes every edit into index.html', 
     assert.deepEqual((await put('plot.png', 'c')).json(), { path: 'media/plot-2.png' });
     assert.deepEqual((await put('..%2F..%2Fescape.png', 'd')).json(), { path: 'media/escape.png' });
     assert.equal(text(join(talk, 'media', 'my-plot-1-2.png')), 'b');
+    // a PDF of a PDF figure is taken as a picture is
+    assert.deepEqual((await put('Plot.PDF', '%PDF-1.4')).json(), { path: 'media/plot.pdf' });
+    assert.equal((await put('notes.txt', 'g')).status, 415);
     assert.equal((await put('run.exe', 'e')).status, 415);
     assert.equal((await put('index.html', 'f')).status, 415);
     // a body over 64 MB is refused from its Content-Length, before it is sent

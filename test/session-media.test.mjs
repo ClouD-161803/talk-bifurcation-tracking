@@ -9,11 +9,12 @@
 
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { pdfFigureStatus } from '../scripts/pdf-figures.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, STATE, talk, TEXT } from './helpers/client.mjs';
@@ -320,7 +321,6 @@ const PDF = resolve('test/pages/figure.pdf');
 const PDF_FILE = `new File([Uint8Array.from(atob(${JSON.stringify(readFileSync(PDF).toString('base64'))}), (c) => c.charCodeAt(0))], 'figure.pdf', { type: 'application/pdf' })`;
 // the first bytes of a PNG
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const NO_PDF = 'figure.pdf cannot be sent to the others, since a session does not take .pdf files. Add a PDF figure in the editor without a session.';
 // the middle of the image of selector that is drawn
 const middle = async (page, selector) => {
   const drawn = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0)`;
@@ -331,24 +331,174 @@ const middle = async (page, selector) => {
 // the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
 const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
 
-test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 300_000 }, async (t) => {
+// the data-pdf of the images of each slide of text
+const pdfsOf = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(/<img [^>]*data-pdf="([^"]+)"/g)].map((m) => m[1]));
+// the states of the PDF figures of index.html of the talk, as npm run tex and npm run check read them
+const states = (server) => pdfFigureStatus(server.file).map((f) => f.state);
+
+test('a PDF that is dropped, or chosen with Replace…, is written into media/ with its renders, and npm run tex finds them current', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const ann = await tab(browser, sessionUrl(server.edit));
   await show(ann, 'Two');
   await dropFiles(ann, [PDF]);
-  await ann.waitFor(`(${C}.app.note?.text ?? '') === ${JSON.stringify(NO_PDF)}`).catch(async () => assert.fail(`the reason of the drop reads ${await ann.evaluate(`${C}.app.note?.text ?? null`)}`));
-  assert.equal(await ann.evaluate(IMAGES), 0);
+  await ann.waitFor(`${IMAGES} === 2`).catch(async () => assert.fail(`the PDF is not added: ${await ann.evaluate(`${C}.app.note?.text ?? null`)}`));
+  let text = await converge(server, [ann]);
+  assert.deepEqual(sources(text)[1], ['media/figure-dark.png', 'media/figure-light.png']);
+  assert.deepEqual(pdfsOf(text)[1], ['media/figure.pdf', 'media/figure.pdf']);
+  assert.ok(disk(server, 'media/figure.pdf').equals(readFileSync(PDF)));
+  assert.deepEqual(media(server), ['figure-dark.png', 'figure-light.png', 'figure.pdf']);
+  assert.deepEqual(states(server), ['current', 'current']);
+
+  // the same PDF chosen with Replace… for a picture is named media/figure-2.pdf by the page, and
+  // the edit command answers with the file of the same bytes
+  await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${IMAGES} === 1`);
-  const before = await converge(server, [ann]);
-  await click(ann, await middle(ann, '.reveal .slides img'));
-  assert.equal(await ann.evaluate(`${C}.app.commands.enabled('media.replace')`), true);
-  assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), NO_PDF);
-  assert.equal(await converge(server, [ann]), before);
-  assert.deepEqual(media(server), ['plot.png']);
+  await ann.waitFor(`${IMAGES} === 3`);
+  await converge(server, [ann]);
+  await click(ann, await middle(ann, '.reveal .slides img:not([data-pdf])'));
+  assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), 'taken');
+  await until(() => pdfsOf(server.read())[0].length === 2, 'the PDF figure on slide One in index.html', 30_000);
+  text = await converge(server, [ann]);
+  assert.deepEqual(pdfsOf(text), [['media/figure.pdf', 'media/figure.pdf'], ['media/figure.pdf', 'media/figure.pdf']]);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].map((i) => i.getAttribute('data-pdf'))`), Array(4).fill('media/figure.pdf'));
+  assert.ok(!media(server).some((n) => /\.pdf$/.test(n) && n !== 'figure.pdf'), media(server).join(' '));
+  assert.deepEqual(states(server), Array(4).fill('current'));
   clean(ann);
+});
+
+test('a PDF that the edit command renames is named by data-pdf on every page, also after an undo and a redo', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'figure.pdf', 'another file');
+  leftover(server, 'figure-dark.png', 'another picture');
+  const ann = await tab(browser, sessionUrl(server.edit));
+  await show(ann, 'Two');
+  await dropFiles(ann, [PDF]);
+  await ann.waitFor(`${IMAGES} === 2`);
+  const check = async (pages) => {
+    const text = await converge(server, pages);
+    assert.deepEqual(pdfsOf(text)[1], ['media/figure-2.pdf', 'media/figure-2.pdf']);
+    assert.deepEqual(sources(text)[1], ['media/figure-dark-2.png', 'media/figure-light.png']);
+    for (const page of pages) assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].map((i) => i.getAttribute('data-pdf'))`), ['media/figure-2.pdf', 'media/figure-2.pdf']);
+  };
+  await until(() => server.read().includes('figure-2.pdf'), 'the new name of the PDF in index.html', 30_000);
+  await check([ann]);
+  assert.ok(disk(server, 'media/figure-2.pdf').equals(readFileSync(PDF)));
+  assert.equal(readFileSync(join(server.talk, 'media/figure.pdf'), 'utf8'), 'another file');
+  assert.deepEqual(states(server), ['current', 'current']);
+  await keys(ann, 'Mod+Z');
+  await until(() => !server.read().includes('<img'), 'the undo of the drop in index.html', 15_000);
+  await converge(server, [ann]);
+  await keys(ann, 'Mod+Shift+Z');
+  await until(() => server.read().includes('<img'), 'the redo of the drop in index.html', 15_000);
+  await until(() => !server.read().includes('"media/figure.pdf"'), 'the new name of the PDF after the redo', 15_000);
+  await check([ann]);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await show(ben, 'Two');
+  await check([ann, ben]);
+  await ben.waitFor(SHOWN('media/figure-dark-2.png'), 15_000);
+  assert.deepEqual(media(server), ['figure-2.pdf', 'figure-dark-2.png', 'figure-dark.png', 'figure-light.png', 'figure.pdf']);
+  clean(ann);
+  clean(ben);
+});
+
+test('two pages that add PDFs of the same name at once each keep their own PDF and renders', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const blue = plainPdf('0 0 1');
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  // the upload of the PDF of Ann is held while Ben drops a PDF of the same name
+  p.next('hold');
+  await show(ann, 'One');
+  await dropFiles(ann, [PDF]);
+  await until(() => p.held.length, 'the upload of Ann to be held');
+  await show(ben, 'Two');
+  await dropFiles(ben, [file(server, 'b', 'figure.pdf', blue)]);
+  await until(() => pdfsOf(server.read())[1].length === 2, 'the PDF figure of Ben in index.html', 30_000);
+  p.release();
+  await until(() => pdfsOf(server.read())[0].length === 2, 'the PDF figure of Ann in index.html', 30_000);
+  const text = await converge(server, [ann, ben]);
+  const [one, two] = pdfsOf(text);
+  assert.equal(new Set(one).size, 1);
+  assert.equal(new Set(two).size, 1);
+  assert.match(one[0], /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.match(two[0], /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.ok(disk(server, one[0]).equals(readFileSync(PDF)), `${one[0]} is the PDF of Ann`);
+  assert.ok(disk(server, two[0]).equals(blue), `${two[0]} is the PDF of Ben`);
+  const renders = sources(text);
+  assert.equal(new Set([...renders[0], ...renders[1]]).size, 4, renders.flat().join(' '));
+  for (const [i, pdf] of [one[0], two[0]].entries()) for (const r of renders[i]) assert.ok(r.startsWith(pdf.replace(/\.pdf$/, '-')), `${r} is a render of ${pdf}`);
+  assert.deepEqual(states(server), Array(4).fill('current'));
+  clean(ann);
+  clean(ben);
+});
+
+test('a PDF dropped by a guest reaches media/ through the relay, the host sees the figure only once its renders are in media/, and changes its page and Match the Mode', { timeout: 600_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, await relayed(t, server));
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const gus = await tab(browser, p.url, { name: 'Gus' });
+  assert.equal(await gus.evaluate(`${C}.host`), false);
+  await converge(server, [ann, gus]);
+  await show(ann, 'Two');
+  // a picture of the page of Ann that fails to load
+  await ann.evaluate(`(window.__broken = [], addEventListener('error', (e) => e.target instanceof HTMLImageElement && window.__broken.push(e.target.getAttribute('src')), true), true)`);
+  p.next('hold');
+  await show(gus, 'Two');
+  await dropFiles(gus, [PDF]);
+  await until(() => p.held.length, 'the upload of Gus to be held');
+  await gus.waitFor(`${IMAGES} === 2`);
+  assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal .slides img').length`), 0);
+  p.release();
+  await until(() => pdfsOf(server.read())[1].length === 2, 'the PDF figure of Gus in index.html', 30_000);
+  let text = await converge(server, [ann, gus]);
+  const [pdf] = pdfsOf(text)[1];
+  assert.match(pdf, /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.ok(disk(server, pdf).equals(readFileSync(PDF)));
+  assert.deepEqual(states(server), ['current', 'current']);
+  await ann.waitFor(SHOWN(sources(text)[1][0]), 15_000);
+  assert.deepEqual(await ann.evaluate('window.__broken'), []);
+
+  await front(ann);
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'taken');
+  await until(() => server.read().includes('data-page="2"'), 'page 2 in index.html', 30_000);
+  text = await converge(server, [ann, gus]);
+  assert.deepEqual(pdfsOf(text)[1], [pdf, pdf]);
+  assert.equal(text.split('data-page="2"').length - 1, 2, text);
+  await front(ann);
+  assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
+  await until(() => sources(server.read())[1].length === 1, 'one render in index.html', 30_000);
+  text = await converge(server, [ann, gus]);
+  await gus.waitFor(SHOWN(sources(text)[1][0]), 15_000);
+  assert.deepEqual(states(server), ['current']);
+  clean(ann);
+  clean(gus);
+});
+
+test('a guest who drops a PDF over 16 MB is told of the limit, and the deck and media/ are kept', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { url } = await relayed(t, server);
+  const gus = await tab(browser, `${url}index.html?edit&session`, { name: 'Gus' });
+  const before = await converge(server, [gus]);
+  await show(gus, 'Two');
+  await dropFiles(gus, [file(server, 'a', 'noise.pdf', noisePdf())]);
+  await gus.waitFor(`/^noise\\.pdf is larger than 16 MB/.test(${C}.app.note?.text ?? '')`).catch(async () => assert.fail(`the reason of the drop reads ${await gus.evaluate(`${C}.app.note?.text ?? null`)}`));
+  assert.equal(await gus.evaluate(IMAGES), 0);
+  assert.equal(await converge(server, [gus]), before);
+  assert.ok(!existsSync(join(server.talk, 'media')) || !media(server).length, 'media/ is kept');
+  clean(gus);
 });
 
 test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 780_000 }, async (t) => {
@@ -402,19 +552,8 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   clean(ben);
 });
 
-// a PDF of one page of 1920 by 1080 pt that shows noise of 3840 by 2160 px without compression,
-// hence a file of 25 MB whose render in the colors of the PDF is a PNG over 16 MB
-function noisePdf() {
-  const [w, h] = [3840, 2160];
-  const pixels = randomBytes(w * h * 3);
-  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
-  const objects = [
-    ['<< /Type /Catalog /Pages 2 0 R >>'],
-    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
-    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
-    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
-    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
-  ];
+// a PDF of objects, the first of which is the catalog
+function pdfOf(objects) {
   const parts = [Buffer.from('%PDF-1.4\n')];
   let length = parts[0].length;
   const offsets = objects.map((o, i) => {
@@ -429,6 +568,32 @@ function noisePdf() {
   const xref = offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
   parts.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`));
   return Buffer.concat(parts);
+}
+
+// a PDF of one page of 1920 by 1080 pt that shows noise of 3840 by 2160 px without compression,
+// hence a file of 25 MB whose render in the colors of the PDF is a PNG over 16 MB
+function noisePdf() {
+  const [w, h] = [3840, 2160];
+  const pixels = randomBytes(w * h * 3);
+  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
+  return pdfOf([
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
+    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ]);
+}
+
+// a PDF of one page of 400 by 300 pt with a square in the color rgb, e.g. '0 0 1' for blue
+function plainPdf(rgb) {
+  const content = `q ${rgb} rg 200 150 m 300 150 l 300 250 l 200 250 l h f Q`;
+  return pdfOf([
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 4 0 R >>'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ]);
 }
 
 // a talk whose slide Two holds a PDF figure of pdf in both modes

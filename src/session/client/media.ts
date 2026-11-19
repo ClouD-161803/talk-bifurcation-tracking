@@ -22,8 +22,9 @@ const MB = 1024 * 1024;
 const HOST_MAX = 64 * MB;
 // the limit of a body through the relay, hence of an image, which a guest asks for whole
 const GUEST_MAX = 16 * MB;
-// the extensions that PUT media/ takes, apart from json, which the editor does not add
-const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|m4v|webm|mov|ogv)$/i;
+// the extensions that PUT media/ takes, apart from json, which the editor does not add. a pdf is
+// the PDF of a PDF figure, which the page sends with its renders
+const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|m4v|webm|mov|ogv|pdf)$/i;
 const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
 // the deadline of an upload in ms, to which UPLOAD_PER_MB is added for each MB. it is set in a test
 // with the parameter session-upload-wait of the address
@@ -90,13 +91,22 @@ export function install(client: Client): void {
   const stuck = new WeakSet<Element>();
   // the files given up, with the reason
   const given = new Map<MediaFile, string>();
+  // the file of each first name that the edit command replaced, and the PDF that the data-pdf of an
+  // image named when a rename was answered, which data-pdf names until it is written. data-pdf is
+  // not shown from an object URL as src is, hence its file is not known from the page
+  const former = new Map<string, MediaFile>();
+  const named = new WeakMap<Element, { file: MediaFile; from: string }>();
+  const pdfOf = (el: Element, live: string | null): string | null => {
+    if (!live || el.localName !== 'img') return null;
+    const b = named.get(el);
+    return ((b?.from === live ? b.file : null) ?? store.get(live) ?? former.get(live))?.path ?? null;
+  };
   let settling = false;
 
   store.refuse = (file) => {
     if (!TAKEN.test(file.name)) {
       const ext = /\.[^./]+$/.exec(file.name)?.[0].toLowerCase();
-      // a PDF figure is a PDF with its renders, and the edit command does not take a PDF
-      const advice = file.type === 'application/pdf' || ext === '.pdf' ? 'Add a PDF figure in the editor without a session' : `Save ${file.type.startsWith('image/') ? 'it as a PNG or a JPEG' : file.type.startsWith('video/') ? 'it as an MP4 or a WebM' : 'a picture as a PNG or a JPEG, and a video as an MP4 or a WebM'}`;
+      const advice = `Save ${file.type.startsWith('image/') ? 'it as a PNG or a JPEG' : file.type.startsWith('video/') ? 'it as an MP4 or a WebM' : 'a picture as a PNG or a JPEG, and a video as an MP4 or a WebM'}`;
       return `${file.name} cannot be sent to the others, since a session does not take ${ext ? `${ext} files` : 'files without an extension'}. ${advice}.`;
     }
     // a guest reaches the edit command through the relay, which also limits what a guest loads
@@ -107,8 +117,8 @@ export function install(client: Client): void {
   };
   store.unique = () => client.people.some((p) => p.client !== client.client);
 
-  // each src and poster of the page shown from a file of the store whose name in the text is not
-  // the one of the file. an element of the edits of this page, i.e. new on the page, with a tag edit
+  // each src, poster, and data-pdf of the page that names a file of the store whose name in the text
+  // is not the one of the file. an element of the edits of this page, i.e. new on the page, with a tag edit
   // of the attribute, or in a range that the text of the authority lacks, is returned to be written.
   // an element of another page shows its own file in media/ again, whose name it keeps
   function scan(): { el: Element; name: string; path: string }[] {
@@ -124,9 +134,9 @@ export function install(client: Client): void {
     for (const el of client.app.slides().querySelectorAll('img, video, source')) {
       const s = pairing.elements.get(el) ?? pairing.inner.get(el);
       if (!s || stuck.has(el)) continue;
-      for (const name of ['src', 'poster']) {
+      for (const name of ['src', 'poster', 'data-pdf']) {
         const live = el.getAttribute(name);
-        const path = store.pathOf(live);
+        const path = name === 'data-pdf' ? pdfOf(el, live) : store.pathOf(live);
         if (!path || path === live) continue;
         const edit = tagEdits.get(el)?.attrs?.[name];
         const a = s.attrs.find((x) => x.name === name);
@@ -206,6 +216,12 @@ export function install(client: Client): void {
         if (!response.ok || typeof answer?.path !== 'string') throw new Failure(response.ok ? 0 : response.status, error);
         store.saved([f]);
         if (answer.path !== f.path) {
+          for (const el of client.app.slides().querySelectorAll('img[data-pdf]')) {
+            const from = el.getAttribute('data-pdf')!;
+            const file = store.get(from);
+            if (file) named.set(el, { file, from });
+          }
+          former.set(f.path, f);
           const now = client.snapshot();
           store.renamed(f, answer.path, (path) => !!now && (now.base.includes(path) || now.mine.includes(path)));
           renamed = moved = true;
