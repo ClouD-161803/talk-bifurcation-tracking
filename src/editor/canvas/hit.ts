@@ -504,7 +504,3 @@ export function innerBandAt(app: App, x: number, y: number): Element | null {
 
 // whether el holds a text that is edited in place
 export const hasText = (el: Element): boolean => el.matches(HOST) || !!el.querySelector(HOST);
-
-export function install(_app: App): void {
-  // the functions above are called by the selection, the frames, and the drag
-}

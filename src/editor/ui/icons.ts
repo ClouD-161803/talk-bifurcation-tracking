@@ -3,7 +3,6 @@
 // place, and a name that is not in PATHS is drawn as a square. the icon shape:<kind> of a shape
 // is drawn from the geometry of src/shapes.ts, so that it follows a change of its shape
 
-import type { App } from '../app.ts';
 import { shapePath } from '../../shapes.ts';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -117,8 +116,4 @@ export function icon(name: string, size = 20): SVGSVGElement {
     svg.append(path);
   }
   return svg;
-}
-
-export function install(_app: App): void {
-  // the icons are drawn when a bar asks for them
 }

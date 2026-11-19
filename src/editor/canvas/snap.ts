@@ -4,7 +4,6 @@
 // the edges that its handle moves, and a point, e.g. the end of a line, snaps to the same lines.
 // every box is in slide pixels of the 1920 by 1080 design size
 
-import type { App } from '../app.ts';
 
 export type Box = { left: number; top: number; width: number; height: number };
 export type Axis = 'x' | 'y';
@@ -330,8 +329,4 @@ export function snapAngle(raw: number, o: { steps: boolean; free: boolean }): { 
   const major = Math.round(raw / 45) * 45;
   if (!o.free && Math.abs(raw - major) <= ANGLE_SNAP) return { deg: wrap(major), held: true };
   return { deg: wrap(Math.round(raw)), held: false };
-}
-
-export function install(_app: App): void {
-  // the engine is pure, and canvas/drag.ts calls it
 }

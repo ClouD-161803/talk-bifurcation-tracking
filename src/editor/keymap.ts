@@ -5,7 +5,7 @@
 // by its key or its code. a symbol such as ? or > is typed with Shift on one layout and without it
 // on another, hence the Shift of a symbol is not compared
 
-import type { App, Platform } from './app.ts';
+import type { Platform } from './app.ts';
 
 export type { Platform };
 export type KeyString = string;
@@ -130,5 +130,3 @@ export function display(value: KeyString, platform: Platform): string {
   const mods = [c.ctrl && 'Ctrl', c.meta && 'Meta', c.alt && 'Alt', c.shift && 'Shift'].filter(Boolean);
   return [...mods, OTHER_KEYS[key] ?? key].join('+');
 }
-
-export function install(_app: App): void {}
