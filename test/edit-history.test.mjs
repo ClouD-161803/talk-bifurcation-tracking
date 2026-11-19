@@ -184,9 +184,9 @@ test('the slides of a version are numbered as the status bar numbers them', { ti
   await t.test('a slide at the top by its place in the show, and a vertical slide as reveal.js counts it', () => {
     const numberOf = (heading) => slidesOf(STACKED).find((s) => STACKED.slice(s.start, s.end).includes(heading))?.number;
     assert.deepEqual(['Title', 'Alpha', 'Hidden', 'Beta', 'Thanks', 'Appendix<'].map(numberOf), [1, 2, 3, 4, 5, 6]);
-    assert.equal(numberOf('Down one'), 3);
-    assert.equal(numberOf('Down two'), 4);
-    assert.equal(numberOf('Appendix down'), 6);
+    assert.equal(numberOf('Down one'), 3, 'reveal.js counts the hidden slide and each vertical slide, and leaves out the title slide');
+    assert.equal(numberOf('Down two'), 4, 'reveal.js counts each vertical slide');
+    assert.equal(numberOf('Appendix down'), 6, 'reveal.js leaves the closing slide and the appendix uncounted');
     assert.equal(slidesOf(STACKED).length, 9);
   });
 
@@ -384,7 +384,7 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   assert.deepEqual(listed.versions.map((x) => [x.id, x.name]), [[v.id, 'Second'], [base.id, undefined]]);
   assert.equal((await name(v.id, 'x'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 'é'.repeat(80))).status, 200);
-  assert.equal((await name(v.id, '😀'.repeat(80))).status, 200);
+  assert.equal((await name(v.id, '😀'.repeat(80))).status, 200, 'an emoji counts as one character, not as its two UTF-16 code units');
   assert.equal((await name(v.id, '😀'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 42)).status, 400);
   assert.equal((await name('nope', 'x')).status, 404);
@@ -1130,8 +1130,7 @@ test('a change of index.html from outside is told by the characters that people 
   assert.equal(told('<p>late', '<p>Late'), true, 'the first of two words of Ann in one version');
 });
 
-test('a change of index.html from outside is told whenever it replaces or removes a character that a person wrote, over random edits of people', { timeout: 120_000 }, (t) => {
-  let seed = 38;
+function mulberry32(seed) {
   const rnd = () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -1140,15 +1139,21 @@ test('a change of index.html from outside is told whenever it replaces or remove
   };
   const int = (n) => Math.floor(rnd() * n);
   const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
-  const applied = (cells, patches, person) => {
-    const out = [];
-    let at = 0;
-    for (const p of patches) {
-      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
-      at = p.end;
-    }
-    return [...out, ...cells.slice(at)];
-  };
+  return { rnd, int, word };
+}
+
+function applied(cells, patches, person) {
+  const out = [];
+  let at = 0;
+  for (const p of patches) {
+    out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
+    at = p.end;
+  }
+  return [...out, ...cells.slice(at)];
+}
+
+test('a change of index.html from outside is told whenever it replaces or removes a character that a person wrote, over random edits of people', { timeout: 120_000 }, (t) => {
+  const { rnd, int, word } = mulberry32(38);
   let missed = 0;
   for (let round = 0; round < 3000; round++) {
     let text = '<body>\n';
@@ -1295,24 +1300,7 @@ test('a change of index.html from outside is told where it replaces a word of a 
 });
 
 test('a change of index.html from outside is told whenever it replaces a character that a person wrote, after operations of several patches inside the text of their version', { timeout: 120_000 }, (t) => {
-  let seed = 38;
-  const rnd = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-  const int = (n) => Math.floor(rnd() * n);
-  const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
-  const applied = (cells, patches, person) => {
-    const out = [];
-    let at = 0;
-    for (const p of patches) {
-      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
-      at = p.end;
-    }
-    return [...out, ...cells.slice(at)];
-  };
+  const { rnd, int, word } = mulberry32(38);
   let missed = 0;
   for (let round = 0; round < 3000; round++) {
     let text = '<body>\n';
@@ -1385,7 +1373,7 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   ms(alone);
   let [withHistory, without] = [ms(authority), ms(alone)];
   if (withHistory > 6 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
-  assert.ok(withHistory <= 6 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone, measured as ${measured.join('; ')}`);
+  assert.ok(withHistory <= 6 * without, `a history that read every mark was 10 times as slow, and this one took ${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone, measured as ${measured.join('; ')}`);
 });
 
 test('a Replace All in slides that a person pasted in the same version takes about as long as in slides of an earlier version', { timeout: 300_000 }, (t) => {
