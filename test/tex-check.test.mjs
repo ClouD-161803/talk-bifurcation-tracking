@@ -35,3 +35,9 @@ test('the check passes on a deck whose preamble has a line that is not read', { 
   assert.equal(run.status, 0, run.stdout + run.stderr);
   assert.match(run.stdout, /no page errors/);
 });
+
+test('the check waits for the font of a TeX package that is ready seconds after its formula, and names its error', { timeout: 120000 }, () => {
+  const run = check('test/pages/tex-check/late-font.html');
+  assert.equal(run.status, 1, run.stdout + run.stderr);
+  assert.match(run.stderr, /behaviors: .*the font of mhchem is ready 3 s after its formula/);
+});

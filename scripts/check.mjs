@@ -122,10 +122,7 @@ async function checkDesktop() {
     return Math.hypot(box.x + box.width / 2 - 400, box.y + box.height / 2 - 300);
   })()`);
   if (offset > 1) failures.push(`pointer: the dot is ${offset.toFixed(1)} px from the pointer`);
-  // a TeX package with a font of its own is loaded at its first macro, from outside
-  // output.fontPath, and the formula is returned before this load is finished
   await page.evaluate(String.raw`window.MathJax?.tex2svgPromise('\\ce{H2O}').then(() => true)`);
-  await new Promise((done) => setTimeout(done, 1000));
   for (const error of [...page.errors, ...(await page.evaluate(deckProblems))]) failures.push(`behaviors: ${error}`);
   for (const video of await page.evaluate(videosWithoutPoster)) {
     failures.push(`video without a poster: ${video}, give it a poster attribute, since it is printed in the PDF`);
