@@ -18,7 +18,7 @@ const KNOWN = {
   'element.delete table.clearCells | canvas Backspace': DELETE,
   'element.delete table.clearCells | canvas Delete': DELETE,
   'selection.clear table.selectTable | canvas Escape': 'a range of cells takes Esc first and leaves its table selected, as Keynote does',
-  'selection.editText selection.selectMedia shape.editWords table.editCell | canvas Enter': 'Return acts on the one selected object: a text, a figure without text, an empty shape, or a range of cells first',
+  'math.openFocused selection.editText selection.selectMedia shape.editWords table.editCell | canvas Enter': 'Return opens the TeX of a formula with the focus first, and acts otherwise on the one selected object: a text, a figure without text, an empty shape, or a range of cells first',
   'table.cell.down text.flow.down | text ArrowDown': FLOW,
   'table.cell.left text.flow.left | text ArrowLeft': FLOW,
   'table.cell.right text.flow.right | text ArrowRight': FLOW,
@@ -27,7 +27,7 @@ const KNOWN = {
   'table.previousCell text.outdent text.tabBack | text Shift+Tab': 'Shift+Tab outdents an item of a list, moves to the cell before in a table, and is a tab elsewhere, which is off in a cell',
   'text.flow.delete text.joinBackward | text Backspace': 'a selection over several text elements is deleted first, and Backspace joins two paragraphs otherwise',
   'text.flow.delete text.joinForward | text Delete': 'a selection over several text elements is deleted first, and Delete joins two paragraphs otherwise',
-  'text.flow.newParagraph text.newParagraph | text Enter': 'a selection over several text elements is replaced by a new paragraph first, and Return splits the text element otherwise',
+  'math.openFocused text.flow.newParagraph text.newParagraph | text Enter': 'Return opens the TeX of a formula with the focus first, a selection over several text elements is replaced by a new paragraph next, and Return splits the text element otherwise',
 };
 
 const COMMANDS = `(() => {

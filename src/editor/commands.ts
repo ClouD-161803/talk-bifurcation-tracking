@@ -186,10 +186,29 @@ export class Commands {
 }
 
 export function installKeys(app: App): void {
+  app.commands.define({
+    id: 'math.openFocused',
+    label: 'Edit Formula…',
+    keys: { mac: ['Enter', 'Space'], other: ['Enter', 'Space'] },
+    in: ['canvas', 'text'],
+    enabled: (a) => !a.math.isOpen() && !!focusedFormula(a),
+    run: (a) => a.math.open(focusedFormula(a) as Element),
+  });
+  app.commands.define({
+    id: 'dialog.close',
+    label: (a) => (a.files.askShown() ? 'Cancel' : 'Close'),
+    keys: { mac: ['Escape'], other: ['Escape'] },
+    in: ['dialog'],
+    enabled: (a) => a.files.problemsShown() || a.files.askShown() || a.math.isOpen(),
+    run: (a) => {
+      if (a.files.problemsShown()) a.files.closeProblems();
+      else if (a.files.askShown()) a.files.cancelAsk();
+      else a.math.close();
+    },
+  });
   window.addEventListener('keydown', (ev) => {
     if (app.commands.intercepted(ev)) return void ev.stopImmediatePropagation();
     if (ev.isComposing || ev.keyCode === 229) return;
-    if (dialogKey(app, ev)) return;
     const own = (document.activeElement as Element | null)?.closest?.('[data-own-keys]')?.getAttribute('data-own-keys');
     const alt = own ? fallback(ev, app.platform) : null;
     if (own?.split(' ').some((k) => matches(ev, k, app.platform) || (!!alt && matches(alt, k, app.platform)))) return;
@@ -205,19 +224,7 @@ export function installKeys(app: App): void {
   }, true);
 }
 
-function dialogKey(app: App, ev: KeyboardEvent): boolean {
+function focusedFormula(app: App): Element | null {
   const active = document.activeElement;
-  if ((ev.key === 'Enter' || ev.key === ' ') && !app.math.isOpen() && active instanceof Element && active.matches('mjx-container') && app.hostOf(active)) {
-    ev.preventDefault();
-    ev.stopPropagation();
-    app.math.open(active);
-    return true;
-  }
-  if (ev.key !== 'Escape') return false;
-  if (app.files.problemsShown()) app.files.closeProblems();
-  else if (app.files.askShown()) app.files.cancelAsk();
-  else if (app.math.isOpen()) app.math.close();
-  else return false;
-  ev.stopPropagation();
-  return true;
+  return active instanceof Element && active.matches('mjx-container') && app.hostOf(active) ? active : null;
 }
