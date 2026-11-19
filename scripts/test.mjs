@@ -1,5 +1,9 @@
 // npm test: the options of node are those of package.json, which each test file inherits
-//   node ... scripts/test.mjs [--shard=N/M] [test file ...]
+//   node ... scripts/test.mjs [--shard=N/M | --all | test file ...]
+//
+// Every test file is run only with --shard or --all, since the whole suite is run by CI in each
+// round, and it takes over an hour on a laptop. Outside CI, the test files and their browsers are
+// run at the lowest priority of the system, hence a laptop stays usable while they run.
 //
 // The test files are run as node --test runs them, and their reports are written to standard output
 // in TAP. A file with a failed test is then run once more, by itself. The command fails when a file
@@ -9,6 +13,7 @@ import { run } from 'node:test';
 import { tap } from 'node:test/reporters';
 import { appendFileSync, globSync } from 'node:fs';
 import { relative } from 'node:path';
+import { constants, setPriority } from 'node:os';
 
 // more failed files than this are not run again, since that many are not flaky at once
 const AGAIN = 5;
@@ -21,6 +26,13 @@ const property = (text) => data(text).replaceAll(':', '%3A').replaceAll(',', '%2
 const args = process.argv.slice(2);
 const shard = args.map((arg) => /^--shard=(\d+)\/(\d+)$/.exec(arg)).find(Boolean);
 const named = args.filter((arg) => !arg.startsWith('--'));
+if (!named.length && !shard && !args.includes('--all')) {
+  console.error('Name the test files to run, e.g. npm test -- test/editor-table.test.mjs. The whole suite is run by CI in each round, and here only with npm test -- --all.');
+  process.exit(1);
+}
+// a runner of CI is not used for anything else. A child process is started at the priority of its
+// parent, hence a browser at the priority of its test file
+if (!process.env.CI) setPriority(constants.priority.PRIORITY_LOW);
 const files = (named.length ? named : globSync('test/*.test.mjs')).sort();
 // the limit of a test file in node 22, in which only the limit of each test is inherited
 const timeout = Number(process.execArgv.find((arg) => arg.startsWith('--test-timeout='))?.split('=')[1]) || undefined;
