@@ -1,11 +1,3 @@
-// npm run tex writes the script tex.js next to a deck, from the preamble.tex and the references.bib
-// next to it: the macros and the environments for MathJax, the kinds of theorem, and the references
-// of the entries that the deck cites. The lines of the preamble and the entries of the bibliography
-// that are not read are printed with their reason, and so is a key that is cited without an entry.
-// The TikZ figures of figures.mjs are compiled, and the PDF figures of pdf-figures.mjs rendered.
-// In an older talk, the macros of theme/macros.js are written into a preamble.tex once.
-//
-//   node scripts/tex.mjs [deck]     the deck is index.html unless it is given
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +8,6 @@ import { sources } from './sources.mjs';
 
 const { folderTex, preambleOf, skippedLines, texScript } = await sources(['texfile']);
 
-/** What npm run tex writes for a deck, with the lines that are skipped and the keys without an entry. Nothing is written. */
 export function deckTex(deck) {
   const dir = dirname(resolve(deck));
   const text = (name) => {
@@ -30,8 +21,6 @@ export function deckTex(deck) {
   return { file: join(dir, 'tex.js'), text: texScript(tex), tex, preamble, bibliography, missing };
 }
 
-// the macros of theme/macros.js of an older talk are written into a preamble.tex, each under the
-// comment lines above it, the file is deleted, and its script tag in the deck is pointed at tex.js
 function convertMacros(deck) {
   const dir = dirname(resolve(deck));
   const file = join(dir, 'theme', 'macros.js');
