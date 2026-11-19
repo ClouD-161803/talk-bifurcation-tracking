@@ -1,6 +1,5 @@
-// written from figures/cr3bp.tex by npm run tex. change the source, since this file is written again from it
 (window.beesonFigures ??= {})["cr3bp"] = {
-  "hash": "6ae18a73c4bda280",
+  "hash": "1d9c9acef102230d",
   "width": 567.59,
   "height": 395.96,
   "scale": 0.7761,
