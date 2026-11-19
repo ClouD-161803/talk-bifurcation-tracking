@@ -1137,6 +1137,13 @@ test('two values of one attribute set at once conflict, and the last writer wins
   assert.deepEqual(diff('<p id=x>t</p>', '<p id=y>t</p>'), [{ start: 0, end: 8, text: '<p id=y>' }]);
 });
 
+test('a removal that ends on a character reference after a bare ampersand keeps the reference whole, hence a key typed after the ampersand does not break it', () => {
+  const base = '<section>\n  <p>R&D &amp; co</p>\n</section>\n';
+  const typed = base.replace('R&D', 'R&XD'), cut = base.replace('R&D &amp;', 'R&amp;');
+  assert.deepEqual(diff(base, cut), [{ start: 16, end: 24, text: '&amp;' }]);
+  for (const merged of [race(base, typed, cut, true), race(base, typed, cut, false), mergeTexts(base, typed, cut), mergeTexts(base, cut, typed)]) assert.match(merged, /&amp; co/);
+});
+
 // the snippets of the edits of the widen test, which open and close tags, raw text, comments, and
 // references, and U+0130, whose lowercase is two code units long
 const SNIPPETS = ['a', ' ', '\n', '<', '>', '"', "'", '&', '&amp;', ';', '/', '=', '<p>', '</p>', '<b class="x y">', '<i title=\'a>b\'>', '<!--', '-->', '<script>', '</script>', '</script ', '<title>', '</title>', '<style>', '</style>', '<textarea>', '</textarea>', '<!doctype html>', '<?x', '</ ', '😀', '\ud83d'];

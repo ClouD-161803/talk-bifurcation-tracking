@@ -94,7 +94,13 @@ function hunks(x: string[], y: string[]): Hunk[] {
       return;
     }
   });
-  return out;
+  const size = (h: Hunk) => h.a1 - h.a0 + h.b1 - h.b0;
+  return out.reduce((list: Hunk[], h) => {
+    const last = list[list.length - 1], gap = last ? x.slice(last.a1, h.a0) : [];
+    if (last && gap.length <= Math.min(size(last), size(h)) && [last, h].some((k) => [...x.slice(k.a0, k.a1), ...y.slice(k.b0, k.b1)].some(isTag)) && gap.every((u) => /^\s$/.test(u))) list[list.length - 1] = { a0: last.a0, a1: h.a1, b0: last.b0, b1: h.b1 };
+    else list.push(h);
+    return list;
+  }, []);
 }
 
 const isTag = (u: string) => u.length > 2 && u[0] === '<';

@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { carry, changes, stay } from '../editor/merge.ts';
+import { carry, changes, shared, stay } from '../editor/merge.ts';
 import { goesOn, mergeRun, spaced } from './run.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
@@ -274,21 +274,6 @@ function tokensOf(text: string): Token[] {
 // the characters past its end that tokenize() reads to end a token, at most, i.e. </textarea and one
 const AHEAD = 12;
 
-// the length of the start that a and b share, compared in blocks
-function sharedStart(a: string, b: string, n: number): number {
-  let i = 0;
-  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(i, i + w) === b.slice(i, i + w)) i += w;
-  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
-  return i;
-}
-
-function sharedEnd(a: string, b: string, n: number): number {
-  let i = 0;
-  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(a.length - i - w, a.length - i) === b.slice(b.length - i - w, b.length - i)) i += w;
-  while (i < n && a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)) i++;
-  return i;
-}
-
 // a token of tokens moved by d
 function moved(t: Token, d: number): Token {
   if (t.type !== 'start') return { ...t, start: t.start + d, end: t.end + d };
@@ -302,9 +287,7 @@ function moved(t: Token, d: number): Token {
 // null when tokenize(text) costs about as much
 function retokenize(last: { text: string; tokens: Token[]; odd: boolean }, text: string): Token[] | null {
   const old = last.tokens, n = text.length, d = n - last.text.length;
-  const both = Math.min(n, last.text.length);
-  const p = sharedStart(last.text, text, both);
-  const tail = n - sharedEnd(last.text, text, both - p);
+  const [p, e] = shared(last.text, text), tail = n - e;
   if (last.odd || text.slice(p, tail).includes('\u0130')) return null;
   let lo = 0, hi = old.length;
   while (lo < hi) {
@@ -430,7 +413,7 @@ export function widen(base: string, patches: Patch[]): Patch[] {
     }
     groups.push(group);
   }
-  return groups.map((g) => {
+  return groups.map((g, i) => {
     const parts: string[] = [];
     let at = g.start;
     for (const p of g.patches) {
@@ -438,27 +421,25 @@ export function widen(base: string, patches: Patch[]): Patch[] {
       at = p.end;
     }
     parts.push(base.slice(at, g.end));
-    return { start: g.start, end: g.end, text: parts.join('') };
+    let { start, end } = g, text = parts.join('');
+    const head = base.slice(Math.max(groups[i - 1]?.end ?? 0, start - 34), start), r = referenceAt(head + text, head.length);
+    if (r) [start, text] = [start - head.length + r.start, head.slice(r.start) + text];
+    const tail = base.slice(end, Math.min(groups[i + 1]?.start ?? base.length, end + 34)), q = referenceAt(text + tail, text.length);
+    if (q) [end, text] = [end + q.end - text.length, text + tail.slice(0, q.end - text.length)];
+    return { start, end, text };
   });
 }
 
 // a patch over as many old lines as new ones split into a patch per line, each narrowed to the
 // characters that differ, since changes() gives one hunk for a run of changed lines
 function byLine(base: string, p: Patch): Patch[] {
-  const old = base.slice(p.start, p.end).split('\n');
-  const next = p.text.split('\n');
+  const old = base.slice(p.start, p.end).split('\n'), next = p.text.split('\n');
   if (old.length < 2 || old.length !== next.length) return [p];
   const out: Patch[] = [];
   let at = p.start;
-  for (let i = 0; i < old.length; i++) {
-    const a = old[i], b = next[i];
-    let pre = 0;
-    while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-    let suf = 0;
-    while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-    if (a !== b) out.push({ start: at + pre, end: at + a.length - suf, text: b.slice(pre, b.length - suf) });
-    at += a.length + 1;
-  }
+  old.forEach((a, i) => {
+    narrow(base, at, (at += a.length + 1) - 1, next[i], out);
+  });
   return out;
 }
 
@@ -623,46 +604,11 @@ export function coreOf(base: string, p: Patch): Patch | null {
   return pure(c) ? c : null;
 }
 
-const LINE = /(?<=\n)/;
-const sum = (patches: Patch[]) => patches.reduce((n, p) => n + p.text.length - (p.end - p.start), 0);
-
-// a removal or insertion that may move, with the patches that make the rest of a patch before and
-// after it
-type Way = { pure: Patch; before: Patch[]; after: Patch[] };
-
-// the ways to make p with a removal or insertion that may move: p itself or its core, or for a patch
-// over whole lines, the removal or insertion of whole lines at its start or its end and the patches
-// of the lines left, which pair one to one, e.g. a removed line that changes() joined with a changed
-// line next to it. such a p is widened to whole lines first
-function ways(base: string, p: Patch): Way[] {
-  const c = coreOf(base, p);
-  if (c) return [{ pure: c, before: [], after: [] }];
-  const s = base.lastIndexOf('\n', p.start - 1) + 1, e = base.indexOf('\n', p.end) + 1 || base.length;
-  p = { start: s, end: e, text: base.slice(s, p.start) + p.text + base.slice(p.end, e) };
-  const old = base.slice(p.start, p.end).split(LINE), next = p.text.split(LINE);
-  const d = old.length - next.length;
-  if (d === 0) return [];
-  const pairs = (start: number, end: number, text: string) => widen(base, byLine(base, { start, end, text }));
-  if (d > 0) {
-    const head = p.start + old.slice(0, d).join('').length, tail = p.end - old.slice(old.length - d).join('').length;
-    return [
-      { pure: { start: p.start, end: head, text: '' }, before: [], after: pairs(head, p.end, p.text) },
-      { pure: { start: tail, end: p.end, text: '' }, before: pairs(p.start, tail, p.text), after: [] },
-    ];
-  }
-  const head = next.slice(0, -d).join(''), tail = next.slice(next.length + d).join('');
-  return [
-    { pure: { start: p.start, end: p.start, text: head }, before: [], after: pairs(p.start, p.end, p.text.slice(head.length)) },
-    { pure: { start: p.end, end: p.end, text: tail }, before: pairs(p.start, p.end, p.text.slice(0, p.text.length - tail.length)), after: [] },
-  ];
-}
-
 // the patches of diff(base, text) with each removal and each insertion that could be made at another
 // place with the same text moved to one of places, the offsets of text at which the editor put or
 // removed an element, or to the start of the line of one when its indentation alone comes before it.
 // diff() places a change as late as it can, hence without places the removal of the first of two
-// equal elements reads as the removal of the second, and its comments move to the first. a patch that
-// changes() joined with a changed line next to it is split first
+// equal elements reads as the removal of the second, and its comments move to the first
 export function placed(base: string, patches: Patch[], places: readonly number[], text: string): Patch[] {
   if (!places.length) return patches;
   const marks = places.flatMap((h) => [lineStart(text, h), h]);
@@ -670,20 +616,14 @@ export function placed(base: string, patches: Patch[], places: readonly number[]
   let delta = 0;
   patches.forEach((p, i) => {
     const lo = out.length ? out[out.length - 1].end : 0, hi = i + 1 < patches.length ? patches[i + 1].start : base.length;
-    const found = ways(base, p).some(({ pure, before, after }) => {
-      const at = pure.start + delta + sum(before);
-      if ((before[0] ?? after[0])?.start < lo || (after[after.length - 1] ?? before[before.length - 1])?.end > hi) return false;
-      const from = before.length ? before[before.length - 1].end : lo, to = after.length ? after[0].start : hi;
-      for (const h of marks) {
-        const k = h - at;
-        const moved = k === 0 ? pure : Math.abs(k) <= 4 * LONG && slid(base, pure, k);
-        const [w] = moved ? widen(base, [moved]) : [];
-        if (!w || w.start < from || w.end > to) continue;
-        // a pure patch at its place is kept as diff() gave it
-        out.push(...(k === 0 && !before.length && !after.length ? [p] : [...before, w, ...after]));
-        return true;
-      }
-      return false;
+    const pure = coreOf(base, p);
+    const found = !!pure && marks.some((h) => {
+      const k = h - pure.start - delta;
+      const moved = k === 0 ? pure : Math.abs(k) <= 4 * LONG && slid(base, pure, k);
+      const [w] = moved ? widen(base, [moved]) : [];
+      if (!w || w.start < lo || w.end > hi) return false;
+      out.push(k === 0 ? p : w);
+      return true;
     });
     if (!found) out.push(p);
     delta += p.text.length - (p.end - p.start);
@@ -695,8 +635,7 @@ export function placed(base: string, patches: Patch[], places: readonly number[]
 // last one move with the end, and those between are dropped
 export function moveOffsets(offsets: readonly number[], a: string, b: string): number[] {
   if (!offsets.length || a === b) return [...offsets];
-  const n = Math.min(a.length, b.length);
-  const head = sharedStart(a, b, n), tail = a.length - sharedEnd(a, b, n - head);
+  const [head, e] = shared(a, b), tail = a.length - e;
   return offsets.flatMap((h) => (h <= head ? [h] : h >= tail ? [h + b.length - a.length] : []));
 }
 
