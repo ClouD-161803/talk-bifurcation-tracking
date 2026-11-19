@@ -7,6 +7,7 @@ import { chooseFiles } from '../media/actions.ts';
 import { deckFolder } from '../media/save.ts';
 import { figureLink } from '../session/port.ts';
 import { make } from '../ui/dom.ts';
+import { themeUrl } from '../ui/script.ts';
 import { citedKeys, texScript, type Tex } from '../../texfile.ts';
 
 export type Which = 'preamble' | 'bibliography';
@@ -35,8 +36,6 @@ declare global {
     BeesonTexSheets?: (host: TexHost) => TexSheets;
   }
 }
-
-const SELF = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
 
 let sheets: TexSheets | null = null;
 export const shownSheet = (): ReturnType<TexSheets['showing']> => sheets?.showing() ?? null;
@@ -90,7 +89,7 @@ export function install(app: App): void {
   load = (): Promise<TexSheets> =>
     (loading ??= new Promise<TexSheets>((done, fail) => {
       const script = document.createElement('script');
-      script.src = SELF ? new URL('editor-tex.js', SELF).href : 'theme/editor-tex.js';
+      script.src = themeUrl('editor-tex.js');
       script.onload = () => {
         if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start, link: figureLink, place: (name) => placeFigure(app, name), why: () => why(app) })));
         loading = null;

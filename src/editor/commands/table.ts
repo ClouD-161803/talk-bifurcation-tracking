@@ -816,25 +816,6 @@ export async function pasteTable(app: App, text: string, html = ''): Promise<boo
 let current: App | null = null;
 
 let cancelMove: ((cancel: boolean) => boolean) | null = null;
-window.addEventListener('keydown', (ev) => {
-  if (!cancelMove?.(ev.key === 'Escape')) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-}, true);
-
-const RANGE_KEYS: Command[] = [];
-window.addEventListener('keydown', (ev) => {
-  const app = current;
-  if (!app || ev.isComposing || menuOpen() || picker || app.region() !== 'canvas' || !rangeHeld(app)) return;
-  if (ev.key === 'Escape' && previewPlays()) return;
-  const hit = (x: Command | undefined) => !!x && keysOf(x, app.platform).some((k) => matches(ev, k, app.platform));
-  const c = RANGE_KEYS.find(hit);
-  if (!c && hit(app.commands.get('edit.duplicate'))) ev.preventDefault();
-  if (!c) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-  void app.commands.run(c.id).catch((e) => app.fail(e));
-}, true);
 
 function cellItems(cell: HTMLTableCellElement): MenuItem[] {
   const arg = { cell };
@@ -865,17 +846,6 @@ function cellItems(cell: HTMLTableCellElement): MenuItem[] {
 function openCellMenu(app: App, cell: HTMLTableCellElement, at: { x: number; y: number }): void {
   openMenu(app, cellItems(cell), { anchor: at, placement: 'point', label: 'cell menu', className: 'context cell' });
 }
-
-window.addEventListener('keydown', (ev) => {
-  const app = current;
-  if (!app || menuOpen() || !(ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey))) return;
-  const cell = cellAt(app);
-  if (!cell) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-  const r = cell.getBoundingClientRect();
-  openCellMenu(app, cell, { x: r.left + 8, y: r.top + Math.min(r.height, 24) });
-}, true);
 
 let picker: ((restore: boolean) => void) | null = null;
 
@@ -1574,6 +1544,32 @@ export function install(app: App): void {
   injectStyle('table', CSS);
   const c = app.commands;
   const fail = (e: unknown) => app.fail(e);
+  const RANGE_KEYS: Command[] = [];
+  c.intercept((ev) => {
+    if (!cancelMove?.(ev.key === 'Escape')) return false;
+    ev.preventDefault();
+    return true;
+  });
+  c.intercept((ev) => {
+    if (ev.isComposing || menuOpen() || picker || app.region() !== 'canvas' || !rangeHeld(app)) return false;
+    if (ev.key === 'Escape' && previewPlays()) return false;
+    const hit = (x: Command | undefined) => !!x && keysOf(x, app.platform).some((k) => matches(ev, k, app.platform));
+    const key = RANGE_KEYS.find(hit);
+    if (!key && hit(c.get('edit.duplicate'))) ev.preventDefault();
+    if (!key) return false;
+    ev.preventDefault();
+    void c.run(key.id, undefined, ev).catch(fail);
+    return true;
+  });
+  c.intercept((ev) => {
+    if (menuOpen() || !(ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey))) return false;
+    const cell = cellAt(app);
+    if (!cell) return false;
+    ev.preventDefault();
+    const r = cell.getBoundingClientRect();
+    openCellMenu(app, cell, { x: r.left + 8, y: r.top + Math.min(r.height, 24) });
+    return true;
+  });
   const ready = (a: App) => !!a.pairing?.root && !!a.current() && a.region() !== 'dialog';
   const inCell = (a: App) => ready(a) && !!cellAt(a);
   const withTable = (a: App, arg?: unknown) => ready(a) && !!targetOf(a, arg);

@@ -92,8 +92,7 @@ export async function applyLink(app: App, href: string): Promise<void> {
 
 let open: { dialog: HTMLDialogElement; close(apply: boolean): void } | null = null;
 let unplace: (() => void) | null = null;
-let atCaret: ((ev: Event) => void) | null = null;
-if (typeof window !== 'undefined') for (const type of ['keydown', 'beforeinput']) window.addEventListener(type, (ev) => atCaret?.(ev), true);
+let atCaret: ((ev: Event) => boolean) | null = null;
 
 export function linkOpen(): boolean {
   return open !== null;
@@ -225,11 +224,11 @@ export function openLink(app: App, kind0?: Kind, passive = false): void {
     if (!dialog.contains(ev.target as Node)) close(false);
   };
   const typed = (ev: Event) => {
-    if (dialog.contains(ev.target as Node)) return;
+    if (dialog.contains(ev.target as Node)) return false;
     close(false);
-    if ((ev as KeyboardEvent).key !== 'Escape') return;
+    if ((ev as KeyboardEvent).key !== 'Escape') return false;
     ev.preventDefault();
-    ev.stopImmediatePropagation();
+    return true;
   };
 
   for (const f of [field, to, subject, number]) f.addEventListener('input', update);
@@ -275,6 +274,8 @@ export function openLink(app: App, kind0?: Kind, passive = false): void {
 
 export function install(app: App): void {
   injectStyle('link', CSS);
+  app.commands.intercept((ev) => !!atCaret?.(ev));
+  window.addEventListener('beforeinput', (ev) => atCaret?.(ev), true);
   document.addEventListener('click', (ev) => {
     const a = ev.target instanceof Element ? ev.target.closest('a[href]') : null;
     if (!a || ev.detail !== 1 || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey || !app.hostOf(a)) return;

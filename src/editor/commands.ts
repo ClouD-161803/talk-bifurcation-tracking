@@ -89,10 +89,20 @@ export class Commands {
     return typeof c.label === 'function' ? c.label(this.app) : c.label;
   }
 
-  private readonly vetoes: ((app: App, c: Command) => boolean)[] = [];
+  private readonly vetoes: ((app: App, c: Command, ev?: KeyboardEvent) => boolean)[] = [];
 
-  veto(check: (app: App, c: Command) => boolean): void {
+  veto(check: (app: App, c: Command, ev?: KeyboardEvent) => boolean): void {
     this.vetoes.push(check);
+  }
+
+  private readonly interceptors: ((ev: KeyboardEvent) => boolean)[] = [];
+
+  intercept(take: (ev: KeyboardEvent) => boolean): void {
+    this.interceptors.push(take);
+  }
+
+  intercepted(ev: KeyboardEvent): boolean {
+    return this.interceptors.some((take) => take(ev));
   }
 
   private readonly refusals: ((app: App, c: Command, arg?: unknown) => boolean)[] = [];
@@ -111,9 +121,9 @@ export class Commands {
     return !!c && (c.enabled?.(this.app) ?? true);
   }
 
-  enabled(id: string): boolean {
+  enabled(id: string, ev?: KeyboardEvent): boolean {
     const c = this.byId.get(id);
-    return !!c && this.applies(id) && !this.vetoes.some((v) => v(this.app, c));
+    return !!c && this.applies(id) && !this.vetoes.some((v) => v(this.app, c, ev));
   }
 
   state(id: string): CommandState {
@@ -124,10 +134,10 @@ export class Commands {
     return { id, label: this.label(id), enabled, checked: c.checked?.(this.app) ?? null, ...(why ? { why } : {}) };
   }
 
-  async run(id: string, arg?: unknown): Promise<void> {
+  async run(id: string, arg?: unknown, ev?: KeyboardEvent): Promise<void> {
     const c = this.byId.get(id);
     if (!c) throw new Error(`there is no command ${id}`);
-    if (!this.enabled(id) || this.refused(id, arg)) return;
+    if (!this.enabled(id, ev) || this.refused(id, arg)) return;
     if (c.undoable) await this.app.history.transact(c.undo ?? this.label(c.runsAs?.(this.app) ?? id), () => c.run(this.app, arg));
     else await c.run(this.app, arg);
   }
@@ -142,7 +152,7 @@ export class Commands {
     return c ? keysOf(c, this.app.platform).map((k) => display(k, this.app.platform)) : [];
   }
 
-  forKey(ev: KeyEvent, region: Region, plain = true): Command | undefined {
+  forKey(ev: KeyboardEvent, region: Region, plain = true): Command | undefined {
     const platform = this.app.platform;
     const types = (k: string) => (region === 'text' || region === 'notes') && isPlain(k) && k.split('+').at(-1)!.length === 1;
     const find = (e: KeyEvent) => this.list().find((c) => {
@@ -150,7 +160,7 @@ export class Commands {
       const typed = region === 'text' && inText && !(c.in ?? DEFAULT_REGIONS).includes(region);
       return (typed || (c.in ?? DEFAULT_REGIONS).includes(region)) &&
         boundKeys(c, platform).some((k) => (plain || !isPlain(k)) && !(typed && isPlain(k)) && !types(k) && matches(e, k, platform)) &&
-        this.enabled(c.id);
+        this.enabled(c.id, ev);
     });
     const editable = region === 'text' || region === 'notes' || (document.activeElement as HTMLElement | null)?.isContentEditable === true;
     const cocoa = platform === 'mac' && editable && ev.ctrlKey && !ev.metaKey && /^[abdefhklnoptvy]$/i.test(ev.key);
@@ -176,9 +186,29 @@ export class Commands {
 }
 
 export function installKeys(app: App): void {
+  app.commands.define({
+    id: 'math.openFocused',
+    label: 'Edit Formula…',
+    keys: { mac: ['Enter', 'Space'], other: ['Enter', 'Space'] },
+    in: ['canvas', 'text'],
+    enabled: (a) => !a.math.isOpen() && !!focusedFormula(a),
+    run: (a) => a.math.open(focusedFormula(a) as Element),
+  });
+  app.commands.define({
+    id: 'dialog.close',
+    label: (a) => (a.files.askShown() ? 'Cancel' : 'Close'),
+    keys: { mac: ['Escape'], other: ['Escape'] },
+    in: ['dialog'],
+    enabled: (a) => a.files.problemsShown() || a.files.askShown() || a.math.isOpen(),
+    run: (a) => {
+      if (a.files.problemsShown()) a.files.closeProblems();
+      else if (a.files.askShown()) a.files.cancelAsk();
+      else a.math.close();
+    },
+  });
   window.addEventListener('keydown', (ev) => {
+    if (app.commands.intercepted(ev)) return void ev.stopImmediatePropagation();
     if (ev.isComposing || ev.keyCode === 229) return;
-    if (dialogKey(app, ev)) return;
     const own = (document.activeElement as Element | null)?.closest?.('[data-own-keys]')?.getAttribute('data-own-keys');
     const alt = own ? fallback(ev, app.platform) : null;
     if (own?.split(' ').some((k) => matches(ev, k, app.platform) || (!!alt && matches(alt, k, app.platform)))) return;
@@ -190,23 +220,11 @@ export function installKeys(app: App): void {
     if (!command) return;
     ev.preventDefault();
     ev.stopPropagation();
-    void app.commands.run(command.id).catch((e) => app.fail(e));
+    void app.commands.run(command.id, undefined, ev).catch((e) => app.fail(e));
   }, true);
 }
 
-function dialogKey(app: App, ev: KeyboardEvent): boolean {
+function focusedFormula(app: App): Element | null {
   const active = document.activeElement;
-  if ((ev.key === 'Enter' || ev.key === ' ') && !app.math.isOpen() && active instanceof Element && active.matches('mjx-container') && app.hostOf(active)) {
-    ev.preventDefault();
-    ev.stopPropagation();
-    app.math.open(active);
-    return true;
-  }
-  if (ev.key !== 'Escape') return false;
-  if (app.files.problemsShown()) app.files.closeProblems();
-  else if (app.files.askShown()) app.files.cancelAsk();
-  else if (app.math.isOpen()) app.math.close();
-  else return false;
-  ev.stopPropagation();
-  return true;
+  return active instanceof Element && active.matches('mjx-container') && app.hostOf(active) ? active : null;
 }

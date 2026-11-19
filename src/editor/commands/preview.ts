@@ -1,8 +1,7 @@
 import type { App } from '../app.ts';
 import { previewPlays, setPreview, stopPreviews } from '../canvas/frames.ts';
-import { boundKeys, type Command } from '../commands.ts';
+import type { Command } from '../commands.ts';
 import { showFormat } from '../inspector/inspector.ts';
-import { fallback, matches } from '../keymap.ts';
 import { OFF } from '../shown-steps.ts';
 import { drawInto } from '../navigator/thumbs.ts';
 import { showStep, stepsOfSlide } from '../present.ts';
@@ -207,8 +206,7 @@ export function install(app: App): void {
     run: (a) => a.commands.run('insert.backdrop'),
   });
 
-  const esc = () => { const ev = window.event; return ev instanceof KeyboardEvent && ev.type === 'keydown' && ev.key === 'Escape'; };
-  c.veto((_, cmd) => previewPlays() && esc() && Object.values(cmd.keys ?? {}).some((k) => k.includes('Escape')));
+  c.veto((_, cmd, ev) => previewPlays() && ev?.key === 'Escape' && Object.values(cmd.keys ?? {}).some((k) => k.includes('Escape')));
   window.addEventListener('pointerdown', (ev) => {
     const t = ev.target;
     if (playing() && !(t instanceof Element && t.closest('.beeson-edit-top, .beeson-edit-menu'))) halt(app);
@@ -219,15 +217,10 @@ export function install(app: App): void {
     if (t instanceof Element && t.closest(starts) && (document.activeElement as HTMLElement | null)?.isContentEditable) ev.preventDefault();
   }, true);
   const typing = () => previewPlays() && !!(document.activeElement as HTMLElement | null)?.isContentEditable;
-  const typed = (ev: Event | undefined): ev is KeyboardEvent => ev instanceof KeyboardEvent && ev.type === 'keydown' && ev.key !== 'Escape' && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(ev.key) && typing();
+  const typed = (ev: KeyboardEvent) => ev.key !== 'Escape' && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(ev.key) && typing();
   const zooms = (cmd: Command | undefined) => !!cmd?.id.startsWith('zoom.');
-  const keyOf = (cmd: Command, ev: KeyboardEvent) => {
-    const alt = fallback(ev, app.platform);
-    return boundKeys(cmd, app.platform).some((k) => matches(ev, k, app.platform) || (!!alt && matches(alt, k, app.platform)));
-  };
-  c.veto((_, cmd) => {
-    const ev = window.event;
-    if (typed(ev) && !zooms(cmd) && keyOf(cmd, ev)) stopPreviews();
+  c.veto((_, cmd, ev) => {
+    if (ev && typed(ev) && !zooms(cmd)) stopPreviews();
     return false;
   });
   window.addEventListener('keydown', (ev) => { if (typed(ev) && !zooms(c.forKey(ev, app.region()))) stopPreviews(); }, true);

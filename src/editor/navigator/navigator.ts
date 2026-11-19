@@ -4,6 +4,8 @@ import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { drawBackdrops, drawInto, stillViewers, type Thumbs } from './thumbs.ts';
+import { insertFiles } from '../media/actions.ts';
+import { kindOf } from '../media/store.ts';
 
 const KEY = 'beeson-nav';
 const LAYOUTS = ['title', 'section', 'closing', 'figure', 'split'];
@@ -594,7 +596,6 @@ export class Navigator implements Pane {
     ev.preventDefault();
     const before = this.slides()[this.fileGap(ev.clientY)] ?? null;
     const run = async () => {
-      const [{ insertFiles }, { kindOf }] = await Promise.all([import('../media/actions.ts'), import('../media/store.ts')]);
       const files = dropped.filter((f) => kindOf(f));
       if (!files.length) return;
       await this.app.history.transact(files.length > 1 ? 'Media' : 'New Slide', () => this.keeping('New Slide', async () => {

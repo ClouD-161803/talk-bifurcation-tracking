@@ -1,8 +1,12 @@
 import { make } from './dom.ts';
 
-const SELF = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
+let editorSrc = '';
 
-export const themeUrl = (path: string) => (SELF ? new URL(path, SELF).href : `theme/${path}`);
+export const locateEditor = (src: string): void => {
+  editorSrc = src;
+};
+
+export const themeUrl = (path: string) => (editorSrc ? new URL(path, editorSrc).href : `theme/${path}`);
 
 export const script = (path: string): Promise<void> =>
   new Promise((done, fail) => {
