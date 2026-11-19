@@ -291,7 +291,7 @@ test('a page is online as soon as a request after an outage succeeds, while the 
   clean(page, REFUSED);
 });
 
-test('a page asks before it unloads only while this browser cannot keep an edit that is not acknowledged, and keeps no listener otherwise', { timeout: 120_000 }, async (t) => {
+test('a page asks before it unloads only while this browser cannot keep an edit that is not acknowledged, and otherwise keeps no listener, which would keep it out of the back-forward cache of Firefox', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
