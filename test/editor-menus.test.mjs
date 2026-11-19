@@ -1052,8 +1052,7 @@ describe('Paste and Match Style and Open Recent', () => {
     });
 
     test(`File > Export To > PDF… prints the print view of the saved deck with a page per step (${platform})`, async (t) => {
-      const deck = 'test/pages/layers.html';
-      const page = await load(t, platform, { deck, n: 2 });
+      const page = await load(t, platform);
       assert.deepEqual((await menuLabels(page, 'File')).slice(-4), ['|', '{Export To}', '|', 'Print…']);
       assert.deepEqual(await menuLabels(page, 'File', 'Export To'), ['PDF…', 'HTML…', 'PowerPoint…']);
       await page.evaluate(`(() => {
@@ -1071,22 +1070,23 @@ describe('Paste and Match Style and Open Recent', () => {
       await choose(page, 'File', 'Export To', 'PDF…');
       await page.waitFor('window.__printed === 1', 60000);
       const url = new URL(await page.evaluate('window.__url'));
-      assert.equal(url.pathname, `/${deck}`);
+      assert.equal(url.pathname, `/${LAYOUTS}`);
       assert.deepEqual([...url.searchParams.keys()].sort(), ['edit-platform', 'print-pdf', 'still']);
       const pages = await page.evaluate(`window.__view.document.querySelectorAll('.pdf-page').length`);
-      assert.match((await status(page)).message, /^The print view of layers\.html is open in a new tab, with one page per step/);
+      assert.match((await status(page)).message, /^The print view of editor-layouts\.html is open in a new tab, with one page per step/);
       await page.evaluate('window.__view.close()');
       const print = await browser.newPage();
       t.after(() => print.close().catch(() => {}));
-      await printView(print, `${server.origin}/${deck}?print-pdf&still`);
+      await printView(print, `${server.origin}/${LAYOUTS}?print-pdf&still`);
       assert.equal(pages, await print.evaluate(`document.querySelectorAll('.pdf-page').length`));
-      assert.ok(pages > 3, `${pages} pages for the 3 slides of the deck`);
+      const slides = await page.evaluate('Reveal.getTotalSlides()');
+      assert.ok(pages > slides, `${pages} pages for the ${slides} slides of the deck`);
       await page.send('Page.bringToFront');
 
-      const step = '<p id="plain-1" class="fragment" data-fragment-index="1">The first step.</p>';
-      const edited = step.replace('step.</p>', 'step!</p>');
+      const step = '<p class="small fragment" data-fragment-index="3">A small paragraph.</p>';
+      const edited = step.replace('paragraph.</p>', 'paragraph!</p>');
       await clickText(page, await page.evaluate(`(() => {
-      const p = document.getElementById('plain-1');
+      const p = document.querySelector('.reveal section.present > p.small');
       const r = document.createRange();
       r.setStart(p.firstChild, p.firstChild.length - 1);
       r.setEnd(p.firstChild, p.firstChild.length);
@@ -1104,7 +1104,7 @@ describe('Paste and Match Style and Open Recent', () => {
       });
       await cardButton(page, 'ask', 'Export the saved file');
       await page.waitFor('window.__printed === 2', 60000);
-      assert.equal(await page.evaluate(`[...window.__view.document.querySelectorAll('#plain-1')].every((p) => p.textContent === 'The first step.')`), true);
+      assert.deepEqual(await page.evaluate(`[...new Set([...window.__view.document.querySelectorAll('p.small')].map((p) => p.textContent))]`), ['A small paragraph.']);
       await page.evaluate('window.__view.close()');
       await page.send('Page.bringToFront');
       assert.equal((await status(page)).dirty, true);
