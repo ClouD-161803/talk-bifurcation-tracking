@@ -150,7 +150,7 @@ export function texComments(text) {
 }
 
 export function hashComments(text) {
-  return [...text.matchAll(/^[ \t]*#(?!!).*|(?<=[ \t])#[ \t].*/gm)].map((m) => ({ at: m.index, text: m[0].trimStart() }));
+  return [...text.matchAll(/^[ \t]*#(?!!).*|(?<=[ \t])#[ \t].*/gm)].map((m) => ({ at: m.index + m[0].search(/#/), text: m[0].trimStart() }));
 }
 
 export function commentsOf(path, text) {
@@ -160,6 +160,6 @@ export function commentsOf(path, text) {
   if (/\.html$/.test(path)) return markupComments(text);
   if (/\.(?:tex|sty|bib)$/.test(path)) return texComments(text);
   if (/\.(?:ya?ml|toml|py|mplstyle|sh|command|cff)$|(?:^|\/)\.git(?:ignore|attributes)$/.test(path)) return hashComments(text);
-  if (/\.cmd$/.test(path)) return [...text.matchAll(/^[ \t]*(?:rem\b|::).*/gim)].map((m) => ({ at: m.index, text: m[0].trimStart() }));
+  if (/\.cmd$/.test(path)) return [...text.matchAll(/^[ \t]*(?:rem\b|::).*/gim)].map((m) => ({ at: m.index + m[0].search(/\S/), text: m[0].trimStart() }));
   return [];
 }
