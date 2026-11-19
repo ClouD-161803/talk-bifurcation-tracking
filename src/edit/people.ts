@@ -6,7 +6,7 @@ import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
 const HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25_000;
-export const GAP = 100;
+const GAP = 100;
 const GONE = Number(process.env.SLIDES_GONE_MS) || 40_000;
 const FIRST_POLL = 5000;
 const MAX_PEOPLE = 64;
