@@ -318,7 +318,7 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
-  test(`slides apart from each other, selected with the command modifier, are deleted as one entry (${platform})`, { skip: platform === 'other' && process.platform === 'darwin' }, async (t) => {
+  test(`slides apart from each other, selected with the command modifier, are deleted as one entry (${platform})`, { skip: platform === 'other' && process.platform === 'darwin' && 'Chrome on macOS turns Ctrl with a click into a click of the right button' }, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());
     await click(page, await row(page, 2));

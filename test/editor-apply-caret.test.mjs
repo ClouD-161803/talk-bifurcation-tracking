@@ -113,9 +113,9 @@ test('a character typed with Option after a caret is parked goes into its paragr
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await parkP1(b);
-  const base = { key: '@', code: 'KeyL', windowsVirtualKeyCode: 76, modifiers: 1 };
-  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '@', unmodifiedText: 'l' });
-  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  const optionLOnGermanMac = { key: '@', code: 'KeyL', windowsVirtualKeyCode: 76, modifiers: 1 };
+  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...optionLOnGermanMac, text: '@', unmodifiedText: 'l' });
+  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...optionLOnGermanMac });
   await typeKeys(b, 'x');
   await b.waitFor(`${P1}.textContent.endsWith('x')`);
   assert.equal(await b.evaluate(`${P1}.textContent.slice(-12)`), 'attention.@x');

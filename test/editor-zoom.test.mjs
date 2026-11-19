@@ -182,7 +182,8 @@ test('the frames and handles are clipped to the canvas at a zoom', async (t) => 
 
 for (const platform of PLATFORMS) {
   test(`a drag and a resize of a figure write the same slide px at 50, 100, and 200 percent as at Fit, on the platform ${platform}`, async (t) => {
-    const page = await open(t, platform, 1800);
+    const widthWithoutAutoscrollAtDragEnds = 1800;
+    const page = await open(t, platform, widthWithoutAutoscrollAtDragEnds);
     await figureSlide(page);
     const lines = page.source.split('\n');
     const figureBox = async () => (await page.evaluate('window.BeesonEditor.render()')).split('\n').filter((l, i) => l !== lines[i]).join('\n');

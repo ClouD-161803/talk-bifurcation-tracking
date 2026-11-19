@@ -915,7 +915,8 @@ describe('frames of the selection on dark and light', () => {
     await tap(await at(page, '.shape.loose'));
     await page.waitFor(`window.BeesonEditor.selection().some((el) => el.matches('.shape.loose'))`);
     await page.waitFor(`[...document.querySelectorAll('.beeson-overlay .beeson-lock')].some((d) => !d.hidden)`);
-    await page.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
+    const pastDoubleTap = 600;
+    await sleep(pastDoubleTap);
     await tap((await padlocks(page))[0]);
     await page.waitFor(`document.querySelector('.reveal section.present .shape.loose').hasAttribute('data-locked')`);
     assert.deepEqual(await selection(page), ['shape rounded loose'], 'the selection is not kept');

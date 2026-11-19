@@ -258,7 +258,7 @@ test('the notes are laid in a pane under the slide, and Present opens the deck w
   assert.ok(boxes.bottom <= boxes.height - 27, `the notes end at ${boxes.bottom} in a window of ${boxes.height}`);
   assert.equal(boxes.focused, true);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Present').click()`);
-  await until(page, `!!document.querySelector('.beeson-edit-show iframe')?.src`);
+  await untilAcrossNavigation(page, `!!document.querySelector('.beeson-edit-show iframe')?.src`);
   const opened = await page.evaluate(`document.querySelector('.beeson-edit-show iframe').src`);
   assert.ok(!/[?&]edit(?:[=&]|$)/.test(opened) && /test-deck\.html\?still(?:&|$)/.test(opened), opened);
   assert.deepEqual(page.errors, []);
@@ -379,7 +379,7 @@ test('a figure dragged on the slide gets its offset as a translate style in its 
   assert.deepEqual(page.errors, []);
 });
 
-async function until(page, expression, timeout = 15000) {
+async function untilAcrossNavigation(page, expression, timeout = 15000) {
   const start = Date.now();
   for (;;) {
     try {
@@ -585,7 +585,7 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   assert.equal((await status()).recover, true);
   await page.evaluate(`(async () => { window.__before = true; const root = await navigator.storage.getDirectory(); window.BeesonEditor.attach(await root.getFileHandle('restored.html', { create: true })); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.recover button')].find((b) => b.textContent === 'Restore and save').click()`);
-  await until(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().texts > 0', LIMIT);
+  await untilAcrossNavigation(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().texts > 0', LIMIT);
   assert.equal(await file('restored.html'), replaced(`<h2>${h2}</h2>`, '<h2>Drafted twice</h2>'));
   s = await status();
   assert.deepEqual([s.recover, s.draft, s.dirty], [false, false, false]);
@@ -671,7 +671,7 @@ test('E opens the slide in the editor', async (t) => {
   await page.waitFor(deckSettled);
   assert.equal(await page.evaluate(`'BeesonEditor' in window`), false);
   await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', keyCode: 69, which: 69, bubbles: true, cancelable: true }))`);
-  await until(page, `location.search === '?still&edit' && !!window.BeesonEditor`);
+  await untilAcrossNavigation(page, `location.search === '?still&edit' && !!window.BeesonEditor`);
   await page.waitFor(ready);
   assert.match(await page.evaluate('location.hash'), /^#\/3(\/0\/\d+)?$/);
   assert.equal(await page.evaluate('Reveal.getIndices().h'), 3);
@@ -716,7 +716,7 @@ test('Open with unsaved changes asks first: Cancel keeps them, Open without savi
   await open();
   await sleep(100);
   await choose('Open without saving');
-  await until(page, 'window.pickerCalls === 1');
+  await untilAcrossNavigation(page, 'window.pickerCalls === 1');
   await sleep(200);
   let status = await page.evaluate('window.BeesonEditor.status()');
   assert.deepEqual({ dirty: status.dirty, problems: status.problems, undo: status.undo, draft: status.draft }, { dirty: false, problems: [], undo: false, draft: false });
@@ -728,7 +728,7 @@ test('Open with unsaved changes asks first: Cancel keeps them, Open without savi
   await sleep(100);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), false);
   await choose('Save and open…');
-  await until(page, 'window.pickerCalls === 2');
+  await untilAcrossNavigation(page, 'window.pickerCalls === 2');
   await sleep(200);
   assert.equal(await page.evaluate('window.written'), replaced(`<h2>${h2}</h2>`, `<h2>${h2} edited</h2>`));
   status = await page.evaluate('window.BeesonEditor.status()');
@@ -852,7 +852,7 @@ test('the toggles, the state, the notes, and the formula dialog carry their stat
   await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); f.value = f.value + ' + 1'; f.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await sleep(400);
   await page.evaluate(`[...document.querySelectorAll('.beeson-math button')].find((b) => b.textContent === 'Apply').click()`);
-  await until(page, `!document.querySelector('.beeson-math')`);
+  await untilAcrossNavigation(page, `!document.querySelector('.beeson-math')`);
   assert.equal(await page.evaluate(`document.activeElement === document.querySelector('.reveal section.present .math mjx-container')`), true);
   assert.deepEqual(page.errors, []);
 });
@@ -942,7 +942,7 @@ test('an undo back to the saved text leaves the deck clean, and Present with uns
   const shown = `!!document.querySelector('.beeson-edit-show')`;
   const endShow = async () => {
     await page.evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })), true)`);
-    await until(page, `!document.querySelector('.beeson-edit-show')`);
+    await untilAcrossNavigation(page, `!document.querySelector('.beeson-edit-show')`);
   };
   await type(' edited');
   await present();
@@ -955,7 +955,7 @@ test('an undo back to the saved text leaves the deck clean, and Present with uns
   await present();
   await sleep(100);
   await choose('Discard changes');
-  await until(page, shown);
+  await untilAcrossNavigation(page, shown);
   s = await status();
   assert.deepEqual({ dirty: s.dirty, written: await page.evaluate('window.written') }, { dirty: false, written: null });
   await endShow();
@@ -964,12 +964,12 @@ test('an undo back to the saved text leaves the deck clean, and Present with uns
   await present();
   await sleep(100);
   await choose('Save and present');
-  await until(page, shown);
+  await untilAcrossNavigation(page, shown);
   assert.equal(await page.evaluate('window.written'), replaced(`<h2>${h2}</h2>`, `<h2>${h2} edited</h2>`));
   assert.equal((await status()).dirty, false);
   await endShow();
   await present();
-  await until(page, shown);
+  await untilAcrossNavigation(page, shown);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), true);
   assert.deepEqual(page.errors, []);
 });
