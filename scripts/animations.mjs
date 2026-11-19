@@ -13,7 +13,7 @@
 // plot loops over a pass of its frames and its hold. With a fade, the loop is the second pass,
 // which starts with the last frame of the first one faded out, as in the deck.
 import { mp4 } from './mp4.mjs';
-import { CLOCK, refused } from './record.mjs';
+import { CLOCK, FULL_RANGE, refused } from './record.mjs';
 
 // the frames per second, the scale of a frame to the px of its box, and the bits per second. A loop
 // of a surface lasts a whole turn, hence its size sets the size of the file. At 24 fps and 450
@@ -44,6 +44,7 @@ const HELPER = `window.__animate ??= (() => {
   \`;
   document.head.append(style);
   const clock = ${CLOCK};
+  ${FULL_RANGE}
   const all = () => [...document.querySelectorAll('.pdf-page :is(.surface, .plot)')];
   const plotOf = (el) => Beeson.plots.find((p) => p.el === el);
   const surfaceOf = (el) => Beeson.surfaces.find((s) => s.el === el);

@@ -57,6 +57,21 @@ export const CLOCK = `{
   },
 }`;
 
+// installs in a page a VideoFrame that takes a canvas of a 2d context from the bytes of its pixels.
+// Chrome encodes a frame of a canvas in the limited range of video, in which PowerPoint draws near
+// black a level darker than the slide around it, and a frame of bytes in full range, which
+// PowerPoint and Keynote draw at the level of the slide. tycho, whose exportVideo records the
+// scenes, makes its frames with the VideoFrame of the page
+export const FULL_RANGE = `if (!window.__canvasFrame) {
+  const Frame = window.__canvasFrame = VideoFrame;
+  window.VideoFrame = function VideoFrame(source, init) {
+    const ctx = (source instanceof HTMLCanvasElement || source instanceof OffscreenCanvas) && source.getContext('2d');
+    if (!ctx) return new Frame(source, init);
+    const { width, height } = source;
+    return new Frame(ctx.getImageData(0, 0, width, height).data, { ...init, format: 'RGBX', codedWidth: width, codedHeight: height });
+  };
+}`;
+
 export const refused = (reason, what = 'the backdrops') => new Error(`${reason}. Export with the option --still to keep ${what} as stills.`);
 
 // the part of the recorder in the page, installed once in the print view. the elements of a step
@@ -185,6 +200,7 @@ const HELPER = `window.__record ??= (() => {
   const png = async (canvas) => toBase64(new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer()));
 
   const clock = ${CLOCK};
+  ${FULL_RANGE}
 
   let state = null;
 

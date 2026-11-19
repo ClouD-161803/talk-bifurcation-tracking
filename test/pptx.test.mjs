@@ -10,7 +10,7 @@ import { inflateRawSync } from 'node:zlib';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { pptx, zip } from '../scripts/pptx.mjs';
 import { recordScenes } from '../scripts/scenes.mjs';
-import { stream as mp4Stream } from './helpers/mp4.mjs';
+import { color as mp4Color, stream as mp4Stream } from './helpers/mp4.mjs';
 
 const EMU_PER_PX = 6350;
 
@@ -734,6 +734,18 @@ test('without an H.264 encoder, the export of a traced backdrop fails and names 
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /H\.264/);
   assert.match(run.stderr, /--still/);
+});
+
+// PowerPoint on the Mac draws a video in limited range 1 level darker near black than the slide
+// around it, e.g. 4 for 5, and a video in full range at the level of the slide. Keynote matches
+// both, and draws the transfer that the file describes, the transfer of sRGB of the slide
+test('every kind of recording is described in its colr box as full range, with the primaries and matrix of BT.709 and the transfer of sRGB', { timeout: 900000 }, () => {
+  const decks = { scenes: sceneDeck(), 'surfaces and plots': animationsDeck().parts, backdrops: recordDeck().parts };
+  for (const [kind, parts] of Object.entries(decks)) {
+    const files = [...parts.keys()].filter((name) => name.endsWith('.mp4'));
+    assert.ok(files.length > 0, kind);
+    for (const name of files) assert.deepEqual(mp4Color(parts.get(name)), { primaries: 1, transfer: 13, matrix: 1, fullRange: true }, `${kind}: ${name}`);
+  }
 });
 
 test('a deck without a scene and without a traced backdrop is exported by a browser without an H.264 encoder', { timeout: 300000 }, () => {

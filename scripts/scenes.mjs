@@ -6,6 +6,7 @@
 // one key frame. The labels are set in the face of --tycho-font in theme/beeson.css.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { deckSettled, deckUrl } from './chrome.mjs';
+import { FULL_RANGE } from './record.mjs';
 
 const FPS = 60;
 // a recording of a long scene is tens of MB, hence it is read out of the page in parts
@@ -116,6 +117,7 @@ export async function recordScenes(browser, deck, boxes) {
   try {
     await page.goto(deckUrl(deck));
     await page.waitFor(deckSettled);
+    await page.evaluate(FULL_RANGE);
     for (const [id, { width, height, name }] of boxes) {
       const viewer = `document.querySelector('tycho-viewer[data-still="${id}"]')`;
       // a viewer of a slide that is not shown is not laid out, and its export would be empty
