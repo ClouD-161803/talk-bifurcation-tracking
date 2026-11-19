@@ -94,10 +94,17 @@ export class Replica {
     return this.mine === text ? null : this.mine;
   }
 
-  // the operation to send now, or null when one is in flight, a resync is needed, or base is mine
-  outgoing(): OpRequest | null {
+  // the operation to send now, or null when one is in flight, a resync is needed, or base is mine.
+  // held gives the paths of the files that a text names and that wait for their upload, and the
+  // patches that name none of them are sent when the text they give names none either
+  outgoing(held?: (text: string) => string[]): OpRequest | null {
     if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
-    const patches = diff(this.base, this.mine);
+    let patches = diff(this.base, this.mine);
+    if (held) {
+      const paths = held(this.mine);
+      patches = patches.filter((p) => !paths.some((path) => p.text.includes(path)));
+      if (patches.length && held(apply(this.base, patches)).length) return null;
+    }
     if (patches.length === 0) return null;
     this.flight = { client: this.id, seq: ++this.seq, patches, answered: false, accepted: null };
     return { client: this.id, seq: this.seq, base: this.version, patches };

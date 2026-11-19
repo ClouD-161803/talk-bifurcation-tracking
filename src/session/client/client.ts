@@ -70,6 +70,9 @@ export type Hooks = {
   side?(sync: Sync, whole: Whole | null, ops: AppliedOp[]): Side | Promise<Side> | null;
   // false while text names a file that is not uploaded yet, after which rewrite() is called
   ready?(text: string): boolean;
+  // the paths of the files that text names and that wait for their upload, while the edits that
+  // do not name them are sent
+  held?(text: string): string[];
   // a promise while a reload of the page has to wait, e.g. for the end of Version History
   defer?(): Promise<void> | null;
 };
@@ -650,8 +653,12 @@ export class Client {
       void this.rejoin();
       return;
     }
-    if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) return;
-    const op = sync.outgoing(this.token);
+    let held: ((text: string) => string[]) | undefined;
+    if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) {
+      held = this.hooks.held;
+      if (!held?.(sync.mine).length) return;
+    }
+    const op = sync.outgoing(this.token, held);
     if (op) void this.send(op);
   }
 

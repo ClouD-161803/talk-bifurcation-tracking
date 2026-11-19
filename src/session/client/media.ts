@@ -269,6 +269,8 @@ export function install(client: Client): void {
     return true;
   };
 
+  client.hooks.held = (text) => (client.ended || (moved && scan().length) ? [] : store.unsaved(text).filter((f) => !given.has(f)).map((f) => f.path));
+
   // an upload that failed on the network is tried again once the page is online again, or once its
   // hello is answered, since a 404 may come while the page reads online
   client.on('me', () => st.failed && st.network && retry(client));

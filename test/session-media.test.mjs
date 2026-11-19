@@ -834,27 +834,49 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
   clean(ann);
 });
 
-test('an upload that stalls fails at its deadline, and Try again sends the picture and the edits after it', { timeout: 120_000 }, async (t) => {
+test('an upload that stalls fails at its deadline, and Try again sends the picture', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const p = await proxy(t, server.edit);
   // the deadline shortened from 30 s to 1 s, to which 1 s per MB is added
   const ann = await tab(browser, `${p.url}&session-upload-wait=1000`);
-  const before = server.read();
   p.next('stall');
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
   await edit(ann, 1, 'p', ' typed');
   await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`, 15_000);
   assert.equal(await ann.evaluate(ACTION), 'Try again');
-  assert.equal(server.read(), before);
+  assert.match(server.read(), /<p>Second slide typed<\/p>/);
+  assert.doesNotMatch(server.read(), /media\/plot\.png/);
   await click(ann, '.beeson-session-action');
   const text = await converge(server, [ann]);
   assert.match(text, /<p>Second slide typed<\/p>/);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(p.puts, 2);
   assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
+  clean(ann, PROXIED);
+});
+
+// the element that names the file waits for its upload, and the edits elsewhere are written meanwhile
+test('an edit made during an upload reaches the deck before the upload ends, and the picture after it', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('hold');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await until(() => p.held.length === 1, 'the upload');
+  await edit(ann, 1, 'p', ' typed');
+  await until(() => server.read().includes('<p>Second slide typed</p>'), 'the edit in index.html');
+  assert.equal(p.held.length, 1);
+  assert.doesNotMatch(server.read(), /media\/plot\.png/);
+  p.release();
+  const text = await converge(server, [ann]);
+  assert.match(text, /<p>Second slide typed<\/p>/);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
   clean(ann, PROXIED);
 });
 
