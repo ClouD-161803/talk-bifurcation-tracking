@@ -12,12 +12,12 @@ import { addPersonStatus } from './share.ts';
 
 const FILE = { preamble: 'preamble.tex', bibliography: 'references.bib' };
 const CSS = `
-.beeson-session-sheet { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: -4px 0 10px; color: var(--ed-muted); font: 12px/18px system-ui, sans-serif; }
-.beeson-session-sheet .flag { max-width: 160px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 4px; background: var(--tone); color: var(--on); font-weight: 600; }
-.beeson-session-sheet .c0 { --tone: var(--data-2); --on: #1d1d1f; }
-.beeson-session-sheet .c1 { --tone: var(--data-3); --on: #1d1d1f; }
-.beeson-session-sheet .c2 { --tone: var(--data-5); --on: #fff; }
-.beeson-session-sheet .c3 { --tone: var(--data-7); --on: #1d1d1f; }
+.beeson-sheet-presence { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: -4px 0 10px; color: var(--ed-muted); font: 12px/18px system-ui, sans-serif; }
+.beeson-sheet-presence .flag { max-width: 160px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 4px; background: var(--tone); color: var(--on); font-weight: 600; }
+.beeson-sheet-presence .c0 { --tone: var(--data-2); --on: #1d1d1f; }
+.beeson-sheet-presence .c1 { --tone: var(--data-3); --on: #1d1d1f; }
+.beeson-sheet-presence .c2 { --tone: var(--data-5); --on: #fff; }
+.beeson-sheet-presence .c3 { --tone: var(--data-7); --on: #1d1d1f; }
 `;
 
 export function install(client: Client): void {
@@ -83,11 +83,11 @@ export function install(client: Client): void {
     const open = client.connection === 'ended' ? null : client.shell.presence.sheet();
     const others = new Map<string, Resolved>();
     for (const r of client.resolved()) if (open && r.sheet === open.which && r.person !== client.person && !others.has(r.person)) others.set(r.person, r);
-    let row = document.querySelector<HTMLElement>('.beeson-session-sheet');
+    let row = document.querySelector<HTMLElement>('.beeson-sheet-presence');
     if (!open || !others.size) return row?.remove();
     if (row?.parentElement !== open.dialog) {
       row?.remove();
-      row = make('p', 'beeson-session-sheet');
+      row = make('p', 'beeson-sheet-presence');
       open.dialog.querySelector('h3')?.after(row);
     }
     const flags = [...others.values()].map((r) => {
