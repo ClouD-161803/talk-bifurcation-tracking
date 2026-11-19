@@ -138,31 +138,40 @@ function split(a: string[], b: string[], pre: number, h: Hunk): Hunk[] {
 // a line that opens or closes a slide
 const SECTION = /^[ \t]*<\/?section[\s>]/m;
 
-// the first line and the number of lines of each multiline slide of lines by its text, with the
-// first line -1 for a text that occurs more than once
-function slidesOf(lines: string[]): Map<string, number[]> {
-  const out = new Map<string, number[]>(), open: number[] = [];
+// the first line, the number of lines, and the text of each multiline slide of lines
+function slidesOf(lines: string[]): [number, number, string][] {
+  const out: [number, number, string][] = [], open: number[] = [];
   lines.forEach((line, i) => {
     const t = line.trimStart();
     if (/^<section[\s>]/.test(t) && !t.includes('</section')) open.push(i);
     const from = t.startsWith('</section') ? open.pop() ?? -1 : -1;
-    if (from < 0) return;
-    const text = lines.slice(from, i + 1).join('');
-    out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
+    if (from >= 0) out.push([from, i + 1 - from, lines.slice(from, i + 1).join('')]);
   });
   return out;
 }
 
 // copies of a and b in which the lines of a slide that is moved from a to b are replaced by marks
 // that match no line, hence the diff gives its removal and its insertion whole. a slide is moved
-// when it occurs once in each, outside the longest run of such slides in the same order in both,
-// counted in lines. null when no slide is moved
+// when it occurs once in each, or is the only one with its tags and most of its worded lines in
+// each, outside the longest run of such slides in the same order in both, counted in lines. null
+// when no slide is moved
 function markMoved(a: string[], b: string[]): [string[], string[]] | null {
-  const inB = slidesOf(b);
+  type S = [number, number, string];
+  const [inA, inB] = [a, b].map(slidesOf), one = (l: S[], f: (s: S) => boolean) => l.filter(f).length === 1;
+  const exact = inA.filter(([, , t]) => one(inA, (s) => s[2] === t) && one(inB, (s) => s[2] === t)).map(([from, n, t]) => [from, inB.find((s) => s[2] === t)![0], n]);
+  const [restA, restB] = [inA, inB].map((l, k) => l.filter(([from]) => !exact.some((p) => from >= p[k] && from < p[k] + p[2])));
+  const like = (s: S, t: S) => {
+    const [u, v] = [s, t].map((x) => linesOf(x[2]).map((l) => l.trim()));
+    return u.length === v.length && u.every((l, i) => skeleton(l) === skeleton(v[i]) && (l === v[i] || wordsOf(l).some((w) => [...wordsOf(v[i])].includes(w)))) && 2 * u.filter((l, i) => l === v[i] && WORDED.test(l)).length > u.filter((l) => WORDED.test(l)).length;
+  };
+  const loose = restA.flatMap((s) => {
+    const t = restB.filter((x) => like(s, x));
+    return t.length === 1 && one(restA, (x) => like(x, t[0])) ? [[s[0], t[0][0], s[1]]] : [];
+  });
   // a slide of a stack that is paired whole, which comes before it, moves or stays with the stack,
   // hence it is not weighed again
   let end = 0;
-  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter((p) => p.every((v) => v >= 0)).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  const pairs = [...exact, ...loose].sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   // the heaviest run in the same order, by dynamic programming over the slides
   const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
@@ -205,9 +214,12 @@ export function changes(base: string, theirs: string, plain?: boolean): Edit[] |
     [x, y] = moved;
     trim();
   }
-  const found = myers(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), MAX_LINES);
+  const found = myers(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), MAX_LINES), marks = (h: Hunk) => [x.slice(pre + h.a0, pre + h.a1).join(''), y.slice(pre + h.b0, pre + h.b1).join('')];
   if (!found) return null;
-  const hunks = joined(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), found).flatMap((h) => split(x, y, pre, h));
+  const hunks = joined(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), found).flatMap((h) => split(x, y, pre, h)).flatMap((h) => {
+    const [u, v] = marks(h);
+    return u && v && (!u.trim() || (moved && /\0/.test(u + v))) ? [{ ...h, b1: h.b0 }, { ...h, a0: h.a1 }] : [h];
+  });
   const oa = offsets(a), ob = offsets(b);
   const out: Edit[] = [];
   for (const h of hunks) {
@@ -226,7 +238,7 @@ export function changes(base: string, theirs: string, plain?: boolean): Edit[] |
   // after slides moved past each other that the mover types in
   if (moved) {
     const m = movesIn(base, out, false).flatMap((v) => v.was);
-    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true) ?? out;
+    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(marks(h).join('')) && !/^(\0[ab])*$/.test(marks(h).join('')))) return changes(base, theirs, true) ?? out;
   }
   // a moved slide is in both texts, which are thus one file
   const back = new Map<string, number>();

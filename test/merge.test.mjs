@@ -974,3 +974,17 @@ test('a paragraph that one person removes while another types a character refere
   assert.equal(mergeTexts(base, typed, gone), gone);
   assert.equal(mergeTexts(base, gone, typed), typed);
 });
+
+test('a slide or a vertical stack moved past another and edited is the removal and the insertion of it whole, and keeps a key of another person in it, in both orders', () => {
+  const inner = (h, ls) => `  <section>\n    <h2>${h}</h2>\n${ls.map((l) => `    ${l}\n`).join('')}  </section>\n`;
+  const flat = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const stack = (h, ls, g, ms) => `<section>\n${inner(h, ls)}${inner(g, ms)}</section>\n`;
+  const one = flat('Orbit 1', ['<p>Intro 12</p>']);
+  for (const kind of [flat, stack]) {
+    const two = kind('Thank you 2', ['<p>Same words</p>', '<ul>', '  <li>Method 21</li>', '</ul>'], 'Data 3', ['<p>Moon 31</p>']);
+    const three = (k = '', l = '') => kind(`Thank you 4${k}`, ['<ul>', `  <li>Intro 43${l}</li>`, '  <li>Orbit 41</li>', '</ul>'], 'Thank you 5', ['<p>Moon 52</p>']);
+    const base = one + two + three(), moved = one + three(' k02') + two, keyed = base.replace('Intro 43', 'Intro 43 k10');
+    assert.deepEqual(changes(base, moved).map((e) => [base.slice(e.start, e.end), e.text]), [['', three(' k02')], [three(), '']]);
+    for (const [x, y] of [[moved, keyed], [keyed, moved]]) assert.equal(mergeTexts(base, x, y), one + three(' k02', ' k10') + two);
+  }
+});
