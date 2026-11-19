@@ -679,6 +679,8 @@ describe('the Text pane on the words of shapes', () => {
       assert.ok(text.includes('<div class="shape triangle" style="width: 200px; height: 160px; translate: 1360px 260px"></div>'), 'the shape is changed');
       await undo(page);
       await byteExact(page);
+      await press(page, 'Escape');
+      assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false, 'the TeX field covers the shape');
       await clickShape(page);
       await press(page, 'q');
       await frames(page);

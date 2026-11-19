@@ -330,6 +330,9 @@ export function install(app: App): void {
     const hint = make('span', 'hint', `${sheet.open} … ${sheet.close}, ${keys} to ${sheet.primary.toLowerCase()}, Esc to cancel`);
     row.append(hint, cancel, apply);
     box.append(title, field, ed.preview, ed.message, row);
+    box.addEventListener('mousedown', (ev) => {
+      if (!(ev.target as Element).closest('textarea, button')) ev.preventDefault();
+    });
     document.body.append(box);
     unplace = popoverBeside(app, box, sheet.textEl(), { sides: SIDES });
     apply.disabled = !sheet.tex.trim();
