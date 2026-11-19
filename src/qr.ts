@@ -1,10 +1,3 @@
-// the QR code of a div.qr: the text of its data-qr, encoded in byte mode after ISO/IEC 18004, at
-// error correction level H with the logo in its middle and at level M without, and drawn as an
-// inline SVG of dark modules on a light tile in both modes, since many scanners do not read an
-// inverted code
-
-// ECC holds the error correction codewords per block, and BLOCKS the number of blocks, of each
-// level at versions 1 to 40, after table 9 of ISO/IEC 18004
 const ECC = {
   M: [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
   H: [17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
@@ -13,22 +6,15 @@ const BLOCKS = {
   M: [1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
   H: [1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81],
 };
-// LEVEL_BITS are the two bits of each level in the format information
 const LEVEL_BITS = { M: 0, H: 2 };
-// QUIET is the width of the light margin around the modules, in modules
 export const QUIET = 4;
 
-// LOGO is the diameter of the logo as a share of the width of the modules, and GAP the width of
-// the light ring around it, in modules
 const LOGO = 0.3;
 const GAP = 0.8;
 
-/** An error correction level: about 15 percent of a code is restored at M, and about 30 percent at H. */
 export type Level = 'M' | 'H';
 export type Code = { version: number; size: number; mask: number; level: Level; logo: boolean; dark: boolean[][] };
 
-// dataModules counts the modules of a version outside the function patterns, i.e. those that hold
-// data and error correction
 function dataModules(version: number): number {
   const size = 4 * version + 17;
   let n = size * size - 3 * 64 - 2 * (size - 16) - 31;
@@ -42,11 +28,8 @@ function dataModules(version: number): number {
 
 const dataCodewords = (version: number, level: Level) => Math.floor(dataModules(version) / 8) - ECC[level][version - 1] * BLOCKS[level][version - 1];
 
-/** The number of bytes that a code of the version and the level holds in byte mode, after the mode indicator and the character count. */
 export const capacity = (version: number, level: Level = 'M') => Math.floor((dataCodewords(version, level) * 8 - 4 - (version < 10 ? 8 : 16)) / 8);
 
-// alignment returns the centers of the alignment patterns on each axis, spaced evenly from the
-// last one inward, except for the uneven spacing of version 32
 function alignment(version: number): number[] {
   if (version === 1) return [];
   const k = Math.floor(version / 7) + 2;
@@ -57,8 +40,6 @@ function alignment(version: number): number[] {
   return out;
 }
 
-// alignmentCenters returns the row and the column of the center of each alignment pattern. the
-// three corners of the grid of centers fall on the finder patterns, and are left out
 function alignmentCenters(version: number): [number, number][] {
   const centers = alignment(version);
   const last = centers.length - 1;
@@ -71,13 +52,11 @@ function alignmentCenters(version: number): [number, number][] {
   return out;
 }
 
-// covered is true for a module that the logo or the ring around it reaches, in a code of n modules
 function covered(n: number, r: number, c: number): boolean {
   const dx = Math.max(Math.abs(c + 0.5 - n / 2) - 0.5, 0), dy = Math.max(Math.abs(r + 0.5 - n / 2) - 0.5, 0);
   return dx * dx + dy * dy < ((LOGO * n) / 2 + GAP) ** 2;
 }
 
-// reached returns the centers of the alignment patterns with a module under the logo
 function reached(version: number): [number, number][] {
   const n = 4 * version + 17;
   return alignmentCenters(version).filter(([r, c]) => {
@@ -86,13 +65,11 @@ function reached(version: number): [number, number][] {
   });
 }
 
-/** True for a module that is not drawn in a code with the logo: a module under the logo or the ring around it, or in an alignment pattern with a module under the logo, which is left out as a whole. */
 export function hidden(code: Code, r: number, c: number): boolean {
   if (!code.logo) return false;
   return covered(code.size, r, c) || reached(code.version).some(([ar, ac]) => Math.abs(ar - r) <= 2 && Math.abs(ac - c) <= 2);
 }
 
-// EXP and LOG are the tables of GF(256) with the polynomial x^8 + x^4 + x^3 + x^2 + 1
 const EXP = new Uint8Array(512);
 const LOG = new Uint8Array(256);
 for (let i = 0, x = 1; i < 255; i++) {
@@ -102,8 +79,6 @@ for (let i = 0, x = 1; i < 255; i++) {
 }
 const mul = (a: number, b: number) => (a && b ? EXP[LOG[a] + LOG[b]] : 0);
 
-// generator returns the coefficients of (x - a^0)(x - a^1)...(x - a^(n-1)) after its leading 1,
-// where a is the primitive element 2
 function generator(n: number): Uint8Array {
   let g = new Uint8Array([1]);
   for (let i = 0; i < n; i++) {
@@ -117,7 +92,6 @@ function generator(n: number): Uint8Array {
   return g.subarray(1);
 }
 
-// remainder returns the Reed-Solomon error correction of data, i.e. data times x^n modulo g
 function remainder(data: Uint8Array, g: Uint8Array): Uint8Array {
   const r = new Uint8Array(g.length);
   for (const byte of data) {
@@ -129,8 +103,6 @@ function remainder(data: Uint8Array, g: Uint8Array): Uint8Array {
   return r;
 }
 
-// codewords returns the data codewords: the mode indicator, the count, the bytes, the terminator,
-// and the alternating pad bytes 0xec and 0x11
 function codewords(bytes: Uint8Array, version: number, level: Level): Uint8Array {
   const bits: number[] = [];
   const put = (value: number, n: number) => { for (let i = n - 1; i >= 0; i--) bits.push((value >>> i) & 1); };
@@ -146,8 +118,6 @@ function codewords(bytes: Uint8Array, version: number, level: Level): Uint8Array
   return out;
 }
 
-// interleave splits data into the blocks of the version, the short blocks first, and returns the
-// data codewords column by column across the blocks, then the error correction in the same order
 function interleave(data: Uint8Array, version: number, level: Level): Uint8Array {
   const n = BLOCKS[level][version - 1], ecc = ECC[level][version - 1];
   const total = Math.floor(dataModules(version) / 8);
@@ -168,8 +138,6 @@ function interleave(data: Uint8Array, version: number, level: Level): Uint8Array
   return new Uint8Array(out);
 }
 
-// bch returns the BCH code of the format or version information: the data of the given bits,
-// followed by its remainder modulo poly
 function bch(data: number, bits: number, poly: number): number {
   const degree = 31 - Math.clz32(poly);
   let r = data << degree;
@@ -177,7 +145,6 @@ function bch(data: number, bits: number, poly: number): number {
   return (data << degree) | r;
 }
 
-// MASKS are the eight data masks of the standard, as functions of the row and the column
 const MASKS: ((r: number, c: number) => boolean)[] = [
   (r, c) => (r + c) % 2 === 0,
   (r) => r % 2 === 0,
@@ -189,8 +156,6 @@ const MASKS: ((r: number, c: number) => boolean)[] = [
   (r, c) => (((r + c) % 2) + ((r * c) % 3)) % 2 === 0,
 ];
 
-// a Grid holds the modules by row and column, and fixed marks the modules of the function
-// patterns, which are not masked
 class Grid {
   readonly size: number;
   readonly dark: boolean[][];
@@ -207,8 +172,6 @@ class Grid {
   }
 }
 
-// functionPatterns draws the finder patterns with their separators, the timing patterns, the
-// alignment patterns, the dark module, and the version information
 function functionPatterns(grid: Grid, version: number): void {
   const n = grid.size;
   for (const [r0, c0] of [[0, 0], [0, n - 7], [n - 7, 0]]) {
@@ -223,12 +186,9 @@ function functionPatterns(grid: Grid, version: number): void {
     grid.set(6, i, i % 2 === 0);
     grid.set(i, 6, i % 2 === 0);
   }
-  // the centers on row 6 and column 6 are drawn over the timing patterns
   for (const [r, c] of alignmentCenters(version)) {
     for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) grid.set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
   }
-  // the modules of the format information are reserved here, and format() writes them again once
-  // the mask is chosen
   format(grid, 'M', 0);
   if (version >= 7) {
     const bits = bch(version, 6, 0x1f25);
@@ -241,8 +201,6 @@ function functionPatterns(grid: Grid, version: number): void {
   }
 }
 
-// format writes the two copies of the format information of the level and the mask, and the dark
-// module beside the lower left finder
 function format(grid: Grid, level: Level, mask: number): void {
   const n = grid.size;
   const bits = bch((LEVEL_BITS[level] << 3) | mask, 5, 0x537) ^ 0x5412;
@@ -257,9 +215,6 @@ function format(grid: Grid, level: Level, mask: number): void {
   grid.set(n - 8, 8, true);
 }
 
-// walk visits the modules outside the function patterns in the order of the bits of the
-// codewords: the zigzag of column pairs from the lower right, passing over the vertical timing
-// pattern in column 6
 function walk(grid: Grid, visit: (r: number, c: number, bit: number) => void): void {
   const n = grid.size;
   let i = 0;
@@ -273,16 +228,10 @@ function walk(grid: Grid, visit: (r: number, c: number, bit: number) => void): v
   }
 }
 
-// place writes the codewords, and the remainder bits are left light
 function place(grid: Grid, data: Uint8Array): void {
   walk(grid, (r, c, i) => { grid.dark[r][c] = i < data.length * 8 && ((data[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; });
 }
 
-// logoFits is true for a version of level H at which a code is read with the logo: the logo is
-// drawn on function patterns other than alignment patterns at version 1, and elsewhere each
-// codeword with a module under it is read wrong at worst. these may be two thirds of the codewords
-// that are restored in a block, i.e. of half its error correction codewords, so that a third is
-// left for the errors of a camera
 function logoFits(version: number): boolean {
   const grid = new Grid(4 * version + 17);
   functionPatterns(grid, version);
@@ -293,7 +242,6 @@ function logoFits(version: number): boolean {
       if (grid.fixed[r][c] && covered(grid.size, r, c) && !patterns.some(([ar, ac]) => Math.abs(ar - r) <= 2 && Math.abs(ac - c) <= 2)) return false;
     }
   }
-  // the block of each codeword, in the order of interleave
   const total = Math.floor(dataModules(version) / 8);
   const short = Math.floor(total / n) - ecc, shortBlocks = n - (total % n);
   const blockOf: number[] = [];
@@ -309,9 +257,6 @@ function applyMask(grid: Grid, mask: number): void {
   for (let r = 0; r < grid.size; r++) for (let c = 0; c < grid.size; c++) if (!grid.fixed[r][c] && m(r, c)) grid.dark[r][c] = !grid.dark[r][c];
 }
 
-// penalty scores the four rules of the standard: runs of five or more modules of one color, 2 by 2
-// squares, patterns like a finder next to four light modules, and a share of dark modules away
-// from one half
 function penalty(dark: boolean[][]): number {
   const n = dark.length;
   let score = 0;
@@ -345,11 +290,6 @@ function penalty(dark: boolean[][]): number {
   return score;
 }
 
-/**
- * Encodes text as UTF-8 in byte mode, in the smallest version that holds it, and throws if no version does.
- * A code without the logo is encoded at level M. With logo, it is encoded at level H in the smallest version at which it is
- * read with the modules under the logo lost, or at level M without the logo if the text is too long for such a version.
- */
 export function encode(text: string, logo = false): Code {
   const bytes = new TextEncoder().encode(text);
   const level: Level = logo ? 'H' : 'M';
@@ -375,17 +315,11 @@ export function encode(text: string, logo = false): Code {
 const SVG = 'http://www.w3.org/2000/svg';
 
 const fixed3 = (x: number) => +x.toFixed(3);
-// rounded returns the path of a square of side a centered at (x, y), with corners of radius r
 function rounded(x: number, y: number, a: number, r: number): string {
   const s = fixed3(a - 2 * r);
   return `M${fixed3(x - a / 2 + r)} ${fixed3(y - a / 2)}h${s}a${r} ${r} 0 0 1 ${r} ${r}v${s}a${r} ${r} 0 0 1 ${-r} ${r}h${-s}a${r} ${r} 0 0 1 ${-r} ${-r}v${-s}a${r} ${r} 0 0 1 ${r} ${-r}z`;
 }
 
-/**
- * The SVG of a code: a tile as wide as the modules and the quiet zone, the modules as one path of runs along the rows, rounded
- * at each corner without a dark neighbor, with the rings of the finder and alignment patterns, and the eyes of these patterns
- * as a second path. The modules for which hidden is true are left light.
- */
 export function svgOf(code: Code, label: string): SVGSVGElement {
   const n = code.size, side = n + 2 * QUIET;
   const svg = document.createElementNS(SVG, 'svg');
@@ -396,12 +330,8 @@ export function svgOf(code: Code, label: string): SVGSVGElement {
   tile.setAttribute('class', 'qr-tile');
   tile.setAttribute('width', String(side));
   tile.setAttribute('height', String(side));
-  // the corners of the tile are rounded within the quiet zone. the fills are the fallback of the
-  // colors set in theme/beeson.css
   tile.setAttribute('rx', String(fixed3(side * 0.05)));
   tile.setAttribute('fill', '#fff');
-  // the finder and alignment patterns are drawn as a ring and an eye, of the sides 7, 5, and 3 and
-  // 5, 3, and 1, and not as modules
   const patterns: [number, number, number][] = [[3, 3, 7], [3, n - 4, 7], [n - 4, 3, 7]];
   for (const [r, c] of alignmentCenters(code.version)) patterns.push([r, c, 5]);
   const lost = code.dark.map((row, r) => row.map((_, c) => hidden(code, r, c)));
@@ -413,7 +343,6 @@ export function svgOf(code: Code, label: string): SVGSVGElement {
       if (!on(r, c)) continue;
       const start = c;
       while (on(r, c + 1)) c++;
-      // a corner of the run is rounded where the module above or below its end is light
       const x0 = start + QUIET, x1 = c + 1 + QUIET, y = r + QUIET;
       const tl = on(r - 1, start) ? 0 : 0.5, tr = on(r - 1, c) ? 0 : 0.5, br = on(r + 1, c) ? 0 : 0.5, bl = on(r + 1, start) ? 0 : 0.5;
       d += `M${x0 + tl} ${y}H${x1 - tr}${tr ? 'a.5 .5 0 0 1 .5 .5' : ''}V${y + 1 - br}${br ? 'a.5 .5 0 0 1 -.5 .5' : ''}`
@@ -430,7 +359,6 @@ export function svgOf(code: Code, label: string): SVGSVGElement {
   ink.setAttribute('class', 'qr-ink');
   ink.setAttribute('d', d);
   ink.setAttribute('fill', '#000');
-  // the inner square of a ring is a hole
   ink.setAttribute('fill-rule', 'evenodd');
   const eye = document.createElementNS(SVG, 'path');
   eye.setAttribute('class', 'qr-eye');
@@ -440,7 +368,6 @@ export function svgOf(code: Code, label: string): SVGSVGElement {
   return svg;
 }
 
-/** Draws the code of root, if it is a div.qr, and of each div.qr under it, that is not drawn yet, or a message in its place for a text that is empty or too long. */
 export function mountQr(root: ParentNode): void {
   const own = root instanceof HTMLElement && root.matches('.qr[data-qr]') ? [root] : [];
   for (const el of [...own, ...root.querySelectorAll<HTMLElement>('.qr[data-qr]')]) {
@@ -448,8 +375,6 @@ export function mountQr(root: ParentNode): void {
     const text = el.dataset.qr ?? '';
     try {
       if (!text) throw new Error('data-qr is empty');
-      // the logo is the image of --qr-logo of theme/beeson.css, drawn by a div over the middle of
-      // the code, at a width in percent of the tile
       const image = getComputedStyle(el).getPropertyValue('--qr-logo').trim();
       const code = encode(text, image !== '' && image !== 'none');
       el.append(svgOf(code, `QR code of ${text}`));

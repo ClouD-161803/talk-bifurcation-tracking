@@ -1,5 +1,3 @@
-// checks of the Chrome lookup in scripts/chrome.mjs, with a stand-in executable for each OS
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -73,25 +71,17 @@ test('a profile is removed while a helper process of Chrome still writes to it',
   assert.ok(!existsSync(profile));
 });
 
-// with the network allowed, Chrome downloads components and models into its profile in the
-// background, about 13 s after its start. On Windows, such a file is still locked at close(), and
-// the removal of the profile fails
 test('Chrome does not download a component or a model into its profile', { timeout: 90000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto('chrome://version');
-  // the path is filled in after the load of the page
   await page.waitFor(`!!document.getElementById('profile_path')?.textContent.trim()`);
   const profile = dirname(await page.evaluate(`document.getElementById('profile_path').textContent.trim()`));
-  // Chrome may write the file after the path is shown
   const deadline = Date.now() + 20000;
   while (!existsSync(join(profile, 'Local State')) && Date.now() < deadline) await sleep(100);
   assert.ok(existsSync(join(profile, 'Local State')), `${profile} is not the profile of the browser`);
   await sleep(25000);
-  // the folders of the models, of the components, and of one component. Without a download, Chrome
-  // writes only the index of the components and, on Linux, the path of the Widevine module that is
-  // installed with it. A downloaded module is in a folder of its version
   const written = ['component_crx_cache/metadata.json', 'WidevineCdm/latest-component-updated-widevine-cdm'];
   const downloaded = ['optimization_guide_model_store', 'component_crx_cache', 'WidevineCdm'].flatMap((name) => (existsSync(join(profile, name)) ? readdirSync(join(profile, name)).map((file) => `${name}/${file}`) : []));
   assert.deepEqual(downloaded.filter((file) => !written.includes(file)), []);
@@ -101,7 +91,6 @@ test('an early exit of Chrome is reported', (t) => {
   const out = mkdtempSync(join(tmpdir(), 'slides-check-'));
   t.after(() => rmSync(out, { recursive: true, force: true }));
 
-  // node is used as the executable, since it exits at once on the flags of Chrome
   const { status, stderr } = spawnSync(process.execPath, ['scripts/check.mjs', '--out', out], {
     env: { ...process.env, CHROME_PATH: process.execPath },
     encoding: 'utf8',
@@ -135,9 +124,6 @@ test('a page opened with motion is shown without reduced motion', { timeout: 600
   assert.equal(await page.evaluate(`matchMedia('(prefers-reduced-motion: no-preference)').matches`), true);
 });
 
-// Chrome does not answer a call that is in flight when its page is closed, and at times it does not
-// answer a call sent after the close either. such a call in a cleanup waited for the limit of the
-// browser, 120 s by default, in a test that had passed
 test('a call to a closed page fails at once, and a call in flight at the close fails with it', { timeout: 60000 }, async (t) => {
   const browser = await launch({ timeout: 10000 });
   t.after(() => browser.close());
@@ -151,10 +137,6 @@ test('a call to a closed page fails at once, and a call in flight at the close f
   await assert.rejects(page.send('Page.reload'), /the page is closed/);
 });
 
-// within 1 s of its last change, the editor keeps the unsaved edits of a page in the storage of the
-// browser under a key that starts with beeson-draft:, and offers them on a dialog over the slide of
-// the next page of the deck. on a slow runner, the next page of a test file was offered the edits
-// of the page before
 test('a page does not keep the unsaved edits of the editor in the storage, unless it is opened with drafts', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-drafts-'));
@@ -178,13 +160,9 @@ test('a page does not keep the unsaved edits of the editor in the storage, unles
   assert.deepEqual(await withDrafts.evaluate(kept), ['edits', 'dark']);
 });
 
-// on a Windows runner of GitHub, about one page in a few thousand is refused one of its files with
-// net::ERR_NO_BUFFER_SPACE, while ports and memory are free. the page of this test reports the
-// error at its first load only
 test('a page that is refused a file with net::ERR_NO_BUFFER_SPACE is loaded again', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));
-  // with an icon in the page, Chrome does not ask the server for a favicon, which it does not have
   writeFileSync(join(root, 'page.html'), `<!doctype html><link rel="icon" href="data:,"><script>
     const loads = Number(localStorage.getItem('loads') ?? 0) + 1;
     localStorage.setItem('loads', loads);
@@ -202,14 +180,11 @@ test('a page that is refused a file with net::ERR_NO_BUFFER_SPACE is loaded agai
   await page.goto(`${server.origin}/page.html`);
   assert.equal(await page.evaluate(`localStorage.getItem('loads')`), '2', 'the page is not loaded again');
   assert.deepEqual(page.errors, []);
-  // another error is kept, and its page is not loaded again
   await page.goto(`${server.origin}/page.html?other`);
   assert.equal(await page.evaluate(`localStorage.getItem('loads')`), '3');
   assert.deepEqual(page.errors, ['console.error: another error']);
 });
 
-// the network service of the Chrome started by this process, found by its parent, since Chromes of
-// other test files run at the same time
 function networkService() {
   const rows = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout.split('\n');
   const procs = rows.map((row) => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean).map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command }));
@@ -217,8 +192,6 @@ function networkService() {
   return procs.find((p) => browsers.has(p.ppid) && p.command.includes('network.mojom.NetworkService'))?.pid;
 }
 
-// on a Windows runner of GitHub, the network service of Chrome crashes at times, and Chrome starts
-// it again. the load in flight is then lost, and it is made again
 test('a load in flight when the network service of Chrome crashes is made again', { skip: process.platform === 'win32', timeout: 60000 }, async (t) => {
   const { createServer } = await import('node:http');
   const server = createServer((request, response) => setTimeout(() => response.end('<!doctype html><link rel="icon" href="data:,"><p>loaded</p>'), 1000)).listen(0, '127.0.0.1');
@@ -241,8 +214,6 @@ test('a load in flight when the network service of Chrome crashes is made again'
   assert.equal(await page.evaluate('document.body.textContent'), 'loaded');
 });
 
-// without theme/mathjax-config.js, MathJax is started with its default font, which it asks its CDN
-// for. the page of this test reports such an error after the refused file, at its first load only
 test('the errors of a load that is refused a file are dropped with the load', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));
@@ -269,13 +240,8 @@ test('the errors of a load that is refused a file are dropped with the load', { 
   assert.deepEqual(page.errors, ['console.error: an error of the page before']);
 });
 
-// in R7.1, the process of a test file of the editor stayed alive for 20 s to 50 s after its last test,
-// since the stderr pipe of Chrome was held open by chrome_crashpad_handler and GoogleUpdater, which
-// inherit it and outlive Chrome, and close() left a timer of 2 s. the timer is found in every run,
-// and the pipe when a helper is still running 200 ms after close()
 test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, async () => {
   const { serve } = await import('../scripts/webdriver.mjs');
-  // the count of each kind of resource, of which an earlier test may still hold some
   const kinds = () => Object.fromEntries(['PipeWrap', 'ProcessWrap', 'Timeout'].map((k) => [k, process.getActiveResourcesInfo().filter((r) => r === k).length]));
   const before = kinds();
   const server = await serve('.');
@@ -290,8 +256,6 @@ test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, 
   for (const k of Object.keys(now)) assert.ok(now[k] <= before[k], `close() leaves ${JSON.stringify(now)}, against ${JSON.stringify(before)} before launch()`);
 });
 
-// on Windows, TcpPortRandomizationWin causes net::ERR_NO_BUFFER_SPACE on 127.0.0.1 loopback
-// fetches, including inside iframes where goto() reload recovery does not run
 test('chromeArgs disables TcpPortRandomizationWin on Windows only', async () => {
   const { chromeArgs } = await import('../scripts/chrome.mjs');
   assert.equal(typeof chromeArgs, 'function');
@@ -323,13 +287,8 @@ test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeo
   ]);
 });
 
-// a start of the fake Chrome longer than the timeout of the tests below, as of a Node.js process
-// on a crowded machine (issue #110)
 const startHold = 700;
 
-// with hold set, the fake Chrome is held for hold ms before it runs, as a slow start of its process.
-// The returned function resolves once the fake Chrome reads its pipe. A test that awaits it before
-// newPage() does not count the start as a command without an answer
 function pipeChrome(t, mode, { hold = 0 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'slides-pipe-chrome-'));
   const previous = process.env.CHROME_PATH;
@@ -353,7 +312,6 @@ let buf = '';
 let creates = 0;
 let targets = 0;
 const closed = [];
-// with slowStart, nothing is answered in the first 1.5 s, as by a Chrome started on a fresh Windows runner
 const ready = Date.now() + (mode === 'slowStart' ? 1500 : 0);
 input.setEncoding('utf8');
 input.on('data', function read(chunk) {
@@ -402,8 +360,6 @@ input.on('data', function read(chunk) {
   };
 }
 
-// on a Windows runner, newPage() can hang on Page.enable on a fresh about:blank tab right after
-// closing an earlier page, while later targets on the same browser succeed
 test('newPage recovers when a fresh target does not answer Page.enable', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
   const ready = pipeChrome(t, 'hangFirst', { hold: startHold });
   const browser = await launch({ timeout: 400 });
@@ -414,8 +370,6 @@ test('newPage recovers when a fresh target does not answer Page.enable', { skip:
   assert.deepEqual(state, { creates: 2, targets: 2, closed: ['t1'] });
 });
 
-// on a fresh Windows runner, the first Target.createTarget of each test file was not answered in three
-// tries of 15 s each, while the later pages of the same files were opened in seconds (issue #136)
 test('the first page of a Chrome that starts slower than the setup of a page is opened within the timeout', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
   pipeChrome(t, 'slowStart');
   const browser = await launch({ timeout: 4000, setup: 300 });
@@ -459,9 +413,6 @@ test('newPage still fails when every target hangs on Page.enable', { skip: proce
   await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
 });
 
-// on Windows, a process of Chrome can hold a file of the profile for longer than close() tries to
-// remove it, and a test whose assertions passed then failed in its cleanup (issue #116). the
-// profile of this test is put in a read-only folder, from which rmSync cannot remove it
 test('close() ends without an error when the profile cannot be removed, and names the profile on stderr', { skip: process.platform === 'win32' || process.getuid?.() === 0, timeout: 15000 }, async (t) => {
   pipeChrome(t, 'answerAll');
   const parent = mkdtempSync(join(tmpdir(), 'slides-locked-'));

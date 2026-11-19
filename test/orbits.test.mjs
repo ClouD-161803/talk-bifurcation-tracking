@@ -1,14 +1,10 @@
-// checks of the orbit engine and the built-in backdrops, run with `npm test` under type stripping
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { lagrange, lyapunovFamily, pathOf, pointOn, toCrossing, trace } from '../src/orbits.ts';
 import { BUILT_IN_NAMES, builtIn } from '../src/backdrops.ts';
 
 const H = 0.004;
-// the smallest number of trajectories expected in each built-in backdrop
 const FEWEST = { tubes: 114, wideRibbon: 241 };
-// count values from a to b, crowded toward a with the exponent p
 const spaced = (a, b, count, p) => Array.from({ length: count }, (_, i) => a + (b - a) * Math.pow(i / (count - 1), p));
 
 test('the collinear points L1 and L2 are at the Earth–Moon values', () => {
@@ -22,7 +18,6 @@ test('every scene is computed with the expected number of trajectories', () => {
 });
 
 test('each periodic trajectory is closed on its first point', () => {
-  // the Lyapunov orbits of L1 and L2 in tubes, drawn in the tone text
   const orbits = builtIn('tubes').filter((s) => s.tone === 'text');
   assert.equal(orbits.length, 2);
   for (const s of orbits) {
@@ -31,8 +26,6 @@ test('each periodic trajectory is closed on its first point', () => {
   }
 });
 
-// the closure above holds by the mirror construction, hence the corrected state is also flown for
-// a full period
 test('the state of a corrected Lyapunov member is recovered after one period', () => {
   for (const m of lyapunovFamily(1, spaced(0.006, 0.17, 26, 1.35), H)) {
     const r = toCrossing(m.s, H, 1.2 * m.t, 4 * m.t);
@@ -77,40 +70,32 @@ test('a ribbon runs from its orbit around the Earth, with its stable tube the mi
   }
 });
 
-// the timing of a shared runner of GitHub does not stand for a laptop, as in test/perf.test.mjs
 test('a scene is computed in under 150 ms', { skip: process.env.CI ? 'the timing of a shared runner does not stand for a laptop' : false }, async () => {
-  // a fresh module instance, so that the cache of the built-in backdrops above is empty
   const fresh = await import(`../src/backdrops.ts?fresh=${Date.now()}`);
   const t = performance.now();
   fresh.builtIn('tubes');
   assert.ok(performance.now() - t < 150);
 });
 
-// the points of an arc of radius r px about the origin, from 0 to the angle span in rad
 const arc = (count, r, span) => Float32Array.from({ length: 2 * count }, (_, k) => {
   const a = (span * Math.floor(k / 2)) / (count - 1);
   return k % 2 ? r * Math.sin(a) : r * Math.cos(a);
 });
 const offCircle = (r, [x, y]) => Math.abs(Math.hypot(x, y) - r);
 
-test('a trajectory of sparse points is drawn as a smooth curve through them, on the arc they sample', () => {
-  // 13 points 30 deg apart on a circle of 200 px, whose chords are 6.8 px inside the circle at their middles
+test('a trajectory of sparse points is drawn as the centripetal Catmull–Rom spline of Yuksel et al. 2011 through them, on the arc they sample', () => {
   for (const span of [Math.PI, 2 * Math.PI]) {
     const path = pathOf(arc(13, 200, span));
     assert.ok(path.ctl, 'the segments are curves');
     for (let j = 0; j < 12; j++) {
       assert.ok(!Number.isNaN(path.ctl[4 * j]), `segment ${j} is a curve`);
       assert.ok(offCircle(200, pointOn(path, j, 0)) < 1e-3, 'the curve passes through the points');
-      // an end of an open arc is a little flatter than the circle
       assert.ok(offCircle(200, pointOn(path, j, 0.5)) < (span < 6 && (j === 0 || j === 11) ? 2 : 0.6), `segment ${j}`);
     }
   }
-  // a closed trajectory turns smoothly at its first point, i.e. its first and last curves share the tangent there
   const { px, ctl } = pathOf(arc(13, 200, 2 * Math.PI));
   const out = [ctl[0] - px[0], ctl[1] - px[1]], into = [px[0] - ctl[46], px[1] - ctl[47]];
   assert.ok(Math.abs(out[0] * into[1] - out[1] * into[0]) / Math.hypot(...out) / Math.hypot(...into) < 1e-3);
-  // a trajectory whose last point misses its first by 0.2 px is closed as well, hence its first curve
-  // leaves the first point along the same tangent
   const gap = arc(13, 200, 2 * Math.PI);
   gap[24] += 0.2;
   const near = pathOf(gap).ctl;
@@ -122,7 +107,6 @@ test('a trajectory of dense points is drawn straight, with the points within 0.1
   assert.equal(path.ctl, null);
   assert.ok(path.keep.length < 200, `${path.keep.length} of 2001 points kept`);
   assert.deepEqual([path.keep[0], path.keep.at(-1)], [0, 2000]);
-  // every point is within 0.1 px of the segment between the kept points around it
   for (let m = 1; m < path.keep.length; m++) {
     const a = path.keep[m - 1], b = path.keep[m];
     const [ax, ay, bx, by] = [px[2 * a], px[2 * a + 1], px[2 * b], px[2 * b + 1]];
@@ -134,7 +118,6 @@ test('a trajectory of dense points is drawn straight, with the points within 0.1
 });
 const py = (px, k) => px[2 * k + 1];
 
-// the calls of moveTo, lineTo, and bezierCurveTo made in trace(), and the point reached
 function record(path, j, f) {
   const calls = [];
   const pen = { moveTo: (...a) => calls.push(['M', ...a]), lineTo: (...a) => calls.push(['L', ...a]), bezierCurveTo: (...a) => calls.push(['C', ...a]) };
@@ -150,11 +133,9 @@ test('a traced trajectory ends at its head, on a curve and on a straight run wit
       assert.ok(Math.hypot(end[0] - head[0], end[1] - head[1]) < 1e-3, `j = ${j}, f = ${f}`);
       assert.equal(calls.filter((c) => c[0] === 'M').length, 1, 'one path');
     }
-    // a whole trajectory ends at its last point
     const { end } = record(path, n - 1, 0);
     assert.deepEqual(end, [path.px[2 * n - 2], path.px[2 * n - 1]]);
   }
-  // the curve of a segment is cut at the head, and its part up to the head follows the curve
   const path = pathOf(arc(13, 200, Math.PI)), { calls } = record(path, 4, 0.6), cut = calls.at(-1);
   const [x0, y0] = pointOn(path, 4, 0), [x3, y3] = [cut[5], cut[6]];
   const bez = (t) => [0, 1].map((k) => (1 - t) ** 3 * [x0, y0][k] + 3 * (1 - t) ** 2 * t * cut[1 + k] + 3 * (1 - t) * t * t * cut[3 + k] + t ** 3 * [x3, y3][k]);

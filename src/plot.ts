@@ -1,10 +1,3 @@
-// an animated 2D plot in a `.plot` element, drawn as SVG from an inline JSON script named by the
-// attribute data-plot. the format is documented in REFERENCE.md. the plot is played in a loop while
-// its slide is shown, and the fragments of its slide reveal its panels and marks with
-// data-plot-show and switch its tab with data-plot-tab. text in the JSON is set in a small markup,
-// in which $...$ is math with italic letters, sub- and superscripts, and TeX names of symbols. the
-// macros of the preamble of the deck are expanded before the markup is read, see src/expand.ts
-
 import { expandMacros } from './expand.ts';
 import type { MacroDef } from './preamble.ts';
 
@@ -12,31 +5,21 @@ type Pair = [number, number];
 type Anchor = 'start' | 'middle' | 'end';
 type Kind = 'points' | 'trace' | 'label' | 'events';
 
-// a tick at a value of its axis, labeled with text in the markup
 export type Tick = { at: number; text: string };
 export type Scale = 'linear' | 'asinh';
 export type Axis = { range: Pair; ticks: Tick[]; title: string; scale: Scale; unit: number };
-// an element of a panel or a mark. id names it in data-plot-show and in the active list of a tab,
-// and the classes of cls are the targets of a data-highlight of the slide
 type Item = { id: string | null; tone: string; cls: string[]; delay: number };
 export type Region = Item & { points: Pair[]; opacity: number; iris: number; from: Pair | null };
 export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null; wipe: number };
 export type Label = Item & { at: Pair; text: string; anchor: Anchor; dx: number; dy: number };
-// the margin of a panel in px, from the top clockwise as in CSS
 export type Margin = [number, number, number, number];
 export type Panel = { id: string; x: Axis; y: Axis; equal: boolean; axes: boolean; title: string; regions: Region[]; curves: Curve[]; labels: Label[]; size: number; margin: Margin };
-// the keys of a panel that a tab may replace
 export type PanelPatch = Partial<Pick<Panel, 'x' | 'y' | 'title' | 'regions' | 'curves' | 'labels'>>;
-// a trace with fade drawn faint, and each part of it faded out over fade seconds after the head has passed it
 export type Mark = Item & { id: string; panel: string; kind: Kind; size: number; width: number; hollow: boolean; ghost: boolean; fade: number; anchor: Anchor; dx: number; dy: number };
 export type PlotEvent = { frame: number; at: Pair; text: string };
-// a label mark with one position or one text is held there for every frame
 export type LabelData = { at: Pair[]; text: string[] };
-// the path of a trace, whose faint line is drawn from the first frame to the frame ghost, with the
-// tone of each frame in tones, or in the tone of its mark without them
 export type TraceData = { points: Pair[]; ghost: number; tones: string[] | null };
 export type MarkData = number[][] | TraceData | LabelData | PlotEvent[];
-// times, when given, are the seconds into a pass at which the frames of a tab are shown
 export type Tab = { name: string; label: string; values: number[]; times: number[] | null; data: Record<string, MarkData>; active: string[][] | null; panels: Record<string, PanelPatch> };
 export type Plot = { parameter: { label: string; digits: number }; duration: number; hold: number; fade: number; layout: 'row' | 'column' | null; panels: Panel[]; marks: Mark[]; tabs: Tab[] };
 
@@ -112,7 +95,6 @@ function axis(v: unknown, path: string): Axis {
   return { range, ticks, title: str(v.title, `${path}.title`, ''), scale, unit };
 }
 
-/** The coordinate of the value v along an axis, i.e. v on a linear scale and asinh(v / unit) on an asinh scale. */
 export function scaled(a: Axis, v: number): number {
   return a.scale === 'asinh' ? Math.asinh(v / a.unit) : v;
 }
@@ -174,7 +156,6 @@ function panel(v: unknown, path: string): Panel {
   };
 }
 
-// the keys of a panel given in a tab, which replace those of the panel while the tab is shown
 function patch(v: unknown, path: string): PanelPatch {
   if (!isObject(v)) fail(path, 'a panel is expected');
   for (const key of Object.keys(v)) if (!PATCH.includes(key)) fail(`${path}.${key}`, `one of ${PATCH.join(', ')} is expected`);
@@ -197,7 +178,6 @@ function markData(m: Mark, v: unknown, frames: number, path: string): MarkData {
     return a;
   }
   if (m.kind === 'trace') {
-    // a list of points, or { points, ghost } with the last frame of the faint line
     const given = isObject(v) ? v : { points: v };
     const points = pairs(given.points, isObject(v) ? `${path}.points` : path);
     perFrame(points.length);
@@ -224,7 +204,6 @@ function markData(m: Mark, v: unknown, frames: number, path: string): MarkData {
   });
 }
 
-/** Checks a plot read from JSON and fills in the defaults. The Error thrown on a fault gives the path of the first fault. */
 export function parsePlot(input: unknown): Plot {
   const v = typeof input === 'string' ? (JSON.parse(input) as unknown) : input;
   if (!isObject(v)) fail('plot', 'an object is expected');
@@ -308,7 +287,6 @@ export function parsePlot(input: unknown): Plot {
 
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 
-/** The value at the fractional frame u, linear between two frames. */
 export function valueAt(values: number[], u: number): number {
   const n = values.length;
   if (n === 1) return values[0];
@@ -316,12 +294,10 @@ export function valueAt(values: number[], u: number): number {
   return values[i] + f * (values[i + 1] - values[i]);
 }
 
-/** The entry of the frame nearest to u. */
 export function nearest<T>(frames: T[], u: number): T {
   return frames[clamp(Math.round(u), 0, frames.length - 1)];
 }
 
-/** The coordinates at the fractional frame u, linear between two frames of the same length and the nearest frame otherwise. */
 export function framesAt(frames: number[][], u: number): number[] {
   const n = frames.length;
   if (n === 1) return frames[0];
@@ -331,7 +307,6 @@ export function framesAt(frames: number[][], u: number): number[] {
   return a.map((x, k) => x + f * (b[k] - x));
 }
 
-/** The path of a trace from its first frame to the fractional frame u, which ends between two frames. */
 export function traceTo(path: Pair[], u: number): Pair[] {
   const n = path.length, v = clamp(u, 0, n - 1), i = Math.floor(v), f = v - i;
   const out = path.slice(0, i + 1);
@@ -339,12 +314,10 @@ export function traceTo(path: Pair[], u: number): Pair[] {
   return out;
 }
 
-/** The seconds of a pass over the n frames of a tab: its last time, or duration for a tab without times. */
 export function passLength(n: number, duration: number, times: number[] | null): number {
   return times ? times[n - 1] : duration;
 }
 
-/** The seconds into a pass at the fractional frame u of n frames, shown at their times, or at even steps over duration without times. */
 export function timeAt(u: number, n: number, duration: number, times: number[] | null): number {
   if (n < 2) return 0;
   const v = clamp(u, 0, n - 1);
@@ -353,7 +326,6 @@ export function timeAt(u: number, n: number, duration: number, times: number[] |
   return times[i] + (v - i) * (times[i + 1] - times[i]);
 }
 
-/** The fractional frame of n frames shown at tau seconds into a pass, the inverse of timeAt. */
 export function frameAt(tau: number, n: number, duration: number, times: number[] | null): number {
   if (n < 2) return 0;
   if (!times) return clamp(tau / duration, 0, 1) * (n - 1);
@@ -368,7 +340,6 @@ export function frameAt(tau: number, n: number, duration: number, times: number[
   return lo + (tau - times[lo]) / (times[lo + 1] - times[lo]);
 }
 
-/** The fractional frame at t seconds into a loop that runs over n frames in duration seconds, or at the times of a tab, and then holds the last frame for hold seconds. */
 export function loopFrame(t: number, n: number, duration: number, hold: number, times: number[] | null = null): number {
   if (n < 2) return 0;
   const period = passLength(n, duration, times) + hold;
@@ -376,7 +347,6 @@ export function loopFrame(t: number, n: number, duration: number, hold: number, 
   return frameAt(tau, n, duration, times);
 }
 
-/** The opacity of the moving marks at t seconds into a loop of passes of length seconds, each followed by a hold of hold seconds. Over the first fade seconds of each later pass, the marks are faded in while a copy of the held last frame is faded out at 1 minus this opacity, with fade at most length. */
 export function loopFade(t: number, length: number, hold: number, fade: number): number {
   const f = Math.min(fade, length), period = length + hold;
   if (!(f > 0) || !(period > 0) || t < 0) return 1;
@@ -387,7 +357,6 @@ export function loopFade(t: number, length: number, hold: number, fade: number):
 
 const MINUS = '−';
 
-/** A number for a tick or a readout, with a minus sign in place of the hyphen. */
 export function formatNumber(x: number, digits?: number): string {
   const s = digits === undefined ? String(Number(x.toPrecision(6))) : x.toFixed(digits);
   return s.replace(/^-(?=.*[1-9])/, MINUS).replace(/^-/, '');
@@ -399,26 +368,16 @@ const SYMBOLS: Record<string, string> = {
   pm: '±', mp: '∓', infty: '∞', cdot: '·', times: '×', approx: '≈', le: '≤', ge: '≥', ne: '≠', to: '→', in: '∈',
 };
 
-// the capitals of \mathcal, from the script block of Unicode, where B, E, F, H, I, L, M, and R are
-// taken from the letterlike symbols
 const SCRIPT_GAPS: Record<string, string> = { B: 'ℬ', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ' };
 const script = (c: string) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d49c + c.charCodeAt(0) - 65) : c);
-// the capitals of \mathbb, from the double-struck block, where C, H, N, P, Q, R, and Z are taken
-// from the letterlike symbols
 const STRUCK_GAPS: Record<string, string> = { C: 'ℂ', H: 'ℍ', N: 'ℕ', P: 'ℙ', Q: 'ℚ', R: 'ℝ', Z: 'ℤ' };
 const struck = (c: string) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d538 + c.charCodeAt(0) - 65) : c);
-// the styles that the markup does not draw, whose argument is shown in the style around it or upright
 const AS_IS = new Set(['boldsymbol', 'bm', 'mathit', 'mathop', 'mathfrak', 'ensuremath']);
 const UPRIGHT = new Set(['mathrm', 'text', 'mathbf', 'mathsf', 'mathtt', 'operatorname', 'textrm', 'textbf', 'textit', 'mathnormal']);
-// the spaces of TeX in math, and the negative space, which is not drawn
 const SPACES: Record<string, string> = { ',': ' ', ':': ' ', ';': ' ', ' ': ' ', '!': '', '\\': ' ' };
 
 export type Run = { text: string; italic: boolean; shift: 'sub' | 'sup' | null };
 
-/**
- * Splits a text of the markup into runs, i.e. pieces of one style, after the macros are expanded,
- * by default those of the deck.
- */
 export function parseMarkup(src: string, macros?: Record<string, MacroDef>): Run[] {
   const runs: Run[] = [];
   const push = (text: string, italic: boolean, shift: Run['shift']) => {
@@ -431,7 +390,6 @@ export function parseMarkup(src: string, macros?: Record<string, MacroDef>): Run
     if (k % 2 === 0) { if (part) push(part, false, null); return; }
     math(part, false, null);
   });
-  // a group in braces, a command, or one character, starting at i
   function group(s: string, i: number): [string, number] {
     if (s[i] === '{') {
       let depth = 0, j = i;
@@ -482,7 +440,6 @@ export function parseMarkup(src: string, macros?: Record<string, MacroDef>): Run
   return runs;
 }
 
-/** Fills el with the runs of a text of the markup. */
 export function setMarkup(el: HTMLElement, src: string): void {
   el.replaceChildren(...parseMarkup(src).map((r) => {
     let node: Node = document.createTextNode(r.text);
@@ -501,21 +458,17 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
   return el;
 }
 
-// a circle as a closed polyline, for an axis on which it is not an ellipse
 const circlePoints = ([cx, cy, r]: [number, number, number]): Pair[] =>
   Array.from({ length: 181 }, (_, i) => [cx + r * Math.cos((i * Math.PI) / 90), cy + r * Math.sin((i * Math.PI) / 90)]);
 
-// a tone is the name of a custom property of the theme, e.g. accent or data-3, or a CSS color
 const toneColor = (tone: string) => (/^[a-z][a-z0-9-]*$/.test(tone) ? `var(--${tone})` : tone);
 
 const words = (s: string | undefined | null) => (s ?? '').split(/\s+/).filter(Boolean);
 
-// the box of a panel in px, with the scaled coordinates x0 and y0 of the lower left corner
 type Box = { x: number; y: number; w: number; h: number; x0: number; y0: number; sx: number; sy: number; panel: Panel };
 
 const GAP = 56;
 
-/** The start and the length of the cell of each panel along a side of length total, in shares of their sizes, with a gap between two cells. */
 export function cells(sizes: number[], total: number, gap: number): Pair[] {
   const free = total - gap * (sizes.length - 1), sum = sizes.reduce((a, b) => a + b, 0);
   let at = 0;
@@ -532,7 +485,6 @@ const reduced = () => typeof window === 'undefined' || matchMedia('(prefers-redu
 
 const CACHE = new WeakMap<HTMLElement, PlotView>();
 
-/** One animated plot per `.plot` element. */
 export class PlotView {
   readonly el: HTMLElement;
   private spec: Plot | null = null;
@@ -548,7 +500,6 @@ export class PlotView {
   private area!: HTMLElement;
   private svgEl!: SVGSVGElement;
   private overlay!: HTMLElement;
-  // the buttons of the tabs offered by data-plot-tabs, with the index of each tab
   private tabButtons: { b: HTMLButtonElement; i: number }[] = [];
   private offered: number[] = [];
   private playButton!: HTMLButtonElement;
@@ -561,28 +512,19 @@ export class PlotView {
   private gated: { node: Element; names: string[] }[] = [];
   private emphasized: { node: Element; id: string }[] = [];
   private drawers: ((u: number) => void)[] = [];
-  // the opacity of the moving marks, below 1 while they are faded at the restart of the loop, and
-  // the groups and labels of these marks
   private fade = 1;
   private faders: SVGElement[] = [];
   private fadeLabels: HTMLElement[] = [];
-  // copies of the faders and of their labels at the last frame, faded out at 1 - fade while the next
-  // pass is faded in, and the number of the pass of the loop drawn last
   private held: (SVGElement | HTMLElement)[] = [];
   private pass = 0;
   private eventFrames: { frame: number; names: string[]; tone: string }[] = [];
-  // the ids named in the active list of any tab, which are dimmed while another id is active
   private emphasis = new Set<string>();
   private shown = new Set<string>();
   private steps = new Set<string>();
-  // the ids named in the data-plot-hide of a shown fragment, hidden from its step on
   private gone = new Set<string>();
   private stepTab: string | null = null;
-  // a plot whose slide has a fragment with data-plot-play is held until that fragment is shown
   private cue: 'none' | 'held' | 'shown' = 'none';
-  // the slide of the plot is shown, and the plot may move
   private live = false;
-  // the tab is played once, from a fragment with data-plot-once, and held at its last frame
   private once = false;
 
   constructor(el: HTMLElement) {
@@ -591,7 +533,6 @@ export class PlotView {
     this.load(null);
   }
 
-  /** Draws the plot again from text, or from its block when text is null, e.g. while the editor changes its data. A fault is shown in place of the plot. */
   reload(text: string | null = null): void {
     this.pause();
     this.spec = null;
@@ -603,7 +544,6 @@ export class PlotView {
 
   private load(text: string | null): void {
     const el = this.el;
-    // a slide is cloned with its plot for each step in the print view of reveal.js
     for (const old of el.querySelectorAll(':scope > .plot-body, :scope > .plot-error')) old.remove();
     try {
       const id = el.dataset.plot ?? '';
@@ -638,12 +578,10 @@ export class PlotView {
     return this.plot.tabs[this.tab].values.length;
   }
 
-  // the seconds of a pass over the frames of the tab shown
   private get length(): number {
     return passLength(this.frames, this.plot.duration, this.plot.tabs[this.tab].times);
   }
 
-  // the seconds into a pass at the fractional frame u of the tab shown, and the inverse
   private timeOf(u: number): number {
     return timeAt(u, this.frames, this.plot.duration, this.plot.tabs[this.tab].times);
   }
@@ -691,7 +629,6 @@ export class PlotView {
     });
     this.scrub = document.createElement('div');
     this.scrub.className = 'plot-scrub';
-    // a drag on the scrubber is not a swipe of the deck
     this.scrub.setAttribute('data-prevent-swipe', '');
     this.fill = document.createElement('div');
     this.fill.className = 'plot-fill';
@@ -739,7 +676,6 @@ export class PlotView {
     for (const { b, i } of this.tabButtons) b.setAttribute('aria-selected', String(i === this.tab));
   }
 
-  /** Lays the panels out in the size of the element, which is measured in slide pixels. */
   fit(): void {
     if (!this.spec) return;
     const W = this.area.offsetWidth, H = this.area.offsetHeight;
@@ -753,7 +689,6 @@ export class PlotView {
     this.buildMarks();
   }
 
-  // the panels of the tab shown, with the keys that the tab replaces
   private panelsNow(): Panel[] {
     const patches = this.plot.tabs[this.tab].panels;
     return this.panels.map((p) => ({ ...p, ...patches[p.id] }));
@@ -781,7 +716,6 @@ export class PlotView {
     });
   }
 
-  // the pixel of a coordinate along an axis, i.e. of a value after its scale
   private XS(b: Box, x: number): number {
     return b.x + (x - b.x0) * b.sx;
   }
@@ -798,8 +732,6 @@ export class PlotView {
     return this.YS(b, scaled(b.panel.y, y));
   }
 
-  // the coordinates of a point of the data, in which the marks are interpolated between frames, so
-  // that a mark between two frames is on the straight line drawn between them
   private toAxes(b: Box, [x, y]: Pair): Pair {
     return [scaled(b.panel.x, x), scaled(b.panel.y, y)];
   }
@@ -858,7 +790,6 @@ export class PlotView {
       const p = b.panel;
       const g = svg('g', { class: 'plot-panel' }, this.svgEl);
       this.gate(g, [p.id]);
-      // the marks are clipped a little outside the axes, so that a point on an axis is drawn whole
       for (const [suffix, pad] of [['', 0], ['-marks', 14]] as const) {
         const clip = svg('clipPath', { id: `plot-${this.uid}-${p.id}${suffix}` }, defs);
         svg('rect', { x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, clip);
@@ -870,8 +801,6 @@ export class PlotView {
           this.styleItem(svg('path', { class: 'plot-region', d, 'fill-opacity': r.opacity }, statics), r, [p.id, r.id]);
           return;
         }
-        // a region with an iris is a disk clipped to the region, grown from the point from as it is
-        // shown. the disk reaches the farthest corner of the part of the bounding box in the axes
         const id = `plot-${this.uid}-${p.id}-iris-${k}`;
         svg('path', { d }, svg('clipPath', { id }, defs));
         const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
@@ -890,8 +819,6 @@ export class PlotView {
         const node = c.circle && linear
           ? svg('ellipse', { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics)
           : svg('path', { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : (c.points ?? [])) }, statics);
-        // a curve with a wipe is traced from its first point to its last as it is shown. a dashed
-        // curve keeps its dashes, and a solid copy of it with the wipe is its mask
         let wiped: Element | null = null;
         if (c.wipe > 0 && c.dash) {
           const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
@@ -937,7 +864,6 @@ export class PlotView {
     }
   }
 
-  // the nodes of the marks of the current tab, with one drawer per mark that sets them at a frame
   private buildMarks(): void {
     for (const g of this.svgEl.querySelectorAll('.plot-marks')) g.replaceChildren();
     for (const old of this.overlay.querySelectorAll('.plot-mark')) old.remove();
@@ -954,8 +880,6 @@ export class PlotView {
       if (!b || !g || data === undefined) continue;
       const group = svg('g', {}, g);
       this.styleItem(group, m, [m.panel, m.id]);
-      // a mark that moves is faded at the restart of the loop in a group of its own, since the
-      // opacity of the group of the mark is set by the classes of the steps
       const moving = m.kind === 'events' || (m.kind === 'label' ? (data as LabelData).at.length > 1 || (data as LabelData).text.length > 1 : (m.kind === 'trace' ? (data as TraceData).points : (data as unknown[])).length > 1);
       const fader = moving ? svg('g', {}, group) : group;
       if (moving) {
@@ -976,7 +900,6 @@ export class PlotView {
         });
       } else if (m.kind === 'trace') {
         const { points, ghost, tones } = data as TraceData, pts = points.map((q) => this.toAxes(b, q));
-        // the faint path up to the frame ghost is kept through the fade, and left out with "ghost": false
         if (m.ghost && ghost > 0) svg('path', { class: 'plot-ghost', d: this.pathS(b, pts.slice(0, ghost + 1)), 'stroke-width': m.width }, group);
         if (fader !== group) group.append(fader);
         const head = svg('circle', { class: 'plot-dot', r: m.size / 2 }, fader);
@@ -990,18 +913,11 @@ export class PlotView {
             head.setAttribute('cy', this.YS(b, y).toFixed(1));
           });
         } else {
-          // a trace with tones or a fade is drawn as one segment per frame, each in the tone of the
-          // frame it starts at, and faded by the seconds since the head passed its middle. a segment
-          // behind the newest is written once, and its opacity in steps of a twentieth while it fades,
-          // hence a long trace does not rewrite every segment in each frame
           const parts: SVGLineElement[] = [], opacities: string[] = [];
           const tone = (i: number) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
-          // the segments written in full, the segments shown, the first segment that may not be faded
-          // out, and the frame of the last draw
           let full = 0, shown = 0, gone = 0, last = -1;
           this.drawers.push((u) => {
             const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
-            // drawn again from an earlier frame, e.g. at the restart of the loop or a step back
             if (u < last) { full = Math.min(full, Math.max(0, n - 1)); gone = 0; }
             last = u;
             while (parts.length < n) {
@@ -1069,9 +985,6 @@ export class PlotView {
     if (!this.spec || !this.W) return;
     const tab = this.plot.tabs[this.tab], u = this.u, n = this.frames;
     for (const d of this.drawers) d(u);
-    // a filter multiplies the opacity of a label, which is set by the classes of the steps. two texts
-    // at one place are read as one, hence a held label is faded out while fade is below 0.5, and a
-    // label of the next pass is faded in afterward
     for (const f of this.faders) f.style.opacity = this.fade < 1 ? String(this.fade) : '';
     for (const el of this.fadeLabels) el.style.filter = this.fade < 1 ? `opacity(${Math.max(0, 2 * this.fade - 1)})` : '';
     for (const node of this.held) {
@@ -1092,8 +1005,6 @@ export class PlotView {
     } else for (const { node } of this.emphasized) node.classList.remove('plot-on', 'plot-off');
   }
 
-  // copies the moving marks at the last frame of the tab before the first frame of the next pass is
-  // drawn, so that the held frame is faded out while the next pass is faded in
   private holdLast(): void {
     this.release();
     for (const d of this.drawers) d(this.frames - 1);
@@ -1119,7 +1030,6 @@ export class PlotView {
 
   private applyGates(): void {
     for (const { node, names } of this.gated) node.classList.toggle('plot-hidden', this.hidden(names));
-    // a tab is offered once the name of the tab is shown
     for (const { b, i } of this.tabButtons) {
       const off = this.hidden([this.plot.tabs[i].name]);
       b.classList.toggle('plot-hidden', off);
@@ -1135,7 +1045,6 @@ export class PlotView {
     }));
   }
 
-  /** Reads the fragments of the slide: the names of data-plot-show, the tab of the last visible data-plot-tab, and the cue of data-plot-play. */
   syncSteps(): void {
     if (!this.spec) return;
     const slide = this.el.closest('section');
@@ -1149,7 +1058,6 @@ export class PlotView {
     const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
     const top = tabbed.at(-1);
     const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
-    // a tab of a fragment with data-plot-once is played once when its step is reached going forward
     const run = !!top?.hasAttribute('data-plot-once') && top.classList.contains('current-fragment') && this.live && !reduced();
     let tab = this.tab;
     if (name !== this.stepTab) {
@@ -1173,7 +1081,6 @@ export class PlotView {
     }
   }
 
-  /** Shows the tab i, from its first frame while the plot is played or with first set, and at its still frame otherwise. */
   setTab(i: number, first = false): void {
     if (!this.spec || i === this.tab) return;
     this.tab = i;
@@ -1184,21 +1091,17 @@ export class PlotView {
     this.pass = 0;
     this.release();
     if (!this.W) return;
-    // a tab may replace the axes and the elements of a panel. the elements are drawn again, hence
-    // the slide is told to apply its highlights to them
     this.layout();
     this.drawStatic();
     this.buildMarks();
     this.el.dispatchEvent(new CustomEvent('beeson:plot-drawn', { bubbles: true }));
   }
 
-  /** The frame of a still, from data-plot-frame, where a negative frame is counted from the end. The default is the last frame, which is also the still of a plot whose cue is shown. */
   private stillFrame(): number {
     const f = Number(this.cue === 'shown' ? -1 : (this.el.dataset.plotFrame ?? -1)), n = this.frames;
     return clamp(Number.isFinite(f) ? (f < 0 ? n + f : f) : n - 1, 0, n - 1);
   }
 
-  /** Draws the still frame, without the animation. */
   still(): void {
     if (!this.spec) return;
     this.pause();
@@ -1210,7 +1113,6 @@ export class PlotView {
     return !this.el.hasAttribute('data-plot-paused') && !reduced();
   }
 
-  /** Starts the loop from the first frame as the slide is shown, unless data-plot-paused is set, the motion is reduced, or the cue of the slide is not shown yet. */
   start(): void {
     if (!this.spec) return;
     this.live = true;
@@ -1219,7 +1121,6 @@ export class PlotView {
     this.play();
   }
 
-  /** Stops the loop as the slide is left. */
   leave(): void {
     this.live = false;
     this.pause();
@@ -1227,7 +1128,6 @@ export class PlotView {
 
   play(): void {
     if (!this.spec || this.raf) return;
-    // a pass that ended is played again from the first frame
     if (this.u >= this.frames - 1) this.u = 0;
     this.t0 = performance.now() - this.timeOf(this.u) * 1000;
     this.pass = 0;
@@ -1270,18 +1170,15 @@ export class PlotView {
     return this.raf !== 0;
   }
 
-  /** The seconds of a pass over the frames of the tab shown, of the hold of its last frame, and of the fade into the next pass, e.g. for the recordings of scripts/animations.mjs. */
   get timing(): { pass: number; hold: number; fade: number } | null {
     return this.spec ? { pass: this.length, hold: this.plot.hold, fade: this.plot.fade } : null;
   }
 
-  /** The fractional frame shown. */
   get frame(): number {
     return this.u;
   }
 }
 
-/** One PlotView per `.plot` element under root, reused when an element was mounted before. */
 export function mountPlots(root: ParentNode): PlotView[] {
   return [...root.querySelectorAll<HTMLElement>('.plot')].map((el) => CACHE.get(el) ?? new PlotView(el));
 }

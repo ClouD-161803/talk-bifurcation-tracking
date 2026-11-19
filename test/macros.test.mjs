@@ -1,7 +1,3 @@
-// the definitions of a preamble.tex in a deck: theme/mathjax-config.js gives MathJax the macros, the
-// environments, and the packages of the tex.js next to the deck. In test/pages/tex/index.html, each
-// formula written with a definition is typeset as the formula that it stands for
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -10,8 +6,6 @@ import { deckTex } from '../scripts/tex.mjs';
 
 const PAGE = 'test/pages/tex/index.html';
 
-// the glyphs of the two formulas of each row, and whether the first has a name drawn in red, as
-// MathJax draws a macro that is not defined
 const ROWS = `[...document.querySelectorAll('.slides tr[data-case]')].map((row) => {
   const glyphs = (cell) => [...cell.querySelectorAll('mjx-container use')].map((use) => use.getAttribute('xlink:href') ?? use.getAttribute('href'));
   const [got, want] = row.cells;

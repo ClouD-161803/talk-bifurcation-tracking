@@ -1,12 +1,5 @@
-// a BibTeX parser for the bibliography of a deck. an entry is read with its type, its key, and
-// its fields, whose values keep their TeX text, e.g. the braces that hold a name together. an
-// entry that is not read is skipped and listed with its reason, and the entries after it are read.
-// the parser does not depend on Node or on a browser, since it is run by scripts/tex.mjs and by
-// the editor
-
 import { plainText } from './accents.ts';
 
-/** An entry of a bibliography, with the line of its start and its place in the source, from start up to end. */
 export type Entry = { type: string; key: string; fields: Record<string, string>; line: number; start: number; end: number };
 export type SkippedEntry = { line: number; text: string; reason: string };
 export type Bibliography = { entries: Entry[]; skipped: SkippedEntry[] };
@@ -25,17 +18,14 @@ const MONTHS: Record<string, string> = {
   nov: 'November',
   dec: 'December',
 };
-// the characters of the name of a field or of a string
 const NAME = /^[^\s,#{}()"=@]+/;
 
 class Skip extends Error {}
 
 const tidy = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
-/** The plain text of a field of an entry, which is empty without the field. */
 export const plain = (entry: Entry, field: string): string => plainText(entry.fields[field] ?? '');
 
-/** Reads the entries of a BibTeX source. */
 export function readBibtex(source: string): Bibliography {
   const n = source.length;
   const strings = new Map(Object.entries(MONTHS));
@@ -49,8 +39,6 @@ export function readBibtex(source: string): Bibliography {
   };
   const unclosed = (shut: string): Skip => new Skip(shut === '}' ? 'a brace is not closed' : 'a parenthesis is not closed');
   const name = (i: number): string => NAME.exec(source.slice(i, i + 200))?.[0] ?? '';
-  // the index after the group that is opened at i. as in BibTeX, a backslash does not escape a
-  // brace or a quote
   const group = (i: number): number => {
     const paren = source[i] === '(';
     let depth = paren ? 1 : 0;
@@ -62,7 +50,6 @@ export function readBibtex(source: string): Bibliography {
     }
     throw unclosed(paren ? ')' : '}');
   };
-  // the value at i, i.e. texts in braces or in quotes, numbers, and names of strings, joined at #
   const value = (i: number, field: string): [string, number] => {
     let text = '';
     for (;;) {
@@ -92,7 +79,6 @@ export function readBibtex(source: string): Bibliography {
       i++;
     }
   };
-  // the field at i, as its name and its value, and the index after it
   const field = (i: number, shut: string): [string, string, number] => {
     const named = name(i);
     if (!named) throw i >= n || source[i] === '@' ? unclosed(shut) : new Skip('the name of a field is expected');
@@ -116,7 +102,6 @@ export function readBibtex(source: string): Bibliography {
       i = space(i + 1);
       if (source[i] === shut) break;
       const [named, text, end] = field(i, shut);
-      // as in BibTeX, the first of two fields of one name is kept
       if (!(named in fields)) fields[named] = tidy(text);
       last = named;
       i = space(end);
@@ -133,7 +118,6 @@ export function readBibtex(source: string): Bibliography {
   while ((i = source.indexOf('@', i)) >= 0) {
     const start = i;
     const head = /^@([A-Za-z]+)\s*[{(]/.exec(source.slice(i, i + 80));
-    // an @ in the text between the entries, e.g. in an address
     if (!head) {
       i++;
       continue;

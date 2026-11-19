@@ -1,5 +1,3 @@
-// check of the test command of package.json and of its copy in the check workflow
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -8,17 +6,10 @@ import { availableParallelism, constants, getPriority, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// the options of node in the test command, and its script
 const command = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
 const options = command.split(' ').slice(1);
-// the same options with the files of the repository given by their absolute paths, for a run in
-// another folder. node reads the module of --import as a URL on Windows
 const absolute = options.map((option, k) => (!option.endsWith('.mjs') ? option : options[k - 1] === '--import' ? pathToFileURL(resolve(option)).href : resolve(option)));
 
-// runs the test command on file from the root of the repository, or from cwd, without
-// NODE_TEST_CONTEXT, since node does not run the files of a test command inside a test. Resolves to
-// the exit code, the TAP report, and the errors of the run in ended. The variables of GitHub Actions
-// are left out, hence a warning of a run is not read as one of the round
 function run(file, env = {}, cwd = undefined) {
   const { NODE_TEST_CONTEXT, GITHUB_ACTIONS, GITHUB_STEP_SUMMARY, ...rest } = process.env;
   const child = spawn(process.execPath, [...(cwd ? absolute : options), ...[file].flat()], { cwd, env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -29,9 +20,6 @@ function run(file, env = {}, cwd = undefined) {
   return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report, errors }))) };
 }
 
-// most test files close their server after their browser, and on Windows the close of the browser
-// fails at times. The server was then left open, and the run waited for the file until the limit
-// of its job
 test('a test file with a failed cleanup and a server left open is ended', { timeout: 60000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -41,7 +29,6 @@ test('a test file with a failed cleanup and a server left open is ended', { time
      import { after, before, test } from 'node:test';
      let server;
      before(() => new Promise((done) => (server = createServer(() => {})).listen(0, done)));
-     // a file that is not ended by the test command ends by itself, after the wait of the test
      setTimeout(() => server.close(), 30000);
      after(() => {
        if (process.env.FAIL) throw new Error('the browser is not closed');
@@ -58,10 +45,6 @@ test('a test file with a failed cleanup and a server left open is ended', { time
   }
 });
 
-// run() of node:test runs one test file at a time unless it is given a number, where node --test
-// runs one file fewer than the machine has cores. With one file at a time, the test jobs of a round
-// took 43 to 49 minutes on Ubuntu, where they took 20 to 33 with node --test. Each of the two files
-// waits for the start of the other one
 test('the test files are run at the same time, as node --test runs them', { timeout: 60000, skip: availableParallelism() < 3 && 'node --test runs one file at a time on fewer than three cores' }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -83,13 +66,10 @@ test('the test files are run at the same time, as node --test runs them', { time
   });
   const { code, report } = await run(files, { ROOT: root }).ended;
   assert.equal(code, 0);
-  // run one after the other, the first file fails, and passes in its second run
   assert.doesNotMatch(report, /^# second run of /m);
   assert.equal(report.match(/^ok \d+ - \w+ is run with the other file$/gm)?.length, 2);
 });
 
-// a failed test file is run once more. On a runner, one test in about 1,700 fails without a fault
-// in the code under test often enough that most rounds had a failed job
 test('a test that fails in one run of its file is named in a warning, and one that fails in two runs fails the command', { timeout: 60000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -116,8 +96,6 @@ test('a test that fails in one run of its file is named in a warning, and one th
   }
 });
 
-// GitHub reads a percent sign and a line break in the text of a workflow command, and a colon and
-// a comma in the value of a property, as parts of the command. A warning with one of them was cut
 test('the warning of a round has the characters of a workflow command escaped', { timeout: 60000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -139,9 +117,6 @@ test('the warning of a round has the characters of a workflow command escaped', 
   assert.match(warning[2], /^100%25 of a::b%0Aand c failed in .*a,b\.test\.mjs and passed when the file was run again$/);
 });
 
-// the reports of the last tests of a file were lost at times when its process was ended, since the
-// writes of its reports to the pipe of the test command were still queued. Their loss is random,
-// hence each file is run ten times. A file with a failed test is reported twice, for its two runs
 test('every test of a test file is reported, and a failed last test by its name and message', { timeout: 120000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -168,8 +143,6 @@ test('every test of a test file is reported, and a failed last test by its name 
   }
 });
 
-// the whole suite takes over an hour on a laptop, with every core busy, and it is run by CI in
-// each round. A test command without test files is mostly an agent that runs the suite by habit
 test('the test command runs every test file only with --all or a shard, and otherwise asks for the test files', { timeout: 60000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -184,8 +157,6 @@ test('the test command runs every test file only with --all or a shard, and othe
   }
 });
 
-// a laptop stays usable while the test files of a change are run. The browsers of the test files are
-// started by them, hence at the same priority. A runner of CI is not used for anything else
 test('outside CI, the test files and the processes that they start are run at the lowest priority', { timeout: 60000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -205,46 +176,32 @@ test('outside CI, the test files and the processes that they start are run at th
        }
      });`,
   );
-  // on CI the priority of the command is kept, which is the one of this test
   for (const [ci, priority] of [['', constants.priority.PRIORITY_LOW], ['true', getPriority()]]) {
     const { code, report } = await run(join(root, 'priority.test.mjs'), { CI: ci, PRIORITY: String(priority) }).ended;
     assert.equal(code, 0, `the priority ${ci ? 'on' : 'outside'} CI is not ${priority}:\n${report}`);
   }
 });
 
-// on Windows, a test file was not ended after its last test, without an error, and the run waited
-// for it until the limit of 45 minutes of its job. With a limit, the file fails by name. The limit
-// is on each test and hook in node 26, and on a whole test file in node 22, hence it is a long one
 test('a test file that does not end fails after 15 to 30 minutes', () => {
   const limit = Number(/^--test-timeout=(\d+)$/.exec(options.find((option) => option.startsWith('--test-timeout')) ?? '')?.[1]);
   assert.ok(limit >= 900000 && limit <= 1800000, `the limit of ${command} is ${limit} ms`);
 });
 
-// a test file that reaches its limit is run once more. A job that is ended at its own limit during
-// the second run is cancelled, and the round then fails without the name of a test
 test('the test job is not ended before the second run of a test file that reached its limit', () => {
   const file = Number(/^--test-timeout=(\d+)$/.exec(options.find((option) => option.startsWith('--test-timeout')) ?? '')?.[1]);
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
   const job = Number(/^  test:\n(?:.*\n)*?    timeout-minutes: (\d+)$/m.exec(workflow)?.[1]);
-  // the first run of the files of a job takes up to 40 minutes, i.e. 20 more than the limit of a
-  // file, and the second run of the file takes up to this limit
   assert.ok(job * 60000 >= 2 * file + 1200000, `the limit of the test job is ${job} min, and that of a test file ${file / 60000} min`);
 });
 
 test('the test step of the check workflow is the test command with the shard of its job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
   const step = /^ +- run: (node .* scripts\/test\.mjs .*)$/m.exec(workflow)?.[1];
-  // the shards of the matrix are counted, hence a shard is not left out when their number is changed
   const shards = /^ +shard: \[([\d, ]+)\]$/m.exec(workflow)?.[1].split(',').map(Number);
   assert.deepEqual(shards, shards?.map((_, k) => k + 1), 'the shards of the matrix are not 1 to their number');
   assert.equal(step?.replace(` --shard=\${{ matrix.shard }}/${shards.length}`, ''), command);
 });
 
-// pass is the one check that is required on main. A job that pass does not need could fail without
-// failing it. Without a status function in its condition, pass is skipped after a failed job, and a
-// skipped check counts as passed. With always(), pass was also run in a round that the next push
-// had cancelled, and the round of this push was not started until pass had found a runner, which
-// took 31 minutes in one round
 test('the check pass needs every other job of the check workflow, and is run after a failed job but not in a cancelled round', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
   const jobs = workflow.slice(workflow.search(/^jobs:$/m));

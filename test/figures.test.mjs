@@ -1,8 +1,3 @@
-// the TikZ figures of a deck: the style of styles/beeson-tikz.sty, whose colors are the custom
-// properties of theme/beeson.css in each mode, the compile of a figure of scripts/figures.mjs into
-// the SVG of each mode, fitted to its box, the hash that tells a stale output without TeX, and the
-// figures of npm run tex. a test that runs TeX is skipped where latex or dvisvgm is not installed
-
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +10,6 @@ import { compileFigure, cutPreamble, deckFigures, figureHash, figureProblems, fi
 const STY = readFileSync('styles/beeson-tikz.sty', 'utf8');
 const CSS = readFileSync('theme/beeson.css', 'utf8');
 
-// the custom properties of a mode, from the rules of :root and of html[data-theme="mode"] in their order
 const properties = (mode) => {
   const values = {};
   for (const [, selectors, body] of CSS.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -25,13 +19,10 @@ const properties = (mode) => {
   }
   return values;
 };
-// the colors that the style defines in a mode, from the two branches of \ifbeeson@dark
 const colors = (mode) => {
   const [, dark, light] = /\\ifbeeson@dark([\s\S]*?)\\else([\s\S]*?)\\fi/.exec(STY);
   return Object.fromEntries([...(mode === 'dark' ? dark : light).matchAll(/\\definecolor\{(\w+)\}\{HTML\}\{([0-9A-Fa-f]{6})\}/g)].map(([, name, hex]) => [name, `#${hex.toLowerCase()}`]));
 };
-// each color of the style, with the custom property of the theme that it is taken from. ink is
-// --text, since text is a key of TikZ
 const TOKENS = { bg: 'bg', ink: 'text', subtle: 'subtle', muted: 'muted', line: 'line', accent: 'accent', violet: 'violet', blue: 'blue', red: 'red', ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`data${n}`, `data-${n}`])) };
 
 for (const mode of ['dark', 'light']) {
@@ -48,7 +39,6 @@ test('the TikZ style is light unless it is loaded with the option dark, and it h
   assert.match(STY, /\\DeclareOption\{dark\}\{\\beeson@darktrue\}/);
   assert.match(STY, /\\DeclareOption\{light\}\{\\beeson@darkfalse\}/);
   assert.match(STY, /\\ExecuteOptions\{light\}/);
-  // at 3.6 px per TeX point, lines of 2 px and curves of 3 px
   assert.match(STY, /line width=0\.5556pt/);
   assert.match(STY, /every axis plot\/\.append style=\{line width=0\.8333pt\}/);
   assert.match(STY, /cycle list=\{\{accent\},\{blue\},\{violet\}\}/);
@@ -58,7 +48,6 @@ test('the TikZ style is light unless it is loaded with the option dark, and it h
 const tools = findTools();
 const WITHOUT_TEX = !tools.latex || !tools.dvisvgm ? 'latex and dvisvgm are not installed, as on the test runners of CI' : false;
 
-// a folder of a talk, deleted after the test
 const folder = (t, files) => {
   const root = mkdtempSync(join(tmpdir(), 'slides figures-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -68,7 +57,6 @@ const folder = (t, files) => {
   }
   return root;
 };
-// the object that a script figures/name.js assigns to window.beesonFigures
 const run = (script) => {
   const window = {};
   vm.runInNewContext(script, { window });
@@ -106,7 +94,6 @@ test('the wrapper loads the style of the mode, then the preamble, then the box, 
   assert.match(text, /\\pgfplotsset\{width=\\figurewidth, height=\\figureheight\}/);
   assert.match(text, /\\begin\{document\}\\color\{ink\}\\input\{beeson-figure-source\}\\end\{document\}\n$/);
   assert.doesNotMatch(text, /scale=/);
-  // without a box, the lengths are the defaults of pgfplots, and a drawing is scaled by its coordinates
   const natural = wrapperOf({ scale: 0.5 });
   assert.match(natural, /\\usepackage\[light\]\{beeson-tikz\}/);
   assert.doesNotMatch(natural, /preamble|width=\\figurewidth/);
@@ -145,12 +132,10 @@ test('an SVG of dvisvgm is kept without its prolog and comments, with ids unique
   assert.ok(!text.includes('<?xml') && !text.includes('<!--'));
   assert.ok(text.includes("id='tikz-decay-dark-g0-58'") && text.includes("xlink:href='#tikz-decay-dark-g0-58'"));
   assert.ok(text.includes("clip-path='url(#tikz-decay-dark-c1)'") && text.includes("id='tikz-decay-dark-page1' data-id='x'"));
-  // 1 bp is 72.27/72 TeX pt, and a TeX pt is 3.6 px
   assert.equal(width, 361.35);
   assert.equal(height, 180.68);
   assert.ok(text.includes("width='361.35' height='180.68' viewBox='0 0 100 50'"));
   assert.deepEqual(parts, ['x', 'moon']);
-  // a figure shown smaller as a whole
   const smaller = finishSvg(svg, 'p-', 0.5);
   assert.equal(smaller.width, 180.68);
   assert.ok(smaller.svg.includes("width='180.68' height='90.34'"));
@@ -160,7 +145,7 @@ test('the script of a figure is one assignment in ASCII to window.beesonFigures'
   const figure = { hash: '0123456789abcdef', width: 600, height: 480, scale: 1, parts: ['x'], inputs: ['figures/decay.csv'], dark: "<svg><text>\u00e9</text></svg>", light: '<svg></svg>' };
   const script = figureScript('decay', figure);
   assert.ok(!/[^\x20-\x7e\n]/.test(script), 'a character outside ASCII');
-  assert.match(script, /^\/\/ [^\n]*\n\(window\.beesonFigures \?\?= \{\}\)\["decay"\] = \{\n/);
+  assert.match(script, /^\(window\.beesonFigures \?\?= \{\}\)\["decay"\] = \{\n/);
   assert.deepEqual(run(script), { decay: figure });
   assert.deepEqual(run(`${script}${figureScript('orbit', figure)}`), { decay: figure, orbit: figure });
 });
@@ -177,7 +162,6 @@ test('a pgfplots figure from a CSV file is fitted to its box, with its curves as
   for (const mode of ['dark', 'light']) {
     const svg = figure[mode];
     assert.ok(svg.startsWith('<svg') && svg.trimEnd().endsWith('</svg>'));
-    // the label at the end of a curve is drawn inside the group of its curve
     const x = /<g data-part='x'>([\s\S]*?)<g data-part='y'>/.exec(svg)[1];
     assert.match(x, /<path d='M/);
     assert.match(x, /<use [^>]*xlink:href='#tikz-decay-/);
@@ -187,7 +171,6 @@ test('a pgfplots figure from a CSV file is fitted to its box, with its curves as
   assert.match(figure.light, /#c8571e/i);
   assert.doesNotMatch(figure.dark, /#c8571e/i);
   assert.deepEqual(run(text).decay, figure);
-  // nothing is written into the folder of the talk
   assert.throws(() => readFileSync(join(dir, 'figures', 'decay.js')));
 });
 
@@ -198,17 +181,14 @@ test('a drawing is fitted to its box by a scale of its coordinates, up or down, 
   for (const box of [{ width: 900, height: 900 }, { width: 400, height: 900 }, { width: 2000, height: 300 }]) {
     const { figure } = await compileFigure({ dir, name: 'orbit', box });
     assert.equal(figure.scale, 1);
-    // the drawing fills the box in one of its dimensions, and it is inside the box in the other
     const gaps = [box.width - figure.width, box.height - figure.height];
     assert.ok(Math.min(...gaps) <= 2 && Math.min(...gaps) >= -2 && Math.max(...gaps) >= -2, `${figure.width} by ${figure.height} in ${box.width} by ${box.height}`);
   }
-  // a box smaller than the text of the figure: the figure is shown smaller as a whole
   const { figure } = await compileFigure({ dir, name: 'orbit', box: { width: 60, height: 60 } });
   assert.ok(figure.scale < 1, `scale ${figure.scale}`);
   assert.ok(figure.width <= 61 && figure.height <= 61, `${figure.width} by ${figure.height}`);
 });
 
-// the edit command compiles a figure while it answers the pages of a session
 test('a figure is compiled without blocking the event loop', { skip: WITHOUT_TEX }, async (t) => {
   const dir = folder(t, { 'figures/orbit.tex': ORBIT });
   let ticks = 0;
@@ -223,8 +203,6 @@ test('a figure is compiled without blocking the event loop', { skip: WITHOUT_TEX
   assert.ok(ticks > 0, 'a timer ran while TeX ran');
 });
 
-// a box is filled in a dimension in which the drawing has a size. a drawing without a size in one
-// dimension or in both, such as a new blank source, is compiled at scale 1 in its box
 test('a drawing without a width or a height is compiled in its box without an error', { skip: WITHOUT_TEX }, async (t) => {
   const sources = { empty: '\\begin{tikzpicture}\n\\end{tikzpicture}\n', flat: '\\begin{tikzpicture}\n\\draw[line width=0pt] (0,0) -- (2,0);\n\\end{tikzpicture}\n' };
   const dir = folder(t, Object.fromEntries(Object.entries(sources).map(([name, text]) => [`figures/${name}.tex`, text])));
@@ -243,13 +221,10 @@ test('an error of TeX is given with the file and the line of the source, and wit
   assert.deepEqual(errors[0], { file: 'figures/decay.tex', line: 6, message: 'Undefined control sequence' });
   writeFileSync(join(dir, 'preamble.tex'), '\\documentclass{article}\n\\usepackage{notapackage}\n\\begin{document}\n');
   assert.deepEqual((await compileFigure({ dir, name: 'decay' })).errors[0], { file: 'preamble.tex', line: 2, message: "LaTeX Error: File `notapackage.sty' not found" });
-  // a macro of the preamble is known in the figure
   writeFileSync(join(dir, 'preamble.tex'), '\\newcommand{\\amp}{\\textit{amplitude}}\n');
   assert.ok((await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{\\amp}') })).figure);
 });
 
-// MathJax knows the commands of amsmath, amssymb, and bm without a package. the demo preamble thus
-// uses \boldsymbol in \vb and \mathbb in \R without loading one
 test('a figure knows the commands of amsmath, amssymb, and bm that a macro of the preamble uses', { skip: WITHOUT_TEX }, async (t) => {
   const preamble = '\\newcommand{\\vb}[1]{\\boldsymbol{#1}}\n\\newcommand{\\R}{\\mathbb{R}}\n';
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
@@ -257,19 +232,15 @@ test('a figure knows the commands of amsmath, amssymb, and bm that a macro of th
     const { errors } = await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', `{${label}}`) });
     assert.equal(errors, undefined, `${label}: ${JSON.stringify(errors)}`);
   }
-  // a package that the preamble of a paper loads with options does not clash
   writeFileSync(join(dir, 'preamble.tex'), `\\usepackage[intlimits]{amsmath}\n${preamble}`);
   assert.equal((await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{$\\vb{r}$}') })).errors, undefined);
 });
 
-// the preamble reader takes an operator of amsmath and the kinds of theorem of amsthm, which a
-// preamble defines while it is read, before the wrapper loads a package after it
 test('a figure is compiled with a preamble that defines an operator and kinds of theorem', { skip: WITHOUT_TEX }, async (t) => {
   const preamble = '\\DeclareMathOperator{\\Jac}{J}\n\\newtheorem{theorem}{Theorem}\n\\theoremstyle{definition}\n\\newtheorem*{remark}{Remark}\n';
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
   const source = DECAY.replace('{amplitude}', '{$\\Jac x$}');
   assert.equal((await compileFigure({ dir, name: 'decay', source })).errors, undefined);
-  // a preamble that loads the same packages itself does not clash
   writeFileSync(join(dir, 'preamble.tex'), `\\usepackage{amsmath,amsthm}\n${preamble}`);
   assert.equal((await compileFigure({ dir, name: 'decay', source })).errors, undefined);
 });
@@ -282,14 +253,12 @@ test('the demo figure compiles with the demo preamble', { skip: WITHOUT_TEX }, a
 });
 
 const page = (body) => `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<script src="tex.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;
-// npm run tex on the deck of a folder, with TeX only in the folder texbin when it is given
 const tex = (root, texbin) => {
   const env = { ...process.env };
   if (texbin !== undefined) env.BEESON_TEXBIN = texbin;
   const done = spawnSync(process.execPath, [resolve('scripts/tex.mjs'), join(root, 'index.html')], { encoding: 'utf8', env });
   return { out: `${done.stdout}${done.stderr}`, status: done.status };
 };
-// an output of a figure as npm run tex would write it for the files of the folder, without TeX
 const output = (root, name, box, inputs = []) => {
   const hash = figureHash({ dir: root, source: readFileSync(join(root, 'figures', `${name}.tex`), 'utf8'), box, inputs });
   writeFileSync(join(root, 'figures', `${name}.js`), figureScript(name, { hash, width: 10, height: 10, scale: 1, parts: [], inputs, dark: '<svg></svg>', light: '<svg></svg>' }));
@@ -331,7 +300,6 @@ test('the figures of a deck are listed as current, stale, or missing, without Te
   output(root, 'orbit', { width: 100, height: null });
   const deck = join(root, 'index.html');
   const states = () => Object.fromEntries(figureStatus(deck).map((figure) => [figure.name, figure.state]));
-  // a figure shown twice is listed once
   assert.deepEqual(figureStatus(deck).map((figure) => figure.name), ['decay', 'orbit', 'lost', 'new', null]);
   assert.deepEqual(states(), { decay: 'current', orbit: 'stale', lost: 'no source', new: 'missing', null: 'invalid' });
   assert.deepEqual(figureStatus(deck)[0], { name: 'decay', box: { width: 600, height: 480 }, file: 'figures/decay.js', source: 'figures/decay.tex', state: 'current' });
@@ -341,7 +309,6 @@ test('the figures of a deck are listed as current, stale, or missing, without Te
     'figures/new.js is missing, run npm run tex',
     'index.html: a TikZ figure without a name in data-figure, or with a name other than letters, digits, - and _',
   ]);
-  // a figure is stale after a change of the data that it reads, and every figure after a change of the preamble
   writeFileSync(join(root, 'figures/decay.csv'), `${CSV}6,0.05,0.4\n`);
   assert.equal(states().decay, 'stale');
   writeFileSync(join(root, 'figures/decay.csv'), CSV);
@@ -351,7 +318,6 @@ test('the figures of a deck are listed as current, stale, or missing, without Te
   writeFileSync(join(root, 'preamble.tex'), '\\newcommand{\\amp}{a}\n');
   assert.equal(states().decay, 'stale');
   assert.equal(states().orbit, 'stale');
-  // an output that is not a script of a figure is stale
   writeFileSync(join(root, 'figures/orbit.js'), 'window.beesonFigures = null;\n');
   output(root, 'decay', { width: 600, height: 480 }, ['figures/decay.csv']);
   assert.deepEqual(states(), { decay: 'current', orbit: 'stale', lost: 'no source', new: 'missing', null: 'invalid' });
@@ -418,7 +384,6 @@ test('an output compiled while its preamble or a file that it reads changes is n
     const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': '\\documentclass{article}\n\\newcommand{\\vel}{v}\n\\begin{document}\n\\end{document}\n' });
     const box = { width: 600, height: 480 };
     const compiling = compileFigure({ dir, name: 'decay', box });
-    // the file changes once the compile has read the sources, and before it ends
     await new Promise((done) => setTimeout(done, 50));
     const file = join(dir, changed);
     writeFileSync(file, readFileSync(file, 'utf8').replace('\\vel}{v}', '\\vel}{u}').replace('5,0.08,0.44', '5,0.08,0.4'));

@@ -1,12 +1,8 @@
-// check of the mode flip on the built deck, in Chrome
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 
-// the clip of the old view is read with the clock of the flip held at its end, since a sample of
-// real frames would depend on the frame rate of the machine
 const clipAtEnd = `(async () => {
   const root = document.documentElement;
   const view = '::view-transition-old(root)';
@@ -23,9 +19,6 @@ const clipAtEnd = `(async () => {
   return clip;
 })()`;
 
-// the clip of the new view is read when the ready promise of the view transition resolves, before
-// any script of the theme can run. in Firefox and Zen, a script animation started from this promise
-// is not applied in the first frame, hence a clip set later leaves one frame of the whole new view
 const clipAtReady = `(async () => {
   const start = document.startViewTransition.bind(document);
   let clip;
@@ -38,8 +31,6 @@ const clipAtReady = `(async () => {
   return clip;
 })()`;
 
-// the flip is skipped under reduced motion, which is the setting of the macOS and Windows runners
-// of GitHub
 const motion = `{
   const query = window.matchMedia;
   window.matchMedia = (q) => (q.includes('reduced-motion') ? { matches: false } : query.call(window, q));
@@ -67,7 +58,6 @@ test('the new light view is clipped from the start of a flip to light', { timeou
   assert.match(await page.evaluate(clipAtReady), /^circle\(0px/);
 });
 
-// a scene whose marks are drawn for one background keeps the theme written in the file
 test('a viewer with data-keep-theme keeps its theme through a flip of the mode', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -88,10 +78,6 @@ test('a viewer with data-keep-theme keeps its theme through a flip of the mode',
   assert.deepEqual(themes, [['light', 'dark'], ['light', 'light']]);
 });
 
-// the animations of the current slide, each with whether it plays and how far it is: the points
-// traced by a backdrop, the azimuth of a surface, the frame of a plot, the time of a video, and the
-// step of a tycho scene. a traced backdrop is counted as playing once every trajectory is traced to its
-// end, and a backdrop shown complete at once is not
 const animations = `(() => {
   const slide = Reveal.getCurrentSlide();
   const on = (list) => list.filter((x) => slide.contains(x.el));
@@ -105,8 +91,6 @@ const animations = `(() => {
   ].filter((a) => a.playing);
 })()`;
 
-// a flip with the key d, or with a click on the button. the classes of the flip show that it runs
-// as a view transition, and it is not skipped
 const flips = {
   key: `(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', keyCode: 68, which: 68, bubbles: true }));
@@ -126,7 +110,6 @@ test('every animation of a slide plays on after a flip of the mode, with the key
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const kinds = new Set();
   let longest = { ms: 0, at: '' };
-  // the demo deck does not have a plot, hence a plot is taken from a test deck
   for (const deck of ['test-deck.html', 'test/pages/plot-reveals.html']) {
     await page.goto(deckUrl(deck, 'theme=dark'));
     await page.waitFor(deckSettled);
@@ -139,16 +122,9 @@ test('every animation of a slide plays on after a flip of the mode, with the key
       for (const [how, flip] of Object.entries(flips)) {
         const theme = await page.evaluate('Beeson.theme.get()');
         assert.ok(await page.evaluate(flip), `${deck}, slide ${i + 1}: the flip with the ${how} is a view transition`);
-        // the flip takes 450 ms, but the mode is set only once the old view is captured, over a second
-        // later on a slow runner. the end of the flip is thus waited for, and an animation is read
-        // again after it. a slow runner may hold a video, e.g. for seconds at the seek of its loop,
-        // hence the animations are read until each has advanced, for up to 60 s
         const flipped = `Beeson.theme.get() !== '${theme}' && !document.documentElement.matches('.to-dark, .to-light')`;
         const started = Date.now();
         if (!(await page.waitFor(flipped, 60000).then(() => true, () => false))) {
-          // on a Windows runner, a flip did not end in 15 s, and on two loaded cores a frame of a
-          // surface in software took 2.4 s, hence a flip has 60 s. the state of the page is printed
-          // for a flip that does not end, with the time until its next animation frame
           const state = await page.evaluate(`(async () => {
             const t0 = performance.now();
             const frame = await Promise.race([
@@ -176,12 +152,10 @@ test('every animation of a slide plays on after a flip of the mode, with the key
     }
   }
   t.diagnostic(`the longest flip took ${longest.ms} ms: ${longest.at}`);
-  // the two decks have an animation of each kind
   assert.deepEqual([...kinds].sort(), ['backdrop', 'plot', 'scene', 'surface', 'video']);
   assert.deepEqual(page.errors, []);
 });
 
-// the rows of pixels of a PNG written by Chrome, with 8 bits per channel and without interlace
 function decodePng(png) {
   let at = 8, width = 0, height = 0, channels = 4;
   const data = [];
@@ -205,8 +179,6 @@ function decodePng(png) {
   return { width, channels, px };
 }
 
-// a flip with the key d, held at the given ms of its clock. the circle of the flip is read from the
-// clip of the upper view of the root, and the box of the backdrop of the slide is returned with it
 const heldFlip = (ms) => `(async () => {
   const root = document.documentElement;
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', keyCode: 68, which: 68, bubbles: true }));
@@ -223,11 +195,6 @@ const heldFlip = (ms) => `(async () => {
   return { toLight, r, x, y, box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom } };
 })()`;
 
-// in a flip, the old view is shown inside the circle on a flip to dark and outside it on a flip to
-// light. a traced backdrop is to be drawn on in both views, rather than held still under the old
-// view for up to 450 ms. the backdrop is read in two screenshots 500 ms apart while the flip is held
-// at 100 ms, when most of the slide is in the old view, and the pixels within 20 px of the circle
-// are left out
 test('a traced backdrop is drawn on under the old view of a flip, in both directions', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -238,7 +205,6 @@ test('a traced backdrop is drawn on under the old view of a flip, in both direct
   const index = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('.backdrop[data-trajectories="demo/broucke-sample.js"]'))`);
   assert.ok(index > 0, 'test-deck.html does not have a slide with the backdrop of demo/broucke-sample.js after its first slide');
   for (const to of ['light', 'dark']) {
-    // the trace is begun again on the slide, and several trajectories are traced after 1.5 s
     await page.evaluate(`Reveal.slide(${index - 1})`);
     await sleep(300);
     await page.evaluate(`Reveal.slide(${index})`);
@@ -247,7 +213,6 @@ test('a traced backdrop is drawn on under the old view of a flip, in both direct
     assert.equal(flip.toLight, to === 'light');
     const before = decodePng(await page.screenshot());
     const { left, top, right, bottom } = flip.box;
-    // the pixels of the backdrop that differ between two screenshots, under each view
     const count = (after) => {
       const changed = { old: 0, new: 0 };
       for (let y = Math.max(0, Math.ceil(top)); y < bottom; y++) {
@@ -261,8 +226,6 @@ test('a traced backdrop is drawn on under the old view of a flip, in both direct
       }
       return changed;
     };
-    // a screenshot is taken each 500 ms until the old view is changed, for 10 s at most, since a
-    // loaded machine did not draw a frame of the trace in the first 500 ms
     let changed = { old: 0, new: 0 };
     for (let n = 0; n < 20 && !changed.old; n++) {
       await sleep(500);

@@ -1,7 +1,3 @@
-// checks of the strip bundles of src/bundle.ts on the bundle of test/pages/bundle.html: the faults of
-// its JSON script, its states drawn live and in the print view, its compass turned with the camera,
-// a strip grown and shrunk, and the bundle turned and its camera written in the editor
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -33,8 +29,6 @@ test('a bundle without strips, or with a strip without ribs or with a malformed 
   assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: { id: 'Sun' } })), /arrows/);
 });
 
-// #131: under reduced motion, which is set on the Windows and macOS runners, the deck is drawn
-// still, and its bundles are mounted a second time at the start
 for (const motion of ['no-preference', 'reduce']) test(`a deck with malformed bundles is started, and each bundle is reported once and left blank (${motion})`, { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -43,19 +37,15 @@ for (const motion of ['no-preference', 'reduce']) test(`a deck with malformed bu
   await page.goto(deckUrl('test/pages/bundle-malformed.html'));
   await page.waitFor(deckSettled);
   const mode = await page.evaluate('document.documentElement.dataset.theme');
-  // the keys of the theme are bound after the surfaces and the bundles are mounted
   await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', keyCode: 68, which: 68, bubbles: true }))`);
   await page.waitFor(`document.documentElement.dataset.theme !== '${mode}'`, 5000);
   assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle] canvas').length`), 0);
   assert.deepEqual(page.errors.map((e) => e.replace(/, since .*/, '')), ['console.error: beeson: the bundle bare is not drawn', 'console.error: beeson: the bundle ribless is not drawn']);
-  // a script corrected later, as in the editor, is drawn at the next mount
   await page.evaluate(`(document.getElementById('bare').textContent = '{"orbit":[[1,0,0],[0,1,0],[-1,0,0]],"strips":[]}', Beeson.mount(document.body), true)`);
   assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle="bare"] canvas').length`), 1, 'the corrected bundle bare is not drawn');
   assert.equal(page.errors.length, 2);
 });
 
-// the state of each bundle shown, the share of its canvas that is drawn, a digest of the canvas, and
-// the opacities of the labels of the strip a and of the Sun, on the slide or on each page in print
 const shown = `Promise.all([...document.querySelectorAll('.surface[data-bundle]')].filter((s) => s.getClientRects().length).map(async (s) => {
   const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
   const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -67,9 +57,6 @@ const shown = `Promise.all([...document.querySelectorAll('.surface[data-bundle]'
   return { state: s.dataset.shown, drawn: drawn / (data.length / 4), digest: [...digest.slice(0, 8)].join('.'), label, sun };
 }))`;
 
-// with the camera at the azimuth az in degrees: the length of the needle of the Sun, its angle in
-// degrees from the direction of the Sun in the scene, whether the canvas is drawn halfway along the
-// needle, and the distances from the middle of the compass to the tip and to the label
 const compass = (az) => `(() => {
   const b = ${bundle};
   b.azimuth = ${az} * Math.PI / 180;
@@ -87,8 +74,6 @@ const compass = (az) => `(() => {
   };
 })()`;
 
-// the WebGL context of the renderer of the surfaces, kept in window.gl when it is created, as the
-// renderer is not exposed by the theme
 const KEEP_GL = `const get = HTMLCanvasElement.prototype.getContext;
 HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
   const c = get.call(this, type, ...rest);
@@ -96,7 +81,6 @@ HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
   return c;
 };`;
 
-// the share of the canvas of the bundle that is drawn
 const share = `(() => {
   const canvas = document.querySelector('.surface[data-bundle] canvas');
   const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
@@ -105,8 +89,6 @@ const share = `(() => {
   return n / (data.length / 4);
 })()`;
 
-// the share of the image of WebGL that is drawn, without the compass, which is drawn in 2D over it.
-// the bundle is drawn again, and the image is read in the same task, before WebGL clears it
 const webgl = `(() => {
   ${bundle}.draw();
   const gl = window.gl, w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(4 * w * h);
@@ -116,8 +98,6 @@ const webgl = `(() => {
   return n / (w * h);
 })()`;
 
-// waits until the context of WebGL is not lost, and for a frame after its restore, in which the
-// surfaces are drawn again. on a crowded runner, the context may be lost under the load
 const live = (page) => page.evaluate(`new Promise((done) => {
   if (!window.gl || !window.gl.isContextLost()) return done();
   window.gl.canvas.addEventListener('webglcontextrestored', () => requestAnimationFrame(() => done()), { once: true });
@@ -140,7 +120,6 @@ test('a bundle is drawn at each of its states, live and in the print view, with 
   }
   assert.deepEqual(page.errors, []);
   assert.deepEqual(states.map((s) => s.state), STATES);
-  // the orbit is drawn before any strip, and more of the canvas is drawn with each strip
   const at = (state) => states.find((s) => s.state === state);
   assert.ok(at('').webgl > 0.002, `${(100 * at('').webgl).toFixed(2)}% of the image of WebGL is drawn without a strip`);
   assert.ok(at('a').webgl > at('').webgl + 0.01 && at('a b').webgl > at('a').webgl, JSON.stringify(states));
@@ -149,8 +128,6 @@ test('a bundle is drawn at each of its states, live and in the print view, with 
   assert.deepEqual(states.map((s) => s.label), [0, 1, 1]);
   assert.ok(states.every((s) => s.sun === 1), 'the label of the Sun is shown at every step');
 
-  // the needle is drawn toward the Sun of the scene, within the error of the perspective, and its
-  // label is past its tip, at four turns of the camera
   for (const az of [-60, 30, 120, 210]) {
     const c = await page.evaluate(compass(az));
     assert.ok(c.length > 20 && c.angle < 5 && c.drawn, `at the azimuth ${az}, the needle is ${JSON.stringify(c)}`);
@@ -163,14 +140,12 @@ test('a bundle is drawn at each of its states, live and in the print view, with 
   await live(print);
   const pages = await print.evaluate(shown);
   assert.deepEqual(print.errors, []);
-  // the step added after the last one, which restores the dimmed steps, is printed at the same state
   assert.deepEqual(pages.map((s) => s.state).filter((state, i, all) => state !== all[i - 1]), STATES);
   for (const s of pages) {
     assert.ok(Math.abs(s.drawn - at(s.state).drawn) < 0.002, `a page at the state "${s.state}" is drawn over ${s.drawn}, and the slide over ${at(s.state).drawn}`);
   }
 });
 
-// the strip a at each frame of the page from the step on, until the bundle has settled
 const sample = (step) => `new Promise((done) => {
   const b = ${bundle}, seen = [];
   ${step};
@@ -183,8 +158,6 @@ const sample = (step) => `new Promise((done) => {
   requestAnimationFrame(frame);
 })`;
 
-// a context of WebGL is lost, e.g. at a reset of the GPU or under a heavy load, and the browser
-// restores it later. the strips shown at a step taken meanwhile are drawn once it is restored
 test('a bundle is drawn again when the context of WebGL is restored, at the state of a step taken while it was lost', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -209,8 +182,6 @@ test('a bundle is drawn again when the context of WebGL is restored, at the stat
   assert.deepEqual(page.errors, []);
 });
 
-// at a crash of the GPU process, as on a crowded runner of Windows, the context is restored by the
-// browser, and a bundle is then drawn on its canvas as before the crash
 test('a bundle is drawn after a crash of the GPU process, at a step taken once the context is restored', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -242,7 +213,6 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
   const growing = grown.seen.filter((r) => r.grow > 0 && r.grow < 1);
   assert.ok(growing.length >= 5, `the growth was seen at ${growing.length} frames`);
   for (const r of growing) {
-    // a later segment is never ahead of an earlier one, and the sheet waits for the last segment
     r.ribs.forEach((g, k) => k && assert.ok(g <= r.ribs[k - 1] + 1e-12, `the segment ${k} is at ${g} and the one before at ${r.ribs[k - 1]}`));
     if (r.sheet > 0) assert.equal(r.ribs.at(-1), 1);
   }
