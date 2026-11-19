@@ -740,7 +740,7 @@ test('keys of another person on both sides of an unread key are kept when the re
   assert.equal(mergeTexts(from + mice + dogs, moved, seen + mice + dogs), moved.replace('two three', 'twoA three'), 'a slide');
 });
 
-test('a move is the removal of whole lines and the insertion of their text in the same order, and gives way only to an edit of someone else inside it', () => {
+test('a move is the removal of whole lines and the insertion of their text, also in another order, and gives way only to an edit of someone else inside it', () => {
   const doc = ['<p>A one</p>', '<p>B two</p>', '<p>C three</p>', '<li></li>', '<section>', '<h2>S</h2>', '</section>', '<section>', '<h2>S</h2>', '</section>', ''].join('\n');
   const cut = (s, i = 0) => ({ start: doc.indexOf(s, i), end: doc.indexOf(s, i) + s.length, text: '' });
   const put = (text) => ({ start: doc.length, end: doc.length, text });
@@ -755,7 +755,7 @@ test('a move is the removal of whole lines and the insertion of their text in th
   assert.deepEqual(of([cut(a.slice(0, -1)), put(a.slice(0, -1))], [key(a)]), [], 'a removal without its line break');
   assert.deepEqual(of([cut(a), { start: doc.indexOf('<p>C'), end: doc.indexOf('<p>C') + 3, text: a }], [key(a)]), [], 'a replacement with the text of the removal');
   assert.deepEqual(of([cut('<li></li>\n'), put('<li></li>\n')], [{ start: doc.indexOf('<li>') + 4, end: doc.indexOf('<li>') + 4, text: 'x' }]), [], 'a line without text');
-  assert.deepEqual(of([cut(a), cut(b), put(b + a)], [key(a)]), [], 'two removals inserted in the other order');
+  assert.deepEqual(of([cut(a), cut(b), put(b + a)], [key(a)]), [2, 1, 0], 'two removals inserted in the other order');
   assert.deepEqual(of([cut(s), cut(s, doc.indexOf(s) + 1), put(s)], [{ start: doc.lastIndexOf('<h2>S') + 4, end: doc.lastIndexOf('<h2>S') + 4, text: 'x' }]), [], 'one of two equal slides');
   const dos = '<p>A one</p>\r\n<p>B two</p>\r\n<p>C three</p>\r\n';
   const two = [{ start: 0, end: 14, text: '' }, { start: 28, end: 44, text: '' }, { start: 44, end: 44, text: '<p>A one</p>\r\n<p>C three</p>\r\n' }];
@@ -877,4 +877,100 @@ test('mergePatches() ends on patches that conflict at the start of a text that s
   const { patches } = mergePatches([{ start: 0, end: 2, text: 'X' }], [{ start: 1, end: 1, text: 'Y' }], 'ours', base);
   // the key in the word that the other side types over goes to the end of the new word
   assert.equal(applyPatches(base, patches), 'XbY\n');
+});
+
+test('a key typed into the first of two equal paragraphs is an edit of this paragraph, hence a key of another person in it stays in it', () => {
+  const base = '<section>\n  <p>Same words</p>\n  <p>Same words</p>\n</section>\n<section>\n  <p>Other</p>\n</section>\n';
+  const one = (t) => base.replace('Same words', t);
+  const theirs = one('Sak12 me words').replace('Other', 'Other k21');
+  assert.deepEqual(diff(base, theirs).map((p) => p.text), ['k12 ', ' k21']);
+  assert.equal(mergeTexts(base, theirs, one('Samek00 words')), one('Sak12 mek00 words').replace('Other', 'Other k21'));
+});
+
+test('a key in a heading and the removal of the paragraph under it, which another person removes too, are both kept', () => {
+  const base = '<section>\n  <h2>R&amp;D 2</h2>\n  <p>Halo 22</p>\n  <p>Intro 21</p>\n</section>\n';
+  const gone = base.replace('  <p>Halo 22</p>\n', ''), keyed = gone.replace('D 2', 'D k11 2');
+  assert.equal(mergeTexts(base, keyed, gone), keyed);
+  assert.equal(mergeTexts(base, gone, keyed), keyed);
+});
+
+test('a paragraph moved to the slide before, with a key of a third person in the heading above it and a key of the person in it, keeps both keys and the move', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n${p.map((t) => `  <p>${t}</p>\n`).join('')}</section>\n`;
+  const base = s('Method 1', ['Data 11']) + s('Method 2', ['Data 21']);
+  const others = s('Method 1', ['Data 11', 'Data 21']) + s('Method k20 2', []);
+  assert.equal(mergeTexts(base, others, base.replace('Data 21', 'k01Data 21')), others.replace('Data 21', 'k01Data 21'));
+});
+
+test('a list of empty items moved to another slide is moved once with the key that another person types into one of its items, in both orders and at the authority', () => {
+  const ul = (k = '') => `  <ul>\n    <li></li>\n    <li>${k}</li>\n  </ul>\n`;
+  const base = `<section>\n  <h2>One</h2>\n${ul()}  <p>Last</p>\n</section>\n<section>\n  <h2>Two</h2>\n</section>\n`;
+  const moved = (k) => `<section>\n  <h2>One</h2>\n  <p>Last</p>\n</section>\n<section>\n  <h2>Two</h2>\n${ul(k)}</section>\n`;
+  const keyed = base.replace(ul(), ul('k10'));
+  assert.equal(mergeTexts(base, moved(''), keyed), moved('k10'));
+  assert.equal(mergeTexts(base, keyed, moved('')), moved('k10'));
+  for (const [first, second] of [[moved(''), keyed], [keyed, moved('')]]) {
+    const one = diff(base, first), two = diff(base, second);
+    assert.equal(applyPatches(base, mergePatches(one, two, 'ours', base).patches), moved('k10'));
+  }
+});
+
+test('two lists next to each other that two people remove at once are both removed, in both orders and at the authority', () => {
+  const ul = (t) => `  <ul>\n    <li>${t}</li>\n  </ul>\n`;
+  const base = `<section>\n  <h2>Three</h2>\n${ul('Thank you')}${ul('Orbit')}  <p>Last</p>\n</section>\n`;
+  const one = base.replace(ul('Thank you'), ''), two = base.replace(ul('Orbit'), ''), want = one.replace(ul('Orbit'), '');
+  assert.equal(mergeTexts(base, one, two), want);
+  assert.equal(mergeTexts(base, two, one), want);
+  for (const [a, b] of [[one, two], [two, one]]) assert.equal(applyPatches(base, mergePatches(diff(base, a), diff(base, b), 'ours', base).patches), want);
+});
+
+test('a paragraph that two people move into one slide, which one of them also moves to the end, is in the deck once, in both orders and at the authority', () => {
+  const T = '  <p>Thank you 12</p>\n', O = '  <p>Orbit 13</p>\n', A = '  <p>Added k20</p>\n';
+  const first = (mid) => `<section>\n  <h2>Halo 1</h2>\n${mid}</section>\n`;
+  const second = (inner) => `<section>\n  <h2>Halo 2</h2>\n${inner}  <p>Halo 21</p>\n</section>\n`;
+  const third = '<section>\n  <h2>Intro 3</h2>\n  <p>Same words</p>\n</section>\n';
+  const base = first(O + T) + second('') + third, one = first(O) + second(T) + third, two = first(A) + third + second(T);
+  assert.equal(mergeTexts(base, two, one), two);
+  assert.equal(mergeTexts(base, one, two), two);
+  for (const [a, b] of [[one, two], [two, one]]) assert.equal(applyPatches(base, mergePatches(diff(base, a), diff(base, b), 'ours', base).patches), two);
+});
+
+test('a paragraph removed from a slide that another person moves is not moved into a copy of another slide that holds its words, in both orders', () => {
+  const s = (h, ps) => `<section>\n  <h2>${h}</h2>\n${ps.map((p) => `  ${p}\n`).join('')}</section>\n`;
+  const two = (p = []) => s('Same words 2', ['<ul>', '  <li>Halo 23</li>', '</ul>', '<p>Moon 21</p>', ...p]);
+  const base = s('Moon 1', ['<p>Same words</p>']) + two() + '\n';
+  const one = s('Moon 1', []) + two(['<p>Added k02</p>']) + '\n' + two(), other = two() + s('Moon 1', ['<p>Added k11</p>', '<p>Same words</p>']) + '\n';
+  const want = s('Moon 1', ['<p>Added k11</p>']) + two(['<p>Added k02</p>']) + '\n' + two();
+  assert.equal(mergeTexts(base, one, other), want);
+  assert.equal(mergeTexts(base, other, one), want);
+});
+
+test('a slide that one person moves without a paragraph that another person edits stays in place with the edit and the key of the mover, in both orders', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n${p}</section>\n`, two = s('Moon 2', '  <p>Same words</p>\n');
+  const base = s('Thank you 1', '  <p>Intro 11</p>\n') + two, moved = two + s('Thank you 1 k01', ''), edited = base.replace('Intro', 'Into');
+  const want = s('Thank you 1 k01', '  <p>Into 11</p>\n') + two;
+  assert.equal(mergeTexts(base, moved, edited), want);
+  assert.equal(mergeTexts(base, edited, moved), s('Thank you 1 k01', '') + two);
+});
+
+test('a slide moved before two slides, one of them with a key, is the removal and the insertion of this slide whole', () => {
+  const s = (h, ps) => `<section>\n  <h2>${h}</h2>\n${ps.map((p) => `  ${p}\n`).join('')}</section>\n`;
+  const [a, b, c, d] = [s('Halo 1', ['<p>Same words</p>']), s('Data 2', ['<p>Same words</p>', '<ul>', '  <li>Halo 22</li>', '</ul>']), s('Halo 3', ['<p>Same words</p>', '<p>Intro 31</p>', '<p>Moon 32</p>', '<p>Orbit 33</p>']), s('Halo 4', ['<p>Orbit</p>'])];
+  const base = a + b + c + d, moved = c + a + b.replace('Halo 22', 'Halo 22 k21') + d.replace('Orbit', 'Orbit k20');
+  assert.deepEqual(changes(base, moved).filter((e) => e.end > e.start || e.text.includes('\n')).map((e) => [base.slice(e.start, e.end), e.text]), [['', c], [c, '']]);
+  const keyed = base.replace('Intro 31', 'Intro 31 k30');
+  for (const [x, y] of [[moved, keyed], [keyed, moved]]) assert.equal(mergeTexts(base, x, y), moved.replace('Intro 31', 'Intro 31 k30'));
+});
+
+test('the removal of a long paragraph that holds most of the text, next to a letter removed in the heading above it, is two patches of whole lines and of the letter', () => {
+  const base = `<section>\n  <h2>Halo 2</h2>\n  <p>Data 23</p>\n  <p>Orbit 22 ${'orbit x &lt; y R&amp;D halo '.repeat(80)}</p>\n  <ul>\n    <li>Moon 21</li>\n  </ul>\n</section>\n`;
+  const gone = '<section>\n  <h2>Halo </h2>\n  <ul>\n    <li>Moon 21</li>\n  </ul>\n</section>\n';
+  const at = base.indexOf('2</h2>'), from = base.indexOf('  <p>Data'), to = base.indexOf('  <ul>');
+  assert.deepEqual(diff(base, gone), [{ start: at, end: at + 1, text: '' }, { start: from, end: to, text: '' }]);
+});
+
+test('a paragraph that one person removes while another types a character reference at its end and removes the paragraph after it gives whole lines, in both orders', () => {
+  const x = '    <p>Moon 42</p>\n    <p>Orbit 41</p>\n  </section>\n', base = `<section>\n  <h2>Halo 4</h2>\n${x}`;
+  const typed = base.replace('Moon 42', 'Moon 42 R&D &amp; k20').replace('    <p>Orbit 41</p>\n', ''), gone = base.replace('    <p>Moon 42</p>\n', '');
+  assert.equal(mergeTexts(base, typed, gone), gone);
+  assert.equal(mergeTexts(base, gone, typed), typed);
 });
