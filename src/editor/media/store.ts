@@ -86,7 +86,8 @@ export class MediaStore {
   // whether a new file gets a name unique to this page, e.g. plot-k3f9.png, while another page of
   // a session may pick the same name
   unique: (() => boolean) | null = null;
-  // the stems given a suffix by unique, so that the poster of plot-k3f9.mp4 is plot-k3f9.png
+  // the stems given a suffix by unique, so that the poster of plot-k3f9.mp4 is plot-k3f9.png, and
+  // the render of plot-k3f9.pdf is plot-k3f9-dark.png
   private readonly suffixed = new Set<string>();
   private readonly byPath = new Map<string, MediaFile>();
   private readonly byUrl = new Map<string, MediaFile>();
@@ -100,7 +101,7 @@ export class MediaStore {
     const dot = clean.lastIndexOf('.');
     const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
     let path: string;
-    if (this.unique?.() && !this.suffixed.has(stem)) {
+    if (this.unique?.() && ![...this.suffixed].some((s) => stem === s || stem.startsWith(`${s}-`))) {
       let named: string;
       do {
         named = fit(stem, STEM - 5) + suffix();
