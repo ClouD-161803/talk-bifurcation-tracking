@@ -107,6 +107,8 @@ describe('commands on a figure or its picture', () => {
     return page;
   }
 
+  const NO_MAC_CHROME_MENU_AT_CTRL_PRESS = `window.addEventListener('contextmenu', (ev) => { if (ev.ctrlKey && ev.button === 0) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true)`;
+
   async function deselect(page) {
     await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
     for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
@@ -392,7 +394,7 @@ describe('commands on a figure or its picture', () => {
           assert.equal(count(edited, ID), 2, `Duplicate from the ${from} repeats the data-id`);
           assert.equal(count(slideOf(edited, STEPPED), 'data-fragment-index="1"'), 4, 'the copy does not keep the step of its images');
           await roundTrip(page, edited);
-          if (platform !== 'mac') await page.evaluate(`window.addEventListener('contextmenu', (ev) => { if (ev.ctrlKey && ev.button === 0) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true)`);
+          if (platform !== 'mac') await page.evaluate(NO_MAC_CHROME_MENU_AT_CTRL_PRESS);
           await pick(page, from);
           await drag(page, IMG, { dx: 80, dy: 30, modifiers: platform === 'mac' ? 'Alt' : 'Ctrl' });
           await page.waitFor(`window.BeesonEditor.render().split('<figure').length === ${count(SOURCE, '<figure') + 2}`);
