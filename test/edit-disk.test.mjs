@@ -402,6 +402,29 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   assert.ok(authority.text.includes('Very Second slide'), 'the session lost its newer edit');
 });
 
+test('a file with the conflict markers of git is not taken nor written over, the host is told, and the file is taken once the markers are gone', { timeout: 60_000 }, async (t) => {
+  const errors = [];
+  const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20, onWriteError: (e) => errors.push(e) });
+  disk.start();
+  insert(authority, 'Second slide', 'Very ');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
+  const good = authority.text;
+  // a git pull whose change of the first slide conflicts with a commit of the host
+  const conflicted = good.replace('  <h2>One</h2>\n', '<<<<<<< HEAD\n  <h2>One</h2>\n=======\n  <h2>Uno</h2>\n>>>>>>> origin/main\n');
+  writeFileSync(file, conflicted);
+  await until(() => errors.some((e) => e?.message.includes('conflict markers')), 'the host to be told of the markers');
+  insert(authority, 'First slide', 'Typed ');
+  await sleep(300);
+  assert.equal(readFileSync(file, 'utf8'), conflicted, 'the file with the markers was written over');
+  assert.ok(!authority.text.includes('<<<<<<<'), 'the markers reached the session');
+  assert.ok(lines.some((l) => l.includes('conflict markers')), 'the log does not name the markers');
+  // the host resolves the conflict by taking the change of the pull
+  writeFileSync(file, good.replace('<h2>One</h2>', '<h2>Uno</h2>'));
+  await until(() => authority.text.includes('<h2>Uno</h2>') && errors.at(-1) === null, 'the resolved file to be taken');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written');
+  assert.ok(authority.text.includes('Typed First slide') && authority.text.includes('Very Second slide'), 'an edit of the session was lost');
+});
+
 test('a program that changes a line that it changed before replaces its earlier change, and keeps an edit of a person that it did not read', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
