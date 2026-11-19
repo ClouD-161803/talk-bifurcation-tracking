@@ -51,19 +51,6 @@ async function centerOn(page, at) {
   await frames(page);
 }
 
-const SYMBOLS = { '=': ['=', 'Equal', 187], '+': ['+', 'Equal', 187], '-': ['-', 'Minus', 189] };
-async function pressKey(page, keys) {
-  const names = keys.split('+');
-  const name = names.pop() || '+';
-  if (!SYMBOLS[name] && !(names.includes('Alt') && /^[0-9]$/.test(name))) return press(page, keys);
-  const mac = (await page.evaluate(`new URLSearchParams(location.search).get('edit-platform')`)) === 'mac';
-  const bits = names.reduce((b, m) => b | ({ Alt: 1, Ctrl: 2, Meta: 4, Shift: 8, Mod: mac ? 4 : 2 }[m] ?? 0), 0);
-  const [key, code, keyCode] = SYMBOLS[name] ?? [mac ? 'º' : name, `Digit${name}`, name.charCodeAt(0)];
-  const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers: bits };
-  await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-}
-
 async function watchKeys(page) {
   await page.evaluate(`window.addEventListener('keydown', (ev) => { window.__taken = undefined; setTimeout(() => { window.__taken = ev.defaultPrevented; }); }, true)`);
 }
@@ -113,7 +100,7 @@ for (const platform of PLATFORMS) {
     const page = await open(t, platform);
     await figureSlide(page);
     await watchKeys(page);
-    const zoomAfter = async (keys) => { await pressKey(page, keys); await frames(page); return (await stage(page)).zoom; };
+    const zoomAfter = async (keys) => { await press(page, keys); await frames(page); return (await stage(page)).zoom; };
     const fit = (await stage(page)).fit;
     const zin = await zoomAfter('Mod+=');
     assert.ok(zin > fit, `Mod+= zoomed to ${zin} from ${fit}`);
@@ -284,18 +271,18 @@ for (const platform of PLATFORMS) {
     const size = () => page.evaluate(`parseFloat(getComputedStyle(document.querySelector('.reveal section.present > aside.notes')).fontSize) * window.BeesonEditorShell.stage.scale`);
     const value = () => page.evaluate(`document.querySelector('.beeson-edit-notes-zoom .value').textContent`);
     assert.ok(Math.abs((await size()) - 13) < 0.1, `the notes are set at ${await size()} px`);
-    await pressKey(page, 'Mod+=');
+    await press(page, 'Mod+=');
     await frames(page);
     assert.ok(Math.abs((await size()) - 16.25) < 0.1, `the notes are set at ${await size()} px`);
     assert.equal(await value(), '125%');
     assert.equal(await page.evaluate('window.__taken'), true);
     assert.equal((await stage(page)).zoom, null, 'the canvas was zoomed with the notes');
     assert.equal(await page.evaluate(`document.activeElement.matches('aside.notes')`), true);
-    await pressKey(page, 'Mod+=');
-    await pressKey(page, 'Mod+-');
+    await press(page, 'Mod+=');
+    await press(page, 'Mod+-');
     await frames(page);
     assert.equal(await value(), '125%');
-    await pressKey(page, 'Mod+0');
+    await press(page, 'Mod+0');
     await frames(page);
     assert.equal(await value(), '100%');
     await click(page, '.beeson-edit-notes-zoom button.big');

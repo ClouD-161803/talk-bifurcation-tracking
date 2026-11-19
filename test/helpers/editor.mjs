@@ -23,14 +23,27 @@ const NAMED = {
   PageDown: ['PageDown', 'PageDown', 34],
 };
 
+const US_LAYOUT = [
+  ['Backquote', 192, '`~'], ['Digit1', 49, '1!'], ['Digit2', 50, '2@'], ['Digit3', 51, '3#'], ['Digit4', 52, '4$'],
+  ['Digit5', 53, '5%'], ['Digit6', 54, '6^'], ['Digit7', 55, '7&'], ['Digit8', 56, '8*'], ['Digit9', 57, '9('],
+  ['Digit0', 48, '0)'], ['Minus', 189, '-_'], ['Equal', 187, '=+'], ['BracketLeft', 219, '[{'], ['BracketRight', 221, ']}'],
+  ['Backslash', 220, '\\|'], ['Semicolon', 186, ';:'], ['Quote', 222, '\'"'], ['Comma', 188, ',<'], ['Period', 190, '.>'],
+  ['Slash', 191, '/?'],
+];
+
+const SYMBOLS = {
+  ' ': ['Space', 32, 0],
+  ...Object.fromEntries(US_LAYOUT.flatMap(([code, keyCode, [plain, shifted]]) => [[plain, [code, keyCode, 0]], [shifted, [code, keyCode, BITS.Shift]]])),
+};
+
 function keyOf(name, shift) {
-  if (NAMED[name]) return NAMED[name];
+  if (NAMED[name]) return [...NAMED[name], 0];
+  if (SYMBOLS[name]) return [name, ...SYMBOLS[name]];
   if (/^[a-z]$/i.test(name)) {
     const upper = name.toUpperCase();
-    return [shift ? upper : name.toLowerCase(), `Key${upper}`, upper.charCodeAt(0)];
+    return [shift ? upper : name.toLowerCase(), `Key${upper}`, upper.charCodeAt(0), 0];
   }
-  if (/^[0-9]$/.test(name)) return [name, `Digit${name}`, name.charCodeAt(0)];
-  if (/^F[0-9]+$/.test(name)) return [name, name, 111 + Number(name.slice(1))];
+  if (/^F[0-9]+$/.test(name)) return [name, name, 111 + Number(name.slice(1)), 0];
   throw new Error(`the key ${name} is not known to press()`);
 }
 
@@ -123,33 +136,20 @@ export async function openFormula(page, selector) {
   await press(page, 'Enter');
 }
 
-export async function press(page, keys, count = 1) {
-  const names = keys.split('+');
+export async function press(page, keys, { count = 1, command } = {}) {
+  const names = keys.split(/\+(?=.)/);
   const name = names.pop();
   for (const m of names) if (m !== 'Mod' && !(m in BITS)) throw new Error(`the modifier ${m} is not known to press()`);
-  const modifiers = await maskOf(page, names.join('+'));
-  const shift = names.includes('Shift');
-  const [key, code, keyCode] = keyOf(name, shift);
-  const command = modifiers & (BITS.Ctrl | BITS.Meta);
-  const text = command ? undefined : key.length === 1 ? key : key === 'Enter' ? '\r' : undefined;
+  const [key, code, keyCode, shifted] = keyOf(name, names.includes('Shift'));
+  const modifiers = (await maskOf(page, names.join('+'))) | shifted;
+  const chord = modifiers & (BITS.Ctrl | BITS.Meta);
+  const text = chord ? undefined : key.length === 1 ? key : key === 'Enter' ? '\r' : undefined;
   const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers };
-  const down = { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) };
+  const down = { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}), ...(command ? { commands: [command] } : {}) };
   const sent = [];
   for (let i = 0; i < count; i++) sent.push(page.send('Input.dispatchKeyEvent', down), page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }));
   await Promise.all(sent);
 }
-
-const SYMBOLS = {
-  ' ': ['Space', 32, 0],
-  '!': ['Digit1', 49, BITS.Shift],
-  '-': ['Minus', 189, 0],
-  '.': ['Period', 190, 0],
-  '/': ['Slash', 191, 0],
-  "'": ['Quote', 222, 0],
-  '"': ['Quote', 222, BITS.Shift],
-  ':': ['Semicolon', 186, BITS.Shift],
-  '@': ['Digit2', 50, BITS.Shift],
-};
 
 export async function typeKeys(page, text) {
   const sent = [];

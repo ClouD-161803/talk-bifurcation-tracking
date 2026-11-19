@@ -240,12 +240,6 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
     });
   }
 
-  async function question(page) {
-    const base = { key: '?', code: 'Slash', windowsVirtualKeyCode: 191, modifiers: 8 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '?', unmodifiedText: '/' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  }
-
   const focusIn = (page, selector) => page.evaluate(`!!document.activeElement?.closest(${js(selector)})`);
   const open = (page, selector) => page.evaluate(`!!document.querySelector(${js(selector)})?.open`);
 
@@ -272,7 +266,7 @@ describe('the toolbar overflow, menu bar, and dialog keys', () => {
       const page = await load(t, platform);
       await click(page, '.beeson-edit-nav .row[aria-current="true"], .beeson-edit-nav [aria-current="true"]');
       const before = await page.evaluate(`document.activeElement.outerHTML.slice(0, 80)`);
-      await question(page);
+      await press(page, '?');
       assert.ok(await open(page, 'dialog.beeson-edit-keys'), '? does not open the sheet');
       for (const key of ['Tab', 'Shift+Tab', 'Tab']) {
         await press(page, key);
