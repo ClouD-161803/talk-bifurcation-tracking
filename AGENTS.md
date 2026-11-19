@@ -89,6 +89,7 @@ PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write 
 
 - Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the PR is merged, not a suggestion.
 <!-- shared:end -->
+- In this repository, PR-Agent is run only at the pushes to PRs from branches of this repository, and commands in comments are ignored.
 - Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in the bundles of `theme/`, from `npm run build`, either. They are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
 

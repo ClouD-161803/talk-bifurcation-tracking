@@ -75,9 +75,7 @@ On a laptop, the whole suite of `npm test` takes over an hour, with every core b
 
 ## Workflows
 
-- In the workflow `pr-agent`, a comment is first read by the job `authorize`, whose token can only read and which does not have a concurrency group. Hence a comment that is not a command of a person with write access does not cancel a running review. Keep this job apart from the review.
-- Keep the commands accepted by `authorize` equal to those of the pinned release of PR-Agent. Read the changelog of a new release before you bump its image.
-- A PR from a fork is reviewed only on a command of a person with write access, since the events of a fork come with a read-only token and without the secrets. Comments on issues are ignored, since the number of an issue is read by PR-Agent as the number of a PR.
+- Do not add a trigger on comments to the workflow `pr-agent`, since such a trigger is a high finding of zizmor. A PR from a fork is not reviewed, since the events of a fork are given a read-only token and are not given the secrets.
 
 ## Writing a test
 
