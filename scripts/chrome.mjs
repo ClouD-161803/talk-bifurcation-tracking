@@ -87,6 +87,7 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
     // the paravirtual GPU of the macOS runners of GitHub fails at times to create a WebGL context,
     // hence WebGL is drawn there in SwiftShader, as on the Linux runners
     ...(ci && platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
+    ...(ci && platform === 'win32' ? ['--use-angle=d3d11-warp', '--disable-gpu-compositing'] : []),
     // the sandbox of Chrome cannot be started on the Ubuntu runners of GitHub, and the pages are local
     ...(platform === 'linux' ? ['--no-sandbox'] : []),
     // with MacAppCodeSignClone, Chrome copies its app into a temp folder of macOS at each start, and
