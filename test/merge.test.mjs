@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { apply, changes, charEdits, clash, edits, merge, mergeEdits, moves, revert } from '../src/editor/merge.ts';
 import { apply as applyPatches, conflict, diff, mergePatches, mergeTexts, shift } from '../src/session/patch.ts';
+import { tokenize } from '../src/editor/tokens.ts';
 
 // the merge of a session of the edits ours and all of base, where ours wins at a conflict and all
 // comes first at a tie
@@ -506,6 +507,79 @@ test('the merge of an apply in a session keeps the edits of letters of one word 
   const g = wrap('First slide here'), l = g.indexOf('slide') + 1;
   const page = [{ start: l, end: l + 1, text: 'L' }], file = [{ start: l, end: l + 1, text: 'X' }, { start: l + 3, end: l + 4, text: 'E' }];
   assert.equal(mergeEdits(g, page, file, 'ours').text, wrap('First sLidE here'));
+});
+
+test('the merge of an apply in a session keeps whole the word of one of two people who type over the same letters of a word, in both orders', () => {
+  const wrap = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  const f = wrap('a slide b');
+  for (const [theirs, ours] of [['a deck b', 'a slime b'], ['a slime b', 'a deck b'], ['a deck b', 'a sXde b'], ['a sXde b', 'a deck b']]) {
+    assert.equal(mergeTexts(f, wrap(theirs), wrap(ours)), wrap(ours), `${ours} over ${theirs}`);
+  }
+});
+
+test('the merge of an apply in a session keeps the tags balanced when one person takes a format off a word and another types in it with the format off, with the text of the person who wins, in both orders', () => {
+  const wrap = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  for (const [open, close] of [['<em>', '</em>'], ['<a href="https://x.org/">', '</a>']]) {
+    const f = wrap(`a ${open}word${close} b`), off = wrap('a word b'), typed = wrap(`a ${open}wo${close}X${open}rd${close} b`);
+    assert.equal(mergeTexts(f, off, typed), typed, `${typed} over ${off}`);
+    assert.equal(mergeTexts(f, typed, off), off, `${off} over ${typed}`);
+  }
+});
+
+// a paragraph of words, some in italic or bold, and the edits of one person on words of it: letters
+// typed over, a key, a format taken off or put on, a key typed with the format off, or a word removed
+function wordRound(seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (n) => Math.floor(next() * n), pick = (list) => list[int(list.length)];
+  const letters = () => Array.from({ length: 1 + int(3) }, () => pick(['X', 'Y', 'q', 'z'])).join('');
+  const words = Array.from({ length: 4 + int(3) }, () => {
+    const tag = next() < 0.4 ? pick(['em', 'strong']) : '';
+    return { pre: tag && `<${tag}>`, text: pick(['orbit', 'moon', 'halo', 'data', 'method', 'slide']), post: tag && `</${tag}>` };
+  });
+  const render = (list) => list.map((w) => w.pre + w.text + w.post).filter(Boolean).join(' ');
+  const person = () => {
+    const out = words.map((w) => ({ ...w }));
+    for (const at of new Set(Array.from({ length: 1 + int(2) }, () => int(out.length)))) {
+      const w = out[at], n = w.text.length, i = int(n), kind = pick(['over', 'key', 'off', 'on', 'plain', 'delete']);
+      if (kind === 'over') w.text = w.text.slice(0, i) + letters() + w.text.slice(i + 1 + int(n - i));
+      else if (kind === 'key') w.text = w.text.slice(0, i) + letters()[0] + w.text.slice(i);
+      else if (kind === 'off') w.pre = w.post = '';
+      else if (kind === 'on' && !w.pre) [w.pre, w.post] = ['<em>', '</em>'];
+      else if (kind === 'plain' && w.pre && i > 0) w.text = w.text.slice(0, i) + w.post + letters() + w.pre + w.text.slice(i);
+      else if (kind === 'delete') w.pre = w.text = w.post = '';
+    }
+    return render(out);
+  };
+  return [render(words), person(), person()];
+}
+
+// whether each end tag of text closes the last element left open, and none is left open
+function balanced(text) {
+  const open = [];
+  for (const t of tokenize(text)) {
+    if (t.type === 'start') open.push(t.name);
+    else if (t.type === 'end' && open.pop() !== t.name) return false;
+  }
+  return !open.length;
+}
+
+test('random edits of two people in the words of one paragraph, with formats put on and taken off, merge into balanced tags in both orders', () => {
+  const wrap = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  const failed = [];
+  for (let seed = 1; seed <= 2000; seed++) {
+    const [base, one, two] = wordRound(seed).map(wrap);
+    for (const [theirs, ours] of [[one, two], [two, one]]) {
+      const merged = mergeTexts(base, theirs, ours);
+      if (!balanced(merged)) failed.push(`seed ${seed}: ${merged.split('\n')[1].trim()}`);
+    }
+  }
+  assert.deepEqual(failed.slice(0, 5), [], `${failed.length} merges failed`);
 });
 
 // x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
