@@ -311,7 +311,7 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
 // line without white space between them on slide One
 const TWINS = TALK.replace('  <p>Second slide</p>\n', '  <p>Same</p>\n  <p>Same</p>\n').replace('  <p>First slide</p>\n', '  <p>Twin</p><p>Twin</p>\n');
 
-test('a thread on the second of two equal elements stays on it when another person removes the first, on lines of their own and on one line', { timeout: 300_000 }, async (t) => {
+test('a thread on the second of two equal elements stays on it, and the page of the thread removes the first, when another person removes the first, on lines of their own and on one line', { timeout: 300_000 }, async (t) => {
   const { server, pages: [a, b] } = await pair(t, ['Ann', 'Ben'], '', TWINS);
   for (const [heading, text, slide] of [['Two', 'Same', 2], ['One', 'Twin', 1]]) {
     const second = `.reveal .slides > section:nth-child(${slide}) > p:nth-of-type(2)`;
@@ -320,12 +320,15 @@ test('a thread on the second of two equal elements stays on it when another pers
     await comment(a, `On the second ${text}`);
     await converge(server, [a, b]);
     await until(() => b.evaluate(`!window.BeesonSession.presence().holderOf(document.querySelector('${second}'))`), 'the paragraph that Ann left to be free on the page of Ben');
+    const twins = `[...document.querySelectorAll('.reveal .slides > section:nth-child(${slide}) > p')]`;
+    await a.evaluate(`${twins}.forEach((p, i) => (p.twin = i))`);
     await show(b, heading);
     await clickText(b, `.reveal section.present > p`);
     await press(b, 'Escape');
     await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
     await until(() => server.read().split(`<p>${text}</p>`).length === 2, `the removal of the first ${text} to reach index.html`);
     await converge(server, [a, b]);
+    assert.deepEqual(await a.evaluate(`${twins}.map((p) => p.twin)`), [1], `the ${text} that the page of Ann keeps`);
     await openPane(a);
     await badge(a, heading, 'p', '1');
     await sees(a, `${THREADS}.filter((t) => t.texts[0] === 'On the second ${text}')`, [{ anchor: `On Paragraph: ${text}`, texts: [`On the second ${text}`] }]);
