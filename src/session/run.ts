@@ -151,6 +151,12 @@ function formats(all: Unit[]): [Unit, Unit, 0 | 1][] {
   return out;
 }
 
+function residue(t: string): string {
+  const s: string[] = [];
+  for (const [u, e, n] of t.matchAll(/<(\/?)(\w+)/g)) e ? (s.at(-1) === n ? s.pop() : s.push(u)) : s.push(n);
+  return s + '';
+}
+
 // whether an edit o of the other side clashes with a format put around the units s to e of x: o
 // crosses an end of the run, removes the whole run, or holds a tag inside the run or at its ends.
 // a plain edit inside the run, also one that types over the whole run, is kept inside the element
@@ -265,5 +271,6 @@ export function mergeRun(x: string, theirs: string, ours: string, twice: boolean
     at = Math.max(at, e.a1);
   }
   out.push(base.slice(at).join(''));
-  return { text: out.join(''), conflicted: hit.size > 0 };
+  const t = out.join(''), ok = (s: string) => residue(s) === residue(x);
+  return !ok(t) && ok(theirs) && ok(ours) ? { text: [ours, theirs][loser], conflicted: true } : { text: t, conflicted: hit.size > 0 };
 }
