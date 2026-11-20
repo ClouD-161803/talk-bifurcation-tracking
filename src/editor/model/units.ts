@@ -2,36 +2,17 @@ import type { Range } from '../tokens.ts';
 
 export type Child = { kind: 'element' | 'text' | 'comment'; start: number; end: number };
 
-export type Unit = { lead: Range; range: Range; end: number; child: number };
+export type Unit = { lead: Range; range: Range; child: number };
 export type Units = { units: Unit[]; tail: Range };
 
-const START = /^\s*(\S+) start\b/;
-const commentText = (text: string, c: Child) => text.slice(c.start + 4, Math.max(c.start + 4, c.end - 3));
-const blank = (text: string, c: Child) => c.kind === 'text' && !/\S/.test(text.slice(c.start, c.end));
-
-export function unitsOf(text: string, children: Child[], content: Range): Units {
+export function unitsOf(children: Child[], content: Range): Units {
   const units: Unit[] = [];
   let pos = content.start;
-  let from = 0;
-  for (let i = 0; i < children.length; i++) {
-    const c = children[i];
-    if (c.kind !== 'element') continue;
-    const unit: Unit = { lead: { start: pos, end: c.start }, range: { start: c.start, end: c.end }, end: c.end, child: i };
-    const opener = children.slice(from, i).reverse().find((k) => k.kind === 'comment');
-    const name = opener ? START.exec(commentText(text, opener))?.[1] : undefined;
-    if (name) {
-      let j = i + 1;
-      while (j < children.length && blank(text, children[j])) j++;
-      const closer = children[j];
-      if (closer?.kind === 'comment' && new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} end\\b`).test(commentText(text, closer))) {
-        unit.end = closer.end;
-        i = j;
-      }
-    }
-    units.push(unit);
-    pos = unit.end;
-    from = i + 1;
-  }
+  children.forEach((c, i) => {
+    if (c.kind !== 'element') return;
+    units.push({ lead: { start: pos, end: c.start }, range: { start: c.start, end: c.end }, child: i });
+    pos = c.end;
+  });
   return { units, tail: { start: pos, end: Math.max(pos, content.end) } };
 }
 

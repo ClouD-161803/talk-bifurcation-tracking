@@ -381,7 +381,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
   const nu = unitsWithin(to)?.units ?? [];
   const ot = from.source.text;
   const nt = to.source.text;
-  const body = (t: string, u: { range: { start: number }; end: number }) => t.slice(u.range.start, u.end);
+  const body = (t: string, u: { range: { start: number; end: number } }) => t.slice(u.range.start, u.range.end);
   let p = 0;
   while (p < ou.length && p < nu.length && body(ot, ou[p]) === body(nt, nu[p])) p++;
   let q = 0;

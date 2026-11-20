@@ -11,11 +11,11 @@ function unitsIn(text) {
   const open = tokens.find((t) => t.type === 'start');
   const close = tokens.findLast((t) => t.type === 'end' && t.name === open.name);
   const content = { start: open.end, end: close.start };
-  return { content, ...unitsOf(text, childrenIn(tokens, content), content) };
+  return { content, ...unitsOf(childrenIn(tokens, content), content) };
 }
 
 const slice = (text, r) => text.slice(r.start, r.end);
-const pieces = (text, u) => [...u.units.map((x) => text.slice(x.lead.start, x.end)), slice(text, u.tail)];
+const pieces = (text, u) => [...u.units.map((x) => text.slice(x.lead.start, x.range.end)), slice(text, u.tail)];
 
 function assertPartition(text) {
   const u = unitsIn(text);
@@ -29,22 +29,6 @@ test('a unit is an element with the white space and the comments before it', () 
   assert.deepEqual(pieces(text, u), ['\n\n<!-- 1. title -->\n<section>a</section>', '\n\n<!-- 2. two -->\n<!-- more -->\n<section>b</section>', '\n\n']);
   assert.equal(slice(text, u.units[1].range), '<section>b</section>');
   assert.equal(slice(text, u.units[1].lead), '\n\n<!-- 2. two -->\n<!-- more -->\n');
-});
-
-test('a marker pair around one element is one unit, up to its end comment', () => {
-  const text = '<section>\n  <h2>A</h2>\n  <!-- tycho-viewer start, written by demo/tycho-scene.py -->\n  <tycho-viewer src="a"></tycho-viewer>\n<!-- tycho-viewer end -->\n  <p>b</p>\n</section>';
-  const u = assertPartition(text);
-  assert.equal(u.units.length, 3);
-  assert.equal(text.slice(u.units[1].lead.start, u.units[1].end), '\n  <!-- tycho-viewer start, written by demo/tycho-scene.py -->\n  <tycho-viewer src="a"></tycho-viewer>\n<!-- tycho-viewer end -->');
-  assert.equal(slice(text, u.units[1].range), '<tycho-viewer src="a"></tycho-viewer>');
-  assert.equal(slice(text, u.units[2].lead), '\n  ');
-});
-
-test('a start comment without its end comment is only the lead of its element', () => {
-  const text = '<div>\n  <!-- x start -->\n  <p>a</p>\n  <!-- y end -->\n  <p>b</p>\n</div>';
-  const u = assertPartition(text);
-  assert.equal(text.slice(u.units[0].lead.start, u.units[0].end), '\n  <!-- x start -->\n  <p>a</p>');
-  assert.equal(slice(text, u.units[1].lead), '\n  <!-- y end -->\n  ');
 });
 
 test('the tail is the white space and the comments after the last element', () => {
@@ -75,7 +59,7 @@ test('the units of the demo deck cover its slides byte for byte', () => {
     return false;
   });
   const content = { start: open.end, end: close.start };
-  const u = unitsOf(text, childrenIn(tokens, content), content);
+  const u = unitsOf(childrenIn(tokens, content), content);
   assert.equal(pieces(text, u).join(''), slice(text, content));
   assert.ok(u.units.length >= 10);
   for (const x of u.units) assert.match(slice(text, x.range), /^<section/);

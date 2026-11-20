@@ -122,7 +122,7 @@ export function relayout(body: string, layout: Layout, step: string): string {
   const wrappers = new Map<string, string>();
   const parts: Part[] = [];
   const read = (content: Range, depth: number, prefix: string) => {
-    for (const u of unitsOf(body, childrenIn(tokens, content), content).units) {
+    for (const u of unitsOf(childrenIn(tokens, content), content).units) {
       const lead = body.slice(u.lead.start, u.lead.end);
       const space = spaceOf(lead);
       const tok = startAt.get(u.range.start)!;
@@ -135,7 +135,7 @@ export function relayout(body: string, layout: Layout, step: string): string {
         continue;
       }
       const indent = indentAt(body, u.lead.start + space.length);
-      parts.push({ name: tok.name, classes, lead: prefix + lead.slice(space.length), blank: (space.match(/\n/g) ?? []).length > 1, body: body.slice(u.range.start, u.end), indent });
+      parts.push({ name: tok.name, classes, lead: prefix + lead.slice(space.length), blank: (space.match(/\n/g) ?? []).length > 1, body: body.slice(u.range.start, u.range.end), indent });
       prefix = '';
     }
   };

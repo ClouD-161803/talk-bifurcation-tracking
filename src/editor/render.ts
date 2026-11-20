@@ -321,7 +321,7 @@ export function unitsWithin(s: SrcEl): { units: (Unit & { el: SrcEl })[]; tail: 
   const range = contentRange(s);
   if (!range) return null;
   const kids = kidsOf(s);
-  const { units, tail } = unitsOf(s.source.text, kids.map((k) => k.child), range);
+  const { units, tail } = unitsOf(kids.map((k) => k.child), range);
   return { units: units.map((u) => ({ ...u, el: kids[u.child].node as SrcEl })), tail };
 }
 
@@ -443,7 +443,7 @@ class Renderer {
       length += lead.length + rest.length;
     };
     const keep = (key: SrcEl | null) => {
-      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), () => text.slice(u.range.start, u.end), afterDropped.has(u.el));
+      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), () => text.slice(u.range.start, u.range.end), afterDropped.has(u.el));
     };
     keep(null);
     const notes: Element[] = [];
@@ -458,7 +458,7 @@ class Renderer {
       if (u) {
         if (units.indexOf(u) < order) changed = true;
         order = units.indexOf(u);
-        put(text.slice(u.lead.start, u.range.start), (start) => this.element(m, c, start) + text.slice(u.range.end, u.end), afterDropped.has(u.el));
+        put(text.slice(u.lead.start, u.range.start), (start) => this.element(m, c, start), afterDropped.has(u.el));
         keep(m);
         continue;
       }
@@ -469,7 +469,7 @@ class Renderer {
       const lead = mt.slice(home.lead.start, home.range.start);
       const inPlace = isFragmentRoot(m) && m.source.fragment?.home === live;
       const back = leadsBack.get(c);
-      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start) + mt.slice(home.range.end, home.end), true);
+      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start), true);
     }
     let tail = within ? text.slice(within.tail.start, within.tail.end) : '';
     if (!units.length && !tail && parts.length) tail = this.eol + this.indent(s);
@@ -498,12 +498,12 @@ export function renderDeck(source: Source, pairing: Pairing, math: MathLookup, t
   return { text, edits: r.edits, changed: r.changed, warnings: r.warnings, places: r.places };
 }
 
-export function renderUnit(pairing: Pairing, math: MathLookup, tags: Map<Element, TagEdit>, el: Element, source: Source): { lead: string; body: string; trail: string } | null {
+export function renderUnit(pairing: Pairing, math: MathLookup, tags: Map<Element, TagEdit>, el: Element, source: Source): { lead: string; body: string } | null {
   const s = pairing.elements.get(el);
   if (!s) return null;
   const u = unitOf(s);
   const text = s.source.text;
   const body = new Renderer(source, pairing, math, tags).element(s, el);
-  if (!u) return { lead: '', body, trail: '' };
-  return { lead: text.slice(u.lead.start, u.range.start), body, trail: text.slice(u.range.end, u.end) };
+  if (!u) return { lead: '', body };
+  return { lead: text.slice(u.lead.start, u.range.start), body };
 }

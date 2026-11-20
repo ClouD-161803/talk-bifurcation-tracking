@@ -168,7 +168,7 @@ export class Doc {
 
   unitText(el: Element): string {
     const u = this.unit(el);
-    return u.lead + u.body + u.trail;
+    return u.lead + u.body;
   }
 
   elementText(el: Element): string {
@@ -342,7 +342,7 @@ export class Doc {
     const u = this.unit(el);
     const done = this.enter();
     try {
-      const node = await this.place(edit(u.body) + u.trail, parent, el, u.lead);
+      const node = await this.place(edit(u.body), parent, el, u.lead);
       let rec = this.detach(el);
       await this.after(parent);
       let back: Detached | null = null;
@@ -388,7 +388,7 @@ export class Doc {
     const parent = el.parentElement;
     if (!parent) throw new Error('the element is not on the page');
     const u = this.unit(el);
-    const rec = { node: el, parent, prev: prevKept(el), next: nextKept(el), text: u.lead + u.body + u.trail };
+    const rec = { node: el, parent, prev: prevKept(el), next: nextKept(el), text: u.lead + u.body };
     el.remove();
     detached.add(el);
     return rec;
