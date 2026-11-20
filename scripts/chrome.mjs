@@ -72,6 +72,7 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
     '--mute-audio',
     '--enable-unsafe-swiftshader',
     ...(ci && platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
+    ...(ci && platform === 'win32' ? ['--use-angle=d3d11-warp', '--disable-gpu-compositing'] : []),
     ...(platform === 'linux' ? ['--no-sandbox'] : []),
     ...(platform === 'win32' ? ['--disable-features=TcpPortRandomizationWin'] : []),
     `--host-resolver-rules=MAP * ~NOTFOUND${offline ? '' : ', EXCLUDE 127.0.0.1'}`,

@@ -263,6 +263,17 @@ test('chromeArgs disables TcpPortRandomizationWin on Windows only', async () => 
   assert.ok(!chromeArgs({ profile: 'p', platform: 'linux' }).includes('--disable-features=TcpPortRandomizationWin'));
 });
 
+test('on the Windows runners, chromeArgs draws WebGL in WARP and composites the page in software', async () => {
+  const { chromeArgs } = await import('../scripts/chrome.mjs');
+  const flags = ['--use-angle=d3d11-warp', '--disable-gpu-compositing'];
+  for (const flag of flags) {
+    assert.ok(chromeArgs({ profile: 'p', platform: 'win32', ci: true }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'win32', ci: false }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'linux', ci: true }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'darwin', ci: true }).includes(flag), flag);
+  }
+});
+
 test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));

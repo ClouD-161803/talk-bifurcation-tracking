@@ -111,6 +111,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Over the DevTools protocol, a trusted key runs an editing command, or clicks a button at Enter, only when it is sent with the command or with its text, e.g. `commands: ['selectAll']` or `text: '\r'`. In headless Chrome, a paste event is not fired at Mod+V.
 - In headless Chrome, a file chooser is canceled unless `Page.setInterceptFileChooserDialog` is turned on before the trusted click that opens it. The cancel would race the files set by the test.
 - Under load, an anti-aliased edge may be rastered a few levels apart. Compare the computed styles and boxes of two drawings, not their pixels.
+- On the Windows runners, Chrome draws WebGL in WARP, since SwiftShader takes about 170 ms for a frame of a surface there, against about 30 ms in WARP. The page is still composited in software, so that the screenshots of the print view equal the frames composed on a 2D canvas.
 - Text is laid out differently on each system. The sans-serif face of Linux is wider, and a caption there may be placed 1 px lower. On Windows, the space after a word is part of the selection of a double-click.
 - A touch sent with `Input.dispatchTouchEvent` on a grip may be given by Chrome to the text element beside it. Make the pointer events of a touch on a grip in the page.
 - IndexedDB does not answer a read while the virtual time of Chrome is paused.

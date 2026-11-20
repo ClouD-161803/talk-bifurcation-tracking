@@ -525,7 +525,7 @@ test('a plot is recorded at each step as a loop of its pass and its hold, at twi
   }
 });
 
-test('the frames of a surface are drawn and encoded in a page at twice the pixel ratio in about the time of the same frames at one', { timeout: 600000 }, async (t) => {
+test('the frames of a surface are drawn and encoded a second per DevTools call, and at twice the pixel ratio in about the time of the same frames at one', { timeout: 600000 }, async (t) => {
   const browser = await launch({ wholeFrames: true });
   t.after(() => browser.close());
   const record = async (scale) => {
@@ -535,16 +535,17 @@ test('the frames of a surface are drawn and encoded in a page at twice the pixel
       const [first] = (await listAnimations(page)).flat();
       assert.ok(first?.key.startsWith('surface '), JSON.stringify(first));
       const { evaluate } = page;
-      let ms = 0;
+      let ms = 0, calls = 0;
       page.evaluate = async (expression) => {
-        if (!/^__animate\.(step|encode)\(/.test(expression)) return evaluate(expression);
+        calls++;
+        if (!/^__animate\.(clip|turn|step|encode)\(/.test(expression)) return evaluate(expression);
         const start = performance.now();
         const result = await evaluate(expression);
         ms += performance.now() - start;
         return result;
       };
       const { loop } = await recordAnimation(page, first.index);
-      return { ms: Math.round(ms), stream: mp4Stream(loop.data) };
+      return { ms: Math.round(ms), calls, stream: mp4Stream(loop.data) };
     } finally {
       await page.close();
     }
@@ -554,8 +555,9 @@ test('the frames of a surface are drawn and encoded in a page at twice the pixel
     const large = await record(2);
     const small = await record(1);
     assert.deepEqual(large.stream, small.stream);
+    assert.ok(large.calls < large.stream.frames / 2, `${large.calls} DevTools calls for ${large.stream.frames} frames`);
     ratio = large.ms / small.ms;
-    t.diagnostic(`pixel ratio 1: ${small.ms} ms, pixel ratio 2: ${large.ms} ms, ${small.stream.frames} frames`);
+    t.diagnostic(`pixel ratio 1: ${small.ms} ms, pixel ratio 2: ${large.ms} ms, ${small.stream.frames} frames, ${small.calls} DevTools calls`);
   }
   assert.ok(ratio <= 1.5, `the frames at the pixel ratio 2 took ${ratio.toFixed(2)} times as long as at 1`);
 });
