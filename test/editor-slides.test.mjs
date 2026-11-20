@@ -222,17 +222,15 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
-  test(`Backspace deletes a slide with the comment above it (${platform})`, async (t) => {
+  test(`Backspace deletes a slide (${platform})`, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());
-    assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes('<!-- content, the default layout'), 'the deck has the comment above the slide');
     await click(page, await row(page, 2));
     await press(page, 'Backspace');
     await settle(page);
     assert.equal((await rows(page)).length, 12);
     const edited = await page.evaluate('window.BeesonEditor.render()');
     assert.ok(!edited.includes('Show your steps one at a time'));
-    assert.ok(!edited.includes('<!-- content, the default layout'), 'the comment above the slide is kept');
     assert.equal(await page.evaluate(`window.Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Equations are first class citizens');
     await roundTrip(page);
   });
@@ -252,7 +250,6 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await page.evaluate(`document.activeElement.closest('.beeson-edit-nav .row')?.querySelector('.title').textContent`), 'Chapter two');
     const edited = await roundTrip(page);
     assert.ok(edited.indexOf('Explain concepts, visually') < edited.indexOf('Chapter two'));
-    assert.ok(edited.indexOf('Explain concepts, visually') < edited.indexOf('<!-- a second section slide'));
   });
 
   test(`a drag in the navigator moves a slide, with an insertion line (${platform})`, async (t) => {

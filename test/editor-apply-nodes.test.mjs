@@ -99,7 +99,7 @@ test('the current slide is kept when a slide is put or taken before it, and a cu
   await b.evaluate('window.__current = Reveal.getCurrentSlide()');
   const index = () => b.evaluate('Reveal.getIndices().h');
   const start = await index();
-  let text = once(b.source, '<!-- stepped math', `${NEW_SLIDE}\n<!-- stepped math`);
+  let text = once(b.source, '<section>\n  <h2>Equations are first class citizens', `${NEW_SLIDE}\n<section>\n  <h2>Equations are first class citizens`);
   assert.equal((await applyOn(b, text)).reload, false);
   await applied(b, text, 'a slide put before');
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__current'), true, 'the slide shown after a slide put before it');

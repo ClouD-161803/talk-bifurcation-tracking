@@ -13,8 +13,6 @@ const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: '
   .filter((f) => f && !f.startsWith('theme/vendor/') && lstatSync(join(root, f)).isFile());
 
 const legalBanner = (file, comment) => BUNDLES.test(file) && comment.at === 0 && comment.text.startsWith('/*! ');
-const TALK_WITH_COMMENTS = 'test-deck.html';
-const commentOfTalk = (file, comment) => file === TALK_WITH_COMMENTS && comment.text.startsWith('<!--');
 
 const lineOf = (text, at) => text.slice(0, at).split('\n').length;
 
@@ -22,7 +20,7 @@ test('the files of the repository do not have comments, and a bundle has only it
   const hits = tracked.flatMap((file) => {
     const text = readFileSync(join(root, file), 'utf8');
     return commentsOf(file, text)
-      .filter((c) => !legalBanner(file, c) && !commentOfTalk(file, c))
+      .filter((c) => !legalBanner(file, c))
       .map((c) => `${file}:${lineOf(text, c.at)}: ${c.text.slice(0, 100)}`);
   });
   assert.deepEqual(hits, []);

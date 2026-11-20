@@ -156,7 +156,7 @@ test('a backdrop that becomes another div asks for a reload, and is placed anew 
   await steps(t, [['a backdrop made a shape', (s) => once(s, backdrop, '<div class="shape" style="width: 200px; height: 100px">'), true]]);
   await steps(t, [['the class of a backdrop taken', (s) => once(s, backdrop, '<div data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5">'), true]]);
   const shapes = '<section>\n  <h2>Shapes</h2>\n  <div class="shape rounded" style="width: 241px; height: 148px; translate: 279px 463px"><p>Goal</p></div>\n</section>\n\n';
-  await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<!-- content, the default layout', `${shapes}<!-- content, the default layout`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
+  await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<section>\n  <h2>Show your steps one at a time', `${shapes}<section>\n  <h2>Show your steps one at a time`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
 });
 
 test('a self-closing tag of a formatting element in a text element asks for a reload, and one of SVG does not', async (t) => {
