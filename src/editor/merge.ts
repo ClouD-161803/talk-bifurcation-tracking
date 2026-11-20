@@ -327,15 +327,15 @@ const WORD = new RegExp(`[${CJK}]|(?:(?![${CJK}])[\\p{L}\\p{N}])+`, 'gu');
 const wordsOf = (s: string) => s.replace(/<[^<>]*>/g, ' ').match(WORD) ?? [];
 
 // whether every tag of s that s closes somewhere is closed after it is opened and before s ends
-function balanced(s: string): boolean {
-  const closed = new Set([...s.matchAll(/<\/([\w-]+)/g)].map((m) => m[1].toLowerCase())), depth = new Map<string, number>();
+export function balanced(s: string): boolean {
+  const closed = new Set([...s.matchAll(/<\/([\w-]+)/g)].map((m) => m[1].toLowerCase())), open: string[] = [];
   for (const m of s.matchAll(/<(\/?)([\w-]+)(?:[^<>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
-    const name = m[2].toLowerCase(), d = (depth.get(name) ?? 0) + (m[1] ? -1 : 1);
+    const name = m[2].toLowerCase();
     if (!closed.has(name) || m[3]) continue;
-    if (d < 0) return false;
-    depth.set(name, d);
+    if (!m[1]) open.push(name);
+    else if (open.pop() !== name) return false;
   }
-  return [...depth.values()].every((d) => d === 0);
+  return !open.length;
 }
 
 // a removal or an insertion of whole lines turned over the equal lines next to it until its text is
