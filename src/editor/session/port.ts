@@ -26,7 +26,7 @@ export type Port = {
   text(): string;
   places(): number[];
   copy(): string;
-  apply(text: string): Promise<Applied>;
+  apply(text: string, places?: readonly number[]): Promise<Applied>;
   rebase(): Promise<Applied>;
   onChange(fn: () => void): () => void;
   onReload(fn: (target?: string) => void): () => void;

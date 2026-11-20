@@ -244,6 +244,7 @@ export function install(app: App): void {
   let leftOf: (() => void) | null = null;
   let leaving = false;
   let opened: { field: HTMLTextAreaElement; tex: string } | null = null;
+  let bound: (() => Element) | null = null;
 
   window.addEventListener('keydown', (ev) => {
     if (completing && ev.target === completing.field && completing.key(ev)) {
@@ -277,6 +278,7 @@ export function install(app: App): void {
     leftOf = null;
     openFor = null;
     opened = null;
+    bound = null;
     const restore = back;
     back = null;
     if (focus) restore?.();
@@ -388,6 +390,7 @@ export function install(app: App): void {
           }
         : null;
     leftOf = sheet.left ?? null;
+    bound = sheet.textEl;
     openFor = target;
     opened = target ? { field, tex: sheet.tex } : null;
     const host = target?.closest(HOST);
@@ -471,4 +474,9 @@ export function install(app: App): void {
     }
   });
   app.listen('slide', () => closeMath(false));
+  const gone = () => {
+    if (popover && bound && !bound().isConnected) closeMath(false);
+  };
+  app.listen('history', gone);
+  app.onRefresh(['content', 'structure'], gone);
 }

@@ -310,6 +310,48 @@ test('a new formula whose commit at a click away is refused, since another perso
   clean(ben, MISSING);
 });
 
+test('a new formula that another person removes while its Insert Formula field is open closes the field', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Macros');
+  await show(ann, 'Citations');
+  await front(ann);
+  await ann.evaluate(`(document.activeElement?.blur(), window.BeesonEditor.exec('insert.formula'), true)`);
+  await ann.waitFor(`!!document.querySelector('.beeson-math textarea') && document.activeElement === document.querySelector('.beeson-math textarea')`);
+  await typeKeys(ann, 'y');
+  await ann.waitFor(`document.querySelector('.beeson-math textarea').value === 'y'`);
+  await converge(server, [ann, ben]);
+  const made = server.read().match(/\n *<div class="math"[^\n]*>\\\[\\\]<\/div>/);
+  assert.ok(made, 'the new formula is not in index.html');
+  await other(server, made[0], '');
+  await ann.waitFor(`!document.querySelector('.beeson-math')`, 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${await ann.evaluate(FIELD)}: ${e.message}`);
+  });
+  await converge(server, [ann, ben]);
+  assert.doesNotMatch(server.read(), /<div class="math"[^\n]*>\\\[\\\]<\/div>/);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('the list of Insert Citation closes when another person removes its text element', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Macros');
+  await show(ann, 'Citations');
+  await front(ann);
+  const para = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith('Invariant'))`;
+  await caretAtEnd(ann, para);
+  await ann.evaluate(`(window.BeesonEditor.exec('insert.citation'), true)`);
+  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length > 0 && document.activeElement === document.querySelector('${LIST} input')`);
+  await other(server, '\n      <p>Invariant manifolds guide a low-energy transfer</p>', '');
+  await ann.waitFor(`!${para}`, 30_000);
+  await ann.waitFor(`!document.querySelector('${LIST}')`, 30_000);
+  await converge(server, [ann, ben]);
+  assert.ok(!server.read().includes('Invariant manifolds'));
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);

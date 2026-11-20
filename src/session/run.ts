@@ -120,6 +120,12 @@ function formats(all: Unit[]): [Unit, Unit, 0 | 1][] {
   return out;
 }
 
+function residue(t: string): string {
+  const s: string[] = [];
+  for (const [u, e, n] of t.matchAll(/<(\/?)(\w+)/g)) e ? (s.at(-1) === n ? s.pop() : s.push(u)) : s.push(n);
+  return s + '';
+}
+
 function clashes(x: string[], s: number, e: number, o: Unit): boolean {
   if ((o.a0 < s && s < o.a1) || (o.a0 < e && e < o.a1)) return true;
   const plain = o.text.replace(/<[^>]*>/g, '') !== '';
@@ -166,7 +172,8 @@ export function mergeRun(x: string, theirs: string, ours: string, twice: boolean
     let end = o.a1;
     while (end < base.length && plain(base[end])) end++;
     const rest = all.filter((n) => n.side === o.side && n !== o && o.a1 <= n.a0 && n.a1 <= end && !n.text.includes('<')).sort((a, b) => a.a0 - b.a0);
-    if (!all.some((e) => inside(e, { ...o, a1: rest.at(-1)?.a1 ?? o.a1 }))) continue;
+    const r = rest.at(-1)?.a1 ?? o.a1;
+    if (!all.some((e) => inside(r < end ? e : { ...e, a1: e.a0 }, { ...o, a1: r }))) continue;
     for (const n of rest) o.text += base.slice(o.a1, n.a0).join('') + n.text, (o.a1 = n.a1);
     if (o.a1 < end) o.text += base.slice(o.a1, end).join(''), (o.a1 = end);
     all = all.filter((u) => !rest.includes(u));
@@ -208,5 +215,6 @@ export function mergeRun(x: string, theirs: string, ours: string, twice: boolean
     at = Math.max(at, e.a1);
   }
   out.push(base.slice(at).join(''));
-  return { text: out.join(''), conflicted: hit.size > 0 };
+  const t = out.join(''), ok = (s: string) => residue(s) === residue(x);
+  return !ok(t) && ok(theirs) && ok(ours) ? { text: [ours, theirs][loser], conflicted: true } : { text: t, conflicted: hit.size > 0 };
 }

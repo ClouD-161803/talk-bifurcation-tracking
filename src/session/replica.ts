@@ -25,6 +25,7 @@ export class Replica {
   private flight: Flight | null = null;
   private waitFor = -1;
   private places: number[] = [];
+  private others: number[] = [];
 
   constructor(client: string, text: string, v: Version, seq = 0) {
     const parsed = parseVersion(v);
@@ -66,6 +67,7 @@ export class Replica {
     this.mine = wellFormed(text);
     const moved = moveOffsets(this.places, was, this.mine);
     this.places = [...moved, ...places.filter((h) => !moved.includes(h))];
+    this.others = moveOffsets(this.others, was, this.mine);
     this.settle();
     return this.mine === text ? null : this.mine;
   }
@@ -74,9 +76,17 @@ export class Replica {
     return placed(text, diff(text, this.mine), this.places, this.mine);
   }
 
-  private remine(text: string, patches: Patch[], ours: Patch[]): void {
+  private remine(text: string, patches: Patch[], ours: Patch[]): number[] {
     this.mine = apply(text, patches);
-    this.places = this.places.length ? starts(text, patches, new Set(ours)) : [];
+    const own = new Set(ours);
+    this.places = this.places.length ? starts(text, patches, own) : [];
+    return starts(text, patches, new Set(patches.filter((p) => !own.has(p))));
+  }
+
+  takeOthers(): number[] {
+    const out = this.others;
+    this.others = [];
+    return out;
   }
 
   private settle(): void {
@@ -157,7 +167,8 @@ export class Replica {
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
     const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
-    this.remine(from, both.patches, ours);
+    const added = this.remine(from, both.patches, ours);
+    this.others = [...moveOffsets(this.others, before, this.mine), ...added];
     const merged = this.mine;
     this.base = text;
     this.epoch = parsed.epoch;
@@ -188,6 +199,7 @@ export class Replica {
     if (op.client === this.flight?.client && op.seq === this.flight.seq) {
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {
+      this.others = [...moveOffsets(this.others, this.mine, next), ...starts(this.base, op.patches)];
       this.mine = next;
       this.places = [];
     } else {
@@ -212,11 +224,13 @@ export class Replica {
   }
 
   private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): void {
+    const was = this.mine;
     const ours = this.ours(text);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
     const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
     conflicts.push(...merged.conflicts);
-    this.remine(text, merged.patches, ours);
+    const added = this.remine(text, merged.patches, ours);
+    this.others = [...moveOffsets(this.others, was, this.mine), ...added];
   }
 }
 

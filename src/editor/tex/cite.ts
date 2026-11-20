@@ -361,6 +361,11 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     ev.stopImmediatePropagation();
   }, true);
   app.listen('slide', () => close(false));
+  const gone = () => {
+    if (open && !open.target.host.isConnected) close(false);
+  };
+  app.listen('history', gone);
+  app.onRefresh(['content', 'structure'], gone);
 
   return {
     cite(target) {

@@ -427,7 +427,7 @@ export class Client {
     const before = this.changes;
     let applied: Applied;
     try {
-      applied = await this.port.apply(text);
+      applied = await this.port.apply(text, this.sync!.takeOthers());
     } catch (e) {
       const target = (e as { target?: unknown } | null)?.target;
       if (typeof target === 'string') {
