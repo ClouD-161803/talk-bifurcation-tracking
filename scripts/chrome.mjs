@@ -71,6 +71,9 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
     ...(ci && platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
     // the sandbox of Chrome cannot be started on the Ubuntu runners of GitHub, and the pages are local
     ...(platform === 'linux' ? ['--no-sandbox'] : []),
+    // with MacAppCodeSignClone, Chrome copies its app into a temp folder of macOS at each start, and
+    // the copy is left there when Chrome is ended by a signal or with this process
+    ...(platform === 'darwin' ? ['--disable-features=MacAppCodeSignClone'] : []),
     // on Windows 11 and Server 2025, TcpPortRandomizationWin sets SO_RANDOMIZE_PORT and causes
     // spurious net::ERR_NO_BUFFER_SPACE on rapid 127.0.0.1 loopback fetches, including inside iframes
     ...(platform === 'win32' ? ['--disable-features=TcpPortRandomizationWin'] : []),
@@ -378,10 +381,12 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
   async function close() {
     let timer;
     try {
-      await Promise.race([send('Browser.close').catch(() => {}), new Promise((done) => (timer = setTimeout(done, 2000)))]);
+      send('Browser.close').catch(() => {});
+      // Chrome removes what it has written outside its profile only at an exit of its own
+      await Promise.race([exited, new Promise((done) => (timer = setTimeout(done, Math.min(timeout, 5000))))]);
     } finally {
       clearTimeout(timer);
-      child.kill();
+      if (!hasExited) child.kill();
       await exited;
       // chrome_crashpad_handler and GoogleUpdater inherit the stderr of Chrome and outlive it, and an
       // open pipe would keep this process alive until they exit
