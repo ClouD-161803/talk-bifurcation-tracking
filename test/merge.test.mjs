@@ -1034,3 +1034,19 @@ test('a slide moved past a slide as long as it, after a slide that the mover typ
   assert.ok(found.some(([cut, put]) => cut === one && !put) && found.some(([cut, put]) => !cut && put.includes(one)), JSON.stringify(found));
   assert.ok(found.every(([cut, put]) => !`${cut}${put}`.includes('Halo 3')), JSON.stringify(found));
 });
+
+test('a list that two people move into the slide before, also one of them with a list of the next slide and a typo in a heading, keeps each end tag on the element opened last, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = ['<ul>', '  <li>Method 22</li>', '</ul>'], three = ['<ul>', '  <li></li>', '</ul>'];
+  const base = s('One', ['<p>Same words 11</p>']) + s('Intro 2', ul) + s('Method 3', [...three, '<p>Intro 31</p>']);
+  const one = s('One', ['<p>Same words 11</p>', ...ul]) + s('Intro 2', []) + s('Method 3', [...three, '<p>Intro 31</p>']);
+  const two = s('One', ['<p>Same words 11</p>', ...ul, ...three]) + s('Into 2', []) + s('Method 3', ['<p>Intro 31</p>']);
+  const nested = (text) => {
+    const open = [];
+    return !text.match(/<\/?(section|ul)>/g).some((t) => (t[1] === '/' ? open.pop() !== t.slice(2, -1) : !open.push(t.slice(1, -1)))) && !open.length;
+  };
+  for (const [x, y] of [[one, one], [one, two], [two, one]]) {
+    const text = mergeTexts(base, x, y);
+    assert.ok(nested(text), text);
+  }
+});
