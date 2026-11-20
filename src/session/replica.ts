@@ -223,7 +223,8 @@ export class Replica {
     // a side is given by the dialog after a break, which decides, and mine wins without one
     const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
-    this.others = this.remine(from, both.patches, ours);
+    const added = this.remine(from, both.patches, ours);
+    this.others = [...moveOffsets(this.others, before, this.mine), ...added];
     const merged = this.mine;
     this.base = text;
     this.epoch = parsed.epoch;
