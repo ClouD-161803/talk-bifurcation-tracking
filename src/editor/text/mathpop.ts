@@ -292,6 +292,7 @@ export function install(app: App): void {
   let leaving = false;
   // the field of the open sheet of a formula, with the TeX that it opened with
   let opened: { field: HTMLTextAreaElement; tex: string } | null = null;
+  let bound: (() => Element) | null = null;
 
   // the keys of an open completion list are taken before the keys of the editor and of the sheet
   window.addEventListener('keydown', (ev) => {
@@ -328,6 +329,7 @@ export function install(app: App): void {
     leftOf = null;
     openFor = null;
     opened = null;
+    bound = null;
     const restore = back;
     back = null;
     if (focus) restore?.();
@@ -445,6 +447,7 @@ export function install(app: App): void {
           }
         : null;
     leftOf = sheet.left ?? null;
+    bound = sheet.textEl;
     openFor = target;
     opened = target ? { field, tex: sheet.tex } : null;
     const host = target?.closest(HOST);
@@ -538,4 +541,9 @@ export function install(app: App): void {
     }
   });
   app.listen('slide', () => closeMath(false));
+  const gone = () => {
+    if (popover && bound && !bound().isConnected) closeMath(false);
+  };
+  app.listen('history', gone);
+  app.onRefresh(['content', 'structure'], gone);
 }
