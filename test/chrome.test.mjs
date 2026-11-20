@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -292,6 +292,55 @@ test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, 
 
 // on Windows, TcpPortRandomizationWin causes net::ERR_NO_BUFFER_SPACE on 127.0.0.1 loopback
 // fetches, including inside iframes where goto() reload recovery does not run
+test('chromeArgs disables MacAppCodeSignClone on macOS only, in the one --disable-features of a platform', async () => {
+  const { chromeArgs } = await import('../scripts/chrome.mjs');
+  const features = (platform) => chromeArgs({ profile: 'p', platform }).filter((arg) => arg.startsWith('--disable-features='));
+  assert.deepEqual(features('darwin'), ['--disable-features=MacAppCodeSignClone']);
+  for (const platform of ['win32', 'linux']) {
+    assert.ok(features(platform).length <= 1, `Chrome reads only the last of ${features(platform)}`);
+    assert.ok(!features(platform).join().includes('MacAppCodeSignClone'));
+  }
+});
+
+function codeSignClones() {
+  const folder = join(dirname(execFileSync('getconf', ['DARWIN_USER_TEMP_DIR'], { encoding: 'utf8' }).trim()), 'X');
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder)
+    .filter((name) => name.endsWith('.code_sign_clone'))
+    .flatMap((name) => readdirSync(join(folder, name)).map((clone) => join(name, clone)));
+}
+
+// with MacAppCodeSignClone, Chrome copies its app into a temp folder of macOS before its first answer,
+// and the copy is left there when Chrome is ended by a signal. another Chrome of the same Mac may be
+// started during an attempt
+test('Chrome does not copy its app into a temp folder of macOS', { skip: process.platform !== 'darwin', timeout: 60000 }, async () => {
+  for (let attempt = 1; ; attempt++) {
+    const before = new Set(codeSignClones());
+    const browser = await launch();
+    await browser.newPage();
+    const copies = codeSignClones().filter((clone) => !before.has(clone));
+    await browser.close();
+    if (copies.length === 0) return;
+    assert.ok(attempt < 3, `a copy of the app was made at each of 3 starts of Chrome, the last one at ${copies}`);
+  }
+});
+
+test('close() leaves Chrome to exit after Browser.close, and does not end it with a signal', { skip: process.platform === 'win32', timeout: 10000 }, async (t) => {
+  pipeChrome(t, 'slowClose');
+  const signaled = join(dirname(process.env.CHROME_PATH), 'signaled');
+  const browser = await launch({ timeout: 5000 });
+  await browser.close();
+  assert.ok(!existsSync(signaled));
+});
+
+test('close() ends a Chrome that does not exit after Browser.close', { skip: process.platform === 'win32', timeout: 10000 }, async (t) => {
+  pipeChrome(t, 'hangClose');
+  const signaled = join(dirname(process.env.CHROME_PATH), 'signaled');
+  const browser = await launch({ timeout: 500 });
+  await browser.close();
+  assert.ok(existsSync(signaled));
+});
+
 test('chromeArgs disables TcpPortRandomizationWin on Windows only', async () => {
   const { chromeArgs } = await import('../scripts/chrome.mjs');
   assert.equal(typeof chromeArgs, 'function');
@@ -360,6 +409,12 @@ const input = fs.createReadStream(null, { fd: 3 });
 const output = fs.createWriteStream(null, { fd: 4 });
 const send = (msg) => output.write(JSON.stringify(msg) + '\\0');
 fs.writeFileSync(__dirname + '/ready', '');
+// process.exit() would wait for the read of the pipe that is in flight outside the handler of a message
+const exit = () => process.kill(process.pid, 'SIGKILL');
+process.on('SIGTERM', () => {
+  fs.writeFileSync(__dirname + '/signaled', '');
+  exit();
+});
 let buf = '';
 let creates = 0;
 let targets = 0;
@@ -398,7 +453,8 @@ input.on('data', function read(chunk) {
       send({ id: msg.id, result: { result: { value: { creates, targets, closed } } } });
     } else if (msg.method === 'Browser.close') {
       send({ id: msg.id, result: {} });
-      process.exit(0);
+      if (mode === 'slowClose') setTimeout(exit, 300);
+      else if (mode !== 'hangClose') process.exit(0);
     } else {
       send({ id: msg.id, result: {} });
     }
