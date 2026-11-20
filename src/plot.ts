@@ -1,18 +1,14 @@
 // an animated 2D plot in a `.plot` element, drawn as SVG from an inline JSON script named by the
 // attribute data-plot. the format is documented in REFERENCE.md. the plot is played in a loop while
 // its slide is shown, and the fragments of its slide reveal its panels and marks with
-// data-plot-show and switch its tab with data-plot-tab. text in the JSON is set in a small markup,
-// in which $...$ is math with italic letters, sub- and superscripts, and TeX names of symbols. the
-// macros of the preamble of the deck are expanded before the markup is read, see src/expand.ts
-
-import { expandMacros } from './expand.ts';
-import type { MacroDef } from './preamble.ts';
+// data-plot-show and switch its tab with data-plot-tab. the formulas between $ signs in a text of
+// the JSON are typeset by MathJax, with the macros of the deck
 
 type Pair = [number, number];
 type Anchor = 'start' | 'middle' | 'end';
 type Kind = 'points' | 'trace' | 'label' | 'events';
 
-// a tick at a value of its axis, labeled with text in the markup
+// a tick at a value of its axis, labeled with a text
 export type Tick = { at: number; text: string };
 export type Scale = 'linear' | 'asinh';
 export type Axis = { range: Pair; ticks: Tick[]; title: string; scale: Scale; unit: number };
@@ -393,103 +389,77 @@ export function formatNumber(x: number, digits?: number): string {
   return s.replace(/^-(?=.*[1-9])/, MINUS).replace(/^-/, '');
 }
 
-const SYMBOLS: Record<string, string> = {
-  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
-  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
-  pm: '±', mp: '∓', infty: '∞', cdot: '·', times: '×', approx: '≈', le: '≤', ge: '≥', ne: '≠', to: '→', in: '∈',
-};
+type Typesetter = { startup?: { promise?: Promise<unknown> }; tex2svgPromise?: (tex: string, options: { display: boolean }) => Promise<HTMLElement> };
 
-// the capitals of \mathcal, from the script block of Unicode, where B, E, F, H, I, L, M, and R are
-// taken from the letterlike symbols
-const SCRIPT_GAPS: Record<string, string> = { B: 'ℬ', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ' };
-const script = (c: string) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d49c + c.charCodeAt(0) - 65) : c);
-// the capitals of \mathbb, from the double-struck block, where C, H, N, P, Q, R, and Z are taken
-// from the letterlike symbols
-const STRUCK_GAPS: Record<string, string> = { C: 'ℂ', H: 'ℍ', N: 'ℕ', P: 'ℙ', Q: 'ℚ', R: 'ℝ', Z: 'ℤ' };
-const struck = (c: string) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d538 + c.charCodeAt(0) - 65) : c);
-// the styles that the markup does not draw, whose argument is shown in the style around it or upright
-const AS_IS = new Set(['boldsymbol', 'bm', 'mathit', 'mathop', 'mathfrak', 'ensuremath']);
-const UPRIGHT = new Set(['mathrm', 'text', 'mathbf', 'mathsf', 'mathtt', 'operatorname', 'textrm', 'textbf', 'textit', 'mathnormal']);
-// the spaces of TeX in math, and the negative space, which is not drawn
-const SPACES: Record<string, string> = { ',': ' ', ':': ' ', ';': ' ', ' ': ' ', '!': '', '\\': ' ' };
+const mathjax = () => (globalThis as { MathJax?: Typesetter }).MathJax;
 
-export type Run = { text: string; italic: boolean; shift: 'sub' | 'sup' | null };
+// each formula of a plot is typeset once and copied into every text that shows it. it is null in a
+// deck without MathJax. the formulas are typeset one at a time, with a yield every 8 ms, hence a
+// label with a new text at each frame does not hold up the page while its texts are typeset
+const formulas = new Map<string, HTMLElement | null>();
+const queue: string[] = [];
+const waiting = new Map<HTMLElement, string>();
+let typesetting: Promise<void> | null = null;
 
-/**
- * Splits a text of the markup into runs, i.e. pieces of one style, after the macros are expanded,
- * by default those of the deck.
- */
-export function parseMarkup(src: string, macros?: Record<string, MacroDef>): Run[] {
-  const runs: Run[] = [];
-  const push = (text: string, italic: boolean, shift: Run['shift']) => {
-    const last = runs.at(-1);
-    if (last && last.italic === italic && last.shift === shift) last.text += text;
-    else runs.push({ text, italic, shift });
-  };
-  const parts = expandMacros(src, macros).split('$');
-  parts.forEach((part, k) => {
-    if (k % 2 === 0) { if (part) push(part, false, null); return; }
-    math(part, false, null);
-  });
-  // a group in braces, a command, or one character, starting at i
-  function group(s: string, i: number): [string, number] {
-    if (s[i] === '{') {
-      let depth = 0, j = i;
-      for (; j < s.length; j++) {
-        if (s[j] === '{') depth++;
-        else if (s[j] === '}' && --depth === 0) break;
-      }
-      return [s.slice(i + 1, j), j + 1];
-    }
-    if (s[i] === '\\') {
-      const m = /^\\[A-Za-z]+/.exec(s.slice(i));
-      if (m) return [m[0], i + m[0].length];
-    }
-    return [s[i] ?? '', i + 1];
-  }
-  function math(s: string, upright: boolean, shift: Run['shift']): void {
-    let i = 0;
-    while (i < s.length) {
-      const c = s[i];
-      if (c === '\\') {
-        const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
-        if (!m) { push(SPACES[s[i + 1]] ?? s[i + 1] ?? '', false, shift); i += 2; continue; }
-        i += m[0].length;
-        if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
-          const [g, j] = group(s, i);
-          i = j;
-          math(g, upright || UPRIGHT.has(m[1]), shift);
-        } else if (m[1] === 'mathcal' || m[1] === 'mathbb') {
-          const [g, j] = group(s, i);
-          i = j;
-          push([...g].map(m[1] === 'mathcal' ? script : struck).join(''), false, shift);
-        } else {
-          const sym = SYMBOLS[m[1]] ?? m[0];
-          push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
-        }
-      } else if (c === '_' || c === '^') {
-        const [g, j] = group(s, i + 1);
-        i = j;
-        math(g, upright, c === '_' ? 'sub' : 'sup');
-      } else if (c === '{' || c === '}') {
-        i++;
-      } else {
-        push(c === '-' ? MINUS : c, !upright && /[A-Za-zα-ω]/.test(c), shift);
-        i++;
-      }
+async function typesetQueue(before: unknown): Promise<void> {
+  await Promise.resolve(before).catch(() => undefined);
+  let since = performance.now();
+  while (queue.length) {
+    const tex = queue[0];
+    const node = (await mathjax()?.tex2svgPromise?.(tex, { display: false }).catch(() => null)) ?? null;
+    node?.removeAttribute('tabindex');
+    formulas.set(tex, node);
+    queue.shift();
+    for (const [el, src] of waiting) if (fill(el, src)) waiting.delete(el);
+    if (performance.now() - since > 8) {
+      await new Promise((done) => setTimeout(done));
+      since = performance.now();
     }
   }
-  return runs;
+  typesetting = null;
 }
 
-/** Fills el with the runs of a text of the markup. */
-export function setMarkup(el: HTMLElement, src: string): void {
-  el.replaceChildren(...parseMarkup(src).map((r) => {
-    let node: Node = document.createTextNode(r.text);
-    if (r.italic) { const i = document.createElement('i'); i.append(node); node = i; }
-    if (r.shift) { const s = document.createElement(r.shift); s.append(node); node = s; }
-    return node;
-  }));
+function request(tex: string): void {
+  if (formulas.has(tex) || queue.includes(tex)) return;
+  queue.push(tex);
+  if (typesetting) return;
+  // scripts/chrome.mjs waits for MathJax.startup.promise before a deck is captured
+  const startup = mathjax()?.startup;
+  typesetting = typesetQueue(startup?.promise);
+  if (startup?.promise) startup.promise = typesetting;
+}
+
+function fill(el: HTMLElement, src: string): boolean {
+  const parts = src.split('$');
+  if (parts.some((part, k) => k % 2 === 1 && !formulas.has(part))) return false;
+  el.replaceChildren(...parts.flatMap((part, k) => (!part ? [] : k % 2 === 0 ? [part] : [formulas.get(part)?.cloneNode(true) ?? `$${part}$`])));
+  return true;
+}
+
+const panelTexts = (p: PanelPatch) => [p.title, p.x?.title, p.y?.title, ...[...(p.x?.ticks ?? []), ...(p.y?.ticks ?? []), ...(p.labels ?? [])].map((t) => t.text)];
+
+/** Every text of a plot, i.e. the titles, the ticks, the labels, the texts of its marks at each frame, the names of its tabs, and the name of its parameter. */
+export function plotTexts(plot: Plot): string[] {
+  const marks = (tab: Tab) => plot.marks.flatMap((m) => {
+    const data = tab.data[m.id];
+    if (m.kind === 'label') return (data as LabelData | undefined)?.text ?? [];
+    return m.kind === 'events' ? ((data as PlotEvent[] | undefined) ?? []).map((e) => e.text) : [];
+  });
+  const texts = [plot.parameter.label, ...plot.panels.flatMap(panelTexts), ...plot.tabs.flatMap((t) => [t.label, ...Object.values(t.panels).flatMap(panelTexts), ...marks(t)])];
+  return [...new Set(texts.filter((s): s is string => !!s))];
+}
+
+/** Typesets the formulas between $ signs in texts of a plot ahead of their first use. */
+export function prefetch(texts: string[]): void {
+  for (const src of texts) src.split('$').forEach((part, k) => { if (k % 2 === 1) request(part); });
+}
+
+/** Fills el with a text of a plot, in which the formulas between $ signs are typeset by MathJax. Until they are typeset, el keeps what it shows. */
+export function setText(el: HTMLElement, src: string): void {
+  waiting.delete(el);
+  if (fill(el, src)) return;
+  waiting.set(el, src);
+  prefetch([src]);
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -619,6 +589,7 @@ export class PlotView {
       console.error(message);
       return;
     }
+    prefetch(plotTexts(this.spec));
     const only = words(el.dataset.plotPanels);
     this.panels = only.length ? this.spec.panels.filter((p) => only.includes(p.id)) : this.spec.panels;
     const names = words(el.dataset.plotTabs);
@@ -664,7 +635,7 @@ export class PlotView {
         const b = document.createElement('button');
         b.type = 'button';
         b.setAttribute('role', 'tab');
-        setMarkup(b, plot.tabs[i].label);
+        setText(b, plot.tabs[i].label);
         b.addEventListener('click', () => { b.blur(); this.setTab(i); });
         bar.append(b);
         return { b, i };
@@ -716,7 +687,7 @@ export class PlotView {
     readout.className = 'plot-readout';
     if (plot.parameter.label) {
       const name = document.createElement('span');
-      setMarkup(name, plot.parameter.label);
+      setText(name, plot.parameter.label);
       readout.append(name, ' = ');
     }
     this.value = document.createElement('span');
@@ -815,7 +786,7 @@ export class PlotView {
   private label(text: string, left: number, top: number, a: Anchor, cls: string, names: string[], tone?: string): HTMLElement {
     const el = document.createElement('div');
     el.className = `plot-label ${cls}`.trim();
-    setMarkup(el, text);
+    setText(el, text);
     this.place(el, left, top, a);
     if (tone) el.style.color = toneColor(tone);
     this.overlay.append(el);
@@ -1043,7 +1014,7 @@ export class PlotView {
           const [x, y] = at.length === 1 ? at[0] : (framesAt(at, u) as Pair);
           this.place(el, this.XS(b, x) + m.dx, this.YS(b, y) + m.dy, m.anchor);
           const text = nearest(d.text, u);
-          if (text !== shown) { setMarkup(el, text); shown = text; }
+          if (text !== shown) { setText(el, text); shown = text; }
         });
       } else {
         const events = data as PlotEvent[];
