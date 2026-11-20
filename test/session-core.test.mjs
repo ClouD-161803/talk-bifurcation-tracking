@@ -1584,6 +1584,8 @@ function broken({ d, all, base, texts }) {
     if (text === null) continue;
     const torn = text.split(/\r?\n/).find((l) => !/^\s*(<\/?(section|ul)>|<(h2|p|li)>[^<>]*<\/\3>)?$/.test(l));
     if (torn !== undefined) bad.push(`${how}: the line ${torn.trim().slice(0, 80)} is torn`);
+    const open = [], stray = text.match(/<\/?(section|ul)>/g)?.find((t) => (t[1] === '/' ? open.pop() !== t.slice(2, -1) : !open.push(t.slice(1, -1))));
+    if (stray || open.length) bad.push(`${how}: the end tag ${stray ?? 'of ' + open.at(-1)} does not close the last open element`);
     for (const e of alone) if (!text.includes(e.want.at(-1))) bad.push(`${how}: the ${e.kind} of person ${e.p} is lost, ${e.want.at(-1)}`);
     if (!clean) continue;
     // a key typed next to a line is not a loss of this line
