@@ -1,4 +1,4 @@
-import { carry, changes, shared, stay } from '../editor/merge.ts';
+import { balanced, carry, changes, shared, stay } from '../editor/merge.ts';
 import { goesOn, mergeRun, spaced } from './run.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
@@ -150,6 +150,15 @@ export function combine(first: Patch[], second: Patch[], base?: string): Patch[]
 }
 
 export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[] } {
+  const out = merged(theirs, ours, wins, base, nested, keep, twice);
+  if (!base || [...theirs, ...ours].every(plain(base)) || balanced(apply(base, out.patches)) || !balanced(apply(base, theirs) + apply(base, ours))) return out;
+  const k = ours.filter((p) => plain(base)(p) && !theirs.some((t) => conflict(p, t)));
+  return { patches: combine(theirs, k, base), conflicts: ours.filter((o) => !k.includes(o)) };
+}
+
+const plain = (base: string) => (p: Patch) => !/</.test(p.text + base.slice(p.start, p.end));
+
+function merged(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs', base: string | undefined, nested: boolean, keep: 'ours' | 'theirs' | false | undefined, twice: boolean): { patches: Patch[]; conflicts: Patch[] } {
   if (base !== undefined) {
     [theirs, ours] = carry(base, theirs, ours);
     [ours, theirs] = carry(base, ours, theirs);
@@ -172,7 +181,7 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   if (!pairs.length) return { patches: combine(theirs, ours, base), conflicts: [] };
   const [o, undone] = base === undefined || keep === 'ours' ? [ours, false] : stay(base, ours, theirs, conflict);
   const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
-  if (undone || gone) return { patches: mergePatches(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
+  if (undone || gone) return { patches: merged(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
   const runs: Patch[] = [];
   if (base !== undefined && nested) {
     const all = [...theirs, ...ours];

@@ -50,6 +50,8 @@ npm run pptx -- --still                     # the same file without recordings, 
 
 In a talk, `npm run pdf` and `npm run pptx` need only Node.js and Chrome, not `npm ci`. `npm run check` and `npm run tex` need Node.js 22.18 or later, as described under Tooling in `REFERENCE.md`. `npm run edit` needs only Node.js 20 or later.
 
+Start Chrome only with the commands above or with `launch()` of `scripts/chrome.mjs`, and end it with the `close()` of the returned browser. Do not run the binary of Chrome yourself, and do not end a Chrome with `kill` or `pkill`. On macOS, a Chrome without the flags of `launch()` copies its app into a temp folder at each start, and this copy is left behind when Chrome is ended by a signal.
+
 ## Before you hand work over
 
 - Run `npm run check` and `npm run pdf`. Hand work over only when `npm run check` passes.

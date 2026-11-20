@@ -276,15 +276,15 @@ const CJK = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}';
 const WORD = new RegExp(`[${CJK}]|(?:(?![${CJK}])[\\p{L}\\p{N}])+`, 'gu');
 const wordsOf = (s: string) => s.replace(/<[^<>]*>/g, ' ').match(WORD) ?? [];
 
-function balanced(s: string): boolean {
-  const closed = new Set([...s.matchAll(/<\/([\w-]+)/g)].map((m) => m[1].toLowerCase())), depth = new Map<string, number>();
+export function balanced(s: string): boolean {
+  const closed = new Set([...s.matchAll(/<\/([\w-]+)/g)].map((m) => m[1].toLowerCase())), open: string[] = [];
   for (const m of s.matchAll(/<(\/?)([\w-]+)(?:[^<>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
-    const name = m[2].toLowerCase(), d = (depth.get(name) ?? 0) + (m[1] ? -1 : 1);
+    const name = m[2].toLowerCase();
     if (!closed.has(name) || m[3]) continue;
-    if (d < 0) return false;
-    depth.set(name, d);
+    if (!m[1]) open.push(name);
+    else if (open.pop() !== name) return false;
   }
-  return [...depth.values()].every((d) => d === 0);
+  return !open.length;
 }
 
 function turn(base: string, e: Edit): Edit {

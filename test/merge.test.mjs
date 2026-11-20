@@ -1025,3 +1025,19 @@ test('mergeRun() keeps the same letter typed at one point by two people twice on
 test('mergeRun() drops every letter that the side that loses types in a word that the side that wins formats in part', () => {
   assert.deepEqual(mergeRun('a word b', 'a <em>wo</em>rd b', 'a deck b', false, 'theirs'), { text: 'a <em>wo</em>rd b', conflicted: true });
 });
+
+test('a list that two people move into the slide before, also one of them with a list of the next slide and a typo in a heading, keeps each end tag on the element opened last, in both orders', () => {
+  const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
+  const ul = ['<ul>', '  <li>Method 22</li>', '</ul>'], three = ['<ul>', '  <li></li>', '</ul>'];
+  const base = s('One', ['<p>Same words 11</p>']) + s('Intro 2', ul) + s('Method 3', [...three, '<p>Intro 31</p>']);
+  const one = s('One', ['<p>Same words 11</p>', ...ul]) + s('Intro 2', []) + s('Method 3', [...three, '<p>Intro 31</p>']);
+  const two = s('One', ['<p>Same words 11</p>', ...ul, ...three]) + s('Into 2', []) + s('Method 3', ['<p>Intro 31</p>']);
+  const nested = (text) => {
+    const open = [];
+    return !text.match(/<\/?(section|ul)>/g).some((t) => (t[1] === '/' ? open.pop() !== t.slice(2, -1) : !open.push(t.slice(1, -1)))) && !open.length;
+  };
+  for (const [x, y] of [[one, one], [one, two], [two, one]]) {
+    const text = mergeTexts(base, x, y);
+    assert.ok(nested(text), text);
+  }
+});

@@ -74,6 +74,7 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
     ...(ci && platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
     ...(ci && platform === 'win32' ? ['--use-angle=d3d11-warp', '--disable-gpu-compositing'] : []),
     ...(platform === 'linux' ? ['--no-sandbox'] : []),
+    ...(platform === 'darwin' ? ['--disable-features=MacAppCodeSignClone'] : []),
     ...(platform === 'win32' ? ['--disable-features=TcpPortRandomizationWin'] : []),
     `--host-resolver-rules=MAP * ~NOTFOUND${offline ? '' : ', EXCLUDE 127.0.0.1'}`,
     ...(wholeFrames ? ['--run-all-compositor-stages-before-draw'] : []),
@@ -345,10 +346,11 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
   async function close() {
     let timer;
     try {
-      await Promise.race([send('Browser.close').catch(() => {}), new Promise((done) => (timer = setTimeout(done, 2000)))]);
+      send('Browser.close').catch(() => {});
+      await Promise.race([exited, new Promise((done) => (timer = setTimeout(done, Math.min(timeout, 5000))))]);
     } finally {
       clearTimeout(timer);
-      child.kill();
+      if (!hasExited) child.kill();
       await exited;
       for (const stream of child.stdio) stream?.destroy();
       await removeProfile(profile).catch((error) => leaveProfile(profile, error));
