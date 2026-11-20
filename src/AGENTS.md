@@ -50,12 +50,12 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 
 - The demo deck in `index.html` is the start of every new talk. It is also the page published on GitHub Pages from `main`.
 - The tests of `npm test` are run on `test-deck.html`, a frozen copy of the demo deck. Hence you can change the demo deck without changing the tests.
-- The two figures, `demo/broucke-sample.js`, and the TyCHO viewer of the demo deck are written by the scripts of `demo/`. Run them from the root of the repository, with a checkout of TyCHO next to it at the build from which `theme/vendor/tycho/` was copied.
+- The two figures, `demo/broucke-sample.js`, and the TyCHO viewer of the demo deck are written by the scripts of `demo/`. Run them from the root of the repository, with the pytycho of the version of `theme/vendor/tycho/`. For `demo/broucke.py`, a checkout of TyCHO at the tag of this version is also needed next to the repository, since the Broucke example of TyCHO is read.
 
   ```sh
   uv run --with matplotlib,numpy,scipy python demo/figures.py .
   uv run --project ../tycho/code python demo/broucke.py
-  uv run --project ../tycho/code --with scipy python demo/tycho-scene.py index.html
+  uv run --with pytycho==0.3.0,scipy python demo/tycho-scene.py index.html
   ```
 - The clips of the demo deck are exported with tycho, as described in its CONTRIBUTING.md.
 

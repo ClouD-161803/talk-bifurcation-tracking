@@ -85,9 +85,9 @@ test('a still is drawn from a slide that is not laid out, drawn again after a se
   await page.evaluate(`(() => { Reveal.slide(${SLIDE}); return true; })()`);
   const sharp = `(() => {
     const v = ${VIEWER};
-    const stage = v.shadowRoot.querySelector('.stage');
+    const area = v.shadowRoot.querySelector('.panel-area');
     const canvas = v.shadowRoot.querySelector('canvas');
-    return stage.clientWidth > 0 && Math.abs(canvas.width - stage.clientWidth * Math.min(2, devicePixelRatio || 1)) <= 1;
+    return area.clientWidth > 0 && Math.abs(canvas.width - area.clientWidth * Math.min(2, devicePixelRatio || 1)) <= 1;
   })()`;
   await page.waitFor(sharp, 60000);
   assert.deepEqual(page.errors, []);

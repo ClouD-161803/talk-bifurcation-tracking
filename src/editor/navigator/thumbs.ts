@@ -87,8 +87,8 @@ type Viewer = HTMLElement & {
   renderer: object | null;
   canvas: HTMLCanvasElement | null;
   paintCanvas?: HTMLCanvasElement | null;
-  stageSize?: { w: number; h: number };
-  measureStage?(): void;
+  panelAreaSize?: { w: number; h: number };
+  measurePanelArea?(): void;
   draw(ratio?: number): void;
   store?: { readonly playing?: boolean; subscribe?(listener: (change: string) => void): unknown } | null;
 };
@@ -114,19 +114,19 @@ function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
   still.width = Math.max(1, Math.round(w * scale * ratio));
   still.height = Math.max(1, Math.round(h * scale * ratio));
   still.style.cssText = `position: absolute; left: ${(r.left - host.left) / k}px; top: ${(r.top - host.top) / k}px; width: ${w}px; height: ${h}px`;
-  const size = viewer.stageSize;
+  const size = viewer.panelAreaSize;
   try {
     if (size && size.w >= 1 && size.h >= 1) viewer.draw();
     else {
-      viewer.measureStage?.();
-      const stage = viewer.stageSize?.w ?? 0;
-      if (stage < 1) return box;
-      viewer.draw(Math.min(ratio, (2 * still.width) / stage));
+      viewer.measurePanelArea?.();
+      const area = viewer.panelAreaSize?.w ?? 0;
+      if (area < 1) return box;
+      viewer.draw(Math.min(ratio, (2 * still.width) / area));
     }
     shrinkByHalves(still, [canvas, paintCanvas].filter((c): c is HTMLCanvasElement => !!c?.width && !!c.height));
     box.append(still);
   } catch {} finally {
-    if (size) viewer.stageSize = size;
+    if (size) viewer.panelAreaSize = size;
   }
   return box;
 }

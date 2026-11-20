@@ -96,8 +96,8 @@ def build():
                 parent=inertial, origin=moon)
     frames = ["rotating", "barycentric-inertial", "inertial-moon"]
 
-    family = scene.track_set("halo", frame=rotating, tags={"family": "L1 halo"}, attrs={"mu": MU}, periodic=True,
-                             label="Earth–Moon L1 halo family")
+    family = scene.trajectory_set("halo", frame=rotating, tags={"family": "L1 halo"}, attrs={"mu": MU}, periodic=True,
+                                  label="Earth–Moon L1 halo family")
     members = halo_family()
     for z0, x0, vy0, period in members:
         t = np.linspace(0.0, period, DENSE)
@@ -115,31 +115,35 @@ def build():
     family.describe("energy", label="Jacobi constant")
     family.thin(SAMPLES, frames=frames)
 
-    frame = scene.choice("frame", frames, labels=["rotating", "barycentric inertial", "inertial, Moon"], scope="panel")
-    z0 = scene.selector("z0", parameter="z0", default=members[len(members) // 2][0] * DU)
-    scene.clock("fraction", channels=["time", "@index"], labels=["time", "sample"], steps=SAMPLES * LAPS, laps=LAPS)
+    frame = scene.choice("frame", frames, labels=["rotating", "barycentric inertial", "inertial, Moon"], scope="per_panel")
+    z0 = scene.parameter("z0", parameter="z0", default=members[len(members) // 2][0] * DU)
+    scene.clock("fraction", channels=["time", "@index"], labels=["time", "sample"], frame_count=SAMPLES * LAPS,
+                revolutions=LAPS)
     plasma = {"parameter": "z0", "colormap": "plasma"}
-    scene.view("main", frame=frame, driver=ty.driver(family, z0),
-               camera={"kind": "orbit", "projection": "perspective", "up": "z"}, layers=[
-                   ty.track(family, "all", color=plasma, opacity=0.05,
-                            highlight={"var": z0, "width": 2.5, "opacity": 1.0, "kernel": {"width": 0.05, "opacity": 0.55}}),
-                   ty.track(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=22.0, opacity=0.3),
-                   ty.track(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=6.0),
-                   ty.track(family, z0, trail=QUARTER_PERIOD_OF_LOOP, head=True, color=ACCENT_OF_BOTH_MODES, width=2.0),
-                   ty.body(earth, trail=1.0, size=8.0),
-                   ty.body(moon, trail=1.0, size=5.0),
-                   ty.axes(),
-                   ty.grid(),
-               ])
-    scene.panel("rotating", "main", {frame: "rotating"})
-    scene.panel("inertial", "main", {frame: "barycentric-inertial"})
-    scene.panel("moon", "main", {frame: "inertial-moon"})
+    scene.panel("main", frame=frame, reference=ty.reference(family, z0),
+                camera={"kind": "3d", "projection": "perspective", "up": "z"}, layers=[
+                    ty.trajectories(family, "all", color=plasma, opacity=0.05,
+                                    highlight={"input": z0, "width": 2.5, "opacity": 1.0,
+                                               "kernel": {"width": 0.05, "opacity": 0.55}}),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=22.0,
+                                    opacity=0.3),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=6.0),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, head=True, color=ACCENT_OF_BOTH_MODES,
+                                    width=2.0),
+                    ty.body(earth, trail=1.0, size=8.0),
+                    ty.body(moon, trail=1.0, size=5.0),
+                    ty.axes(),
+                    ty.grid(),
+                ])
+    scene.show("rotating", panel="main", inputs={frame: "rotating"})
+    scene.show("inertial", panel="main", inputs={frame: "barycentric-inertial"})
+    scene.show("moon", panel="main", inputs={frame: "inertial-moon"})
     scene.layout(ty.split("col", 0.5, "rotating", ty.split("row", 0.5, "inertial", "moon")))
     scene.slider(z0, label="initial z, km", domain=family)
     scene.tabs(frame, label="frame")
-    scene.transport()
-    scene.readout("caption", "z0 = ", {"member": "z0", "digits": 5}, " km, period ", {"member": "period", "digits": 5},
-                  " TU, Jacobi constant ", {"member": "energy", "digits": 7})
+    scene.playback()
+    scene.readout("caption", "z0 = ", {"parameter": "z0", "digits": 5}, " km, period ", {"parameter": "period", "digits": 5},
+                  " TU, Jacobi constant ", {"parameter": "energy", "digits": 7})
     return scene
 
 

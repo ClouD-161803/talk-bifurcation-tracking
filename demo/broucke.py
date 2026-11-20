@@ -46,18 +46,18 @@ def load_build():
 def read_member(build, container, tree, family, branch, i):
     sid = f"family-{family}-{branch}"
     mu = dict(build.FAMILIES)[str(family)]
-    offsets = container.view(f"{sid}/offsets")
+    offsets = container.array(f"{sid}/offsets")
     rows = slice(int(offsets[i]), int(offsets[i + 1]))
-    planar = np.asarray(container.view(f"{sid}/positions")[rows])
+    planar = np.asarray(container.array(f"{sid}/positions")[rows])
     positions = np.hstack([planar, np.zeros((len(planar), 1))])
-    channels = {n: np.asarray(container.view(f"{sid}/channels/{n}")[rows]) for n in build.CHANNELS}
+    channels = {n: np.asarray(container.array(f"{sid}/channels/{n}")[rows]) for n in build.CHANNELS}
     context = Context({"mu": mu}, channels.get, len(planar))
     frames = {k: tree.transform(positions, "rotating-pulsating", f, context)[:, :2] for k, f in FRAMES.items()}
     theta = channels["true_anomaly"]
     assert abs(theta[-1] - theta[0] - 2 * np.pi) < 1e-9, f"{sid} member {i} is not of period 2 pi"
     for k, p in frames.items():
         assert np.linalg.norm(p[-1] - p[0]) < 1e-6, f"{sid} member {i} is not closed in {k}"
-    e = float(container.view(f"{sid}/parameters/eccentricity")[i])
+    e = float(container.array(f"{sid}/parameters/eccentricity")[i])
     return {"family": family, "branch": branch, "e": e, "mu": mu, "channels": channels, "frames": frames, "starts": {}}
 
 
@@ -118,7 +118,7 @@ def clock_of(points):
 def choose(build, container, tree):
     members = {}
     for family, branch, (lowest, count), extra, kinds in SETS:
-        eccentricities = np.asarray(container.view(f"family-{family}-{branch}/parameters/eccentricity"))
+        eccentricities = np.asarray(container.array(f"family-{family}-{branch}/parameters/eccentricity"))
         targets = [*np.linspace(lowest, eccentricities.max(), count), *extra]
         chosen = dict.fromkeys(int(np.argmin(np.abs(eccentricities - t))) for t in targets)
         for i in chosen:
