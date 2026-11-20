@@ -753,6 +753,12 @@ describe('the Text pane on the words of shapes', () => {
       assert.ok(text.includes('<div class="shape triangle" style="width: 200px; height: 160px; translate: 1360px 260px"></div>'), 'the shape is changed');
       await undo(page);
       await byteExact(page);
+      assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false, 'the TeX field of the formula is left open after the undo');
+      await redo(page);
+      assert.match(await render(page), /<div class="math"[^\n]*>\\\[\\\]<\/div>/, 'the redo does not put the formula back');
+      assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false, 'the TeX field of the formula is open after the redo');
+      await undo(page);
+      await byteExact(page);
       await clickShape(page);
       await press(page, 'q');
       await frames(page);
