@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { carry, changes, shared, stay } from '../editor/merge.ts';
+import { balanced, carry, changes, shared, stay } from '../editor/merge.ts';
 import { goesOn, mergeRun, spaced } from './run.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
@@ -194,24 +194,15 @@ export function combine(first: Patch[], second: Patch[], base?: string): Patch[]
 // mergeRun(), and are a conflict only when their characters conflict. an edit of ours equal to one
 // of theirs in such a run is taken once, unless twice is true and it is the only one and an insertion
 export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[] } {
-  const out = mergeAll(theirs, ours, wins, base, nested, keep, twice);
-  if (base === undefined || [...theirs, ...ours].every((p) => plain(base, p)) || nests(apply(base, out.patches)) || !nests(apply(base, theirs)) || !nests(apply(base, ours))) return out;
-  const kept = ours.filter((p) => plain(base, p) && !theirs.some((t) => conflict(p, t)));
-  return { patches: combine(theirs, kept, base), conflicts: ours.filter((o) => !kept.includes(o)) };
+  const out = merged(theirs, ours, wins, base, nested, keep, twice);
+  if (!base || [...theirs, ...ours].every(plain(base)) || balanced(apply(base, out.patches)) || !balanced(apply(base, theirs) + apply(base, ours))) return out;
+  const k = ours.filter((p) => plain(base)(p) && !theirs.some((t) => conflict(p, t)));
+  return { patches: combine(theirs, k, base), conflicts: ours.filter((o) => !k.includes(o)) };
 }
 
-const plain = (base: string, p: Patch) => !/[<>]/.test(p.text + base.slice(p.start, p.end));
+const plain = (base: string) => (p: Patch) => !/</.test(p.text + base.slice(p.start, p.end));
 
-function nests(text: string): boolean {
-  const all = allOf(text), ends = new Set(all.map((t) => t.type === 'end' && t.name)), open: string[] = [];
-  for (const t of all) {
-    if (t.type === 'start' && ends.has(t.name)) open.push(t.name);
-    else if (t.type === 'end' && open.pop() !== t.name) return false;
-  }
-  return !open.length;
-}
-
-function mergeAll(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs', base: string | undefined, nested: boolean, keep: 'ours' | 'theirs' | false | undefined, twice: boolean): { patches: Patch[]; conflicts: Patch[] } {
+function merged(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs', base: string | undefined, nested: boolean, keep: 'ours' | 'theirs' | false | undefined, twice: boolean): { patches: Patch[]; conflicts: Patch[] } {
   if (base !== undefined) {
     [theirs, ours] = carry(base, theirs, ours);
     [ours, theirs] = carry(base, ours, theirs);
@@ -236,7 +227,7 @@ function mergeAll(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs', base:
   if (!pairs.length) return { patches: combine(theirs, ours, base), conflicts: [] };
   const [o, undone] = base === undefined || keep === 'ours' ? [ours, false] : stay(base, ours, theirs, conflict);
   const [t, gone] = base === undefined || keep === 'theirs' ? [theirs, false] : stay(base, theirs, ours, conflict);
-  if (undone || gone) return { patches: mergeAll(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
+  if (undone || gone) return { patches: merged(t, o, wins, base, nested, keep, twice).patches, conflicts: ours.filter((_, i) => hitOurs[i]) };
   // the lines of the patches that conflict, each merged by its characters with every patch of both
   // sides on it when the characters do not conflict. the lines end where a removal of whole lines
   // ends, unless its side puts as many lines there
