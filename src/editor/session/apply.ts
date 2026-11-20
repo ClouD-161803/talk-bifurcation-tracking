@@ -48,6 +48,7 @@ type Ctx = {
   hosts: Element[];
   placed: Element[];
   typeset: Promise<unknown>[];
+  window: Window;
 };
 
 const done = (ctx: Ctx, structural: boolean, caret: (() => void) | null): Done => {
@@ -355,8 +356,8 @@ export function refresh(app: App): void {
   app.deck()?.layout();
 }
 
-function makeCtx(app: App, text: string): Ctx {
-  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), reordered: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
+function makeCtx(app: App, text: string, window: Window): Ctx {
+  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), reordered: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [], window };
 }
 
 // a deck changed by an apply that then does not read as the text, i.e. neither as before nor as the
@@ -370,7 +371,7 @@ export function partial(target?: string): never {
 // it cannot be done, with the deck left as it was, after which the page is loaded again. the page is
 // changed synchronously, and the formulas of the new content are typeset by the promises of the result
 export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | null {
-  const ctx = makeCtx(app, text);
+  const ctx = makeCtx(app, text, w);
   if (spot.kind === 'text') {
     const textEl = ctx.pairing.byLive.get(spot.live)!;
     const had = !!textEl.live.querySelector('cite');
@@ -474,10 +475,11 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
   const ot = from.source.text;
   const nt = to.source.text;
   const body = (t: string, u: { range: { start: number }; end: number }) => t.slice(u.range.start, u.end);
+  const w = from.source === ctx.source ? ctx.window : null;
   let p = 0;
-  while (p < ou.length && p < nu.length && body(ot, ou[p]) === body(nt, nu[p])) p++;
+  while (p < ou.length && p < nu.length && (!w || ou[p].end <= w.start) && body(ot, ou[p]) === body(nt, nu[p])) p++;
   let q = 0;
-  while (q < ou.length - p && q < nu.length - p && body(ot, ou[ou.length - 1 - q]) === body(nt, nu[nu.length - 1 - q])) q++;
+  while (q < ou.length - p && q < nu.length - p && (!w || ou[ou.length - 1 - q].range.start >= w.endA) && body(ot, ou[ou.length - 1 - q]) === body(nt, nu[nu.length - 1 - q])) q++;
   const om = ou.slice(p, ou.length - q);
   const nm = nu.slice(p, nu.length - q);
   const nodeOf = (s: SrcEl) => pl.liveOf.get(s) ?? null;

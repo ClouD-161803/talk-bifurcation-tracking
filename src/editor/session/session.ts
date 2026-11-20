@@ -25,13 +25,30 @@ const REREAD = Symbol('reread');
 // the window of b against source.text. an insertion or a removal at the end of div.slides, e.g. a
 // slide after the last slide, whose common start runs into the end tag of div.slides, is moved
 // back over the bytes that it repeats, to start before this tag
-function windowIn(source: Source, b: string): Window | null {
+function windowIn(source: Source, b: string, places: readonly number[] = []): Window | null {
   const a = source.text;
   let w = windowOf(a, b);
+  const placed = w && placedAt(a, b, w, places);
+  if (placed) return placed;
   const cr = contentRange(source.slides);
   if (!w || !cr) return w;
   while (w.start > cr.start && w.endA > cr.end && (w.endA === w.start ? a[w.start - 1] === b[w.endB - 1] : w.endB === w.start && a[w.start - 1] === a[w.endA - 1])) w = { start: w.start - 1, endA: w.endA - 1, endB: w.endB - 1 };
   return w;
+}
+
+function placedAt(a: string, b: string, w: Window, places: readonly number[]): Window | null {
+  const lenA = w.endA - w.start;
+  const lenB = w.endB - w.start;
+  if (lenA && lenB) return null;
+  for (const h of places) {
+    let t = h;
+    while (b[t] === ' ' || b[t] === '\t') t++;
+    for (const s of t === h ? [h] : [t, h]) {
+      if (s < 0 || s >= w.start) continue;
+      if (a.slice(s + lenA, w.endA) === b.slice(s + lenB, w.endB)) return { start: s, endA: s + lenA, endB: s + lenB };
+    }
+  }
+  return null;
 }
 
 // an edit over lines of text split into an edit of each changed line, narrowed to the characters
@@ -404,7 +421,7 @@ export function install(app: App, tracked: Tracked): Engine {
   });
 
   // the turn of an apply of text, or of the changes held back when text is null
-  async function turn(text: string | null | typeof REREAD): Promise<Applied> {
+  async function turn(text: string | null | typeof REREAD, places: readonly number[] = []): Promise<Applied> {
     await quiet();
     if (!ready()) return reload();
     lateRest();
@@ -440,8 +457,8 @@ export function install(app: App, tracked: Tracked): Engine {
     const typesets: Promise<void>[] = [];
     // the deck made to read as next by one apply: false when the page is loaded again, and null
     // when the apply would set or move the text of an open composition
-    const put = (next: string): boolean | null => {
-      const w = windowIn(app.source!, next);
+    const put = (next: string, at: readonly number[] = []): boolean | null => {
+      const w = windowIn(app.source!, next, at);
       if (!w) return true;
       const spot = locate(app.source!, app.pairing!, w.start, w.endA);
       if (spot.kind === 'reload') return false;
@@ -494,7 +511,7 @@ export function install(app: App, tracked: Tracked): Engine {
     };
     composition();
     const was = app.source!.text;
-    const first = put(target);
+    const first = put(target, target === text ? places : []);
     if (first === false) return reload();
     // around() may apply edits before one that it cannot apply, after which the deck reads as neither
     // text
@@ -512,14 +529,14 @@ export function install(app: App, tracked: Tracked): Engine {
   }
 
   // a turn queued after the others
-  function run(text: string | null | typeof REREAD): Promise<Applied> {
+  function run(text: string | null | typeof REREAD, places: readonly number[] = []): Promise<Applied> {
     queued += 1;
     return new Promise<Applied>((resolve, reject) => {
       chain = chain
         .then(async () => {
           applying = true;
           try {
-            const r = await turn(text);
+            const r = await turn(text, places);
             if (r.reload && text !== null) behind = null;
             resolve(r);
           } catch (e) {
@@ -566,7 +583,7 @@ export function install(app: App, tracked: Tracked): Engine {
       if (!ready()) throw new Error('no file is open');
       return virtual(current());
     },
-    apply: (text) => run(text),
+    apply: (text, places) => run(text, places),
     rebase: () => run(REREAD),
     onChange(fn) {
       listeners.add(fn);
