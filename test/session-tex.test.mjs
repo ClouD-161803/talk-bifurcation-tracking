@@ -361,6 +361,25 @@ test('a new formula that another person removes while its Insert Formula field i
   clean(ben, MISSING);
 });
 
+test('the list of Insert Citation closes when another person removes its text element', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Macros');
+  await show(ann, 'Citations');
+  await front(ann);
+  const para = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith('Invariant'))`;
+  await caretAtEnd(ann, para);
+  await ann.evaluate(`(window.BeesonEditor.exec('insert.citation'), true)`);
+  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length > 0 && document.activeElement === document.querySelector('${LIST} input')`);
+  await other(server, '\n      <p>Invariant manifolds guide a low-energy transfer</p>', '');
+  await ann.waitFor(`!${para}`, 30_000);
+  await ann.waitFor(`!document.querySelector('${LIST}')`, 30_000);
+  await converge(server, [ann, ben]);
+  assert.ok(!server.read().includes('Invariant manifolds'));
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
