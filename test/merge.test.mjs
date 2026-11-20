@@ -508,6 +508,14 @@ test('the merge of an apply in a session keeps the edits of letters of one word 
   assert.equal(mergeEdits(g, page, file, 'ours').text, wrap('First sLidE here'));
 });
 
+test('the merge of an apply in a session keeps whole the word of one of two people who type over the same letters of a word, in both orders', () => {
+  const wrap = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  const f = wrap('a slide b');
+  for (const [theirs, ours] of [['a deck b', 'a slime b'], ['a slime b', 'a deck b'], ['a deck b', 'a sXde b'], ['a sXde b', 'a deck b']]) {
+    assert.equal(mergeTexts(f, wrap(theirs), wrap(ours)), wrap(ours), `${ours} over ${theirs}`);
+  }
+});
+
 // x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
 // part between two runs in common has sides of over 500 units that charEdits() cannot diff
 test('the merge of a chain of parts that the Myers algorithm cannot diff and a key of another person costs no more than a paste at the cap', () => {

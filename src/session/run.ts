@@ -217,7 +217,8 @@ export function mergeRun(x: string, theirs: string, ours: string, twice: boolean
     let end = o.a1;
     while (end < base.length && plain(base[end])) end++;
     const rest = all.filter((n) => n.side === o.side && n !== o && o.a1 <= n.a0 && n.a1 <= end && !n.text.includes('<')).sort((a, b) => a.a0 - b.a0);
-    if (!all.some((e) => inside(e, { ...o, a1: rest.at(-1)?.a1 ?? o.a1 }))) continue;
+    const r = rest.at(-1)?.a1 ?? o.a1;
+    if (!all.some((e) => inside(r < end ? e : { ...e, a1: e.a0 }, { ...o, a1: r }))) continue;
     for (const n of rest) o.text += base.slice(o.a1, n.a0).join('') + n.text, (o.a1 = n.a1);
     if (o.a1 < end) o.text += base.slice(o.a1, end).join(''), (o.a1 = end);
     all = all.filter((u) => !rest.includes(u));
