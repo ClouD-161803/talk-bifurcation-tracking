@@ -62,6 +62,10 @@ export class Sync {
     return this.replica.edit(text, places);
   }
 
+  takeOthers(): number[] {
+    return this.replica.takeOthers();
+  }
+
   outgoing(token: Token, held?: (text: string) => string[]): OpPost | null {
     const op = this.replica.outgoing(held);
     return op && { ...op, token };

@@ -633,6 +633,17 @@ test('a replica reads the whole state again after a checksum mismatch, and keeps
   assert.equal(r.mine, a.text);
 });
 
+test('a resync keeps the place of a removal of others that the editor has not applied yet, moved through the text read again', () => {
+  const base = '<p>x</p><p>x</p><p>y</p>';
+  const a = new Authority(base, { epoch: 'E' });
+  const r = new Replica('me', base, 'E.0');
+  r.receive(a.submit({ client: 'other', seq: 1, base: 'E.0', patches: [{ start: 8, end: 16, text: '' }] }, 'O').op);
+  a.submit({ client: 'other', seq: 2, base: a.version, patches: [{ start: 0, end: 0, text: '<p>z</p>' }] }, 'O');
+  r.resync(a.text, a.version);
+  assert.equal(r.mine, '<p>z</p><p>x</p><p>y</p>');
+  assert.ok(r.takeOthers().includes(16));
+});
+
 test('a replica back from a break shows the conflicts of the missed operations, and the side that wins is kept', () => {
   const base = '<p style="left: 10px">Hi</p>\n<p>Two</p>\n';
   const a = new Authority(base, { epoch: 'E' });

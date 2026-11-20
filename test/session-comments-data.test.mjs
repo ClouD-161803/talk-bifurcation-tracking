@@ -69,6 +69,20 @@ const HOLD = `(() => {
     for (const go of window.__held.splice(0)) go();
   };
 })()`;
+const LATE = `(() => {
+  const read = Response.prototype.text;
+  window.__late = [];
+  Response.prototype.text = function () {
+    const text = read.call(this);
+    if (!this.url.includes('/.session/events') || !window.__late) return text;
+    return text.then((t) => new Promise((done) => (window.__late ? window.__late.push(() => done(t)) : done(t))));
+  };
+  window.__catchUp = () => {
+    const late = window.__late;
+    window.__late = null;
+    for (const go of late) go();
+  };
+})()`;
 
 async function sees(page, expression, want, what = expression) {
   await front(page);
@@ -217,6 +231,7 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   await sees(a, TWIN_BADGES, [false, true, false]);
 
   // the removal of the first paragraph is acknowledged while the typing after it waits
+  await b.evaluate(LATE);
   await a.evaluate(HOLD);
   await show(a, 'One');
   await clickText(a, '.reveal .slides > section:nth-child(1) > p');
@@ -227,16 +242,11 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   await type(a, ' held');
   await a.evaluate('window.__goOne()');
   await a.waitFor(`window.__held.length === 1 && ${C}.base.text.split('<p>TBD</p>').length === 3`);
-  // the patches of the removal do not tell which twin went, hence the place is the one that the
-  // other page shows, which reads as the edit command
-  await show(b, 'One');
-  const want = await until(async () => {
-    const got = await b.evaluate(TWIN_BADGES);
-    return got.filter(Boolean).length === 1 && got;
-  }, 'the badge on one paragraph of the other page');
+  const want = [true, false, false];
   await show(a, 'One');
   await sees(a, TWIN_BADGES, want, 'the badges of the paragraphs while the typing waits');
   await badge(a, 'One', null, null);
+  await b.evaluate('window.__catchUp()');
 
   await a.evaluate('window.__go()');
   await until(() => server.read().includes('<h2>One held</h2>'), 'the typing to reach index.html');
