@@ -55,6 +55,25 @@ test('a label with a text per frame is typeset once per text, and not again as t
   assert.deepEqual(page.errors, []);
 });
 
+test('a formula that MathJax does not typeset is shown as its TeX with the reason that npm run check reports', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/plot-math.html', '', '/1'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    const typeset = MathJax.tex2svgPromise;
+    MathJax.tex2svgPromise = (tex, options) => (tex === 'q' ? Promise.reject(new Error('the extension is not loaded')) : typeset(tex, options));
+    const spec = JSON.parse(document.getElementById('data').textContent);
+    spec.parameter.label = '$q$';
+    Beeson.plots[0].reload(JSON.stringify(spec));
+    Beeson.plots[0].fit();
+  })()`);
+  await page.waitFor(`document.querySelector('.plot-readout [data-mjx-error]')`);
+  const shown = await page.evaluate(`(() => { const e = document.querySelector('.plot-readout [data-mjx-error]'); return [e.textContent, e.dataset.mjxError]; })()`);
+  assert.deepEqual(shown, ['$q$', 'the extension is not loaded']);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the formulas in the texts of a plot are typeset in the print view', { timeout: 60000 }, async (t) => {
   const page = await browser.newPage();
   t.after(() => page.close());

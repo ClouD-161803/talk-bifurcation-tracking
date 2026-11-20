@@ -393,21 +393,33 @@ type Typesetter = { startup?: { promise?: Promise<unknown> }; tex2svgPromise?: (
 
 const mathjax = () => (globalThis as { MathJax?: Typesetter }).MathJax;
 
-// each formula of a plot is typeset once and copied into every text that shows it. it is null in a
-// deck without MathJax. the formulas are typeset one at a time, with a yield every 8 ms, hence a
-// label with a new text at each frame does not hold up the page while its texts are typeset
-const formulas = new Map<string, HTMLElement | null>();
+// each formula of a plot is typeset once and copied into every text that shows it. the formulas are
+// typeset one at a time, with a yield every 8 ms, hence a label with a new text at each frame does
+// not hold up the page while its texts are typeset
+const formulas = new Map<string, HTMLElement>();
 const queue: string[] = [];
 const waiting = new Map<HTMLElement, string>();
 let typesetting: Promise<void> | null = null;
+
+// a formula that is not typeset is shown as its TeX, with the reason in data-mjx-error, which
+// npm run check reports as on the slide
+function untypeset(tex: string, reason: string): HTMLElement {
+  const span = document.createElement('span');
+  span.dataset.mjxError = reason;
+  span.textContent = `$${tex}$`;
+  return span;
+}
 
 async function typesetQueue(before: unknown): Promise<void> {
   await Promise.resolve(before).catch(() => undefined);
   let since = performance.now();
   while (queue.length) {
     const tex = queue[0];
-    const node = (await mathjax()?.tex2svgPromise?.(tex, { display: false }).catch(() => null)) ?? null;
-    node?.removeAttribute('tabindex');
+    const mj = mathjax();
+    const node = mj?.tex2svgPromise
+      ? await mj.tex2svgPromise(tex, { display: false }).catch((error: unknown) => untypeset(tex, error instanceof Error ? error.message : String(error)))
+      : untypeset(tex, 'MathJax is not loaded');
+    node.removeAttribute('tabindex');
     formulas.set(tex, node);
     queue.shift();
     for (const [el, src] of waiting) if (fill(el, src)) waiting.delete(el);
@@ -432,7 +444,7 @@ function request(tex: string): void {
 function fill(el: HTMLElement, src: string): boolean {
   const parts = src.split('$');
   if (parts.some((part, k) => k % 2 === 1 && !formulas.has(part))) return false;
-  el.replaceChildren(...parts.flatMap((part, k) => (!part ? [] : k % 2 === 0 ? [part] : [formulas.get(part)?.cloneNode(true) ?? `$${part}$`])));
+  el.replaceChildren(...parts.flatMap((part, k): (string | Node)[] => (!part ? [] : k % 2 === 0 ? [part] : [formulas.get(part)!.cloneNode(true)])));
   return true;
 }
 

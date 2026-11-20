@@ -2151,13 +2151,20 @@
   var queue = [];
   var waiting = /* @__PURE__ */ new Map();
   var typesetting = null;
+  function untypeset2(tex, reason) {
+    const span = document.createElement("span");
+    span.dataset.mjxError = reason;
+    span.textContent = `$${tex}$`;
+    return span;
+  }
   async function typesetQueue(before) {
     await Promise.resolve(before).catch(() => void 0);
     let since = performance.now();
     while (queue.length) {
       const tex = queue[0];
-      const node = await mathjax()?.tex2svgPromise?.(tex, { display: false }).catch(() => null) ?? null;
-      node?.removeAttribute("tabindex");
+      const mj = mathjax();
+      const node = mj?.tex2svgPromise ? await mj.tex2svgPromise(tex, { display: false }).catch((error) => untypeset2(tex, error instanceof Error ? error.message : String(error))) : untypeset2(tex, "MathJax is not loaded");
+      node.removeAttribute("tabindex");
       formulas.set(tex, node);
       queue.shift();
       for (const [el, src] of waiting) if (fill2(el, src)) waiting.delete(el);
@@ -2179,7 +2186,7 @@
   function fill2(el, src) {
     const parts = src.split("$");
     if (parts.some((part, k) => k % 2 === 1 && !formulas.has(part))) return false;
-    el.replaceChildren(...parts.flatMap((part, k) => !part ? [] : k % 2 === 0 ? [part] : [formulas.get(part)?.cloneNode(true) ?? `$${part}$`]));
+    el.replaceChildren(...parts.flatMap((part, k) => !part ? [] : k % 2 === 0 ? [part] : [formulas.get(part).cloneNode(true)]));
     return true;
   }
   var panelTexts = (p) => [p.title, p.x?.title, p.y?.title, ...[...p.x?.ticks ?? [], ...p.y?.ticks ?? [], ...p.labels ?? []].map((t) => t.text)];
