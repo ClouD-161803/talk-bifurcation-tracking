@@ -250,6 +250,26 @@ const HELPER = `window.__animate ??= (() => {
       return keep ? png(s.canvas) : null;
     },
 
+    async clip(a, b) {
+      let poster = null;
+      for (let k = a; k < b; k++) {
+        if (this.step(k) && k > 0) return { end: k, poster };
+        const png = await this.encode(null, k === 0);
+        if (k === 0) poster = png;
+      }
+      return { end: -1, poster };
+    },
+
+    async turn(start, a, b, drawn) {
+      let poster = null;
+      for (let n = a; n < b; n++) {
+        if (n > 0 || !drawn) this.step(start + n);
+        const png = await this.encode(null, n === 0);
+        if (n === 0) poster = png;
+      }
+      return poster;
+    },
+
     // ends the video encoded so far, and starts the next one, whose frames are counted from 0
     async finish() {
       const s = state, v = s.video;
@@ -383,20 +403,21 @@ export async function recordAnimation(page, i, from = null) {
       let k = 0;
       if (from !== null) {
         let poster = null;
-        for (; !(await page.evaluate(`__animate.step(${k})`)) || k === 0; k++) {
+        for (let end = -1; end < 0; k += fps) {
           if (k > SETTLE * fps) throw new Error(`the change of stage of a surface did not end within ${SETTLE} s`);
-          const png = await page.evaluate(`__animate.encode(null, ${k === 0})`);
-          if (k === 0) poster = png;
+          const part = await page.evaluate(`__animate.clip(${k}, ${k + fps})`);
+          poster ??= part.poster;
+          end = part.end;
+          if (end >= 0) k = end - fps;
         }
         result.clip = await video(page, c, poster, false);
       }
       const frames = turn > 0 ? Math.round(turn * fps) : 0;
       if (frames > 0) {
         let poster = null;
-        for (let n = 0; n < frames; n++) {
-          if (n > 0 || from === null) await page.evaluate(`__animate.step(${k + n})`);
-          const png = await page.evaluate(`__animate.encode(null, ${n === 0})`);
-          if (n === 0) poster = png;
+        for (let n = 0; n < frames; n += fps) {
+          const first = await page.evaluate(`__animate.turn(${k}, ${n}, ${Math.min(n + fps, frames)}, ${from !== null})`);
+          poster ??= first;
         }
         result.loop = await video(page, c, poster, true);
       }
