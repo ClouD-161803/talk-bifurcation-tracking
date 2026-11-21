@@ -229,7 +229,7 @@ html, body, .reveal-viewport { background: var(--bg); }
 
 .reveal table { margin: 24px 0 0; border-collapse: collapse; font-size: 36px; line-height: 1.4; border-top: 3px solid var(--text); border-bottom: 3px solid var(--text); }
 .reveal .slides section > table, .reveal .slides section > .col > table, .reveal .slides section > :where(.r-stack) > * > table { position: relative; z-index: 1; background: var(--bg); }
-.reveal th, .reveal td { padding: 10px 40px 10px 0; text-align: left; vertical-align: top; font-weight: inherit; font-variant-numeric: lining-nums tabular-nums; }
+.reveal th, .reveal td { padding: 10px 28px 10px 12px; text-align: left; vertical-align: top; font-weight: inherit; font-variant-numeric: lining-nums tabular-nums; }
 .reveal th { color: var(--subtle); font-style: italic; }
 .reveal tr:first-child > th { vertical-align: bottom; border-bottom: 1.5px solid var(--text); }
 
