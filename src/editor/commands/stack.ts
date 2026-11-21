@@ -1,6 +1,6 @@
 import type { App } from '../app.ts';
 import type { Translate } from '../tags.ts';
-import { CHILD, STACK, childrenOf, fragmentIndex, fragmentsOf, moveTo, rangesOf, shownAt, shownChild, stacksOf, stepAt, type Fragment, type Plan, type ShownSteps } from '../shown-steps.ts';
+import { CHILD, STACK, childrenOf, fragmentIndex, fragmentsOf, moveBlockTo, moveTo, rangesOf, shownAt, shownChild, stacksOf, stepAt, type Fragment, type Plan, type ShownSteps } from '../shown-steps.ts';
 import { describe, indexIn, modelOf, writePlan, type Model } from '../steps.ts';
 import { movableOf } from '../canvas/hit.ts';
 import { openMenu } from '../ui/menu.ts';
@@ -70,7 +70,8 @@ async function addTab(app: App): Promise<void> {
       const kin = childrenOf(copy.parentElement as Element);
       const next = kin[kin.indexOf(copy) + 1];
       const gap = next ? stepAt(plan, indexIn(m, next)) : -1;
-      return moveTo(plan, indexIn(m, copy), gap < 0 ? plan.groups.length : gap);
+      const inner = m.els.flatMap((el, k) => (el !== copy && copy.contains(el) ? [k] : []));
+      return moveBlockTo(plan, indexIn(m, copy), inner, gap < 0 ? plan.groups.length : gap);
     });
     tabs.show(slide, { child: copy, i: 0 });
   });

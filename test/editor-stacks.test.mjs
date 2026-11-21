@@ -42,7 +42,7 @@ test('an edit in one tab of a stack does not move the elements of another tab', 
   await press(page, 'End');
   await press(page, 'Enter');
   await press(page, 'Enter');
-  await page.waitFor(`document.querySelectorAll('.r-stack > :first-child > p').length === 4`);
+  await page.waitFor(`document.querySelector('.r-stack > :first-child').querySelectorAll(':scope > p').length === 4`);
   await press(page, 'Escape');
   await showTab(page, 1);
   const now = await boxes(page, TWO);
@@ -136,6 +136,37 @@ test('Delete Tab takes off a tab and renumbers the steps, and the last but one u
   now.forEach((v, i) => assert.ok(Math.abs(v - first[i]) <= 0.5, `${now} against ${first}`));
   await run(page, 'edit.undo');
   await page.waitFor(`document.querySelectorAll('#three > *').length === 2`);
+  assert.deepEqual(page.errors, []);
+});
+
+const innerShown = (page) => page.evaluate(`[...document.querySelectorAll('#inner > *')].map((c) => [...c.querySelectorAll('.fragment')].filter((f) => !f.closest('.beeson-off')).length)`);
+
+test('the + tab copies the steps inside the shown tab into the new tab, and Delete Tab takes them out of the plan', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  await page.evaluate('Reveal.slide(3)');
+  await page.waitFor(`document.querySelectorAll('.beeson-step-tabs button:not(.add)').length === 3`);
+  await showTab(page, 0);
+  await click(page, await boxOf(page, ADD));
+  await page.waitFor(`document.querySelectorAll('#inner > *').length === 4`);
+  assert.deepEqual(await tabs(page), ['Up to step 1', '*Steps 2\u20133', 'Steps 4\u20135', 'From step 6']);
+  const text = await rendered(page);
+  assert.match(text, /<div>\s*<p>The first form\.<\/p>\s*<p class="fragment" data-fragment-index="1">Its step\.<\/p>/);
+  assert.match(text, /<div class="fragment" data-fragment-index="2">\s*<p>The first form\.<\/p>\s*<p class="fragment" data-fragment-index="3">Its step\.<\/p>/);
+  assert.match(text, /<div class="fragment" data-fragment-index="4">\s*<p>The second form\.<\/p>\s*<p class="fragment" data-fragment-index="5">Its own step\.<\/p>/);
+  assert.match(text, /<div class="fragment" data-fragment-index="6">\s*<p>The third form\./);
+  const seen = [];
+  for (let n = 0; n < 4; n++) {
+    await showTab(page, n);
+    seen.push(await innerShown(page));
+  }
+  assert.deepEqual(seen, [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]);
+  await page.evaluate(`${tab(2)}.focus()`);
+  await press(page, 'Delete');
+  await page.waitFor(`document.querySelectorAll('#inner > *').length === 3`);
+  const after = (await rendered(page)).split('<h2>Inner steps</h2>')[1];
+  assert.doesNotMatch(after, /The second form/);
+  assert.match(after, /<div class="fragment" data-fragment-index="2">\s*<p>The first form\.<\/p>\s*<p class="fragment" data-fragment-index="3">Its step\.<\/p>/);
+  assert.match(after, /<div class="fragment" data-fragment-index="4">\s*<p>The third form\./);
   assert.deepEqual(page.errors, []);
 });
 
