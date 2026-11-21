@@ -1124,7 +1124,7 @@ describe('Broucke Families and the names of colormaps', () => {
       const page = await load(t, platform, DEMO, 2);
       await selectBackdrop(page);
       const builtIn = { secs: ['Drawing', 'Window', 'Labels', 'Motion'], colormap: false, family: false, note: false };
-      const file = { secs: ['Drawing', 'Window', 'Motion'], colormap: true, family: false, note: true };
+      const file = { secs: ['Drawing', 'Window', 'Labels', 'Motion'], colormap: true, family: false, note: true };
       assert.deepEqual(await sections(page), builtIn);
       await openList(page, LIST.length);
       await pick(page, 'Beeson Logo', page.source);
