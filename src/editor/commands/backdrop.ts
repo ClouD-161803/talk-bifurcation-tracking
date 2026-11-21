@@ -6,6 +6,8 @@ import { setPreview, view as frameView } from '../canvas/frames.ts';
 import { begin, editing, markCuts, orbitOf, syncBackdrops, windowAttrs } from '../canvas/mask.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
+import { SYSTEMS, systemOf } from '../../poincare.ts';
+import { ALPHAS, PLANES, planeOf, shownTori, toriSpec } from '../../tori.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
@@ -13,16 +15,37 @@ export type Live = { el: HTMLElement; view: View; extent: { x0: number; x1: numb
 type Hooks = { backdrops?: Live[]; remount?(el: HTMLElement): Live; preview?(el: HTMLElement): Live; fitWindow?(el: HTMLElement, box?: Box): Promise<View | null> };
 const hooks = (): Hooks => (window as unknown as { Beeson?: Hooks }).Beeson ?? {};
 
-export const DRAWING = ['data-backdrop', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads'];
+export const DRAWING = ['data-backdrop', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads'];
 export const NAMES = {
   tubes: 'Cislunar Manifolds',
   wideRibbon: 'Earth Manifolds',
+  poincare: 'Poincaré Sections',
+  tori: 'Invariant Tori',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
   broucke: 'Broucke Families',
   custom: 'Custom',
 };
-export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon };
+export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori };
+const DOTTED = ['poincare', 'tori'];
+export const dottedDrawing = (el: Element | null): string | null => {
+  const name = el && !el.hasAttribute('data-trajectories') ? el.getAttribute('data-backdrop') : null;
+  return name !== null && DOTTED.includes(name) ? name : null;
+};
+export const SYSTEM_NAMES: Record<string, string> = {
+  'earth-moon-l2': 'Earth–Moon L2',
+  'sun-earth-l1': 'Sun–Earth L1',
+  'bicircular-l1-horizontal': 'Bicircular L1 (Horizontal)',
+  'bicircular-l1-vertical': 'Bicircular L1 (Vertical)',
+};
+export const PLANE_NAMES: Record<string, string> = { xy: 'x, y', xz: 'x, z' };
+export { ALPHAS, PLANES, SYSTEMS };
+export const systemPick = (el: Element | null): string => systemOf(el?.getAttribute('data-system'));
+export const planePick = (el: Element | null): string => planeOf(el?.getAttribute('data-plane'));
+export const toriPick = (el: Element | null): boolean[] => {
+  const shown = shownTori(el?.getAttribute('data-tori'), ALPHAS.map(Number));
+  return ALPHAS.map((_, n) => shown.includes(n));
+};
 const LOGO_FILE = 'brand/transfer.js';
 const BROUCKE_FILE = 'demo/broucke-sample.js';
 const MOTION = ['data-duration', 'data-stagger'];
@@ -32,8 +55,8 @@ export const LABELS = [
   { at: 'moon', name: 'Moon', text: 'Moon', dy: '36' },
   { at: 'earth', name: 'Earth', text: 'Earth', dy: '36' },
 ];
-export const COLORMAPS = ['viridis', 'plasma', 'Blues_r'];
-const COLORMAP_NAMES: Record<string, string> = { viridis: 'Viridis', plasma: 'Plasma', Blues_r: 'Blues (Reversed)' };
+export const COLORMAPS = ['viridis', 'plasma', 'magma', 'Blues_r'];
+const COLORMAP_NAMES: Record<string, string> = { viridis: 'Viridis', plasma: 'Plasma', magma: 'Magma', Blues_r: 'Blues (Reversed)' };
 export const colormapName = (value: string | null): string => (value === null ? 'Palette' : COLORMAP_NAMES[value] ?? value);
 const ZOOM = 1.25;
 const LEAST = 40;
@@ -194,6 +217,8 @@ function builtIn(app: App): Entry[] {
     { key: 'logo', name: NAMES.logo, attrs: { 'data-trajectories': LOGO_FILE }, motion: { 'data-duration': '20' }, view: { cx: -0.84, cy: 0, half: 1.128 }, size: [1920, 1080] },
     { key: 'tubes', name: NAMES.tubes, attrs: { 'data-backdrop': 'tubes' }, motion: {}, view: { cx: 0.42, cy: 0, half: 0.6 }, size: [1920, 1080] },
     { key: 'wideRibbon', name: NAMES.wideRibbon, attrs: { 'data-backdrop': 'wideRibbon' }, motion: {}, view: { cx: 0.2, cy: 0, half: 1.3 }, size: [1920, 1080] },
+    { key: 'poincare', name: NAMES.poincare, attrs: { 'data-backdrop': 'poincare' }, motion: {}, view: null, size: null },
+    { key: 'tori', name: NAMES.tori, attrs: { 'data-backdrop': 'tori' }, motion: {}, view: null, size: null },
     {
       key: 'broucke', name: NAMES.broucke, view: null, size: null, motion: { 'data-duration': '3', 'data-stagger': '0.6' },
       attrs: { 'data-trajectories': file, 'data-trajectories-select': SPECS['7 Rotating Periapsis'], 'data-trajectories-color': 'family', 'data-trajectories-ramp': 'e', 'data-trajectories-colormap': 'viridis' },
@@ -242,7 +267,7 @@ function deckEntries(app: App): Entry[] {
   const built = builtIn(app);
   const keys = new Set(built.map((e) => JSON.stringify(e.attrs)));
   for (const el of app.slides().querySelectorAll<HTMLElement>('.backdrop')) {
-    if (!open(app, el) || isBroucke(el)) continue;
+    if (!open(app, el) || isBroucke(el) || dottedDrawing(el)) continue;
     const now = app.doc.tagState(el).attrs;
     const attrs = Object.fromEntries(DRAWING.filter((n) => now[n] !== undefined).map((n) => [n, now[n]]));
     const key = JSON.stringify(attrs);
@@ -302,7 +327,7 @@ export async function applyEntry(app: App, entry: Entry): Promise<void> {
 }
 
 async function dropLabels(app: App, el: HTMLElement, entry: Entry): Promise<void> {
-  if (entry.attrs['data-backdrop'] !== undefined) return;
+  if (entry.attrs['data-backdrop'] !== undefined && !DOTTED.includes(entry.key)) return;
   for (const lab of [...el.querySelectorAll(':scope > .label')].filter((l) => open(app, l))) await app.doc.remove(lab, 'label');
 }
 
@@ -536,6 +561,22 @@ export function commands(): Command[] {
       app.doc.setTag(el, { attrs: { 'data-trajectories-select': spec } }, 'drawing');
     },
   });
+  const choice = (id: string, label: string, drawing: string, attr: string, values: string[]): Command => ({
+    id: `backdrop.${id}`,
+    label: `Backdrop ${label}`,
+    undoable: true,
+    undo: label,
+    enabled: (app) => dottedDrawing(targetOf(app, undefined)) === drawing,
+    run: (app, arg) => {
+      const el = targetOf(app, arg);
+      const v = String(valueOf(arg));
+      if (!el || dottedDrawing(el) !== drawing || !values.includes(v)) return;
+      const text = v === values[0] ? null : v;
+      if (el.getAttribute(attr) === text) return;
+      endPreview();
+      app.doc.setTag(el, { attrs: { [attr]: text } }, 'drawing');
+    },
+  });
   return [
     field('cx', 'Center X', 'cx'),
     field('cy', 'Center Y', 'cy'),
@@ -598,19 +639,51 @@ export function commands(): Command[] {
         const el = targetOf(app, arg);
         const v = String(valueOf(arg) ?? '');
         const entry = library(app).find((e) => e.key === v);
-        if (!el || !entry || entry.missing || (entry.key === 'broucke' && isBroucke(el))) return;
+        if (!el || !entry || entry.missing || (entry.key === 'broucke' && isBroucke(el)) || dottedDrawing(el) === entry.key) return;
         endPreview();
         const attrs = drawingEdit(entry.attrs);
         const now = app.doc.tagState(el).attrs;
         const changed = Object.entries(attrs).filter(([k, x]) => (now[k] ?? null) !== x);
         if (!changed.length) return;
-        if (now['data-backdrop'] === undefined || entry.attrs['data-backdrop'] === undefined) return replaceDrawing(app, el, entry);
+        if (now['data-backdrop'] === undefined || entry.attrs['data-backdrop'] === undefined || DOTTED.includes(entry.key) || dottedDrawing(el)) return replaceDrawing(app, el, entry);
         app.doc.setTag(el, { attrs: Object.fromEntries(changed) }, 'drawing');
       },
     },
     pick('family', 'Family'),
     pick('frame', 'Frame'),
     pick('branch', 'Branch'),
+    choice('system', 'System', 'poincare', 'data-system', SYSTEMS),
+    choice('plane', 'Plane', 'tori', 'data-plane', PLANES),
+    {
+      id: 'backdrop.torus',
+      label: 'Backdrop Torus',
+      undoable: true,
+      undo: 'Torus',
+      enabled: (app) => dottedDrawing(targetOf(app, undefined)) === 'tori',
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        const at = ALPHAS.indexOf(String(valueOf(arg)));
+        if (!el || dottedDrawing(el) !== 'tori' || at < 0) return;
+        const shown = toriPick(el);
+        shown[at] = !shown[at];
+        endPreview();
+        app.doc.setTag(el, { attrs: { 'data-tori': toriSpec(shown) } }, 'drawing');
+      },
+    },
+    {
+      id: 'backdrop.tori',
+      label: 'Backdrop All Tori',
+      undoable: true,
+      undo: 'All Tori',
+      enabled: (app) => dottedDrawing(targetOf(app, undefined)) === 'tori',
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        if (!el || dottedDrawing(el) !== 'tori') return;
+        const all = toriPick(el).every(Boolean);
+        endPreview();
+        app.doc.setTag(el, { attrs: { 'data-tori': toriSpec(ALPHAS.map(() => !all)) } }, 'drawing');
+      },
+    },
     {
       id: 'backdrop.colormap',
       label: 'Backdrop Colormap',

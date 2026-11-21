@@ -315,6 +315,10 @@ export const COLORMAPS = {
     stops: ['#0d0887', '#310596', '#4c02a1', '#6600a7', '#7e03a8', '#9511a2', '#a92396', '#bb3587', '#cb4778', '#d9596a', '#e66c5c', '#f07f4f', '#f89441', '#fdab33', '#fdc328', '#f9dd25', '#f0f921'],
     ends: [0, 0.85],
   },
+  magma: {
+    stops: ['#000004', '#0a0822', '#1d1147', '#36106b', '#51127c', '#6a1c81', '#832681', '#9c2e7f', '#b73779', '#d0416f', '#e75263', '#f56b5c', '#fc8961', '#fea772', '#fec488', '#fde2a3', '#fcfdbf'],
+    ends: [0, 0.85],
+  },
   Blues_r: {
     stops: ['#08306b', '#084084', '#08519c', '#1461a9', '#2171b5', '#3282be', '#4292c6', '#56a0ce', '#6baed6', '#84bcdb', '#9ecae1', '#b2d2e8', '#c6dbef', '#d2e3f3', '#deebf7', '#eaf3fb', '#f7fbff'],
     ends: [0, 0.683],
@@ -328,7 +332,7 @@ export const MAP_ALPHA = 1;
 
 export function colormapOf(spec: string): Colormap {
   const [name, ...ends] = spec.trim().split(/\s+/);
-  if (!Object.prototype.hasOwnProperty.call(COLORMAPS, name)) throw new Error(`"${name}" is not viridis, plasma, or Blues_r`);
+  if (!Object.prototype.hasOwnProperty.call(COLORMAPS, name)) throw new Error(`"${name}" is not viridis, plasma, magma, or Blues_r`);
   const map = COLORMAPS[name as ColormapName];
   if (!ends.length) return { name: name as ColormapName, lo: map.ends[0], hi: map.ends[1] };
   const [lo, hi] = ends.map(Number);
@@ -348,10 +352,10 @@ export function colormapAt(name: ColormapName, x: number): string {
   return hex(a.map((v, i) => v + (b[i] - v) * (u - k)) as [number, number, number]);
 }
 
-export function colormapEnds(map: Colormap, bg?: string): [number, number] {
+export function colormapEnds(map: Colormap, bg?: string, least = MAP_CONTRAST): [number, number] {
   const back = bg ? rgbOf(bg) : null;
   if (!back) return [map.lo, map.hi];
-  const keeps = (x: number) => contrastOver(rgbOf(colormapAt(map.name, x)) as [number, number, number], back, 1) >= MAP_CONTRAST;
+  const keeps = (x: number) => contrastOver(rgbOf(colormapAt(map.name, x)) as [number, number, number], back, 1) >= least;
   const round = (x: number) => Math.round(x * 1e9) / 1e9;
   let lo = map.lo,
     hi = map.hi;

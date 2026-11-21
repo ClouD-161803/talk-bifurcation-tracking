@@ -165,7 +165,7 @@ function syncLive(app: App, el: Element): void {
 }
 
 type Extent = { x0: number; x1: number; y0: number; y1: number };
-type Orbit = { el: HTMLElement; view: { cx: number; cy: number; half: number }; fittedToTrajectories: boolean; extent: Extent | null; setWindow(view: { cx: number; cy: number; half: number } | null): void };
+type Orbit = { el: HTMLElement; view: { cx: number; cy: number; half: number }; fitsItself: boolean; fittedToDrawing: boolean; extent: Extent | null; setWindow(view: { cx: number; cy: number; half: number } | null): void };
 
 const orbits = (): Orbit[] => (window as unknown as { Beeson?: { backdrops?: Orbit[] } }).Beeson?.backdrops ?? [];
 
@@ -176,8 +176,8 @@ export function syncBackdrops(): void {
     if (!o.el.isConnected) continue;
     const d = o.el.dataset;
     const want = { cx: +(d.cx ?? 0), cy: +(d.cy ?? 0), half: +(d.half ?? 0.5) };
-    const v = o.view, fitted = o.fittedToTrajectories;
-    if (d.half === undefined && d.trajectories !== undefined) {
+    const v = o.view, fitted = o.fittedToDrawing;
+    if (d.half === undefined && o.fitsItself) {
       if (!fitted) o.setWindow(null);
     } else if (fitted || v.cx !== want.cx || v.cy !== want.cy || v.half !== want.half) o.setWindow(want);
   }

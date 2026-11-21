@@ -229,6 +229,7 @@ const MATPLOTLIB = {
   viridis: { 0: '#440154', 0.25: '#3b528b', 0.29: '#365d8d', 0.5: '#21918c', 0.57: '#1fa188', 0.85: '#9bd93c', 1: '#fde725' },
   plasma: { 0: '#0d0887', 0.25: '#7e03a8', 0.35: '#a11b9b', 0.5: '#cc4778', 0.62: '#e56a5d', 0.85: '#feba2c', 1: '#f0f921' },
   Blues_r: { 0: '#08306b', 0.17: '#115ca5', 0.25: '#2171b5', 0.393: '#4896c8', 0.5: '#6caed6', 0.683: '#b0d2e7', 1: '#f7fbff' },
+  magma: { 0: '#000004', 0.18: '#331067', 0.25: '#51127c', 0.5: '#b73779', 0.62: '#e44f64', 0.85: '#feb77e', 0.88: '#fec68a', 1: '#fcfdbf' },
 };
 
 test('a colormap is drawn within 1 of matplotlib in OKLab distance times 100', () => {
@@ -246,8 +247,9 @@ test('a colormap is named alone or with its lower and upper ends, and a malforme
   assert.deepEqual(colormapOf(' viridis '), { name: 'viridis', lo: 0, hi: 0.85 });
   assert.deepEqual(colormapOf('plasma'), { name: 'plasma', lo: 0, hi: 0.85 });
   assert.deepEqual(colormapOf('Blues_r'), { name: 'Blues_r', lo: 0, hi: 0.683 });
+  assert.deepEqual(colormapOf('magma'), { name: 'magma', lo: 0, hi: 0.85 });
   assert.deepEqual(colormapOf('viridis 0.1  0.9'), { name: 'viridis', lo: 0.1, hi: 0.9 });
-  assert.throws(() => colormapOf('magma'), /"magma" is not viridis, plasma, or Blues_r/);
+  assert.throws(() => colormapOf('inferno'), /"inferno" is not viridis, plasma, magma, or Blues_r/);
   assert.throws(() => colormapOf('toString'), /"toString" is not viridis/);
   assert.throws(() => colormapOf('viridis 0.5'), /"0.5" is not a lower and an upper end/);
   assert.throws(() => colormapOf('viridis 0.9 0.1'), /is not a lower and an upper end/);
@@ -259,9 +261,11 @@ test('an end of a colormap short of 3:1 against the background is moved toward t
   assert.deepEqual(ends('viridis', '#050505'), [0.29, 0.85]);
   assert.deepEqual(ends('plasma', '#050505'), [0.35, 0.85]);
   assert.deepEqual(ends('Blues_r', '#050505'), [0.17, 0.683]);
+  assert.deepEqual(ends('magma', '#050505'), [0.44, 0.85]);
   assert.deepEqual(ends('viridis', '#faf8f3'), [0, 0.57]);
   assert.deepEqual(ends('plasma', '#faf8f3'), [0, 0.62]);
   assert.deepEqual(ends('Blues_r', '#faf8f3'), [0, 0.393]);
+  assert.deepEqual(ends('magma', '#faf8f3'), [0, 0.66]);
   assert.deepEqual(ends('viridis 0.4 0.55', '#050505'), [0.4, 0.55]);
   assert.deepEqual(ends('viridis 0.4 0.55', '#faf8f3'), [0.4, 0.55]);
   assert.deepEqual(ends('viridis'), [0, 0.85]);
@@ -423,7 +427,7 @@ test('a backdrop of a missing or malformed file is left empty after one warning'
     /trajectories-malformed\.js is not drawn, since it does not have a list "families"/,
     /broucke-sample\.json is not drawn, since a JSON file cannot be read in a deck opened from the disk/,
     /data-trajectories-select="family=99" does not match/,
-    /data-trajectories-colormap="magma" is not used, since "magma" is not viridis, plasma, or Blues_r\. The trajectories are colored from the palette/,
+    /data-trajectories-colormap="inferno" is not used, since "inferno" is not viridis, plasma, magma, or Blues_r\. The trajectories are colored from the palette/,
     /data-trajectories-shade="e" is ignored, since data-trajectories-colormap is given/,
   ];
   assert.equal(seen.warnings.length, reasons.length, seen.warnings.join('\n'));
@@ -464,9 +468,9 @@ test('a colormap is painted for the background of each mode, and a colormap of a
   const viridis = await page.evaluate(painted('viridis'));
   assert.deepEqual(viridis.dark, expected(token('dark', 'bg')));
   assert.deepEqual(viridis.light, expected(token('light', 'bg')));
-  const magma = await page.evaluate(painted('magma'));
-  assert.ok(magma.maps.every((name) => name === null));
-  assert.ok(magma.dark.every((ink) => /^#[0-9a-f]{6}$/.test(ink)));
+  const unknown = await page.evaluate(painted('inferno'));
+  assert.ok(unknown.maps.every((name) => name === null));
+  assert.ok(unknown.dark.every((ink) => /^#[0-9a-f]{6}$/.test(ink)));
   const plasma = await page.evaluate(painted('plasma'));
   assert.ok(plasma.maps.every((name) => name === 'plasma') && plasma.shades.every((shade) => shade === null));
 });

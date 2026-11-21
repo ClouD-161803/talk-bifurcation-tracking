@@ -17,9 +17,11 @@ export function togglePointer(): void {
   document.body.append(dot);
 }
 
-export function initCursor(orbits: () => Orbits[], slide: () => HTMLElement | null, tintOn = true): void {
+type Tinted = { el: HTMLElement; glow(clientX: number | null, clientY?: number, r?: number): void };
+
+export function initCursor(orbits: () => Tinted[], slide: () => HTMLElement | null, tintOn = true): void {
   let last: { x: number; y: number } | null = null, frame = 0;
-  const lit = new Set<Orbits>();
+  const lit = new Set<Tinted>();
   const update = () => {
     frame = 0;
     const current = slide();

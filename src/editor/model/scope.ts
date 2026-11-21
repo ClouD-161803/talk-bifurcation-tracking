@@ -15,7 +15,7 @@ export const DATA_ATTRS = [
   'data-heads', 'data-highlight', 'data-id', 'data-keep', 'data-keep-theme', 'data-line-numbers', 'data-live',
   'data-loop', 'data-mu', 'data-plot', 'data-plot-frame', 'data-plot-panels', 'data-plot-paused', 'data-plot-play',
   'data-plot-hide', 'data-plot-once', 'data-plot-show', 'data-plot-tab', 'data-plot-tabs', 'data-qr', 'data-rib', 'data-run', 'data-side', 'data-backdrop',
-  'data-stagger', 'data-trajectories', 'data-trajectories-color', 'data-trajectories-colormap', 'data-trajectories-ramp',
+  'data-stagger', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-color', 'data-trajectories-colormap', 'data-trajectories-ramp',
   'data-trajectories-select', 'data-trajectories-shade', 'data-surface-accent', 'data-surface-points', 'data-surface-state',
   'data-surface-violet', 'data-tone', 'data-turn', 'data-unhighlight', 'data-zoom', 'data-zscale',
   'data-visibility', 'data-timing', 'data-figure', 'data-part', 'data-transition', 'data-group', 'data-locked', 'data-autoslide',
