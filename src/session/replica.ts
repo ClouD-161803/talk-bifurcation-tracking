@@ -136,9 +136,9 @@ export class Replica {
     return this.mine === before ? null : this.mine;
   }
 
-  receiveAll(ops: AppliedOp[]): string | null {
+  receiveAll(ops: AppliedOp[], dropped: Patch[] = []): string | null {
     const before = this.mine;
-    ops.forEach((op, i) => this.take(op, 'ours', [], i === ops.length - 1, false));
+    ops.forEach((op, i) => this.take(op, 'ours', dropped, i === ops.length - 1, false));
     return this.mine === before ? null : this.mine;
   }
 
@@ -228,7 +228,7 @@ export class Replica {
     const ours = this.ours(text);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
     const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
-    conflicts.push(...merged.conflicts);
+    conflicts.push(...((dedupe ? merged.conflicts : merged.dropped) ?? []));
     const added = this.remine(text, merged.patches, ours);
     this.others = [...moveOffsets(this.others, was, this.mine), ...added];
   }

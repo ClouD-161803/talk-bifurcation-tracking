@@ -117,6 +117,7 @@ export function ask(client: Client, base: string, mine: string, theirs: string):
 
 export function install(client: Client): void {
   const st = stateOf(client);
+  client.on('dropped', (text) => void setAside(text, 'Your edit clashed with an edit of another person, and was dropped.').catch(() => {}));
   client.on('state', () => {
     if (client.connection === 'offline' || client.connection === 'no-host') {
       st.offline = true;
