@@ -72,6 +72,43 @@ test('a formula that MathJax does not typeset is shown as its TeX with the reaso
   assert.deepEqual(page.errors, []);
 });
 
+test('a text with a formula that MathJax does not typeset is shown as written, not as the TeX of the whole text', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/plot-math.html', '', '/1'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    const typeset = MathJax.tex2svgPromise;
+    MathJax.tex2svgPromise = (tex, options) => (tex.endsWith('q') ? Promise.reject(new Error('the extension is not loaded')) : typeset(tex, options));
+    const spec = JSON.parse(document.getElementById('data').textContent);
+    spec.parameter.label = 'Energy $q$';
+    Beeson.plots[0].reload(JSON.stringify(spec));
+    Beeson.plots[0].fit();
+  })()`);
+  await page.waitFor(`document.querySelector('.plot-readout [data-mjx-error]')`);
+  const shown = await page.evaluate(`(() => { const e = document.querySelector('.plot-readout [data-mjx-error]'); return [e.textContent, e.dataset.mjxError]; })()`);
+  assert.deepEqual(shown, ['Energy $q$', 'the extension is not loaded']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('in a deck without MathJax, each text of a plot is set as written, with its formulas left between dollars', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/editor-plot-cell.html'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    const spec = JSON.parse(document.getElementById('circle').textContent);
+    Object.assign(spec.panels[0], { axes: true, title: 'Energy $q$', x: { range: [-1.5, 1.5], ticks: [{ at: 0.5, text: '0.5' }], title: 'Distance' } });
+    spec.parameter = { label: 'time' };
+    Beeson.plots[0].reload(JSON.stringify(spec));
+    Beeson.plots[0].fit();
+  })()`);
+  await page.waitFor(`[...document.querySelectorAll('.plot-label')].some((el) => el.textContent === 'Energy $q$')`);
+  const shown = await page.evaluate(`[...document.querySelectorAll('.plot-label, .plot-readout > span:first-child')].map((el) => [el.textContent, el.childElementCount])`);
+  for (const text of ['Energy $q$', '0.5', 'Distance', '$\\lambda$', 'time']) assert.ok(shown.some(([words, elements]) => words === text && elements === 0), `${text} in ${JSON.stringify(shown)}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the formulas in the texts of a plot are typeset in the print view', { timeout: 60000 }, async (t) => {
   const page = await browser.newPage();
   t.after(() => page.close());

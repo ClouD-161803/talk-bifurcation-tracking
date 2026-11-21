@@ -84,8 +84,15 @@ function named(node: Element, name: string): Element {
 }
 
 export function setPlotText(el: HTMLElement, source: string): void {
+  if (!mathjax()) {
+    waiting.delete(el);
+    el.textContent = source;
+    return;
+  }
   typeset(el, plotTex(source), (node) => {
-    if (node || !source) el.replaceChildren(...(node ? [named(node, source.replaceAll('$', ''))] : []));
+    if (node?.hasAttribute('data-mjx-error')) node.textContent = source;
+    else if (node) named(node, source.replaceAll('$', ''));
+    if (node || !source) el.replaceChildren(...(node ? [node] : []));
   });
 }
 
