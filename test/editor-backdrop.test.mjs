@@ -689,6 +689,8 @@ describe('the list of backdrops of Media > Backdrop…', () => {
     'Beeson Logo',
     'Cislunar Manifolds',
     'Earth Manifolds',
+    'Poincaré Sections',
+    'Invariant Tori',
     'Broucke Families',
   ];
   const LOGO = '<div class="backdrop" data-trajectories="brand/transfer.js" data-duration="20" data-cx="-0.84" data-cy="0" data-half="1.128">';
@@ -864,15 +866,17 @@ describe('the list of backdrops of Media > Backdrop…', () => {
 
     test(`an entry whose file is not next to the deck is left out, and a drawing of the deck with a missing file is dimmed with the reason (${platform})`, async () => {
       const page = await deckPage(platform, DECK, 6);
-      const list = await openList(page, 5);
+      const list = await openList(page, 7);
       assert.deepEqual(list.map((e) => e[1]), [
         'Cislunar Manifolds',
         'Earth Manifolds',
+        'Poincaré Sections',
+        'Invariant Tori',
         'Broucke Families',
         'Beeson Logo',
         'missing',
       ]);
-      assert.deepEqual(list.map((e) => e[2]), [false, false, false, false, true]);
+      assert.deepEqual(list.map((e) => e[2]), [false, false, false, false, false, false, true]);
       assert.match(list.at(-1)[3], /missing\.js is not found next to the deck/);
       assert.match(list.at(-1)[4], /File not found/);
       await click(page, `${TILES}:disabled`);
@@ -911,7 +915,7 @@ describe('Broucke Families and the names of colormaps', () => {
   const PANEL = '#beeson-edit-panel-format';
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Broucke Families'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Broucke Families'];
   const FAMILIES = ['7', '11', '7/11'];
   const BROUCKE = '<div class="backdrop" data-trajectories="demo/broucke-sample.js" data-trajectories-select="frame=pulsating" data-trajectories-color="family" data-trajectories-ramp="e" data-trajectories-colormap="viridis" data-duration="3" data-stagger="0.6">';
   const STEPS = '<h2>Show your steps one at a time';
@@ -1013,8 +1017,8 @@ describe('Broucke Families and the names of colormaps', () => {
       assert.deepEqual(items.filter((i) => i[1]).map((i) => i[0]), ['Broucke Families']);
       await press(page, 'Escape');
       const deck = await load(t, platform, DECK, 6);
-      const names = (await openList(deck, 5)).map((e) => e[1]);
-      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Broucke Families', 'Beeson Logo', 'missing']);
+      const names = (await openList(deck, 7)).map((e) => e[1]);
+      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Broucke Families', 'Beeson Logo', 'missing']);
       await press(deck, 'Escape');
       await deck.evaluate('Reveal.slide(3)');
       await frames(deck);
@@ -1075,7 +1079,7 @@ describe('Broucke Families and the names of colormaps', () => {
       await selectBackdrop(page);
       assert.equal(await popupText(page, 'Colormap'), 'Viridis');
       const items = await popupItems(page, 'Colormap');
-      assert.deepEqual(items.map((i) => i[0]), ['Palette', 'Viridis', 'Plasma', 'Blues (Reversed)']);
+      assert.deepEqual(items.map((i) => i[0]), ['Palette', 'Viridis', 'Plasma', 'Magma', 'Blues (Reversed)']);
       assert.deepEqual(items.filter((i) => i[1]).map((i) => i[0]), ['Viridis']);
       await choose(page, 'Blues (Reversed)', page.source);
       const text = await render(page);
@@ -1782,8 +1786,8 @@ describe('built-in backdrops whose file is not found', () => {
   const PANEL = '#beeson-edit-panel-format';
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
-  const KEYS = ['logo', 'tubes', 'wideRibbon', 'broucke'];
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Broucke Families'];
+  const KEYS = ['logo', 'tubes', 'wideRibbon', 'poincare', 'tori', 'broucke'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Broucke Families'];
   const LOGO_TITLE = 'brand/transfer.js is not found next to the deck';
   const BROUCKE_TITLE = 'demo/broucke-sample.js is not found next to the deck';
 
@@ -1852,12 +1856,12 @@ describe('built-in backdrops whose file is not found', () => {
       const list = await openList(page);
       assert.deepEqual(list.map((e) => e.key), KEYS);
       assert.deepEqual(list.map((e) => e.name), LIST);
-      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, true]);
+      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, true]);
       assert.equal(list[0].title, LOGO_TITLE);
-      assert.equal(list[3].title, BROUCKE_TITLE);
+      assert.equal(list[5].title, BROUCKE_TITLE);
       assert.match(list[0].text, /File not found/);
-      assert.match(list[3].text, /File not found/);
-      assert.ok(list.slice(1, 3).every((e) => e.title === e.name && !/File not found/.test(e.text)));
+      assert.match(list[5].text, /File not found/);
+      assert.ok(list.slice(1, 5).every((e) => e.title === e.name && !/File not found/.test(e.text)));
       assert.equal(await page.evaluate(`(() => { const b = document.querySelector('${TILES}[data-tile="broucke"]'); b.focus(); return document.activeElement === b; })()`), false);
       for (const key of ['broucke', 'logo']) {
         await click(page, `${TILES}[data-tile="${key}"]`);
@@ -1875,7 +1879,7 @@ describe('built-in backdrops whose file is not found', () => {
       const page = await load(t, platform, TALK, 0);
       await selectBackdrop(page);
       const items = await popupItems(page, 'Drawing');
-      assert.deepEqual(items, LIST.map((name, i) => [name, i === 0 || i === 3]));
+      assert.deepEqual(items, LIST.map((name, i) => [name, i === 0 || i === 5]));
       await page.evaluate(`[...document.querySelectorAll('${MENU} .item')].find((i) => i.textContent.includes('Broucke')).setAttribute('data-pick', '')`);
       await click(page, `${MENU} .item[data-pick]`);
       await frames(page);
@@ -1888,7 +1892,7 @@ describe('built-in backdrops whose file is not found', () => {
       await press(page, 'Home');
       assert.equal(await highlighted(page), 'Cislunar Manifolds');
       await press(page, 'End');
-      assert.equal(await highlighted(page), 'Earth Manifolds');
+      assert.equal(await highlighted(page), 'Invariant Tori');
       const seen = [];
       for (let i = 0; i < 8; i++) {
         await press(page, 'ArrowDown');
@@ -1915,9 +1919,9 @@ describe('built-in backdrops whose file is not found', () => {
       const page = await load(t, platform, OWN, 1);
       const list = await openList(page);
       assert.deepEqual(list.map((e) => e.name), LIST);
-      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false]);
+      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, false]);
       assert.equal(list[0].title, LOGO_TITLE);
-      assert.equal(list[3].title, 'Broucke Families');
+      assert.equal(list[5].title, 'Broucke Families');
       await click(page, `${TILES}[data-tile="broucke"]`);
       await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`);
       await frames(page);
@@ -1954,6 +1958,208 @@ describe('built-in backdrops whose file is not found', () => {
       assert.deepEqual(await popupItems(page, 'Drawing'), LIST.map((name) => [name, false]));
       await press(page, 'Escape');
       assert.equal(await render(page), page.source);
+    });
+  }
+});
+
+describe('Poincaré Sections and Invariant Tori', () => {
+  const DEMO = 'test-deck.html';
+  const PLATFORMS = ['mac', 'other'];
+  const PANEL = '#beeson-edit-panel-format';
+  const MENU = '.beeson-edit-menu.select';
+  const TILES = '.beeson-backdrop-gallery [data-tile]';
+  const CHAPTER = '<h2>Chapter two</h2>';
+  const ALPHAS = ['0.02', '0.04', '0.06', '0.08', '0.10', '0.12', '0.14', '0.16', '0.18', '0.20'];
+
+  let browser;
+  let server;
+  before(async () => {
+    browser = await launch({ offline: false });
+    server = await serve('.');
+  });
+  after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  const js = (v) => JSON.stringify(v);
+  const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg ? `, ${js(arg)}` : ''})).then(() => true)`);
+  const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
+  const render = (page) => page.evaluate('window.BeesonEditor.render()');
+  const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
+  const undoLabel = (page) => state(page, 'edit.undo').then((s) => s.label);
+  const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+  const esc = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tagOf = (text, heading) => text.match(new RegExp(`${esc(heading)}[\\s\\S]*?(<div class="backdrop"[^>]*>)`))[1];
+  const backdropOf = (text, heading) => text.match(new RegExp(`${esc(heading)}[\\s\\S]*?(<div class="backdrop"[\\s\\S]*?</div>)`))[1];
+
+  async function load(t, platform) {
+    const page = await browser.newPage({ width: 1600, height: 1000 });
+    t.after(() => page.close().catch(() => {}));
+    const url = `${server.origin}/${DEMO}?edit&still&edit-platform=${platform}`;
+    await page.goto(url);
+    await page.evaluate('localStorage.clear()');
+    await page.goto(url);
+    await page.waitFor(deckSettled);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    page.source = readFileSync(DEMO, 'utf8');
+    const s = await page.evaluate(`window.BeesonEditor.open(${js(page.source)})`);
+    assert.deepEqual(s.problems, []);
+    const n = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((slide) => slide.querySelector('.backdrop[data-backdrop="wideRibbon"]'))`);
+    assert.ok(n > 0, 'the slide of the Earth Manifolds is not found');
+    await page.evaluate(`Reveal.slide(${n})`);
+    await frames(page);
+    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+    await exec(page, 'backdrop.select');
+    await frames(page);
+    return page;
+  }
+
+  const popupText = (page, label) => page.evaluate(`(() => {
+  const b = document.querySelector('${PANEL} [aria-label="${label}"]');
+  return b && b.getClientRects().length ? b.textContent : null;
+})()`);
+
+  async function popupItems(page, label) {
+    await click(page, `${PANEL} [aria-label="${label}"]`);
+    await page.waitFor(`!!document.querySelector('${MENU}')`);
+    return page.evaluate(`[...document.querySelectorAll('${MENU} .item')].map((i) => [i.querySelector('.label')?.textContent ?? i.textContent, i.getAttribute('aria-checked') === 'true'])`);
+  }
+
+  async function choose(page, label, name) {
+    const text = await render(page);
+    await popupItems(page, label);
+    await page.evaluate(`[...document.querySelectorAll('${MENU} .item')].find((i) => (i.querySelector('.label')?.textContent ?? i.textContent) === ${js(name)}).setAttribute('data-pick', '')`);
+    await click(page, `${MENU} .item[data-pick]`);
+    await page.waitFor(`window.BeesonEditor.render() !== ${js(text)}`);
+    await frames(page);
+    return render(page);
+  }
+
+  const ticks = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} label.ed-check')].filter((l) => l.getClientRects().length && /^backdrop\\.tor/.test(l.querySelector('input').dataset.command)).map((l) => [l.textContent, l.querySelector('input').checked])`);
+
+  async function tick(page, name) {
+    const text = await render(page);
+    await page.evaluate(`(() => {
+      for (const l of document.querySelectorAll('${PANEL} label.ed-check')) l.toggleAttribute('data-pick', l.textContent === ${js(name)});
+    })()`);
+    await click(page, `${PANEL} label.ed-check[data-pick]`);
+    await page.waitFor(`window.BeesonEditor.render() !== ${js(text)}`);
+    await frames(page);
+    return render(page);
+  }
+
+  const drawn = (page) => page.evaluate(`(async () => {
+    const el = window.BeesonEditor.selection()[0];
+    const all = Beeson.backdrops.filter((b) => b.el === el);
+    await all[0]?.ready;
+    const c = all[0]?.canvases[0];
+    const d = c ? c.getContext('2d').getImageData(0, 0, c.width, c.height).data : [];
+    let inked = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i]) inked++;
+    return { count: all.length, canvases: [...el.querySelectorAll(':scope > canvas')].map((x) => x.className), labels: el.querySelectorAll('.label').length, inked, fitted: all[0]?.fittedToDrawing };
+  })()`);
+
+  const sections = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-sec')].filter((s) => s.getClientRects().length).map((s) => s.querySelector(':scope > h5')?.textContent ?? '').filter(Boolean)`);
+
+  for (const platform of PLATFORMS) {
+    test(`Poincaré Sections put on the Earth Manifolds takes off the window and the labels, and the System popup writes data-system (${platform})`, async (t) => {
+      const page = await load(t, platform);
+      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Labels', 'Motion']);
+      const items = await popupItems(page, 'Drawing');
+      await press(page, 'Escape');
+      assert.deepEqual(items.map((i) => i[0]).slice(0, 6), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Broucke Families']);
+      const section = await choose(page, 'Drawing', 'Poincaré Sections');
+      assert.equal(tagOf(section, CHAPTER), '<div class="backdrop" data-backdrop="poincare">');
+      assert.ok(!/class="label"/.test(backdropOf(section, CHAPTER)), backdropOf(section, CHAPTER));
+      assert.equal(await undoLabel(page), 'Undo Change Drawing');
+      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Motion']);
+      const first = await drawn(page);
+      assert.deepEqual({ ...first, inked: first.inked > 1000 }, { count: 1, canvases: ['dots'], labels: 0, inked: true, fitted: true });
+      assert.equal(await popupText(page, 'System'), 'Earth–Moon L2');
+      assert.equal(await popupText(page, 'Plane'), null);
+      assert.deepEqual(await ticks(page), []);
+      assert.deepEqual(await popupItems(page, 'System'), [['Earth–Moon L2', true], ['Sun–Earth L1', false]]);
+      await press(page, 'Escape');
+      const sun = await choose(page, 'System', 'Sun–Earth L1');
+      assert.equal(tagOf(sun, CHAPTER), '<div class="backdrop" data-backdrop="poincare" data-system="sun-earth-l1">');
+      assert.equal(await undoLabel(page), 'Undo System');
+      assert.equal(await popupText(page, 'System'), 'Sun–Earth L1');
+      const second = await drawn(page);
+      assert.ok(second.count === 1 && second.inked > 1000 && second.inked !== first.inked, js(second));
+      assert.equal(await page.evaluate(`document.querySelectorAll('script[src*="/backdrops/poincare-"]').length`), 2);
+      assert.equal(await choose(page, 'System', 'Earth–Moon L2'), section);
+      await undo(page);
+      await undo(page);
+      await undo(page);
+      assert.equal(await render(page), page.source);
+      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Labels', 'Motion']);
+      assert.deepEqual((await drawn(page)).canvases, ['orbits-base', 'orbits-head']);
+      assert.deepEqual(page.errors, []);
+    });
+
+    test(`the ticks of the Invariant Tori write data-tori, All Tori ticks every torus or none, and the Plane popup writes data-plane (${platform})`, async (t) => {
+      const page = await load(t, platform);
+      const all = await choose(page, 'Drawing', 'Invariant Tori');
+      assert.equal(tagOf(all, CHAPTER), '<div class="backdrop" data-backdrop="tori">');
+      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Motion']);
+      assert.equal(await popupText(page, 'System'), null);
+      assert.equal(await popupText(page, 'Plane'), 'x, y');
+      assert.deepEqual(await ticks(page), [['All Tori', true], ...ALPHAS.map((a) => [`α = ${a}`, true])]);
+      const ten = await drawn(page);
+      const nine = await tick(page, 'α = 0.04');
+      assert.equal(tagOf(nine, CHAPTER), `<div class="backdrop" data-backdrop="tori" data-tori="${ALPHAS.filter((a) => a !== '0.04').join(' ')}">`);
+      assert.equal(await undoLabel(page), 'Undo Torus');
+      assert.deepEqual(await ticks(page), [['All Tori', false], ...ALPHAS.map((a) => [`α = ${a}`, a !== '0.04'])]);
+      assert.equal(await tick(page, 'All Tori'), all);
+      assert.equal(await undoLabel(page), 'Undo All Tori');
+      const none = await tick(page, 'All Tori');
+      assert.equal(tagOf(none, CHAPTER), '<div class="backdrop" data-backdrop="tori" data-tori="none">');
+      assert.deepEqual(await ticks(page), [['All Tori', false], ...ALPHAS.map((a) => [`α = ${a}`, false])]);
+      const empty = await drawn(page);
+      const one = await tick(page, 'α = 0.18');
+      assert.equal(tagOf(one, CHAPTER), '<div class="backdrop" data-backdrop="tori" data-tori="0.18">');
+      const lone = await drawn(page);
+      assert.ok(ten.inked > 3 * empty.inked && lone.inked > 3 * empty.inked && lone.inked !== ten.inked, `${ten.inked} pixels of ten tori, ${lone.inked} of one, ${empty.inked} of none`);
+      assert.deepEqual(await popupItems(page, 'Plane'), [['x, y', true], ['x, z', false]]);
+      await press(page, 'Escape');
+      const plane = await choose(page, 'Plane', 'x, z');
+      assert.equal(tagOf(plane, CHAPTER), '<div class="backdrop" data-backdrop="tori" data-tori="0.18" data-plane="xz">');
+      assert.equal(await undoLabel(page), 'Undo Plane');
+      assert.equal(await choose(page, 'Plane', 'x, y'), one);
+      const tubes = await choose(page, 'Drawing', 'Cislunar Manifolds');
+      assert.ok(/^<div class="backdrop" data-backdrop="tubes" data-cx="[^"]+" data-cy="[^"]+" data-half="[^"]+">$/.test(tagOf(tubes, CHAPTER)), tagOf(tubes, CHAPTER));
+      assert.deepEqual(await ticks(page), []);
+      assert.deepEqual(page.errors, []);
+    });
+
+    test(`the tiles Poincaré Sections and Invariant Tori are drawn in the gallery, and a tile adds its backdrop fitted to its box (${platform})`, async (t) => {
+      const page = await load(t, platform);
+      await press(page, 'Delete');
+      const bare = await render(page);
+      await exec(page, 'insert.backdrop');
+      await page.waitFor(`document.querySelectorAll('${TILES}').length >= 6`);
+      const inked = `(async (key) => {
+        const c = document.querySelector('${TILES}[data-tile="' + key + '"] canvas');
+        for (let n = 0; n < 200; n++) {
+          const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+          let count = 0;
+          for (let i = 3; i < d.length; i += 4) if (d[i]) count++;
+          if (count > 50) return count;
+          await new Promise((done) => setTimeout(done, 50));
+        }
+        return 0;
+      })`;
+      assert.ok((await page.evaluate(`${inked}('poincare')`)) > 50, 'the tile Poincaré Sections is empty');
+      assert.ok((await page.evaluate(`${inked}('tori')`)) > 50, 'the tile Invariant Tori is empty');
+      await click(page, `${TILES}[data-tile="tori"]`);
+      await page.waitFor(`window.BeesonEditor.render() !== ${js(bare)}`);
+      await frames(page);
+      assert.ok((await render(page)).includes('<div class="backdrop" data-backdrop="tori"></div>'), 'the backdrop of the tile is not written');
+      assert.equal(await undoLabel(page), 'Undo Add Backdrop');
+      const added = await drawn(page);
+      assert.ok(added.count === 1 && added.fitted && added.inked > 1000, js(added));
+      assert.deepEqual(page.errors, []);
     });
   }
 });
