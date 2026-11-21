@@ -4,9 +4,9 @@ import { Badges } from './comments-badges.ts';
 import { Comments, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
-import { whenOf } from './labels.ts';
+import { toneOf, whenOf } from './labels.ts';
 import type { OpenMenu } from '../../editor/ui/menu.ts';
-import { initials, inkOf, toneOf } from './people.ts';
+import { initials, inkOf } from './people.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 

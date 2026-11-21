@@ -20,7 +20,7 @@ test('the theme is built in a folder with a space in its name', (t) => {
   const root = copy(t);
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
-  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/editor-pdf.js', 'theme/editor-session.js', 'theme/edit.mjs', 'theme/session.js']) {
+  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/editor-pdf.js', 'theme/editor-session.js', 'theme/edit.mjs', 'theme/session.js', 'theme/session-history.js']) {
     assert.ok(readFileSync(join(root, file), 'utf8') === readFileSync(resolve(file), 'utf8'), `${file} is not built from the current source, run npm run build`);
   }
 });
@@ -82,6 +82,25 @@ test('theme/editor.js holds none of the session code, which theme/editor-session
   assert.match(readFileSync(resolve('theme/editor-session.js'), 'utf8'), mark);
 });
 
+test('Version History shares with theme/session.js only modules without state of their own', (t) => {
+  const root = copy(t);
+  const preview = join(root, 'src/session/client/preview.ts');
+  appendFileSync(preview, "\nimport { toast as seenToast } from './toast.ts';\nexport const seen = seenToast;\n");
+  let message = '';
+  try {
+    execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
+  } catch (e) {
+    message = String(e.stderr);
+  }
+  assert.match(message, /src\/session\/client\/toast\.ts, imported by src\/session\/client\/preview\.ts/);
+});
+
+test('theme/session.js holds none of the pane of Version History, which theme/session-history.js holds', () => {
+  const mark = 'Only show tagged versions';
+  assert.ok(!readFileSync(resolve('theme/session.js'), 'utf8').includes(mark));
+  assert.ok(readFileSync(resolve('theme/session-history.js'), 'utf8').includes(mark));
+});
+
 test('the theme bundle carries none of the editor, which is all in theme/editor.js', () => {
   const theme = readFileSync(resolve('theme/beeson.js'), 'utf8');
   const editor = readFileSync(resolve('theme/editor.js'), 'utf8');
@@ -106,7 +125,12 @@ test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', ()
   assert.equal(out.trim(), 'function function function');
 });
 
-test('theme/session.js is under 299 kB', () => {
+test('theme/session.js is under 266 kB', () => {
   const size = statSync(resolve('theme/session.js')).size;
-  assert.ok(size < 299 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 266 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+});
+
+test('theme/session-history.js is under 41 kB', () => {
+  const size = statSync(resolve('theme/session-history.js')).size;
+  assert.ok(size < 41 * 1024, `theme/session-history.js is ${Math.round(size / 1024)} kB`);
 });
