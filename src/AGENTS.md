@@ -33,6 +33,7 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - Open a file chooser, a folder picker, or a save picker in the handler of the click or the key press, since a picker requested later is refused.
 - The PowerPoint file is written by `scripts/pptx.mjs` without pptxgenjs, since the timing that starts a video by itself is not written by pptxgenjs. Elements out of the order of the schema are refused by PowerPoint.
 - Build menus and selects of DOM elements, since the popup of a native select is missing from a screenshot taken over the DevTools protocol.
+- The formulas of a plot are typeset one at a time by MathJax, with a yield to the page every 8 ms, so that a label with a new text at each frame does not hold up the page. Their typesetting is chained onto `MathJax.startup.promise`, which `scripts/chrome.mjs` waits for before it captures a deck.
 
 ## Theme
 
