@@ -647,10 +647,11 @@ const NARROWEST = 24;
 const contentWidth = (cell: Element) => parseFloat(getComputedStyle(cell).width) || 0;
 
 function leastHeight(tr: HTMLTableRowElement): number {
-  const kept = tr.style.height;
+  const kept = tr.getAttribute('style');
   tr.style.height = '1px';
   const h = tr.offsetHeight;
-  tr.style.height = kept;
+  if (kept === null) tr.removeAttribute('style');
+  else tr.setAttribute('style', kept);
   return h;
 }
 
@@ -1054,7 +1055,7 @@ function installBars(app: App): void {
   gapLine.hidden = true;
   const lift = make('div', 'lift');
   lift.hidden = true;
-  layer.append(cols, rows, grab, addCol, addRow, outline, grips, rowGrips, spread, ...corners, handle, ...sides, lift, gapLine);
+  layer.append(cols, rows, grab, addCol, addRow, outline, rowGrips, grips, spread, ...corners, handle, ...sides, lift, gapLine);
   document.body.append(layer);
   for (const type of ['pointerdown', 'mousedown']) layer.addEventListener(type, (ev) => ev.preventDefault());
 
