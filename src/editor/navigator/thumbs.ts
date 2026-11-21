@@ -161,7 +161,7 @@ export function drawBackdrops(slide: Element, clone: Element): void {
   const preview = (window as unknown as { Beeson?: { preview?(el: HTMLElement): unknown } }).Beeson?.preview;
   const from = slide.querySelectorAll('.backdrop');
   clone.querySelectorAll<HTMLElement>('.backdrop').forEach((el, i) => {
-    const canvas = from[i]?.querySelector(':scope > canvas.orbits-base');
+    const canvas = from[i]?.querySelector(':scope > canvas.orbits-base, :scope > canvas.dots');
     if (preview && canvas && !canvas.hasAttribute('width')) preview(el);
   });
   clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
