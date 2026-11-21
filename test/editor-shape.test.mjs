@@ -677,10 +677,16 @@ describe('the Text pane on the words of shapes', () => {
       const text = await render(page);
       assert.match(text, /<div class="math"[^\n]*>\\\[\\\]<\/div>/, 'a formula is not inserted');
       assert.ok(text.includes('<div class="shape triangle" style="width: 200px; height: 160px; translate: 1360px 260px"></div>'), 'the shape is changed');
-      await undo(page);
-      await byteExact(page);
-      assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false, 'the TeX field of the formula is left open after the undo');
-      await redo(page);
+      const undone = await page.evaluate(`(async () => {
+  const E = window.BeesonEditor;
+  await E.undo();
+  const r = { text: E.render(), open: !!document.querySelector('.beeson-math') };
+  await E.redo();
+  await new Promise((d) => setTimeout(d, 250));
+  return r;
+})()`);
+      assert.equal(undone.text, page.source);
+      assert.equal(undone.open, false, 'the TeX field of the formula is left open after the undo');
       assert.match(await render(page), /<div class="math"[^\n]*>\\\[\\\]<\/div>/, 'the redo does not put the formula back');
       assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false, 'the TeX field of the formula is open after the redo');
       await undo(page);

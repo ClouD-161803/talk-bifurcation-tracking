@@ -532,13 +532,10 @@ export function install(app: App): void {
   app.onRefresh(['content', 'structure'], markEmpty);
 
   const openTex = (node: Element, math: Element, entry: Entry | null) => {
-    app.math.open(math, entry ?? undefined);
-    const wait = window.setInterval(() => {
-      if (app.math.isOpen()) return;
-      window.clearInterval(wait);
+    app.math.open(math, entry ?? undefined, () => {
       markEmpty();
       if (entry && node.isConnected && node.classList.contains('beeson-empty')) void app.history.retract(entry).catch(fail);
-    }, 100);
+    });
   };
 
   onCaptionBox({ begin: (host) => begin('caption', host, null), drop });
