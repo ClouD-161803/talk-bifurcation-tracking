@@ -1,4 +1,5 @@
-import { Orbits, mount } from './orbits.ts';
+import { Orbits } from './orbits.ts';
+import { Dots, register as registerDrawing } from './dots.ts';
 import { initChrome, refreshChrome } from './chrome.ts';
 import { mountCitations, syncCitations } from './citations.ts';
 import { initClick } from './click.ts';
@@ -80,7 +81,10 @@ const DEFAULTS: RevealOptions = {
 
 const TRACED = ['title', 'section', 'closing'];
 
-const backdrops: Orbits[] = [];
+type Backdrop = Orbits | Dots;
+const backdrops: Backdrop[] = [];
+const backdropOf = (el: HTMLElement): Backdrop | undefined => Dots.of(el) ?? Orbits.of(el);
+const drawBackdrop = (el: HTMLElement): Backdrop => (Dots.draws(el) ? new Dots(el) : new Orbits(el));
 const surfaces: (Surface | Bundle)[] = [];
 onRestore(() => { for (const s of surfaces) s.draw(); });
 const plots: PlotView[] = [];
@@ -115,7 +119,10 @@ function edit(): void {
 const still = () => EDITING || Orbits.reduced() || window.Reveal.isPrintView() || /print-pdf/.test(location.search);
 
 function remount(): void {
-  for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
+  for (const el of document.querySelectorAll<HTMLElement>('.backdrop')) {
+    const o = backdropOf(el) ?? drawBackdrop(el);
+    if (!backdrops.includes(o)) backdrops.push(o);
+  }
   if (document.querySelector('.surface')) for (const s of [...mountSurfaces(document), ...mountBundles(document)]) if (!surfaces.includes(s)) surfaces.push(s);
   for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
 }
@@ -130,16 +137,16 @@ function stepPlots(slide: Element): void {
   if (own.length) applySteps(slide);
 }
 
-const waiting = (o: Orbits) => o.el.classList.contains('fragment') && !o.el.classList.contains('visible');
+const waiting = (o: Backdrop) => o.el.classList.contains('fragment') && !o.el.classList.contains('visible');
 
-function animated(o: Orbits, slide: Element | null = o.el.closest('section')): boolean {
+function animated(o: Backdrop, slide: Element | null = o.el.closest('section')): boolean {
   if (waiting(o)) return false;
   const loop = o.el.hasAttribute('data-loop');
   if (slide?.hasAttribute('data-auto-animate')) return loop;
   return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c));
 }
 
-function playBackdrop(o: Orbits, slide: HTMLElement): void {
+function playBackdrop(o: Backdrop, slide: HTMLElement): void {
   o.fit();
   if (still()) { o.complete(); return; }
   if (waiting(o)) { o.reset(); return; }
@@ -187,10 +194,10 @@ function mountWithin(root: Element): void {
   if (slide) applySteps(slide);
 }
 
-function remountBackdrop(el: HTMLElement): Orbits {
+function remountBackdrop(el: HTMLElement): Backdrop {
   const at = backdrops.findIndex((o) => o.el === el);
-  (at >= 0 ? backdrops[at] : Orbits.of(el))?.destroy();
-  const o = new Orbits(el);
+  (at >= 0 ? backdrops[at] : backdropOf(el))?.destroy();
+  const o = drawBackdrop(el);
   if (at >= 0) backdrops.splice(at, 1, o);
   else backdrops.push(o);
   o.complete();
@@ -198,14 +205,19 @@ function remountBackdrop(el: HTMLElement): Orbits {
   return o;
 }
 
-function preview(el: HTMLElement): Orbits {
-  const o = new Orbits(el);
+function preview(el: HTMLElement): Backdrop {
+  const o = drawBackdrop(el);
   o.complete();
   void o.ready.then(() => o.complete());
   return o;
 }
 
 async function fitWindow(el: HTMLElement, box?: { left: number; top: number; width: number; height: number }): Promise<View | null> {
+  if (Dots.draws(el)) {
+    const dots = Dots.of(el);
+    await dots?.ready;
+    return dots?.viewFitted(box) ?? null;
+  }
   const trajectories = el.dataset.trajectories !== undefined ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? '');
   const b = box ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
   return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
@@ -374,6 +386,7 @@ const Beeson = {
   plots,
   figures: { get ready(): Promise<void> { return figuresReady(); }, reload: reloadFigure, preview: previewFigure, compiling: compilingFigure },
   trajectories: register,
+  drawing: registerDrawing,
   mount: mountWithin,
   remount: remountBackdrop,
   preview,
