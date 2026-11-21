@@ -3,6 +3,7 @@ import { HOST } from '../app.ts';
 import type { Box } from './snap.ts';
 import { gripOf, parseStroke, pointsOf, reach, type Point } from './stroke.ts';
 import { stored } from '../ui/dom.ts';
+import { LABEL } from '../text/labels.ts';
 
 export const MOVABLE = 'h1, h2, h3, p, ul, ol, dl, table, pre, blockquote, div.math, .caption, .foot, img, video, figure, .figure-box, .plate, .qr, .tikz, tycho-viewer, .shape';
 export const BY_ITSELF = 'img, video, figure, .figure-box, .plate, .qr, .tikz, .shape';
@@ -217,7 +218,10 @@ export function pictureOf(el: Element): Element {
 export function movableOf(app: App, target: Element | null): Element | null {
   const slide = app.current();
   const pairing = app.pairing;
-  if (!target || !slide || !pairing || !slide.contains(target) || target.closest(OUTSIDE)) return null;
+  if (!target || !slide || !pairing || !slide.contains(target)) return null;
+  const label = target.closest(LABEL);
+  if (label) return pairing.elements.get(label)?.open ? label : null;
+  if (target.closest(OUTSIDE)) return null;
   let el = target.closest(MOVABLE);
   while (el) {
     const up = el.parentElement?.closest(MOVABLE) ?? null;

@@ -1,3 +1,5 @@
+import { plotTex, prefetch, setPlotText } from './drawn-text.ts';
+
 type Pair = [number, number];
 type Anchor = 'start' | 'middle' | 'end';
 type Kind = 'points' | 'trace' | 'label' | 'events';
@@ -359,59 +361,6 @@ export function formatNumber(x: number, digits?: number): string {
   return s.replace(/^-(?=.*[1-9])/, MINUS).replace(/^-/, '');
 }
 
-type Typesetter = { startup?: { promise?: Promise<unknown> }; tex2svgPromise?: (tex: string, options: { display: boolean }) => Promise<HTMLElement> };
-
-const mathjax = () => (globalThis as { MathJax?: Typesetter }).MathJax;
-
-const formulas = new Map<string, HTMLElement>();
-const queue: string[] = [];
-const waiting = new Map<HTMLElement, string>();
-let typesetting: Promise<void> | null = null;
-
-function untypeset(tex: string, reason: string): HTMLElement {
-  const span = document.createElement('span');
-  span.dataset.mjxError = reason;
-  span.textContent = `$${tex}$`;
-  return span;
-}
-
-async function typesetQueue(before: unknown): Promise<void> {
-  await Promise.resolve(before).catch(() => undefined);
-  let since = performance.now();
-  while (queue.length) {
-    const tex = queue[0];
-    const mj = mathjax();
-    const node = mj?.tex2svgPromise
-      ? await mj.tex2svgPromise(tex, { display: false }).catch((error: unknown) => untypeset(tex, error instanceof Error ? error.message : String(error)))
-      : untypeset(tex, 'MathJax is not loaded');
-    node.removeAttribute('tabindex');
-    formulas.set(tex, node);
-    queue.shift();
-    for (const [el, src] of waiting) if (fill(el, src)) waiting.delete(el);
-    if (performance.now() - since > 8) {
-      await new Promise((done) => setTimeout(done));
-      since = performance.now();
-    }
-  }
-  typesetting = null;
-}
-
-function request(tex: string): void {
-  if (formulas.has(tex) || queue.includes(tex)) return;
-  queue.push(tex);
-  if (typesetting) return;
-  const startup = mathjax()?.startup;
-  typesetting = typesetQueue(startup?.promise);
-  if (startup?.promise) startup.promise = typesetting;
-}
-
-function fill(el: HTMLElement, src: string): boolean {
-  const parts = src.split('$');
-  if (parts.some((part, k) => k % 2 === 1 && !formulas.has(part))) return false;
-  el.replaceChildren(...parts.flatMap((part, k): (string | Node)[] => (!part ? [] : k % 2 === 0 ? [part] : [formulas.get(part)!.cloneNode(true)])));
-  return true;
-}
-
 const panelTexts = (p: PanelPatch) => [p.title, p.x?.title, p.y?.title, ...[...(p.x?.ticks ?? []), ...(p.y?.ticks ?? []), ...(p.labels ?? [])].map((t) => t.text)];
 
 export function plotTexts(plot: Plot): string[] {
@@ -422,17 +371,6 @@ export function plotTexts(plot: Plot): string[] {
   });
   const texts = [plot.parameter.label, ...plot.panels.flatMap(panelTexts), ...plot.tabs.flatMap((t) => [t.label, ...Object.values(t.panels).flatMap(panelTexts), ...marks(t)])];
   return [...new Set(texts.filter((s): s is string => !!s))];
-}
-
-export function prefetch(texts: string[]): void {
-  for (const src of texts) src.split('$').forEach((part, k) => { if (k % 2 === 1) request(part); });
-}
-
-export function setText(el: HTMLElement, src: string): void {
-  waiting.delete(el);
-  if (fill(el, src)) return;
-  waiting.set(el, src);
-  prefetch([src]);
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -545,7 +483,7 @@ export class PlotView {
       console.error(message);
       return;
     }
-    prefetch(plotTexts(this.spec));
+    prefetch(plotTexts(this.spec).map(plotTex));
     const only = words(el.dataset.plotPanels);
     this.panels = only.length ? this.spec.panels.filter((p) => only.includes(p.id)) : this.spec.panels;
     const names = words(el.dataset.plotTabs);
@@ -589,7 +527,7 @@ export class PlotView {
         const b = document.createElement('button');
         b.type = 'button';
         b.setAttribute('role', 'tab');
-        setText(b, plot.tabs[i].label);
+        setPlotText(b, plot.tabs[i].label);
         b.addEventListener('click', () => { b.blur(); this.setTab(i); });
         bar.append(b);
         return { b, i };
@@ -640,7 +578,7 @@ export class PlotView {
     readout.className = 'plot-readout';
     if (plot.parameter.label) {
       const name = document.createElement('span');
-      setText(name, plot.parameter.label);
+      setPlotText(name, plot.parameter.label);
       readout.append(name, ' = ');
     }
     this.value = document.createElement('span');
@@ -734,7 +672,7 @@ export class PlotView {
   private label(text: string, left: number, top: number, a: Anchor, cls: string, names: string[], tone?: string): HTMLElement {
     const el = document.createElement('div');
     el.className = `plot-label ${cls}`.trim();
-    setText(el, text);
+    setPlotText(el, text);
     this.place(el, left, top, a);
     if (tone) el.style.color = toneColor(tone);
     this.overlay.append(el);
@@ -946,7 +884,7 @@ export class PlotView {
           const [x, y] = at.length === 1 ? at[0] : (framesAt(at, u) as Pair);
           this.place(el, this.XS(b, x) + m.dx, this.YS(b, y) + m.dy, m.anchor);
           const text = nearest(d.text, u);
-          if (text !== shown) { setText(el, text); shown = text; }
+          if (text !== shown) { setPlotText(el, text); shown = text; }
         });
       } else {
         const events = data as PlotEvent[];
