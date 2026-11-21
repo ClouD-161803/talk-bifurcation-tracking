@@ -187,7 +187,7 @@ export function texEditor(options: { display(): boolean; label: string; placehol
   return { field, preview, message, ok: () => ok, refresh, settle };
 }
 
-type Sheet = { title: string; tex: string; display: boolean; open: string; close: string; primary: string; textEl(): Element; commit(tex: string): Promise<void>; done?(): void; made?: Element; left?(): void };
+type Sheet = { title: string; tex: string; display: boolean; open: string; close: string; primary: string; textEl(): Element; commit(tex: string): Promise<void>; done?(): void; made?: Element; left?(): void; closed?(): void };
 
 const SIDES: Side[] = ['right', 'left', 'below', 'above'];
 
@@ -239,6 +239,7 @@ export function install(app: App): void {
   injectStyle('mathpop', CSS);
   let popover: HTMLElement | null = null;
   let back: (() => void) | null = null;
+  let ended: (() => void) | null = null;
   let unplace: (() => void) | null = null;
   let away: (() => Promise<void>) | null = null;
   let leftOf: (() => void) | null = null;
@@ -281,8 +282,11 @@ export function install(app: App): void {
     bound = null;
     const restore = back;
     back = null;
+    const end = ended;
+    ended = null;
     if (focus) restore?.();
     app.invalidate('selection');
+    end?.();
   }
 
   async function setMath(container: Element, tex: string): Promise<void> {
@@ -390,6 +394,7 @@ export function install(app: App): void {
           }
         : null;
     leftOf = sheet.left ?? null;
+    ended = sheet.closed ?? null;
     bound = sheet.textEl;
     openFor = target;
     opened = target ? { field, tex: sheet.tex } : null;
@@ -421,7 +426,7 @@ export function install(app: App): void {
     app.invalidate('selection');
   }
 
-  function openMath(container: Element, into?: Entry): void {
+  function openMath(container: Element, into?: Entry, closed?: () => void): void {
     const info = mathLookup()(container);
     if (!info) return;
     const fresh = !info.tex.trim();
@@ -450,6 +455,7 @@ export function install(app: App): void {
           })
         : (tex) => setMath(now(), tex),
       made: into ? textEl : undefined,
+      closed,
     }, container);
   }
 
