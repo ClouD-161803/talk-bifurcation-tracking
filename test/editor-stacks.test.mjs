@@ -181,3 +181,50 @@ test('Insert > Stack wraps the selection in a stack in place, and Show on Every 
   assert.equal(await page.evaluate(`window.BeesonEditor.state('arrange.everyTab').checked`), true);
   assert.deepEqual(page.errors, []);
 });
+
+const MAKE = 'test/pages/stacks-make.html';
+const shownBoxes = (page) => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.present [id]')].filter((el) => !el.closest('aside') && getComputedStyle(el).visibility === 'visible' && el.getClientRects().length).map((el) => { const r = el.getBoundingClientRect(); return [el.id, [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 2) / 2)]; }))`);
+const refusal = (page) => page.evaluate(`window.BeesonEditor.exec('stack.make').then(() => null, (e) => e.message)`);
+
+test('Make Stack puts the elements replaced in place into a stack, and every tab looks as before', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: MAKE });
+  t.after(() => page.close());
+  const labels = await tabs(page);
+  assert.equal(labels.length, 5);
+  const before = [];
+  for (let i = 0; i < labels.length; i++) {
+    await showTab(page, i);
+    before.push(await shownBoxes(page));
+  }
+  await showTab(page, 0);
+  await run(page, 'stack.make');
+  await page.waitFor(`!!document.querySelector('.present .r-stack')`);
+  assert.deepEqual((await tabs(page)).map((l) => l.replace('*', '')), labels.map((l) => l.replace('*', '')));
+  for (let i = 0; i < labels.length; i++) {
+    await showTab(page, i);
+    const now = await shownBoxes(page);
+    assert.deepEqual(Object.keys(now).sort(), Object.keys(before[i]).sort(), `tab ${i}`);
+    for (const id of Object.keys(now)) now[id].forEach((v, k) => assert.ok(Math.abs(v - before[i][id][k]) <= 1, `${id} in tab ${i}: ${now[id]} against ${before[i][id]}`));
+  }
+  const text = await rendered(page);
+  assert.match(text, /<div class="r-stack"><div>\s*<p class="fragment" data-fragment-index="1" id="lead-1"/);
+  assert.match(text, /<div class="fragment" data-fragment-index="2">\s*<p id="lead-2"/);
+  assert.match(text, /<div class="math fragment" data-fragment-index="5" id="eq-5"/);
+  assert.doesNotMatch(text.split('id="twice"')[0], /current-visible/);
+  await run(page, 'edit.undo');
+  await page.waitFor(`!document.querySelector('.present .r-stack')`);
+  assert.equal(await rendered(page), page.source);
+  assert.deepEqual(page.errors, []);
+});
+
+test('Make Stack refuses an element shown in more than one tab, and one inside a column, and names it', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: MAKE });
+  t.after(() => page.close());
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Twice'`);
+  assert.match(await refusal(page), /the paragraph “Shown until the third step\.”.*more than one tab/);
+  await page.evaluate('Reveal.slide(2)');
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Columns'`);
+  assert.match(await refusal(page), /the paragraph “In a column\.”.*column/);
+  assert.equal(await rendered(page), page.source);
+});

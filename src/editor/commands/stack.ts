@@ -1,7 +1,7 @@
 import type { App } from '../app.ts';
 import type { Translate } from '../tags.ts';
-import { CHILD, STACK, childrenOf, moveTo, shownChild, stacksOf, stepAt, type Plan, type ShownSteps } from '../shown-steps.ts';
-import { indexIn, modelOf, writePlan, type Model } from '../steps.ts';
+import { CHILD, STACK, childrenOf, fragmentIndex, fragmentsOf, moveTo, rangesOf, shownAt, shownChild, stacksOf, stepAt, type Fragment, type Plan, type ShownSteps } from '../shown-steps.ts';
+import { describe, indexIn, modelOf, writePlan, type Model } from '../steps.ts';
 import { movableOf } from '../canvas/hit.ts';
 import { openMenu } from '../ui/menu.ts';
 
@@ -154,12 +154,68 @@ async function setEveryTab(app: App): Promise<void> {
   app.selection.set('elements', [el]);
 }
 
+const STEP_CLASSES = ['current-visible', 'fade-in-then-out', 'fade-out'];
+
+function named(app: App, el: Element): string {
+  const { kind, text } = describe(el, () => null);
+  return `the ${kind.toLowerCase()}${text ? ` \u201c${text.length > 40 ? `${text.slice(0, 40)}\u2026` : text}\u201d` : ''}`;
+}
+
+type Conversion = { slide: Element; parent: Element; ranges: ReturnType<typeof rangesOf>; moved: { f: Fragment; range: number }[] };
+
+function conversionOf(app: App, slide: Element | null): Conversion | string | null {
+  if (!slide || stacksOf(slide).length) return null;
+  const ranges = rangesOf(slide);
+  if (ranges.length < 2) return null;
+  const parents = flowParents(slide);
+  const replaced = fragmentsOf(slide).filter((f) => f.kind === 'only' || f.kind === 'out');
+  const nested = replaced.find((f) => f.el.parentElement?.closest('.col') && slide.contains(f.el.parentElement.closest('.col')));
+  if (nested) return `Make Stack cannot move ${named(app, nested.el)}, since it is inside a column`;
+  const top = replaced.filter((f) => f.el.parentElement && parents.includes(f.el.parentElement));
+  const moved: Conversion['moved'] = [];
+  for (const f of top) {
+    const shown = ranges.flatMap((r, k) => ([...Array(r.to - r.from + 1)].some((_, j) => shownAt(f, r.from + j)) ? [k] : []));
+    if (shown.length > 1) return `Make Stack cannot move ${named(app, f.el)}, since it is shown in more than one tab`;
+    if (shown.length === 1) moved.push({ f, range: shown[0] });
+  }
+  const parent = moved[0]?.f.el.parentElement;
+  if (!parent) return null;
+  if (moved.some(({ f }) => f.el.parentElement !== parent)) return `Make Stack cannot move ${named(app, moved.find(({ f }) => f.el.parentElement !== parent)!.f.el)}, since it is not beside the others`;
+  return { slide, parent, ranges, moved };
+}
+
+async function makeStack(app: App): Promise<void> {
+  const c = conversionOf(app, app.current());
+  if (typeof c === 'string') throw new Error(c);
+  if (!c) return;
+  const { slide, parent, ranges, moved } = c;
+  const all = fragmentsOf(slide);
+  const indexAt = (step: number) => fragmentIndex(all.find((f) => f.step === step && f.el.classList.contains('fragment'))!.el);
+  const flow = [...parent.children].filter((el) => app.pairing?.elements.get(el)?.open && !el.matches('aside.notes, .backdrop'));
+  const keep = keepBoxes(app, [...flow, ...drawnOf(app, slide)]);
+  const tabs = tabsOf(app);
+  const was = tabs.shown(slide).i;
+  const kids = ranges.map((r) => (r.from ? `<div class="fragment" data-fragment-index="${indexAt(r.from)}"></div>` : '<div></div>'));
+  const els = moved.map(({ f }) => f.el);
+  const [stack] = await app.doc.insert(`<div class="${STACK}">${kids.join('')}</div>`, parent, els[0], 'make stack');
+  const children = [...stack.children];
+  for (const { f, range } of moved) {
+    await app.doc.move(f.el, children[range], null, 'make stack');
+    const classes = Object.fromEntries(STEP_CLASSES.filter((k) => f.el.classList.contains(k)).map((k) => [k, false]));
+    const first = f.kind === 'out' || f.step === ranges[range].from;
+    app.doc.setTag(f.el, first ? { fragment: false, index: null, classes } : { classes }, 'make stack');
+  }
+  keep();
+  tabs.show(slide, { child: children[Math.min(was, children.length - 1)], i: was });
+}
+
 export function install(app: App): void {
   const tabs = tabsOf(app);
   const fail = (e: unknown) => app.fail(e);
   tabs.act = (what, rect, child) => {
     if (what === 'add') void app.commands.run('stack.addTab').catch(fail);
     else if (what === 'delete' && child) void app.commands.run('stack.deleteTab', { el: child }).catch(fail);
+    else if (what === 'make') void app.commands.run('stack.make').catch(fail);
     else if (what === 'menu' && child) openMenu(app, [{ command: 'stack.deleteTab', arg: { el: child } }], { anchor: rect, placement: 'below' });
   };
   const given = (arg: unknown): Element | null => {
@@ -190,6 +246,14 @@ export function install(app: App): void {
       enabled: (a: App) => wrappable(a).length > 0,
       why: () => 'Select the elements of the first version, side by side in the flow of the slide',
       run: (a: App) => insertStack(a),
+    },
+    {
+      id: 'stack.make',
+      label: 'Make Stack',
+      menu: { bar: 'Slide', group: 'stack', order: 57 },
+      undoable: true,
+      enabled: (a: App) => !!conversionOf(a, a.current()),
+      run: (a: App) => makeStack(a),
     },
     {
       id: 'arrange.everyTab',
