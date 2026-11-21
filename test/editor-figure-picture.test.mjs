@@ -1,6 +1,3 @@
-// a picture with its caption as one object: the first click selects the figure, a second click the
-// picture, and the caption moves with the picture
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -11,21 +8,10 @@ import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { tokenize } from '../src/editor/tokens.ts';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectPicture, type } from './helpers/editor.mjs';
 
-// regression tests of R8.1 on both platforms, in both modes, on a figure with an image of each mode
-// and on a figure with one image, with trusted input. a picture with its caption is one object, as
-// in Keynote. the first click on the picture selects the figure with one frame, a click on the
-// caption puts the caret in it, a second click on the picture selects the picture alone, and Esc
-// then selects the figure again. the moves, the resizes, the order, the groups, the locks, and the
-// clipboard act on the figure from the figure and from its picture, and write the same text. the
-// rotation, the flips, the mask, Replace, and the Image pane act on the picture alone, and on both
-// images of a pair where an image of each mode shares the place. after each command the text is
-// checked, then byte for byte after an undo, the edit again after a redo, and in the scope rule,
-// and each test ends with a save and an open of the saved text
 describe('the first click selects the figure', () => {
   const PLATFORMS = ['mac', 'other'];
   const MODES = ['dark', 'light'];
   const DECK = 'test/pages/editor-figure.html';
-  // the slide of the figure with an image of each mode, and of the figure with one image
   const FIGURES = [{ n: 0, name: 'a pair' }, { n: 1, name: 'one image' }];
   const IMG = '.reveal section.present figure.figure-box > img';
   const CAPTION = '.reveal section.present figure.figure-box > figcaption';
@@ -53,20 +39,14 @@ describe('the first click selects the figure', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = 1.5) => Math.abs(a - b) <= by;
   let saves = 0;
 
-  // the selected elements, each named by its tag and its classes of the deck, apart from those that
-  // the Image pane writes
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...el.classList].filter((c) => !c.startsWith('beeson-') && !['visible', 'current-fragment', 'white-figure', 'invert'].includes(c)).join('.'))`);
   const rectOf = (page, selector) => page.evaluate(`(() => {
   const r = [...document.querySelectorAll(${js(selector)})].map((e) => e.getBoundingClientRect()).find((r) => r.width);
   return r ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom, x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
 })()`);
-  // the picture of the shown image, i.e. the image fitted into its box with object-fit contain, the
-  // place of the caption from its lower left corner and from the lower left corner of the box of the
-  // image (bx, by), in screen px, and the scale k of the slide
   const pictureOf = (page) => page.evaluate(`(() => {
   const img = [...document.querySelectorAll(${js(IMG)})].find((e) => e.getBoundingClientRect().width);
   const r = img.getBoundingClientRect();
@@ -77,9 +57,7 @@ describe('the first click selects the figure', () => {
   const s = document.querySelector('.reveal .slides');
   return { left, top, right: left + w, bottom: top + h, x: left + w / 2, y: top + h / 2, dx: c.left - left, dy: c.top - top - h, bx: c.left - r.left, by: c.top - r.bottom, k: s.getBoundingClientRect().width / s.offsetWidth };
 })()`);
-  // the caption of a picture with a width under it, at the gap of 16 slide px of the theme
   const underPicture = (now) => near(now.dx, 0) && near(now.dy, 16 * now.k);
-  // the caption of a picture whose box keeps its letterbox under the box, at the same gap
   const underBox = (now) => near(now.bx, 0) && near(now.by, 16 * now.k);
   const shownFrames = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-frame.selected, .beeson-frame.union')].filter((f) => !f.hidden && f.getBoundingClientRect().width).map((f) => { const r = f.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })`);
   const shownGrips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-grip')].filter((g) => !g.hidden && g.getBoundingClientRect().width).length`);
@@ -90,8 +68,6 @@ describe('the first click selects the figure', () => {
   };
   const gripAt = (page, handle) => rectOf(page, `.beeson-grip[data-handle="${handle}"]:not([hidden])`);
 
-  // the start tags of a text, each named by its tag and the count of the tags of its name before it,
-  // e.g. figure#1 for the figure of the second slide
   function startTags(html) {
     const seen = {};
     return tokenize(html).filter((t) => t.type === 'start').map((t) => {
@@ -100,8 +76,6 @@ describe('the first click selects the figure', () => {
     });
   }
 
-  // the start tags that differ from before to after, by their names, asserting that nothing else of
-  // the text differs
   function changedTags(before, after) {
     const a = startTags(before), b = startTags(after);
     assert.equal(b.length, a.length, 'the edit adds or removes an element');
@@ -117,20 +91,17 @@ describe('the first click selects the figure', () => {
     return out;
   }
 
-  // the text of slide n
   function slideOf(text, n) {
     const at = [...text.matchAll(/<section>/g)][n].index;
     return text.slice(at, text.indexOf('</section>', at));
   }
 
-  // the elements of slide n of a text in their order, by the words that name them
   function orderOf(text, n) {
     const slide = slideOf(text, n);
     const marks = { h2: '<h2>', under: 'drawn under the figure', figure: '<figure', over: 'drawn over the figure' };
     return Object.keys(marks).sort((x, y) => slide.indexOf(marks[x]) - slide.indexOf(marks[y]));
   }
 
-  // the text of the figure of slide n, with the white space before it
   function figureText(text, n) {
     const at = text.indexOf('<figure', [...text.matchAll(/<section>/g)][n].index);
     const end = text.indexOf('</figure>', at) + '</figure>'.length;
@@ -139,16 +110,11 @@ describe('the first click selects the figure', () => {
     return { start, at, end };
   }
 
-  // the parts of the figure of slide n of the test page: its tag, the tags of its images with the
-  // shown one first, the tag of its caption, the tags of the paragraphs under it and over it, and the
-  // name of its shown picture in the selection
   function partsOf(mode, n) {
     const imgs = n === 0 ? (mode === 'dark' ? ['img#0', 'img#1'] : ['img#1', 'img#0']) : ['img#2'];
     return { fig: `figure#${n}`, imgs, cap: `figcaption#${n}`, over: `p#${2 * n + 1}`, pic: n === 0 ? `img.for-${mode}` : 'img' };
   }
 
-  // the editor on slide n of the test page in a mode, in a window of 1600 by 1000 px, with the Format
-  // tab shown
   async function load(t, platform, mode, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -169,15 +135,12 @@ describe('the first click selects the figure', () => {
     return page;
   }
 
-  // nothing selected, with the focus off the chrome
   async function deselect(page) {
     await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
     for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
     assert.deepEqual(await selected(page), []);
   }
 
-  // the figure selected by clicks on its picture, or its picture by one click more. a figure in a
-  // group takes two clicks, the first of which selects the group
   async function pick(page, from, first = 1) {
     await deselect(page);
     for (let i = 0; i < first + (from === 'picture' ? 1 : 0); i++) {
@@ -187,7 +150,6 @@ describe('the first click selects the figure', () => {
     assert.deepEqual(await selected(page), [from === 'figure' ? 'figure.figure-box' : page.parts.pic], `the ${from} is not selected by its clicks`);
   }
 
-  // the text after an edit is in the scope rule wherever the text before it is
   function inScope(edited, source) {
     const now = textProblems(edited, THEME);
     for (const p of textProblems(source, THEME)) {
@@ -197,8 +159,6 @@ describe('the first click selects the figure', () => {
     assert.deepEqual(now, [], 'the edit writes outside the scope rule');
   }
 
-  // the edit, the file byte for byte after an undo, the edit again after a redo, and the file again
-  // after a second undo, from which the next command starts
   async function roundTrip(page, edited) {
     assert.notEqual(edited, page.source, 'the command does not change the file');
     inScope(edited, page.source);
@@ -213,8 +173,6 @@ describe('the first click selects the figure', () => {
     await byteExact(page);
   }
 
-  // act run from each of froms, the figure and its picture by default, which must write the same
-  // text up to same, accepted by expect. an act that returns false changes the selection on purpose
   async function check(page, what, act, expect, { froms = ['figure', 'picture'], first = 1, same = (text) => text } = {}) {
     let text = null;
     for (const from of froms) {
@@ -233,20 +191,16 @@ describe('the first click selects the figure', () => {
     return text;
   }
 
-  // a save of the text after a redo of the last edit, and an open of the saved text, which is then
-  // the text that the next command starts from
   async function saved(page, edited, media = null) {
     await redo(page);
     assert.equal(await render(page), edited);
     const { text } = media ? await savedInto(page, media) : await saveAndReopen(page, `r8-1-${++saves}.html`);
     assert.equal(text, edited);
     inScope(text, SOURCE);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
   }
 
-  // a save of a deck with new media files into a folder of the private file system, which is given
-  // as the folder of the deck, and an open of the saved text. the names in media/ are asserted
   async function savedInto(page, media) {
     const { text, names } = await page.evaluate(`(async () => {
     const root = await navigator.storage.getDirectory();
@@ -266,7 +220,6 @@ describe('the first click selects the figure', () => {
     return { text };
   }
 
-  // a value typed into a number field of the Arrange pane, committed with Enter
   async function typeField(page, id, value) {
     await showTab(page, 'Arrange');
     const input = `#beeson-edit-num-${id}`;
@@ -281,13 +234,11 @@ describe('the first click selects the figure', () => {
     return Number(await page.evaluate(`document.querySelector('#beeson-edit-num-${id}')?.value`));
   }
 
-  // a trusted drag of the file at path from the Finder, dropped at the point at
   async function dropFile(page, at, path) {
     const data = { items: [], files: [path], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await page.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
   }
 
-  // the keys of the commands, and the modifier that turns the snapping of a resize off
   const KEYS = {
     mac: { front: 'Mod+Shift+F', forward: 'Mod+Alt+Shift+F', backward: 'Mod+Alt+Shift+B', back: 'Mod+Shift+B', group: 'Mod+Alt+G', ungroup: 'Mod+Alt+Shift+G', lock: 'Mod+L', unlock: 'Mod+Alt+L', remove: 'Backspace', duplicate: 'Mod+D', free: 'Meta' },
     other: { front: 'Mod+Shift+ArrowUp', forward: 'Mod+ArrowUp', backward: 'Mod+ArrowDown', back: 'Mod+Shift+ArrowDown', group: 'Mod+G', ungroup: 'Mod+Shift+G', lock: 'Mod+L', unlock: 'Mod+Shift+L', remove: 'Delete', duplicate: 'Mod+D', free: 'Alt' },
@@ -300,7 +251,6 @@ describe('the first click selects the figure', () => {
     const { platform, mode, n } = combo;
     const keys = KEYS[platform];
 
-    // the first click selected the picture without its caption, which a drag then tore off it
     test(`the first click on the picture selects the figure with one frame, a second click the picture, and Esc the figure (${named(combo)})`, async (t) => {
       const page = await load(t, platform, mode, n);
       await clickText(page, IMG);
@@ -313,7 +263,6 @@ describe('the first click selects the figure', () => {
       const holds = (f, b) => f.left <= b.left + 1 && f.top <= b.top + 1 && f.right >= b.right - 1 && f.bottom >= b.bottom - 1;
       assert.ok(holds(shown[0], pic) && holds(shown[0], cap), `the frame ${js(shown[0])} does not hold the picture ${js(pic)} and the caption ${js(cap)}`);
       assert.equal(await shownGrips(page), 8, 'the figure is not drawn with one set of grips');
-      // the Image pane with its tabs, as the Format sidebar of an image with a caption in Keynote
       const figureTabs = await tabs(page);
       assert.ok(figureTabs.includes('Image') && figureTabs.includes('Arrange'), `the tabs of the figure are ${js(figureTabs)}`);
       await clickText(page, IMG);
@@ -325,8 +274,6 @@ describe('the first click selects the figure', () => {
       assert.deepEqual(await selected(page), ['figure.figure-box'], 'Esc on the picture does not select its figure');
       await press(page, 'Escape');
       assert.deepEqual(await selected(page), []);
-      // a click on the caption puts the caret in it, also with the picture selected, and Esc then
-      // selects the figure
       await clickText(page, CAPTION);
       await frames(page);
       assert.equal(await page.evaluate(`!!document.activeElement?.matches('figcaption')`), true, 'a click on the caption does not put the caret in it');
@@ -338,7 +285,7 @@ describe('the first click selects the figure', () => {
       await frames(page);
       assert.equal(await page.evaluate(`!!document.activeElement?.matches('figcaption')`), true, 'a click on the caption of a selected picture does not put the caret in it');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag, the arrow keys, and the X and Y fields move the figure from the figure and from its picture (${named(combo)})`, async (t) => {
@@ -349,7 +296,6 @@ describe('the first click selects the figure', () => {
         assert.deepEqual(Object.keys(c), [fig], `the move changes ${js(c)}`);
         assert.match(c[fig], re);
       };
-      // the caption stays under the picture while the figure is dragged
       await check(page, 'a drag', async () => {
         const rest = await pictureOf(page);
         await drag(page, rest, { dx: -70, dy: 40 });
@@ -375,9 +321,6 @@ describe('the first click selects the figure', () => {
         assert.ok(widths.every((w) => w && w === widths[0]), `the images are given the widths ${js(widths)}`);
         if (width) assert.equal(Number(widths[0]), width);
       };
-      // the corner across from the grip is kept, and the caption is under the picture. the frame of
-      // the figure holds the caption, hence the same drag gives a picture of another width from the
-      // figure than from the picture
       await check(page, 'a drag of a grip', async () => {
         const rest = await pictureOf(page);
         await drag(page, await gripAt(page, 'se'), { dx: -90, dy: -90, modifiers: keys.free });
@@ -387,7 +330,6 @@ describe('the first click selects the figure', () => {
         assert.ok(near(now.left, rest.left) && near(now.top, rest.top), `the corner across from the grip moves from ${js(rest)} to ${js(now)}`);
         assert.ok(underPicture(now), `the caption is at ${js([now.dx, now.dy])} from the picture, not under it`);
       }, sized(), { same: (text) => text.replace(/width: \d+px/g, 'width: Npx') });
-      // H of the figure gives its picture with its caption, and H of the picture the picture alone
       const tall = {};
       const typed = await check(page, 'a typed W', async (from) => {
         await typeField(page, 'width', 300);
@@ -396,7 +338,6 @@ describe('the first click selects the figure', () => {
       }, sized(300));
       assert.equal(tall.picture, 360);
       assert.ok(tall.figure > 360, `H of the figure is ${tall.figure}, without its caption`);
-      // the picture of 1200 by 1440 px is 300 px wide at a height of 360 px
       const last = await check(page, 'a typed H', (from) => typeField(page, 'height', tall[from]), (edited) => assert.equal(edited, typed, 'a typed H does not write the width at the aspect of the picture'));
       await saved(page, last);
     });
@@ -404,8 +345,6 @@ describe('the first click selects the figure', () => {
     test(`the four order commands move the figure from the figure and from its picture (${named(combo)})`, async (t) => {
       const page = await load(t, platform, mode, n);
       assert.deepEqual(orderOf(page.source, n), ['h2', 'under', 'figure', 'over']);
-      // each paragraph is a layer of its own, and Send to Back also passes the heading in the flow, by a
-      // z-index under 0 in place of a move in the file
       const up = ['h2', 'under', 'over', 'figure'], down = ['h2', 'figure', 'under', 'over'], file = orderOf(page.source, n);
       let last = null;
       for (const [order, want] of [['front', up], ['forward', up], ['backward', down], ['back', file]]) {
@@ -420,7 +359,6 @@ describe('the first click selects the figure', () => {
     test(`Group, Ungroup, Lock, and Unlock act on the figure from the figure and from its picture (${named(combo)})`, async (t) => {
       const page = await load(t, platform, mode, n);
       const { fig, over } = page.parts;
-      // a lock from the picture keeps the picture selected, and Unlock then takes it off the figure
       for (const from of ['figure', 'picture']) {
         await pick(page, from);
         const was = await selected(page);
@@ -457,7 +395,6 @@ describe('the first click selects the figure', () => {
         return false;
       }, (edited) => assert.deepEqual(changedTags(page.source, edited), { [fig]: '<figure class="figure-box" data-group="g1">', [over]: '<p style="translate: 0px 80px" data-group="g1">' }));
       await saved(page, grouped);
-      // a figure in a group is selected by itself at the second click, and its picture at the third
       const last = await check(page, 'Ungroup', async () => {
         await press(page, keys.ungroup);
         await frames(page);
@@ -481,7 +418,6 @@ describe('the first click selects the figure', () => {
         assert.deepEqual(await selected(page), []);
         return false;
       }, (edited) => assert.equal(edited, without, 'Cut does not remove the figure with its images and caption'));
-      // a copy that would cover its figure is put 20 px right and down of it
       const copied = (edited) => {
         const slide = slideOf(edited, n);
         const copies = slide.match(/<figure[^>]*>[\s\S]*?<\/figure>/g) ?? [];
@@ -508,14 +444,11 @@ describe('the first click selects the figure', () => {
       await saved(page, last);
     });
 
-    // Duplicate and Copy of the picture of a pair, selected by itself, copied only the image shown,
-    // without its image of the other mode
     if (n === 0) test(`Duplicate and Copy and Paste of the picture of a pair, selected by itself, copy both images of the pair (${named(combo)})`, async (t) => {
       const page = await load(t, platform, mode, n);
       const count = (text) => ['for-dark', 'for-light'].map((m) => slideOf(text, n).split(`<img class="${m}"`).length - 1);
       for (const act of ['Duplicate', 'Copy and Paste']) {
         await deselect(page);
-        // the picture alone, by a second click on it
         for (let i = 0; i < 2; i++) {
           await clickText(page, IMG);
           await frames(page);
@@ -533,8 +466,6 @@ describe('the first click selects the figure', () => {
       }
     });
 
-    // Replace with a file of the other kind put an element with the mode of the picture alone in its
-    // place, without the group and the lock of the picture
     test(`Replace with a video keeps the group and the lock of the picture (${named(combo)})`, async (t) => {
       const marked = (attrs, over) => {
         const at = [...SOURCE.matchAll(/<section>/g)][n].index;
@@ -542,7 +473,6 @@ describe('the first click selects the figure', () => {
         const slide = SOURCE.slice(at, end).replace(/(<img [^>]*)>/g, `$1${attrs}>`).replace('<p style="translate: 0px 80px">', `<p style="translate: 0px 80px"${over}>`);
         return SOURCE.slice(0, at) + slide + SOURCE.slice(end);
       };
-      // the video put in the place of the shown image of the text, which keeps its mode, group, and lock
       const replacedIn = (text, attrs) => {
         const tags = slideOf(text, n).match(/<img [^>]*>/g);
         const shown = tags.find((tag) => n === 1 || tag.includes(`for-${mode}`));
@@ -558,7 +488,6 @@ describe('the first click selects the figure', () => {
         await frames(page);
         return page;
       };
-      // a group, through Replace of the Image pane given a video file
       let page = await opened(marked(' data-group="g1"', ' data-group="g1"'));
       await pick(page, 'figure');
       await page.evaluate(`(async () => {
@@ -570,8 +499,6 @@ describe('the first click selects the figure', () => {
       assert.equal(edited, replacedIn(page.source, ' data-group="g1"'), 'the video of Replace does not keep the group of the image');
       await roundTrip(page, edited);
       await saved(page, edited, ['clip-dark.mp4', 'clip-dark.png']);
-      // a group and a lock, through a drop of a video file onto the picture, which the lock does not
-      // turn off
       page = await opened(marked(' data-group="g1" data-locked', ' data-group="g1"'));
       await dropFile(page, await pictureOf(page), resolve('demo/clip-dark.mp4'));
       await page.waitFor(`window.BeesonEditor.render().includes('media/clip-dark.mp4')`);
@@ -585,7 +512,6 @@ describe('the first click selects the figure', () => {
     test(`the rotation, the flips, Edit Mask, Replace, and the Image pane act on the picture alone, and on both images of a pair (${named(combo)})`, async (t) => {
       const page = await load(t, platform, mode, n);
       const { imgs } = page.parts;
-      // each image of the figure is given the same declarations, and nothing else is changed
       const styled = (re) => (edited) => {
         const c = changedTags(page.source, edited);
         assert.deepEqual(Object.keys(c).sort(), [...imgs].sort(), `the edit changes ${js(c)}`);
@@ -613,7 +539,6 @@ describe('the first click selects the figure', () => {
         await frames(page);
         assert.equal(await page.evaluate(`!!document.querySelector('${BAR}[open]')`), false, 'Enter does not close Edit Mask');
       }, styled(/clip-path: inset\(/), picture);
-      // Replace, White Figure, and the alt text are written on the shown image alone, whose file they name
       const shownOnly = (re) => (edited) => {
         const c = changedTags(page.source, edited);
         assert.deepEqual(Object.keys(c), [imgs[0]], `the edit changes ${js(c)}`);
@@ -623,7 +548,6 @@ describe('the first click selects the figure', () => {
       const bytes = await (await fetch('/demo/figure-dark.png')).arrayBuffer();
       await window.BeesonEditor.exec('media.replace', { files: [new File([bytes], 'replaced.png', { type: 'image/png' })] });
     })()`), shownOnly(/ src="media\/replaced[^"]*\.png"/), {
-        // the second file of the same name is written under a name of its own, e.g. replaced-2.png
         same: (text) => text.replace(/media\/replaced(-\d+)?\.png/g, 'media/replaced.png'),
       });
       await check(page, 'White Figure', async () => {
@@ -636,18 +560,9 @@ describe('the first click selects the figure', () => {
   }
 });
 
-// regression tests of R7.9 on both platforms with trusted input, for the places where round 3 of
-// the council was worse than round 2. the caption of a figure is moved with its image and kept
-// under it at a move or a resize of the image alone, and not at a rotation of the image. the four
-// order commands act on the figure of a selected image. Esc on a selected image selects its
-// figure, also with the focus on a button of the inspector, and the inspector then shows the pane
-// of the figure. the formula sheets are kept beside their target inside the canvas, and a table
-// is not rotated. after each edit the text is checked byte for byte, after an undo and a redo, and
-// after a save and an open
 describe('the caption moved with its image', () => {
   const PLATFORMS = ['mac', 'other'];
   const TABLES = 'test/pages/editor-tables.html';
-  // the slides of the demo deck with the display formula and with the figure and its caption
   const EQUATIONS = 3;
   const FIGURE = 4;
   const IMG = '.reveal section.present figure.figure-box > img';
@@ -670,20 +585,16 @@ describe('the caption moved with its image', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   const inside = (a, b) => a.left >= b.left && a.top >= b.top && a.right <= b.right && a.bottom <= b.bottom;
   let saves = 0;
 
-  // the selected elements, each named by its tag and its classes of the deck
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...el.classList].filter((c) => !c.startsWith('beeson-') && c !== 'visible' && c !== 'current-fragment').join('.'))`);
-  // the center of the first shown element of a selector, in CSS px of the window
   const centerOf = (page, selector) => page.evaluate(`(() => {
   const r = [...document.querySelectorAll(${js(selector)})].map((e) => e.getBoundingClientRect()).find((r) => r.width);
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
-  // the box of the first element of a selector, with its right and bottom edges
   const rectOf = (page, selector) => page.evaluate(`(() => {
   const b = [...document.querySelectorAll(${js(selector)})].map((e) => e.getBoundingClientRect()).filter((r) => r.width).pop();
   return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
@@ -696,8 +607,6 @@ describe('the caption moved with its image', () => {
     await frames(page);
   };
 
-  // the editor on the slide n of a deck served over HTTP, in a window of 1600 by 1000 px as in the
-  // shoot of the council, with the Format tab shown
   async function load(t, platform, { deck = 'test-deck.html', n = FIGURE } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -716,8 +625,6 @@ describe('the caption moved with its image', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -727,13 +634,11 @@ describe('the caption moved with its image', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r7-9-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
 
-  // the place of the caption from the lower left corner of the picture of the shown image, i.e. the
-  // image fitted into its box with object-fit contain, in screen px
   const captionFromPicture = (page) => page.evaluate(`(() => {
   const img = [...document.querySelectorAll(${js(IMG)})].find((e) => e.getBoundingClientRect().width);
   const r = img.getBoundingClientRect();
@@ -754,15 +659,11 @@ describe('the caption moved with its image', () => {
     assert.ok(ok, `${what}: the caption is at ${js([now.dx, now.dy])} from the lower left corner of the image, and not at ${js([before.dx, before.dy])} as before`);
   }
 
-  // the caption under the picture of an image with a width, at the gap of 16 slide px that the theme
-  // puts between the picture and the caption of a figure box, which is the size of such a picture
   function underPicture(now, what) {
     const ok = Math.abs(now.dx) <= 1.5 && Math.abs(now.dy - 16 * now.k) <= 1.5;
     assert.ok(ok, `${what}: the caption is at ${js([now.dx, now.dy])} from the lower left corner of the image, and not under it at the gap of the theme`);
   }
 
-  // the caption under the box of an image whose picture object-fit contain draws inside it, e.g.
-  // an image of a figure box typed to a width, at the gap of 16 slide px of the theme
   function underBox(now, what) {
     const ok = Math.abs(now.box.dx) <= 1.5 && Math.abs(now.box.dy - 16 * now.k) <= 1.5;
     assert.ok(ok, `${what}: the caption is at ${js([now.box.dx, now.box.dy])} from the lower left corner of the image box, and not under it at the gap of the theme`);
@@ -773,7 +674,6 @@ describe('the caption moved with its image', () => {
   const r = g.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
-  // the image selected again after an open of the saved text, which clears the selection
   async function reselect(page) {
     await page.evaluate(`Reveal.slide(${FIGURE})`);
     await frames(page);
@@ -792,7 +692,6 @@ describe('the caption moved with its image', () => {
   const menuItems = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => ({ label: i.querySelector('.label')?.textContent ?? '', dimmed: i.getAttribute('aria-disabled') === 'true' }))`);
 
-  // the caption of a figure, kept under its image
   for (const platform of PLATFORMS) {
     test(`a drag of the image of a figure moves its caption with it (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -830,7 +729,6 @@ describe('the caption moved with its image', () => {
       const page = await load(t, platform);
       await selectPicture(page, IMG);
       const rest = await captionFromPicture(page);
-      // three nudges in a row are one entry of the history
       for (let i = 0; i < 3; i++) await press(page, 'Shift+ArrowLeft');
       await frames(page);
       const nudged = await captionFromPicture(page);
@@ -857,8 +755,6 @@ describe('the caption moved with its image', () => {
       await roundTrip(page);
       await reselect(page);
 
-      // a turn of the image alone leaves its caption where it is, and the start tag of the caption
-      // as it was
       const before = await captionFromPicture(page);
       const text = await render(page);
       await exec(page, 'arrange.setRotation', { deg: 30 });
@@ -872,13 +768,11 @@ describe('the caption moved with its image', () => {
 
   }
 
-  // the order of the figure of a selected image
   for (const platform of PLATFORMS) {
     test(`the order commands act on the figure of a selected image (${platform})`, async (t) => {
       const page = await load(t, platform);
       const orders = ['front', 'forward', 'backward', 'back'];
       const states = async () => Object.fromEntries(await Promise.all(orders.map(async (o) => [o, (await state(page, `arrange.order.${o}`)).enabled])));
-      // the states with the figure selected, which the states with its image must match
       await selectPicture(page, IMG);
       await exec(page, 'selection.container');
       assert.deepEqual(await selected(page), ['figure.figure-box']);
@@ -902,8 +796,6 @@ describe('the caption moved with its image', () => {
       for (const label of ['Send Backward', 'Send to Back']) assert.equal(items.find((i) => i.label === label)?.dimmed, false, `${label} is dimmed in the Arrange menu: ${js(items)}`);
       await press(page, 'Escape');
       await frames(page);
-      // Send to Back of the pane moves the figure as with the figure selected, and keeps the image
-      // selected
       await click(page, `${PANEL} button[data-command="arrange.order.back"]`);
       await frames(page);
       assert.equal(await render(page), byFigure, 'Send to Back of the image does not move its figure');
@@ -913,11 +805,9 @@ describe('the caption moved with its image', () => {
 
   }
 
-  // Esc on a selected image, and the pane of its figure
   for (const platform of PLATFORMS) {
     test(`Esc on a selected image selects its figure, with the pane of the figure, after a click on the inspector (${platform})`, async (t) => {
       const page = await load(t, platform);
-      // the focus on the tab Format of the inspector, as the photographer of the council left it
       const format = await page.evaluate(`(() => {
       const b = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Format' && b.getBoundingClientRect().left > innerWidth * 0.75 && b.getBoundingClientRect().top > 80);
       const r = b.getBoundingClientRect();
@@ -933,7 +823,6 @@ describe('the caption moved with its image', () => {
       await frames(page);
       assert.deepEqual(await selected(page), ['figure.figure-box'], 'Esc on the selected image does not select its figure');
       assert.ok((await tabs(page)).includes('Image'), `the inspector does not offer the Image pane for the figure: ${js(await tabs(page))}`);
-      // Select Figure shows the same pane, and Esc on the selected figure clears the selection
       await click(page, '.reveal section.present h2');
       await press(page, 'Escape');
       await selectPicture(page, IMG);
@@ -945,12 +834,11 @@ describe('the caption moved with its image', () => {
       await frames(page);
       assert.deepEqual(await selected(page), []);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
   }
 
-  // the formula sheets, kept inside the canvas
   for (const platform of PLATFORMS) {
     test(`the sheet of a new formula is kept beside it inside the canvas, off the figure and its caption (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -990,19 +878,16 @@ describe('the caption moved with its image', () => {
 
   }
 
-  // a table, which is not rotated
   for (const platform of PLATFORMS) {
     test(`a table is drawn without a rotate handle, and no rotation acts on it (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: TABLES, n: 1 });
       const rotor = () => page.evaluate(`(() => { const r = document.querySelector('.beeson-rotor'); return !!r && !r.hidden && getComputedStyle(r).display !== 'none'; })()`);
       const cell = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
-      // a range of cells selected by a drag, as in the state of the council
       const a = await centerOf(page, cell(1, 0));
       const b = await centerOf(page, cell(2, 1));
       await drag(page, a, { dx: b.x - a.x, dy: b.y - a.y });
       await frames(page);
       assert.equal(await rotor(), false, 'a rotate handle is drawn on a range of cells');
-      // the table selected as an element
       await click(page, cell(0, 0));
       await press(page, 'Escape');
       await frames(page);
@@ -1016,12 +901,10 @@ describe('the caption moved with its image', () => {
       await showTab(page, 'Arrange');
       const angle = await page.evaluate(`[...document.querySelectorAll('${PANEL} input')].some((i) => i.closest('label, .ed-field, .ed-row')?.textContent?.includes('Angle') && !i.disabled)`);
       assert.equal(angle, false, 'the Angle field of the Arrange pane is live for a table');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the resize grips, square on a Mac as in PowerPoint and Keynote for the Mac, and round elsewhere
-  // as in PowerPoint for Windows
   for (const platform of PLATFORMS) {
     test(`the resize grips are ${platform === 'mac' ? 'square' : 'round'}, and the rotate handle is round (${platform})`, async (t) => {
       const page = await load(t, platform, { n: FIGURE });
@@ -1037,7 +920,7 @@ describe('the caption moved with its image', () => {
       assert.deepEqual(looks.radii, [platform === 'mac' ? '0px' : '50%'], `the grips have the corners ${js(looks.radii)}`);
       assert.deepEqual(looks.sizes, ['11x11'], `the grips have the sizes ${js(looks.sizes)}`);
       assert.equal(looks.rotor, '50%', 'the rotate handle is not round');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

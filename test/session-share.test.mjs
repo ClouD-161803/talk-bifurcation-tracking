@@ -1,9 +1,3 @@
-// the avatars and the Share dialog of a session in Chrome, on the edit command started on a
-// temporary talk folder: the avatars of two and of six people, one person with two pages, the
-// initials, Change Name seen on the other page, a taken name, the Share dialog of a host against a
-// relay started here, a guest who joins through the link, edits, and leaves, End session, and the
-// title bar and the dialogs on a phone of 390 px
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -17,19 +11,15 @@ import { post, raw, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
 
 const SECRET = 'the secret of the group for this test';
-// the label of an avatar without the slide and the activity of the person, e.g. Ben Carter of
-// Ben Carter, on slide 1, typing
 const bare = (label) => label?.replace(/, on slide .*$/, '') ?? null;
 const SHARE = 'dialog.beeson-session-share-dialog';
 
-// the avatars of a page once it shows count of them
 async function shown(page, count, timeout) {
   await front(page);
   await page.waitFor(`[...document.querySelectorAll('.beeson-session-people > button')].filter((b) => b.getClientRects().length).length === ${count}`, timeout);
   return avatars(page);
 }
 
-// a second page of the person who holds name, which answers Yes to the question of the join
 async function samePerson(browser, url, name) {
   const page = await open(browser, url, { name, wait: false });
   await page.waitFor(`!!${dialogButton('beeson-edit-dialog', 'Yes, continue')}`);
@@ -53,7 +43,6 @@ test('the avatars of two and of six people, one person with two pages, and the i
     { text: 'AS', label: 'Ann Smith', me: false },
     { text: 'BC', label: 'Ben Carter, you', me: true },
   ]);
-  // the tone of the person, with dark text on --data-2 and --data-3
   const tones = await ann.evaluate(`[...document.querySelectorAll('.beeson-session-people > button')].map((b) => [b.style.getPropertyValue('--tone'), getComputedStyle(b).color])`);
   assert.deepEqual(tones, [['var(--data-3)', 'rgb(29, 29, 31)'], ['var(--data-2)', 'rgb(29, 29, 31)']]);
 
@@ -67,9 +56,6 @@ test('the avatars of two and of six people, one person with two pages, and the i
   });
 
   await t.test('six people: four others, +1 with the rest, and a digit for the same initials in the same tone', async () => {
-    // the tones go round in the order of joining, hence Ana Silva has the tone of Ann Smith. the
-    // pages are opened in a second Chrome, since one holds six connections to a host, and each
-    // page holds one with its poll
     const other = await launch({ offline: false });
     t.after(() => other.close());
     const more = [];
@@ -83,14 +69,11 @@ test('the avatars of two and of six people, one person with two pages, and the i
     await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await menu(ann), ['Fay Gold']);
     await key(ann, 'Escape');
-    // the menu of another person opens on a right-click and holds the full name, since a click follows
     await front(ann);
     await click(ann, `.beeson-session-people button[title="Cleo Diaz"]`, { button: 'right' });
     await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual((await menu(ann)).slice(0, 2), ['Cleo Diaz', 'Follow']);
     await key(ann, 'Escape');
-    // Shift+F10 and Down with the focus on an avatar open its menu, also with an element selected,
-    // whose menu Shift+F10 opens on the canvas
     await show(ann, 'One');
     await caretAtEnd(ann, `document.querySelector('.reveal .slides > section p')`);
     await key(ann, 'Escape');
@@ -103,7 +86,6 @@ test('the avatars of two and of six people, one person with two pages, and the i
       await key(ann, 'Escape');
       await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement?.title === 'Cleo Diaz'`);
     }
-    // a person who leaves is announced, and the avatars move up
     const before = await ann.evaluate(`document.querySelector('.beeson-session-live').textContent`);
     await more[1].close();
     await until(async () => (await avatars(ann)).length === 5, 'Dan Evans to leave');
@@ -156,7 +138,7 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
     await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename')`);
   });
 
-  await t.test('Yes takes the person over after a reload, with one avatar for the two pages', async () => {
+  await t.test('Yes takes the person over at the next load, with one avatar for the two pages', async () => {
     await rename('ben carter');
     await ann.waitFor(`!!${dialogButton('beeson-edit-dialog', 'Yes, continue')}`);
     await press(ann, dialogButton('beeson-edit-dialog', 'Yes, continue')).catch((e) => {
@@ -175,7 +157,6 @@ test('the own avatar shows the initials of a new name before the people of the s
   const server = await talk(t);
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
   await shown(ann, 1);
-  // the answers of the polls of Ann are held back, so that the people of the session are not heard
   await ann.evaluate(`(() => {
     const fetched = window.fetch;
     window.__held = new Promise((go) => (window.__go = go));
@@ -189,7 +170,6 @@ test('the own avatar shows the initials of a new name before the people of the s
     };
     return true;
   })()`);
-  // the poll that was held before is answered at the next news, here a second person who joins
   await post(server.edit.port, `${server.edit.base}.session/hello`, { name: 'Cy' });
   await ann.waitFor('window.__polls > 0');
   await press(ann, '.beeson-session-people .me');
@@ -210,7 +190,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll without news is answered after 1 s, before the relay of this test gives up after 10 s
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const host = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
 
@@ -264,7 +243,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
     const got = Array.from({ length: n + 8 }, () => Array(n + 8).fill(false));
     for (const [, x, y, w] of drawn.d.matchAll(/M(\d+) (\d+)h(\d+)v1h-\d+z/g)) for (let i = 0; i < Number(w); i++) got[Number(y)][Number(x) + i] = true;
     assert.equal(drawn.d.replace(/M(\d+) (\d+)h(\d+)v1h-\d+z/g, ''), '');
-    // the quiet zone is light, and the modules inside it are the code of the link
     assert.ok(got.every((row, y) => row.every((dark, x) => !dark || (x >= 4 && y >= 4 && x < n + 4 && y < n + 4))));
     assert.deepEqual(got.slice(4, n + 4).map((row) => row.slice(4, n + 4)), want);
   });
@@ -277,7 +255,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
     await host.waitFor(`document.querySelector('${SHARE} button.copy').textContent === 'Copy'`, 10_000);
   });
 
-  // the guest pages are of the origin of the relay, hence their storage is apart from the host's
   const guest = await open(browser, link, { name: 'Gus Grant' });
   assert.equal(await guest.evaluate(`${C}.host`), false);
 
@@ -294,7 +271,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
     assert.deepEqual(await guest.evaluate(`[...document.querySelectorAll('${SHARE} ul.people .name')].map((n) => n.textContent)`), ['Ann Smith', 'Gus Grant (you)']);
     await press(guest, dialogButton('beeson-session-share-dialog', 'Done'));
     await guest.waitFor(`!document.querySelector(${JSON.stringify(SHARE)})`);
-    // the list of the host follows the guest
     await host.waitFor(`document.querySelector('${SHARE} h4').textContent === 'People in this session (2)'`);
   });
 
@@ -315,7 +291,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   });
 
   await t.test('End session asks, tells the guest, and the link answers as the relay does without a host', async () => {
-    // the row of Lea Lane, whose page was closed, leaves the list of the dialog and moves the button
     await host.waitFor(`document.querySelectorAll('dialog.beeson-session-share-dialog ul.people li').length === 2`);
     await front(host);
     await press(host, dialogButton('beeson-session-share-dialog', 'End session'));
@@ -328,7 +303,6 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
     await until(async () => (await fetch(link)).status === 502, 'the link to answer 502');
     assert.equal(await host.evaluate(ONLINE), true);
   });
-  // the refusals of the edit command to connect are answers of share with an error
   clean(host, [/\.session\/share/]);
   clean(guest, [/502/, /410/]);
 });
@@ -359,7 +333,6 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
     await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
     await hold(phone, '.beeson-session-people button[title="Ben Carter"]', `!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual((await menu(phone)).slice(0, 2), ['Ben Carter', 'Follow']);
-    // the click after the hold leaves the menu open, and does not follow
     await phone.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
     assert.deepEqual((await menu(phone)).slice(0, 2), ['Ben Carter', 'Follow']);
     assert.equal(await phone.evaluate('window.BeesonSession.follow().target'), null);
@@ -369,7 +342,6 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
 
   const fits = async (page, selector) => {
     for (const height of [664, 364]) {
-      // 364 px is the window of 664 px with the keyboard of a phone open
       await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height, deviceScaleFactor: 1, mobile: true });
       await page.waitFor(`innerHeight === ${height} && document.documentElement.style.getPropertyValue('--beeson-session-vh') === '${height}px'`);
       await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
@@ -416,7 +388,6 @@ test('an avatar keeps the keyboard focus when a person before it leaves', { time
   assert.deepEqual((await shown(ann, 3)).map((a) => a.text), ['BC', 'CD', 'AS']);
   const focused = `document.activeElement?.getAttribute('aria-label')`;
   await ann.evaluate(`document.querySelector('.beeson-session-people button[title="Cleo Diaz"]').focus()`);
-  // the bye of a closed page may not reach the edit command, which then drops the page after 40 s
   const left = 60_000;
   await ben.close();
   assert.deepEqual((await shown(ann, 2, left)).map((a) => a.text), ['CD', 'AS']);
@@ -437,8 +408,6 @@ test('who joins is announced while a modal dialog is open, and two joins within 
     const answer = await post(server.edit.port, `${server.edit.base}.session/hello`, { name });
     assert.equal(answer.status, 200, answer.text);
   };
-  // window.__said records every text written into a status region of the announcements, with its
-  // time
   await ann.evaluate(`(() => {
     window.__said = [];
     const last = new WeakMap();
@@ -472,8 +441,6 @@ test('who joins is announced while a modal dialog is open, and two joins within 
       const said = await ann.evaluate('window.__said');
       const first = said.find((s) => s.text.includes(`${a} joined the session.`));
       const second = said.find((s) => s.text.includes(`${b} joined the session.`));
-      // on a page so slow that the second join is drawn over a second after the first, the first
-      // may be replaced, hence the pair is not counted
       if (second.t - first.t > 900) continue;
       assert.ok(second.text.includes(`${a} joined the session.`), `the region reads ${JSON.stringify(second.text)}`);
       checked++;
@@ -500,8 +467,6 @@ test('Leave Session reads Leaving… while it waits, is not offered twice, and t
   await caretAtEnd(lea, `document.querySelector('.reveal .slides > section h2')`);
   await typeKeys(lea, ' offline');
   await lea.waitFor(`!${C}.acked()`);
-  // the menu of the own avatar is opened again right after Leave Session, in one evaluation, since
-  // leave() in people.ts waits at most 2 s for the edits
   const during = await lea.evaluate(`(async () => {
     const me = document.querySelector('.beeson-session-people .me');
     const open = () => me.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -528,7 +493,6 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
   const api = (route) => `${server.edit.base}.session/${route}`;
   const cy = (await post(server.edit.port, api('hello'), { name: 'Cy Cole' })).json();
-  // Cy Cole polls once, since the edit command drops a page that never polls
   await raw(server.edit.port, 'GET', `${api('events')}?token=${cy.token}&since=${cy.v}`);
   await press(ann, '.beeson-session-share');
   await ann.waitFor(`document.querySelector('${SHARE} h4')?.textContent === 'People in this session (2)'`);
@@ -537,7 +501,7 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
     window.__lists = 0;
     window.__segmenters = 0;
     ${C}.on('people', () => window.__answers++);
-    new MutationObserver((records) => (window.__lists += records.length)).observe(document.querySelector('${SHARE} ul.people'), { childList: true });
+    (window.__observer = new MutationObserver((records) => (window.__lists += records.length))).observe(document.querySelector('${SHARE} ul.people'), { childList: true });
     const Segmenter = Intl.Segmenter;
     if (Segmenter) Intl.Segmenter = new Proxy(Segmenter, { construct: (target, args, next) => (window.__segmenters++, Reflect.construct(target, args, next)) });
   })()`);
@@ -546,9 +510,7 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
     assert.equal((await post(server.edit.port, api('presence'), { token: cy.token, state: { n: i } })).status, 200);
     await ann.waitFor(`window.__answers > ${before}`);
   }
-  // a macrotask lets the observer take the last records
-  await ann.evaluate('new Promise((done) => setTimeout(done, 0))');
-  const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists, segmenters: window.__segmenters })');
+  const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists + window.__observer.takeRecords().length, segmenters: window.__segmenters })');
   assert.ok(lists <= answers, `${lists} rebuilds of the list for ${answers} answers`);
   assert.ok(segmenters <= 1, `${segmenters} Intl.Segmenter built for ${answers} answers`);
   clean(ann);

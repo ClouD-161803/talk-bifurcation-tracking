@@ -1,9 +1,3 @@
-// the Share button at the end of .right of the title bar, and its dialog. the host connects the
-// edit command to the relay of the group there, with the address and the secret that the edit
-// command keeps for the next time, and then sees the link of the session, Copy, and its QR code. a
-// guest sees the address of the page as the link, since share answers only the host. both see the
-// people of the session, and the host ends the session for the guests with End session
-
 import type { ShareAnswer } from '../protocol.ts';
 import { qr } from '../qr.ts';
 import type { Client } from './client.ts';
@@ -12,7 +6,6 @@ import { disc, everyone, type Someone } from './people.ts';
 
 const COPIED = 2000;
 const QR_SIZE = 160;
-// the quiet zone around a QR code, in modules
 const QUIET = 4;
 
 const CSS = `
@@ -41,8 +34,6 @@ dialog.beeson-session-share-dialog ul.people .activity { margin-left: auto; flex
 dialog.beeson-session-share-dialog ul.people .activity:empty { display: none; }
 `;
 
-// the address of the page without its version and its fragment, i.e. the link of the session for
-// a guest. the query is cut by hand, since URLSearchParams would write edit as edit=
 export function pageLink(): string {
   const url = new URL(location.href);
   const kept = url.search.slice(1).split('&').filter((p) => p && decodeURIComponent(p.split('=')[0]) !== 'v');
@@ -54,16 +45,12 @@ export function pageLink(): string {
 type Status = (someone: Someone) => string | (string | Node)[];
 const statuses: Status[] = [];
 
-// a line beside a person in the list of the Share dialog, e.g. Typing on slide 4, Following Ana,
-// or Away. the first function that returns a text is shown, and a name in it is a bdi element
 export function addPersonStatus(fn: Status): void {
   statuses.push(fn);
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
 
-// the QR code of text as an inline SVG of QR_SIZE px, black on white with a quiet zone, or null
-// when text is too long for it. a dark run of a row is one rectangle of the path
 export function qrSvg(text: string): SVGSVGElement | null {
   let dark: boolean[][];
   try {
@@ -100,17 +87,13 @@ export function qrSvg(text: string): SVGSVGElement | null {
   return svg;
 }
 
-// the text of a field, put in the clipboard, or selected for a copy by hand where the browser
-// does not give the clipboard. resolves with true when the text was copied
 async function copy(input: HTMLInputElement): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(input.value);
       return true;
     }
-  } catch {
-    // e.g. a page without the focus, or without the permission
-  }
+  } catch {}
   input.focus();
   input.setSelectionRange(0, input.value.length);
   try {
@@ -142,7 +125,6 @@ function field(id: string, label: string, type: string): Field & { el: HTMLEleme
   return { el, row, input, error };
 }
 
-// the field of an error of the edit command, by its text
 function fieldOf(status: number, message: string): 'relay' | 'secret' | 'general' {
   if (status === 409) return 'general';
   if (/secret| 401\b/.test(message)) return 'secret';
@@ -167,7 +149,6 @@ function openShare(client: Client): void {
     },
   });
 
-  // the link of the session, or null while the host is not connected to a relay
   let link: string | null = client.host ? null : pageLink();
   let form: { relay: Field; secret: Field; general: HTMLElement } | null = null;
   let copiedTimer = 0;
@@ -192,7 +173,6 @@ function openShare(client: Client): void {
     }
   };
 
-  // what a person does, e.g. Typing on slide 4, from the first part that has a line
   const lineOf = (p: Someone): (string | Node)[] => {
     for (const fn of statuses) {
       const line = fn(p);
@@ -214,7 +194,6 @@ function openShare(client: Client): void {
       return li;
     }));
   };
-  // the lines alone, at a change of what a person does, without a rebuild of the list
   const showLines = () => {
     const all = everyone(client);
     for (const li of people.querySelectorAll<HTMLElement>('li[data-person]')) {
@@ -244,7 +223,6 @@ function openShare(client: Client): void {
     const general = make('p', 'error');
     general.setAttribute('role', 'alert');
     const note = make('p', '', 'Guests join through the relay of your group.');
-    // GET share does not tell whether an address is kept, hence the hint is always shown
     const hint = make('p', 'hint', 'Leave both fields empty to connect to the relay that you used last.');
     top.replaceChildren(note, relay.el, make('div', 'gap'), secret.el, general, hint);
     form = { relay, secret, general };
@@ -340,12 +318,10 @@ function openShare(client: Client): void {
     link = ended.link;
     show();
     showPeople();
-    // the button End session, which had the focus, is replaced
     if (link) dialog.buttons.get('done')?.focus();
     else form?.relay.input.focus();
   };
 
-  // the host is shown the form or the link once the edit command answers
   if (client.host) dialog.setButtons([{ label: 'Done', value: 'done', primary: true }]);
   else show();
   showPeople();

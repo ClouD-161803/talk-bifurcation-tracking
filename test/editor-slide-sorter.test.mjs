@@ -1,6 +1,3 @@
-// slide Sorter: its close, its sections moved and renamed, the thumbnail menu, Select All Slides,
-// New Slide and Delete with the keys kept on the tiles, and the Add Slide popover
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,9 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
 import { lineText } from '../src/editor/commands/line.ts';
 
-// regression tests of R12.3 on both platforms with trusted input: the close of the light table, the
-// print key, the Zoom dialog, the menus of the grips and of the tiles, the keys printed beside the
-// menu items, Select All in the thumbnail menu, and the focus after an undo in the light table
 describe('the close and keys of Slide Sorter', () => {
   const DECK = 'test-deck.html';
   const PLATFORMS = ['mac', 'other'];
@@ -32,10 +26,7 @@ describe('the close and keys of Slide Sorter', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on slide n of the deck in a window of 1600 by 1000, with the storage of the browser
-  // cleared
   async function load(t, platform, { n = 0 } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -54,7 +45,6 @@ describe('the close and keys of Slide Sorter', () => {
     return page;
   }
 
-  // the center of the item of an open menu whose label is label, or null
   const itemAt = (page, label) =>
     page.evaluate(`(() => {
     const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)});
@@ -63,7 +53,6 @@ describe('the close and keys of Slide Sorter', () => {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
 
-  // a trusted click on the title of a menu of the menu bar, then on its item label
   async function choose(page, bar, label) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     assert.ok(i >= 0, `the menu bar does not have ${bar}`);
@@ -73,8 +62,6 @@ describe('the close and keys of Slide Sorter', () => {
     await clickText(page, at);
   }
 
-  // what is hit in the middle of the first shown element of selector: an element of the light table,
-  // or an element inside selector
   const hit = (page, selector) =>
     page.evaluate(`(() => {
     const r = [...document.querySelectorAll(${js(selector)})].map((el) => el.getBoundingClientRect()).find((r) => r.width && r.height);
@@ -97,8 +84,6 @@ describe('the close and keys of Slide Sorter', () => {
     assert.deepEqual(await hit(page, '.beeson-edit-canvas'), { sorter: false, inside: true }, how);
   }
 
-  // menus-keys-1: the light table is closed by Done, Esc, the menu, and a double click on a tile, and
-  // the navigator and the canvas are hit again after each
   for (const platform of PLATFORMS) {
     test(`the light table closes by Done, Esc, the menu, and a double click (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -114,12 +99,10 @@ describe('the close and keys of Slide Sorter', () => {
       await openTable(page);
       await click(page, '.beeson-edit-sorter .tile:nth-of-type(3) .pic', { count: 2 });
       await closed(page, 'double click');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the labels and the keys of the menu of the menu bar named bar, opened by a trusted click and
-  // closed again
   async function readMenu(page, bar) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${i + 1})`);
@@ -128,8 +111,6 @@ describe('the close and keys of Slide Sorter', () => {
     return items;
   }
 
-  // a listener of the page after the one of the editor, which records whether each keydown of P was
-  // prevented, and a window.open that records the address it is given
   const SPY = `(() => {
   window.__keys = [];
   window.__opened = [];
@@ -138,9 +119,6 @@ describe('the close and keys of Slide Sorter', () => {
   return true;
 })()`;
 
-  // menus-keys-2: File > Print… is the last item of the File menu with Mod+P, which the editor takes
-  // from the browser and which opens the print view of the deck, after a question while edits are
-  // unsaved
   for (const platform of PLATFORMS) {
     test(`Mod+P and File > Print… open the print view of the deck (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
@@ -158,7 +136,6 @@ describe('the close and keys of Slide Sorter', () => {
       await choose(page, 'File', 'Print…');
       await sleep(300);
       assert.equal((await page.evaluate('window.__opened')).length, 2);
-      // with an unsaved edit, the user is asked first, and Cancel prints nothing
       await exec(page, 'slide.hide');
       await press(page, 'Mod+P');
       await page.waitFor(`[...document.querySelectorAll('dialog[open] button')].some((b) => b.textContent === 'Save and print')`);
@@ -167,12 +144,10 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'Escape');
       await sleep(200);
       assert.equal((await page.evaluate('window.__opened')).length, 2);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // navigator-slides-canvas-2: the Percent field of the Zoom dialog opens with its value selected, so
-  // that a typed value replaces it
   for (const platform of PLATFORMS) {
     test(`a value typed into the Zoom dialog replaces the value shown (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -188,21 +163,15 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'Enter');
       await sleep(200);
       assert.equal(await page.evaluate('Math.round(window.BeesonEditorShell.stage.zoom * 100)'), 140);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the keys printed beside the items of labels in the menu bar of bar
   async function keysIn(page, bar, labels) {
     const items = await readMenu(page, bar);
     return Object.fromEntries(labels.map((l) => [l, items.find((i) => i.label === l)?.keys]));
   }
 
-  // menus-keys-5: a key is printed beside its item in every focus, as in Keynote and PowerPoint,
-  // where the key of an item is fixed. with a figure selected on the canvas, Mod+D and Delete run
-  // Edit > Duplicate and Edit > Delete, and in the navigator Edit > Duplicate and Edit > Delete hand
-  // their runs to Duplicate Slide and Delete Slide. Duplicate Slide and Delete Slide print the keys
-  // of the two items of the Edit menu only where the keys run them, i.e. in the navigator
   for (const platform of PLATFORMS) {
     test(`a key is printed beside its item in every focus, and Duplicate Slide and Delete Slide print a key only where it runs them (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
@@ -219,11 +188,10 @@ describe('the close and keys of Slide Sorter', () => {
       await sleep(100);
       assert.deepEqual(await keysIn(page, 'Slide', ['Duplicate Slide', 'Delete Slide']), { 'Duplicate Slide': dup, 'Delete Slide': del });
       assert.deepEqual(await keysIn(page, 'Edit', ['Duplicate', 'Delete']), { Duplicate: dup, Delete: del });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the context menus open, by their class, with whether the top one is hit at its center
   const menus = (page) =>
     page.evaluate(`(() => {
     const all = [...document.querySelectorAll('.beeson-edit-menu')];
@@ -232,12 +200,9 @@ describe('the close and keys of Slide Sorter', () => {
     return { classes: all.map((m) => m.className), hit: !!r && !!document.elementFromPoint(r.left + r.width / 2, r.top + 12)?.closest('.beeson-edit-menu') };
   })()`);
 
-  // the centers of the shown grips and of the rotate handle of the selection
   const grips = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-grip, .beeson-rotor')].map((g) => ({ g, r: g.getBoundingClientRect() })).filter(({ g, r }) => r.width && getComputedStyle(g).pointerEvents !== 'none' && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === g).map(({ g, r }) => ({ name: g.dataset.handle ?? 'rotor', x: r.left + r.width / 2, y: r.top + r.height / 2 }))`);
 
-  // menus-keys-3: a right-click on a grip or on the rotate handle of a selected object opens its
-  // element menu, and the object stays selected
   for (const platform of PLATFORMS) {
     test(`a right-click on a grip or the rotate handle opens the menu of the object (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
@@ -266,12 +231,10 @@ describe('the close and keys of Slide Sorter', () => {
         }
         await press(page, 'Escape');
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // menus-keys-4: a right-click, Shift+F10, or the Menu key on a tile of the light table opens the
-  // thumbnail menu of its slide over the light table
   for (const platform of PLATFORMS) {
     test(`a right-click, Shift+F10, or the Menu key on a tile opens the thumbnail menu (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -302,12 +265,10 @@ describe('the close and keys of Slide Sorter', () => {
       await sleep(100);
       m = await menus(page);
       assert.equal(m.classes.length, 1, 'the Menu key opened no menu');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // menus-keys-6: the thumbnail menu has Select All Slides after Paste, with Mod+A, and it selects
-  // every slide
   for (const platform of PLATFORMS) {
     test(`the thumbnail menu has Select All Slides after Paste (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -323,27 +284,22 @@ describe('the close and keys of Slide Sorter', () => {
       const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r) => r.getAttribute('aria-selected'))`);
       assert.ok(rows.length > 5);
       assert.deepEqual(rows, rows.map(() => 'true'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the center of the tile of the slide of index i in the light table
   const tileAt = (page, i) =>
     page.evaluate(`(() => {
     const r = document.querySelectorAll('.beeson-edit-sorter .tile .pic')[${i}].getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width };
   })()`);
 
-  // the index of the focused tile, or -1 when the focus is elsewhere, and the indices of the
-  // selected tiles
   const tiles = (page) =>
     page.evaluate(`(() => {
     const all = [...document.querySelectorAll('.beeson-edit-sorter .tile')];
     return { focus: all.indexOf(document.activeElement), selected: all.flatMap((t, i) => (t.getAttribute('aria-selected') === 'true' ? [i] : [])) };
   })()`);
 
-  // navigator-slides-canvas-3: after an undo in the light table, the focus is on the tile of the
-  // restored slide, from which the arrow keys move
   for (const platform of PLATFORMS) {
     test(`an undo in the light table leaves the focus on the restored slide (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -365,19 +321,15 @@ describe('the close and keys of Slide Sorter', () => {
       await press(page, 'Mod+Z');
       await sleep(300);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source);
-      // the selection from before the drag is restored, with the focus on its tile
       assert.deepEqual(await tiles(page), { focus: 4, selected: [4] }, 'after an undo of a drag');
       await press(page, 'ArrowRight');
       await sleep(100);
       assert.deepEqual(await tiles(page), { focus: 5, selected: [5] });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R14.3 on both platforms with trusted input: New Slide in the Light Table
-// keeps the focus on the tile of the new slide, and Select All and Delete of the Edit menu act on
-// the slides while a tile or a row of the navigator has the focus, with the keys that run them there
 describe('New Slide, Select All, and Delete on tiles', () => {
   const DECK = 'test-deck.html';
   const PLATFORMS = ['mac', 'other'];
@@ -397,7 +349,6 @@ describe('New Slide, Select All, and Delete on tiles', () => {
   const settle = (page) => page.evaluate('new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), 150))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const MOD_A = { mac: '⌘A', other: 'Ctrl+A' };
 
   async function load(t, platform) {
@@ -469,7 +420,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
         await undo(page);
         await settle(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -494,7 +445,7 @@ describe('New Slide, Select All, and Delete on tiles', () => {
       await settle(page);
       assert.deepEqual((await tiles(page)).selected, [...Array(n).keys()]);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Edit > Select All and Edit > Delete with a row of the navigator focused (${platform})`, async (t) => {
@@ -521,12 +472,10 @@ describe('New Slide, Select All, and Delete on tiles', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // a figure selected on the canvas stays selected while the caret is in a field of a pane, where
-  // Delete and Select All of the Edit menu act on the text of the field
   for (const platform of PLATFORMS) {
     for (const [what, field] of [
       ['the Description field of the Format pane', () => `document.querySelector('#beeson-edit-panel-format textarea[name="alt"]')`],
@@ -555,7 +504,6 @@ describe('New Slide, Select All, and Delete on tiles', () => {
         assert.ok(await page.evaluate(`document.activeElement === ${at}`), `the caret is not in ${what}`);
         const text = await textOf();
         assert.ok(text.length > 3, `${what} does not have a text`);
-        // at a caret, Delete is dimmed, as in a text of the slide
         const caret = await choose('Delete');
         assert.equal(figures(await render(page)), figures(page.source), `Edit > Delete at a caret in ${what} deleted the figure`);
         assert.equal(caret.disabled, true, `Edit > Delete is not dimmed at a caret in ${what}`);
@@ -566,29 +514,22 @@ describe('New Slide, Select All, and Delete on tiles', () => {
         assert.equal(range.disabled, false, `Edit > Delete is dimmed on a selected text in ${what}`);
         assert.equal(await textOf(), '', `Edit > Delete does not delete the selected text of ${what}`);
         assert.equal(figures(await render(page)), figures(page.source), `Edit > Delete on a selected text in ${what} deleted the figure`);
-        // a paste is plain text in the field
         await page.evaluate(`Promise.resolve(window.BeesonEditor.exec('edit.paste', 'One\\n two')).then(() => true)`);
         await settle(page);
         assert.equal(await textOf(), 'One\n two', `Paste does not put the text into ${what}`);
         assert.equal(figures(await render(page)), figures(page.source), `Paste with the caret in ${what} changed the figures of the slide`);
-        // a press on the figure takes the focus out of the text, and Delete acts on the figure again
         await click(page, await figure(), { button: 'right' });
         await settle(page);
         assert.equal((await itemState(page, 'Delete'))?.disabled, false, 'Delete is dimmed in the menu of the figure');
         await click(page, await item(page, 'Delete'));
         await settle(page);
         assert.equal(figures(await render(page)), figures(page.source) - 1, 'Delete in the menu of the figure does not delete it');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 });
 
-// tests of R7.7 on both platforms with trusted input: a section of the light table moved by a drag
-// of its head and renamed by a double click on its name, the tiles of the Add Slide popover in three
-// columns as in the Add a Slide popover of Keynote, Distribute of one element across the slide and
-// of two with Align to Slide, and an arrowhead at the start of a line alone. after each edit the
-// text is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('Slide Sorter sections and the Add Slide popover', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -621,10 +562,8 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const rect = (page, selector) => page.evaluate(`(() => { const e = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // the editor on slide n of a deck served over HTTP, with the Format tab shown
   async function load(t, platform, { deck = LAYOUTS, n = 0 } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -640,8 +579,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
     return page;
   }
 
-  // roundTrip checks the edited text, the text before byte for byte after an undo, the edited text
-  // after a redo, and an open of the saved text without problems
   let saves = 0;
   async function roundTrip(page, edited) {
     assert.equal(await render(page), edited);
@@ -654,7 +591,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
     page.source = text;
   }
 
-  // a click on the tab or the button of the inspector whose text or title is name
   async function tap(page, name) {
     const at = await page.evaluate(`(() => {
     const b = [...document.querySelectorAll('${PANEL} button')].find((b) => b.textContent.trim() === ${js(name)} || b.title === ${js(name)} || b.getAttribute('aria-label') === ${js(name)});
@@ -667,7 +603,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
     await frames(page);
   }
 
-  // the center of the item labeled label of the open menus, or null
   const itemAt = (page, label) => page.evaluate(`(() => {
   const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)});
   if (!item) return null;
@@ -675,8 +610,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // the source with its sections put into the order of a list of their indices, each section moved
-  // with the white space and the comments before it
   function reordered(source, order) {
     const units = [...source.matchAll(/\s*(?:<!--[\s\S]*?-->\s*)*<section[\s\S]*?<\/section>/g)];
     const start = units[0].index;
@@ -696,13 +629,10 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await exec(page, 'view.lightTable');
       await frames(page);
       assert.deepEqual(await heads(page), ['Opening 1 slide', 'Chapter one 5 slides', 'Chapter two 7 slides']);
-      // a click on a head selects the slides of its section, as in PowerPoint
       await click(page, await nameAt(page, 'Chapter one'));
       await frames(page);
       assert.deepEqual(await picked(page), [2, 3, 4, 5, 6]);
       assert.equal(await page.evaluate(`${headOf('Chapter one')}.classList.contains('picked')`), true);
-      // the head of Chapter two is dragged above the head of Chapter one, with a line across the light
-      // table where it is dropped
       const from = await nameAt(page, 'Chapter two');
       const to = await nameAt(page, 'Chapter one');
       await drag(page, from, { dy: to.y - from.y - 6, hold: true });
@@ -711,12 +641,10 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x, y: to.y - 6, button: 'left', clickCount: 1 });
       await page.waitFor(`document.querySelectorAll('.reveal .slides > section')[1].querySelector('h2')?.textContent === 'Chapter two'`);
       await frames(page);
-      // the closing slide moves with Chapter two, hence Chapter one follows it as the appendix
       assert.deepEqual(await heads(page), ['Opening 1 slide', 'Chapter two 7 slides', 'Appendix 5 slides']);
       assert.deepEqual(await picked(page), [2, 3, 4, 5, 6, 7, 8]);
       assert.equal(await undoLabel(page), 'Undo Move Section');
       await roundTrip(page, reordered(page.source, [0, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]));
-      // a drop where the section already is leaves the file and the history alone
       await frames(page);
       const before = await undoLabel(page);
       const again = await nameAt(page, 'Chapter two');
@@ -724,7 +652,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await frames(page);
       await byteExact(page);
       assert.equal(await undoLabel(page), before);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a double click on the name of a section head renames its section slide, and Esc keeps the name (${platform})`, async (t) => {
@@ -736,14 +664,12 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       const field = `${SORTER} input.rename`;
       assert.equal(await page.evaluate(`document.activeElement === document.querySelector('${field}')`), true, 'the field of the name does not have the focus');
       assert.equal(await page.evaluate(`document.querySelector('${field}').value`), 'Chapter one');
-      // Esc drops the typed name and keeps the light table open
       await type(page, 'Nothing');
       await press(page, 'Escape');
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelector('${field}')`), null);
       assert.equal(await page.evaluate(`document.querySelector('${SORTER}').hidden`), false, 'Esc in the field closed the light table');
       await byteExact(page);
-      // Return writes the typed name into the heading of the section slide
       await click(page, await nameAt(page, 'Chapter one'), { count: 2 });
       await frames(page);
       await type(page, 'Part one');
@@ -754,7 +680,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       assert.equal(await undoLabel(page), 'Undo Rename Section');
       await byteExact(page, [['<h2>Chapter one</h2>', '<h2>Part one</h2>']]);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Add Slide popover draws its tiles 120 px wide in three columns, as in Keynote (${platform})`, async (t) => {
@@ -773,7 +699,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       assert.ok(tiles[3].top > tiles[0].top && tiles[3].left === tiles[0].left);
       const box = await rect(page, '.beeson-edit-gallery');
       assert.ok(box.right <= 1600 && box.bottom <= 1000 && box.width < 420, `the popover is ${js(box)}`);
-      // ArrowDown moves the focus one row down, i.e. by three tiles, and Space adds a slide of it
       assert.equal(await page.evaluate(`document.activeElement.dataset.layout`), 'content');
       await press(page, 'ArrowDown');
       assert.equal(await page.evaluate(`document.activeElement.dataset.layout`), 'figure');
@@ -787,7 +712,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await page.waitFor(`document.querySelectorAll('.reveal .slides > section').length === 14`);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal .slides > section')[5].matches('.split')`), true);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Distribute centers one element on the slide, with Align to Selection dimmed for it (${platform})`, async (t) => {
@@ -798,7 +723,6 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       assert.equal((await state(page, 'arrange.distribute.vertical')).enabled, true);
       assert.equal((await state(page, 'arrange.alignTo.selection')).enabled, false);
       assert.equal((await state(page, 'arrange.alignTo.slide')).checked, true);
-      // a figure has the Image pane with its tabs, and Distribute is in the tab Arrange
       await tap(page, 'Arrange');
       await tap(page, 'Horizontally');
       const text = await render(page);
@@ -806,11 +730,9 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       assert.ok(dx < 0, `the offset of the figure is ${dx}`);
       await byteExact(page, [[FIGURE, `${FIGURE.slice(0, -1)} style="translate: ${dx}px 0px">`]]);
       const slide = await rect(page, '.reveal .slides');
-      // the frame of the figure, i.e. its picture with its caption, is centered
       const frame = await rect(page, SELECTED);
       assert.ok(Math.abs(frame.x - slide.x) <= 1.5, `the figure is centered at ${frame.x}, and the slide at ${slide.x}`);
       await roundTrip(page, text);
-      // the open of the saved text clears the selection
       await selectFigure(page, IMG);
       await tap(page, 'Arrange');
       await tap(page, 'Vertically');
@@ -820,7 +742,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       const framed = await rect(page, SELECTED);
       assert.ok(Math.abs(framed.y - slide.y) <= 1.5, `the figure is centered at ${framed.y}, and the slide at ${slide.y}`);
       await roundTrip(page, both);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Distribute is dimmed for two elements with Align to Slide and with Align to Selection (${platform})`, async (t) => {
@@ -835,7 +757,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
         assert.equal((await state(page, 'arrange.distribute.horizontal')).enabled, false, `two elements are distributed with Align to ${ref}`);
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Arrowhead at Start in the Line pane and in Format > Line writes marker-start alone (${platform})`, async (t) => {
@@ -852,14 +774,11 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await byteExact(page, [[plain, start]]);
       assert.equal((await state(page, 'line.heads.start')).checked, true);
       assert.equal(await page.evaluate(`document.querySelector('${PANEL} [data-command="line.heads.start"]').getAttribute('aria-pressed')`), 'true');
-      // the grip of each end is drawn on its end, the tip of the head at the start
       const grips = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('.beeson-line-end')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return [g.dataset.end, r.left + r.width / 2]; }))`);
       const ends = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'), r = s.getBoundingClientRect(), k = r.width / s.offsetWidth; return [r.left + 300 * k, r.left + 800 * k]; })()`);
       assert.ok(Math.abs(grips[1] - ends[0]) <= 1, `the grip of the start is at ${grips[1]}, and the start at ${ends[0]}`);
       assert.ok(Math.abs(grips[2] - ends[1]) <= 1, `the grip of the end is at ${grips[2]}, and the end at ${ends[1]}`);
       await roundTrip(page, await render(page));
-      // Format > Line > Arrowhead at Start, from an arrowhead at the end, on the line selected again
-      // after the open of the saved text
       const near = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'), r = s.getBoundingClientRect(), k = r.width / s.offsetWidth; return { x: r.left + 550 * k, y: r.top + 500 * k + 3 }; })()`);
       await click(page, near);
       await frames(page);
@@ -879,7 +798,7 @@ describe('Slide Sorter sections and the Add Slide popover', () => {
       await frames(page);
       await byteExact(page, [[end, start]]);
       await roundTrip(page, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

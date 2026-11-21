@@ -1,6 +1,3 @@
-// the editor in a narrow window: the toolbar with More and Customize Toolbar, Slide Only and View >
-// Navigator, the width of the navigator, and the inspector closed and given back
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,10 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, contrast, drag, GROUND, INK, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 
-// tests of R7.6 on both platforms with trusted input: Slide Only in the View menu and the View
-// button, the tick at 100% of the zoom slider, the sheet Customize Toolbar with its layout kept for
-// the deck, and the scopes of Find. the settings do not change the file, and after an edit of the
-// file the text is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('Slide Only, Customize Toolbar, and Find scopes', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -35,11 +28,8 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const boxOf = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, right: r.right, bottom: r.bottom }; })()`);
 
-  // the editor on the slide n of a deck served over HTTP, opened with text after change is run on the
-  // page. with clear, the storage of the origin is emptied before the editor is loaded
   async function load(t, platform, { deck = LAYOUTS, n = 0, text = readFileSync(deck, 'utf8'), change = '', clear = true, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -57,8 +47,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
     return page;
   }
 
-  // roundTrip checks the edits in the text, then the text before byte for byte after an undo, the
-  // edit after a redo, and an open of the saved edit without problems
   let saves = 0;
   async function roundTrip(page, edits) {
     await byteExact(page, edits);
@@ -72,10 +60,8 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
     page.source = text;
   }
 
-  // the labels of the items of the open menu
   const menuLabels = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => i.querySelector('.label')?.textContent ?? '')`);
 
-  // a trusted click on the item labeled label of the open menu
   async function choose(page, label) {
     const at = await page.evaluate(`(() => {
     const items = [...document.querySelectorAll('.beeson-edit-menu .item')];
@@ -105,7 +91,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
     slideOnly: (await state(page, 'view.slideOnly')).checked,
   });
 
-  // the ids of the buttons of the toolbar, in their order
   const toolbarIds = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-top [data-command]')].map((b) => b.dataset.command)`);
   const KEY = `beeson-edit-toolbar:/${LAYOUTS}`;
   const kept = (page) => page.evaluate(`JSON.parse(localStorage.getItem(${js(KEY)}) ?? 'null')`);
@@ -122,8 +107,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.deepEqual(await panes(page), { navigator: false, format: true, steps: false, slideOnly: true });
       const wide = await boxOf(page, '.beeson-edit-canvas');
       assert.ok(wide.w > canvas.w + 150, `the canvas is ${wide.w} px wide in Slide Only and ${canvas.w} px before`);
-      // the View button of the toolbar is not pressed in Slide Only, and its main part shows the
-      // navigator again
       const view = '.beeson-edit-top [data-command="toolbar.view"]';
       assert.equal(await page.evaluate(`document.querySelector(${js(view)}).getAttribute('aria-pressed')`), 'false');
       await click(page, view);
@@ -131,7 +114,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.deepEqual(await panes(page), { navigator: true, format: true, steps: false, slideOnly: false });
       assert.equal(await page.evaluate(`document.querySelector(${js(view)}).getAttribute('aria-pressed')`), 'true');
       assert.equal((await boxOf(page, '.beeson-edit-canvas')).w, canvas.w);
-      // the Steps tab is kept open through Slide Only
       await exec(page, 'view.steps');
       await openBar(page, 'View');
       await choose(page, 'Slide Only');
@@ -140,7 +122,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await choose(page, 'Slide Only');
       assert.deepEqual(await panes(page), { navigator: true, format: false, steps: true, slideOnly: false });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag of the zoom slider near its tick at 100% snaps to 100% (${platform})`, async (t) => {
@@ -154,23 +136,20 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       const tick = await center(page, '.beeson-edit-bottom .slider .tick');
       const readout = () => page.evaluate(`document.querySelector('.beeson-edit-top [data-command="toolbar.zoom"] .readout').textContent`);
       assert.match(await readout(), /^\d+%$/);
-      // a drag that ends 3 px past the tick gives 100%, with the thumb on the tick
       let from = await thumb();
       await drag(page, from, { dx: tick.x + 3 - from.x, dy: 0, steps: 12 });
       await frames(page);
       assert.equal(await readout(), '100%');
       assert.ok(Math.abs((await thumb()).x - tick.x) < 1, `the thumb is at ${(await thumb()).x} and the tick at ${tick.x}`);
-      // a drag that ends 12 px past the tick does not snap
       from = await thumb();
       await drag(page, from, { dx: 12, dy: 0, steps: 6 });
       await frames(page);
       assert.ok(Number((await readout()).replace('%', '')) > 110, await readout());
-      // the arrow keys move the slider past the tick
       await page.evaluate(`document.querySelector(${js(slider)}).focus()`);
       for (let i = 0; i < 3; i++) await press(page, 'ArrowLeft');
       assert.notEqual(await readout(), '100%');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Customize Toolbar adds and removes items by drags, sets Show, keeps the layout for the deck, and the default set restores it (${platform})`, async (t) => {
@@ -185,18 +164,15 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       const items = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-customize .palette .item')].map((i) => i.dataset.item)`);
       for (const id of ['toolbar.view', 'insert.table', 'file.present', 'find.open', 'arrange.lock', 'separator', 'space']) assert.ok(items.includes(id), `the sheet has no item ${id}`);
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-customize .foot .show').textContent`), 'Icon and Text');
-      // a button of the toolbar does not run its command while the sheet is open
       await click(page, '.beeson-edit-top [data-command="slide.gallery"]');
       assert.equal(await render(page), page.source);
 
-      // Find dragged from the sheet onto the left half of Redo is put before it
       const find = await center(page, '.beeson-edit-customize .item[data-item="find.open"]');
       const redo = await boxOf(page, '.beeson-edit-top [data-command="edit.redo"]');
       await drag(page, find, { dx: redo.x + 6 - find.x, dy: redo.y + redo.h / 2 - find.y, steps: 14 });
       await frames(page);
       let ids = await toolbarIds(page);
       assert.equal(ids[ids.indexOf('edit.redo') - 1], 'find.open');
-      // Table dragged from the toolbar into the sheet is taken off
       const table = await center(page, '.beeson-edit-top [data-command="insert.table"]');
       await drag(page, table, { dx: 0, dy: 260, steps: 10 });
       await frames(page);
@@ -204,7 +180,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.ok(!ids.includes('insert.table'));
       assert.ok(ids.includes('find.open'));
 
-      // Show Icon Only hides the labels, and the layout is kept for this deck
       await click(page, '.beeson-edit-customize .foot .show');
       await frames(page);
       assert.deepEqual(await menuLabels(page), ['Icon and Text', 'Icon Only', 'Text Only']);
@@ -218,14 +193,12 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await click(page, '.beeson-edit-customize .foot .done');
       await frames(page);
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-customize').hidden`), true);
-      // the new button runs its command once the sheet is closed
       await click(page, '.beeson-edit-top [data-command="find.open"]');
       await page.waitFor(`!document.querySelector('.beeson-find').hidden`);
       await press(page, 'Escape');
       assert.equal(await render(page), page.source);
       assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, false);
 
-      // the layout is shown again when the deck is opened again, and not on another deck
       const layout = await toolbarIds(page);
       await page.close();
       const other = await load(t, platform, { deck: 'test-deck.html', clear: false });
@@ -236,7 +209,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.deepEqual(await toolbarIds(page), layout);
       assert.equal(await label(), 'none');
 
-      // Text Only hides the icons, and the default set dragged into the toolbar restores it
       await exec(page, 'view.customizeToolbar');
       await click(page, '.beeson-edit-customize .foot .show');
       await choose(page, 'Text Only');
@@ -251,14 +223,13 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.deepEqual(await toolbarIds(page), defaults);
       saved = await kept(page);
       assert.deepEqual(saved, { items: null, show: 'text' });
-      // with Icon and Text and the default set, nothing is kept
       await exec(page, 'view.customizeToolbar');
       await click(page, '.beeson-edit-customize .foot .show');
       await choose(page, 'Icon and Text');
       await press(page, 'Escape');
       assert.equal(await kept(page), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Customize Toolbar works from the keyboard: Return adds an item, Delete takes one off, and Esc closes the sheet (${platform})`, async (t) => {
@@ -269,7 +240,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await page.evaluate(`document.querySelector('.beeson-edit-customize .item[data-item="arrange.lock"]').focus()`);
       await press(page, 'Enter');
       let ids = await toolbarIds(page);
-      // an item added from the keyboard is put before the space, i.e. after Present
       assert.equal(ids[ids.indexOf('file.present') + 1], 'arrange.lock');
       await page.evaluate(`document.querySelector('.beeson-edit-top [data-command="arrange.lock"]').focus()`);
       await press(page, 'Delete');
@@ -277,7 +247,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await page.evaluate(`document.querySelector('.beeson-edit-top [data-command="edit.undo"]').focus()`);
       await press(page, 'Backspace');
       assert.ok(!(await toolbarIds(page)).includes('edit.undo'));
-      // Return on the default set puts it back
       await page.evaluate(`document.querySelector('.beeson-edit-customize .default').focus()`);
       await press(page, 'Enter');
       assert.deepEqual(await toolbarIds(page), defaults);
@@ -285,7 +254,7 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-customize').hidden`), true);
       assert.equal(await kept(page), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the gear menu of Find sets the scope to the slides and notes, the notes only, or the alt texts (${platform})`, async (t) => {
@@ -295,7 +264,6 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       const count = () => page.evaluate(`document.querySelector('.beeson-find .count').textContent`);
       const total = (c) => (c === 'Not found' ? 0 : Number(c.split(' of ')[1]));
       const all = total(await count());
-      // the notes of the deck, as the panel counts them
       const notes = [...page.source.matchAll(/<aside class="notes">([\s\S]*?)<\/aside>/g)].reduce((n, m) => n + (m[1].match(/slide/gi)?.length ?? 0), 0);
       assert.ok(notes > 0 && all > notes, `${all} matches in all and ${notes} in the notes`);
       await click(page, '.beeson-find .gear');
@@ -308,10 +276,8 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       assert.equal((await state(page, 'find.scopeNotes')).checked, true);
       assert.equal((await state(page, 'find.scopeAll')).checked, false);
       assert.equal(await page.evaluate(`document.querySelector('.beeson-find .search input').placeholder`), 'Find in Notes');
-      // the current match is in the notes, which are shown
       assert.equal(await page.evaluate(`!!getSelection().anchorNode?.parentElement?.closest('aside.notes') || [...CSS.highlights.get('beeson-find-current') ?? []].some((r) => r.startContainer.parentElement.closest('aside.notes'))`), true);
 
-      // in the scope of the alt texts, TeX is dimmed, and the alt texts of the images are found
       await click(page, '.beeson-find .gear');
       await choose(page, 'Alt Texts');
       assert.equal((await state(page, 'find.tex')).enabled, false);
@@ -319,10 +285,8 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await type(page, 'version');
       assert.equal(await count(), '1 of 2');
       assert.equal(await page.evaluate(`document.querySelector('.beeson-find .search input').placeholder`), 'Find in Alt Texts');
-      // the image of the current match is selected on its slide
       const slide = await page.evaluate(`Reveal.getIndices().h`);
       assert.equal(slide, await page.evaluate(`Reveal.getIndices(document.querySelector('.reveal img[alt="A figure, dark version"]').closest('section')).h`));
-      // Replace All writes the alt texts as one entry of the history
       await exec(page, 'find.replace');
       await page.evaluate(`document.querySelector('.beeson-find .replace input').focus()`);
       await type(page, 'variant');
@@ -330,29 +294,21 @@ describe('Slide Only, Customize Toolbar, and Find scopes', () => {
       await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`);
       assert.equal(await count(), '2 replaced');
       await roundTrip(page, [[DARK, 'alt="A figure, dark variant"'], [LIGHT, 'alt="A figure, light variant"']]);
-      // in the scope of the slides and the notes, the alt texts are not searched
       await click(page, '.beeson-find .gear');
       await choose(page, 'Slides and Notes');
       await click(page, '.beeson-find .search .clear');
       await type(page, 'variant');
       assert.equal(await count(), 'Not found');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// tests of R30.1, the list of a split button that is folded into More, on both platforms with
-// trusted input. in a narrow window the toolbar folds its last groups into the button More, and a
-// folded split button whose arrow has a list is a submenu of More with the items of this list, as a
-// folded item with a menu is in Keynote. the submenu opens at a hover or the right arrow and closes
-// at the left arrow and Esc. each item of the submenu runs its command with its check mark, its key,
-// and its dimmed state as in the list of the arrow
 describe('a split button folded into More', () => {
   const DECK = 'test/pages/editor-r22-2.html';
   const PLATFORMS = ['mac', 'other'];
   const MORE = '.beeson-edit-top .more-groups';
   const LAYER = '.beeson-edit-play';
-  // the slides of the deck
   const BACKDROP = 1, STEPS = 2;
   const TOOLBAR_KEY = `beeson-edit-toolbar:/${DECK}`;
 
@@ -371,13 +327,10 @@ describe('a split button folded into More', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const layer = (page) => page.evaluate(`!!document.querySelector('${LAYER}')`);
   const rafs = (page) => page.evaluate('Beeson.backdrops.filter((b) => b.raf).length');
   const menus = (page) => page.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`);
 
-  // the editor on the deck at slide n in a window of width px. the storage of the browser is cleared
-  // before the load and then given the pairs of stored. with motion, a backdrop is traced
   async function load(t, platform, { n = 0, width = 760, stored = {}, motion = false, step = 1000 } = {}) {
     const page = await browser.newPage({ width, height: 700, motion });
     t.after(() => page.close().catch(() => {}));
@@ -401,8 +354,6 @@ describe('a split button folded into More', () => {
     await frames(page);
   }
 
-  // the rows of the open menu k, the root first: a rule as '-', and an item with its command, label,
-  // key, check mark, dimmed state, and whether it opens a submenu
   const rows = (page, k = -1) => page.evaluate(`[...[...document.querySelectorAll('.beeson-edit-menu')].at(${k}).querySelectorAll(':scope > .item, :scope > .rule')].map((i) => i.matches('.rule') ? '-' : {
   command: i.dataset.command ?? null,
   label: i.querySelector('.label').textContent.trim(),
@@ -412,12 +363,9 @@ describe('a split button folded into More', () => {
   sub: i.getAttribute('aria-haspopup') === 'menu',
 })`);
   const labels = async (page, k = -1) => (await rows(page, k)).map((r) => (r === '-' ? '-' : r.label));
-  // the label of the highlighted row of the open menu k
   const highlighted = (page, k = -1) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].at(${k}).querySelector('.item.hi .label')?.textContent.trim() ?? null`);
-  // the center of the first row of the open menu k that matches the test fn
   const rowAt = (page, k, fn) => page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-menu')[${k}].querySelectorAll('.item')].find(${fn}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // the rows of the list of the arrow of the split button of command in the toolbar
   async function arrowRows(page, command) {
     await click(page, await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-top [data-command="${command}"]').parentElement.querySelector('.more').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await frames(page);
@@ -427,7 +375,6 @@ describe('a split button folded into More', () => {
     return out;
   }
 
-  // a hover over the row of label of the open menu k, held until its submenu opens
   async function hover(page, label, k = -1) {
     const at = await rowAt(page, k < 0 ? `document.querySelectorAll('.beeson-edit-menu').length - 1` : k, `(i) => i.querySelector('.label').textContent.trim() === ${js(label)}`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 4, y: at.y });
@@ -435,15 +382,11 @@ describe('a split button folded into More', () => {
     await wait(page, 300);
   }
 
-  // a trusted Return with its text, which presses the button of the focus as a keyboard does
   async function returnKey(page) {
-    const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 };
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+    await press(page, 'Enter');
     await frames(page);
   }
 
-  // the down arrow in the open menu until the row of label is highlighted
   async function downTo(page, label) {
     for (let i = 0; i < 20 && (await highlighted(page)) !== label; i++) await press(page, 'ArrowDown');
     assert.equal(await highlighted(page), label);
@@ -472,7 +415,7 @@ describe('a split button folded into More', () => {
       const keys = Object.values(lists).flat().filter((r) => r !== '-' && r.keys).map((r) => r.keys);
       if (platform === 'other') assert.ok(keys.every((k) => !glyphs.test(k)), `a key in the form of the Mac: ${keys}`);
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the right arrow opens the submenu of Preview in More, the left arrow and Esc close it, and Return runs Play Steps (${platform})`, async (t) => {
@@ -499,7 +442,7 @@ describe('a split button folded into More', () => {
       await frames(page);
       assert.equal(await menus(page), 0);
       assert.equal(await layer(page), true, 'Play Steps does not play the steps');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`while a preview plays, the item Play Slide of the submenu of Preview reads Stop and stops it (${platform})`, async (t) => {
@@ -519,12 +462,11 @@ describe('a split button folded into More', () => {
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'preview.slide'`));
       await frames(page);
       assert.equal(await layer(page), false, 'Stop does not stop the preview');
-      // after the preview the item reads Play Slide again
       await click(page, MORE);
       await hover(page, 'Preview', 0);
       assert.equal((await labels(page, 1))[0], 'Play Slide');
       await press(page, 'Escape');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a click on Trace Backdrop in the submenu of Preview in More traces the backdrop (${platform})`, async (t) => {
@@ -535,11 +477,9 @@ describe('a split button folded into More', () => {
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'preview.backdrop'`));
       await frames(page);
       assert.ok((await rafs(page)) > 0, 'the backdrop is not traced');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the group of View is the first group of the default toolbar, which is never folded, hence this
-    // test puts View after the space of a customized toolbar
     test(`a folded View is a submenu of More with Navigator first, before a rule, then the items of its arrow, with the keys of the platform (${platform})`, async (t) => {
       const items = ['edit.undo', 'edit.redo', 'separator', 'slide.gallery', 'space', 'toolbar.view', 'toolbar.zoom', 'separator', 'file.save', 'separator', 'shell.format', 'view.steps'];
       const page = await load(t, platform, { width: 1600, stored: { [TOOLBAR_KEY]: js({ items, show: 'both' }) } });
@@ -560,7 +500,6 @@ describe('a split button folded into More', () => {
       assert.equal(sub[0].checked, String((await state(page, 'view.navigator')).checked));
       const grid = sub.find((r) => r !== '-' && r.command === 'view.grid');
       assert.equal(grid.keys, platform === 'mac' ? "⌘'" : "Ctrl+'");
-      // the right arrow opens the submenu, and Return runs Rulers
       await press(page, 'Escape');
       assert.equal(await menus(page), 1, 'Esc does not close the submenu alone');
       await press(page, 'Escape');
@@ -576,24 +515,17 @@ describe('a split button folded into More', () => {
       await press(page, 'Enter');
       await frames(page);
       assert.equal((await state(page, 'view.rulers')).checked, !rulers, 'Rulers is not run from the submenu');
-      // a click on Navigator shows or hides the navigator as the main part of View does
       const nav = (await state(page, 'view.navigator')).checked;
       await click(page, MORE);
       await hover(page, 'View', 0);
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'view.navigator'`));
       await frames(page);
       assert.equal((await state(page, 'view.navigator')).checked, !nav, 'Navigator is not run from the submenu');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// the work of R12.2 on both platforms with trusted input: the inspector and the shell around it.
-// the Distribute row of the Arrange pane fits the inspector, the toolbar and the default set fit
-// the window while Customize Toolbar is open, Slide Only hides the navigator alone, as in Keynote,
-// the Language popup of the Code pane is drawn as a control of the inspector, the resize cursor is
-// kept while the notes are resized past their limits, the keyboard sheet is drawn under the menu
-// bar, and the insert buttons stay live while the Add Slide gallery is open
 describe('the inspector and toolbar fit the window', () => {
   const DECK = 'test-deck.html';
   const PLATFORMS = ['mac', 'other'];
@@ -615,11 +547,9 @@ describe('the inspector and toolbar fit the window', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const mouse = (page, type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
   const rectOf = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; })()`);
 
-  // the editor on slide n of the demo deck served over HTTP, with the storage of the origin emptied
   async function load(t, platform, { n = 0, width = 1600, height = 1000, clear = true } = {}) {
     const page = await browser.newPage({ width, height });
     t.after(() => page.close().catch(() => {}));
@@ -641,7 +571,6 @@ describe('the inspector and toolbar fit the window', () => {
     await frames(page);
   }
 
-  // a trusted click on the title bar of the menu bar, then on the item labeled label of its menu
   async function choose(page, bar, label) {
     await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
@@ -659,8 +588,6 @@ describe('the inspector and toolbar fit the window', () => {
     await frames(page);
   }
 
-  // the controls of the Format tab past the right edge of the inspector, or past the right edge of
-  // the window, and the width of the panel that is scrolled sideways
   const cutControls = (page) => page.evaluate(`(() => {
   const inspector = document.querySelector('.beeson-edit-inspector').getBoundingClientRect();
   const panel = document.querySelector('.beeson-edit-inspector .panel.format');
@@ -677,7 +604,6 @@ describe('the inspector and toolbar fit the window', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // shell-2 and media-arrange-3
     test(`every button of the Arrange pane lies inside the inspector at 1920, 1024, and 760 px, for a figure and a picture (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4, width: 1920, height: 1080 });
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
@@ -698,10 +624,9 @@ describe('the inspector and toolbar fit the window', () => {
         }
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // shell-3
     test(`while Customize Toolbar is open in a narrow window, every toolbar item and the whole default set are inside the window (${platform})`, async (t) => {
       for (const width of [760, 900]) {
         const page = await load(t, platform, { width, height: 700 });
@@ -717,7 +642,6 @@ describe('the inspector and toolbar fit the window', () => {
       })()`);
         assert.deepEqual(row.cut, [], `items of the default set are clipped at ${width} px`);
         assert.ok(row.over <= 0, `the default set is ${row.over} px wider than its row at ${width} px`);
-        // the item at the right end is dragged off the toolbar, and Done closes the sheet
         const last = await page.evaluate(`(() => { const el = [...document.querySelectorAll('.beeson-edit-top [data-command]')].at(-1); const r = el.getBoundingClientRect(); return { id: el.dataset.command, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
         await mouse(page, 'mouseMoved', last.x, last.y);
         await mouse(page, 'mousePressed', last.x, last.y);
@@ -729,11 +653,10 @@ describe('the inspector and toolbar fit the window', () => {
         await click(page, '.beeson-edit-customize .done');
         await frames(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
-    // shell-5
     test(`View > Slide Only hides the navigator and leaves the inspector open, and View > Navigator shows the navigator again (${platform})`, async (t) => {
       const page = await load(t, platform, { width: 1440, height: 900 });
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
@@ -750,22 +673,19 @@ describe('the inspector and toolbar fit the window', () => {
       assert.ok((await rectOf(page, '.beeson-edit-canvas')).width > canvas.width + 100, 'the canvas does not take the place of the navigator');
       await choose(page, 'View', 'Navigator');
       assert.deepEqual(await panes(), { navigator: true, format: true, slideOnly: false, inspector: true });
-      // Slide Only chosen twice shows the navigator again, and the inspector is kept for the next page
       await choose(page, 'View', 'Slide Only');
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await panes(), { navigator: true, format: true, slideOnly: false, inspector: true });
       assert.notEqual(await page.evaluate(`localStorage.getItem('beeson-inspector')`), '0');
-      // a closed inspector stays closed through Slide Only
       await exec(page, 'shell.format');
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await panes(), { navigator: false, format: false, slideOnly: true, inspector: false });
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await panes(), { navigator: true, format: false, slideOnly: false, inspector: false });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // shell-6
     test(`the Language popup of the Code pane is drawn in the control tokens of the inspector, in light and dark mode (${platform})`, async (t) => {
       for (const scheme of ['light', 'dark']) {
         const page = await load(t, platform, { n: 5, width: 1440, height: 900 });
@@ -788,11 +708,10 @@ describe('the inspector and toolbar fit the window', () => {
       })()`);
         assert.ok(look, `the Code pane does not show the Language popup (${scheme})`);
         assert.deepEqual(look, { background: true, color: true, font: true, round: true, height: 24 }, `the Language popup is not drawn in the control tokens (${scheme})`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       }
     });
 
-    // shell-8
     test(`the resize cursor is kept while the notes divider is dragged past its limits (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2, width: 1440, height: 900 });
       await exec(page, 'view.notes');
@@ -813,10 +732,9 @@ describe('the inspector and toolbar fit the window', () => {
         await frames(page);
       }
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // menus-keys-7
     test(`the keyboard sheet is drawn under the menu bar and inside the window at every size (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2, width: 1600, height: 1000 });
       for (const [width, height] of [[1600, 1000], [1280, 800], [1366, 768], [1920, 1200], [1440, 900], [1024, 768]]) {
@@ -835,10 +753,9 @@ describe('the inspector and toolbar fit the window', () => {
         await press(page, 'Escape');
         await frames(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // feel-7
     test(`while the Add Slide gallery is open the insert buttons stay live, and one click on Table opens the table grid (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 0 });
       await click(page, '.beeson-edit-nav .row:nth-of-type(3)');
@@ -854,26 +771,20 @@ describe('the inspector and toolbar fit the window', () => {
       assert.ok(await page.evaluate(`!!document.querySelector('.beeson-table-picker[open]')`), 'one click on Table does not open the table grid');
       await press(page, 'Escape');
       await frames(page);
-      // Escape in the gallery closes it, and the keys of the slide are not run
       await click(page, '.beeson-edit-top [data-command="slide.gallery"]');
       await frames(page);
       await press(page, 'Escape');
       await frames(page);
       assert.ok(await page.evaluate(`!document.querySelector('.beeson-edit-gallery[open]')`), 'Escape does not close the gallery');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R20.13 on both platforms, the open items O7, O5, and O9 and the new defects
-// N1 and N2 of the review of round 7: Slide Layout from Figure to Content with a white figure, the
-// Format pane closed by hand in a narrow window, and the toolbar and the status bar in a window
-// 560 px wide
 describe('the Format pane closed in a narrow window', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test-deck.html';
-  // the index of the slide of index.html with the figures
   const FIGURES = 4;
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
@@ -893,14 +804,12 @@ describe('the Format pane closed in a narrow window', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const urlOf = (deck, platform) => `${server.origin}/${deck}?edit&still&theme=light&edit-platform=${platform}`;
 
-  // opens deck at its url with the storage of the browser as it is, and shows slide n
   async function open(page, deck, platform, n, text = readFileSync(deck, 'utf8')) {
     await page.goto(urlOf(deck, platform));
     await page.waitFor(deckSettled);
@@ -926,9 +835,6 @@ describe('the Format pane closed in a narrow window', () => {
     await wait(page, 400);
   }
 
-  // the boxes of the drawn picture of the image, of the caption, and of the words of the caption and
-  // of the heading of the slide shown, in slide px. a picture with object-fit contain is drawn
-  // smaller than the box of its img
   const boxes = (page) => page.evaluate(`(() => {
   const slide = Reveal.getCurrentSlide();
   const s = slide.getBoundingClientRect();
@@ -950,7 +856,6 @@ describe('the Format pane closed in a narrow window', () => {
   const apart = (a, b) => a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
 
   for (const platform of PLATFORMS) {
-    // O7: the drawn image and the caption of the figure slide stay inside the slide as Content
     test(`Slide Layout from Figure to Content keeps the paper image and its caption inside the slide (${platform})`, async (t) => {
       const page = await load(t, platform, LAYOUTS, WHITE_FIGURE);
       await page.evaluate(`document.querySelector('img.white-figure').decode().then(() => true)`);
@@ -971,20 +876,16 @@ describe('the Format pane closed in a narrow window', () => {
       await page.evaluate(`Reveal.slide(${WHITE_FIGURE})`);
       await wait(page, 300);
       assert.ok(inside((await boxes(page)).drawn), 'the drawn image runs past the slide after a reopen');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // whether the navigator and the inspector are drawn, whether Format is checked, and the stored state
-  // of the inspector
   const panes = (page) => page.evaluate(`(() => {
   const drawn = (s) => (document.querySelector(s)?.getBoundingClientRect().width ?? 0) > 0;
   return { nav: drawn('.beeson-edit-nav'), inspector: drawn('.beeson-edit-inspector'), format: window.BeesonEditor.state('shell.format').checked, stored: localStorage.getItem('beeson-inspector') };
 })()`);
 
   for (const platform of PLATFORMS) {
-    // O5 and N1: at 760 px the window is too narrow for both panes, and the navigator is drawn in
-    // the room of a Format pane closed by hand, which must not be taken as a pane that gave way to it
     test(`a Format pane closed by hand at 760 px stays closed after a widen and after a reopen (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, FIGURES, { width: 760, height: 700 });
       assert.deepEqual(await panes(page), { nav: false, inspector: true, format: true, stored: '1' });
@@ -998,12 +899,10 @@ describe('the Format pane closed in a narrow window', () => {
       assert.deepEqual(await panes(page), { nav: true, inspector: false, format: false, stored: '0' }, 'Format closed by hand is opened again by a reopen');
       await resize(page, 1600, 1000);
       assert.deepEqual(await panes(page), { nav: true, inspector: false, format: false, stored: '0' }, 'Format closed by hand is opened again by a widen after a reopen');
-      assert.deepEqual(errors(page).filter((e) => !e.includes('beforeunload')), []);
+      assert.deepEqual(page.errors.filter((e) => !e.includes('beforeunload')), []);
     });
   }
 
-  // the buttons of the toolbar and of the status bar that are cut off by the window or by their bar,
-  // and the scroll width of the body, in a window of 560 px
   const cutOff = (page) => page.evaluate(`(() => {
   const W = innerWidth;
   const cut = [];
@@ -1021,7 +920,6 @@ describe('the Format pane closed in a narrow window', () => {
   return { cut, scroll: document.body.scrollWidth, width: W };
 })()`);
 
-  // a choice of the Show menu of the Customize Toolbar sheet
   async function show(page, name) {
     await click(page, '.beeson-edit-customize button.show');
     await wait(page, 300);
@@ -1032,8 +930,6 @@ describe('the Format pane closed in a narrow window', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // O9 and N2: every button of the two bars is drawn whole in a window 560 px wide, and the page is
-    // not wider than the window, with and without Customize Toolbar open
     test(`the toolbar and the status bar fit a window of 560 px, with and without Customize Toolbar (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, FIGURES, { width: 560, height: 700 });
       const fits = async (when) => {
@@ -1052,14 +948,11 @@ describe('the Format pane closed in a narrow window', () => {
       await press(page, 'Escape');
       await wait(page, 300);
       await fits('after the sheet is closed with Icon and Text');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// the work of R14.6 on both platforms and in both appearances: the contrast of the last small texts
-// of the chrome, View > Slide Only chosen twice in a narrow window, and a typed slide number that
-// jumps back in the show played by Present
 describe('Slide Only twice, and the last small texts', () => {
   const PLATFORMS = ['mac', 'other'];
   const SCHEMES = ['light', 'dark'];
@@ -1079,9 +972,7 @@ describe('Slide Only twice, and the last small texts', () => {
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the editor on index.html in the appearance scheme, with the local storage cleared
   async function load(t, platform, scheme, { width = 1600, height = 1000 } = {}) {
     const page = await browser.newPage({ width, height });
     t.after(() => page.close().catch(() => {}));
@@ -1103,9 +994,6 @@ describe('Slide Only twice, and the last small texts', () => {
   return e && e.getClientRects().length ? { what: e.textContent.trim().slice(0, 30), fg: ${INK}(e), bg: ${GROUND}(e) } : { what: ${js(selector)} + ' is not shown', fg: 'rgb(0, 0, 0)', bg: 'rgb(0, 0, 0)' };
 })()`);
 
-  // D6 to D9: the prompt and the key hint of the Insert Formula dialog, the zoom readout of the notes
-  // pane at the opacity of its group, the key hint of the presenter display, and the number badges of
-  // the Steps pane measured under 4.5:1
   for (const platform of PLATFORMS) {
     for (const scheme of SCHEMES) {
       test(`the last small texts of the chrome have a contrast of 4.5:1 on their ground (${platform}, ${scheme})`, async (t) => {
@@ -1133,7 +1021,7 @@ describe('Slide Only twice, and the last small texts', () => {
         seen.push(await measure(page, 'dialog.beeson-edit-presenter .hint'));
         assert.equal(seen.length, 5);
         assert.deepEqual(below(seen, 4.5), []);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1147,8 +1035,6 @@ describe('Slide Only twice, and the last small texts', () => {
     slideOnly: (await state(page, 'view.slideOnly')).checked,
   });
 
-  // D15: in a window 800 or 700 px wide with the Format pane open, the first Slide Only showed the
-  // navigator in place of the inspector, and the second hid both
   for (const platform of PLATFORMS) {
     for (const width of [800, 700]) {
       test(`View > Slide Only chosen twice in a window ${width} px wide gives back the panes before the first choice (${platform})`, async (t) => {
@@ -1164,7 +1050,7 @@ describe('Slide Only twice, and the last small texts', () => {
         await frames(page);
         assert.deepEqual(await panes(page), start);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
@@ -1175,8 +1061,6 @@ describe('Slide Only twice, and the last small texts', () => {
   const DISPLAY = 'dialog.beeson-edit-presenter[open]';
   const stepOf = (page) => page.evaluate(`(() => { const m = document.querySelector(${js(DISPLAY)}).textContent.match(/Slide (\\d+) of \\d+.*?Step (\\d+) of (\\d+)/s); return m ? m.slice(1).map(Number) : null; })()`);
 
-  // D11: from slide 6, 3 and Return went to slide 3 with its four steps shown in the show played by
-  // Present, and to slide 3 before its steps in the presenter display
   for (const platform of PLATFORMS) {
     test(`a typed slide number that jumps back lands before the steps of its slide in both shows (${platform})`, async (t) => {
       const page = await load(t, platform, 'light');
@@ -1210,7 +1094,7 @@ describe('Slide Only twice, and the last small texts', () => {
       await press(page, 'Escape');
       await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -1221,8 +1105,6 @@ describe('Slide Only twice, and the last small texts', () => {
   }
   const OUTSIDE = `[...document.querySelectorAll('.beeson-edit-top [data-at]')].filter((el) => { const r = el.getBoundingClientRect(); return r.left < -0.5 || r.right > innerWidth + 0.5 || !r.width; }).map((el) => (el.dataset.command ?? el.className) + ' at ' + Math.round(el.getBoundingClientRect().right))`;
 
-  // D10 and r12-2-shell-inspector n1: with Customize Toolbar open, Format and Steps lay past the right
-  // edge of a window 640 px wide, and Present and Steps past a window 760 px wide in Text Only
   for (const platform of PLATFORMS) {
     test(`while Customize Toolbar is open, every toolbar item stays inside a window under 681 px and in Text Only (${platform})`, async (t) => {
       const page = await load(t, platform, 'light', { width: 1600, height: 800 });
@@ -1249,18 +1131,13 @@ describe('Slide Only twice, and the last small texts', () => {
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-top').classList.contains('compact')`), false, 'the labels are not drawn again at 1600 px');
       await exec(page, 'view.customizeToolbar');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// the work of R13.4 on both platforms: the place of a new table on a slide without a free place
-// of its size, the width of the navigator in a narrow window, and the selection of a display
-// formula after its TeX is applied. each edit of the file is checked byte for byte, after an undo
-// and a redo, and after a save and an open
 describe('the width of the navigator when narrow', () => {
   const DECK = 'test-deck.html';
-  // the slides of index.html with an equation and with a figure in a figure box
   const EQUATIONS = 3;
   const FIGURES = 4;
   const PLATFORMS = ['mac', 'other'];
@@ -1283,9 +1160,7 @@ describe('the width of the navigator when narrow', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the box in slide px of each shown element of selector on the current slide
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slide = document.querySelector('.reveal .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -1297,11 +1172,8 @@ describe('the width of the navigator when narrow', () => {
 })()`);
   const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
   const size = (a) => (a.right - a.left) * (a.bottom - a.top);
-  // the share of the area of b that a covers
   const covers = (a, b) => area(a, b) / size(b);
 
-  // the editor on a deck served over HTTP, with the storage of the origin emptied first, and with
-  // slide n shown
   async function load(t, platform, { n = 0, size: window = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(window);
     t.after(() => page.close().catch(() => {}));
@@ -1318,8 +1190,6 @@ describe('the width of the navigator when narrow', () => {
     return page;
   }
 
-  // the rendered text differs from before, an undo gives before and a redo the edited text byte for
-  // byte, and the saved text is opened again without problems
   async function checkEdit(page, before, name) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -1333,8 +1203,6 @@ describe('the width of the navigator when narrow', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // table-over-list. by R15.10, a table without a free place is put inside the margins at the
-    // middle of the slide, where it may cover words, and off the figure
     test(`a new table on a slide without a free place of its size is put at the middle of the slide off the figure, and a second table off the first (${platform})`, async (t) => {
       const page = await load(t, platform, { n: FIGURES });
       const before = await render(page);
@@ -1354,11 +1222,9 @@ describe('the width of the navigator when narrow', () => {
       const tables = await boxes(page, ':scope > table');
       assert.equal(tables.length, 2);
       assert.ok(covers(tables[1], tables[0]) < 0.5, `the second table at ${js(tables[1])} lies on the first at ${js(tables[0])}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // navigator-edge-drag. in a window 1000 px wide with the Format pane open, the navigator is
-    // drawn at most 50vw less the width of the pane
     test(`a drag of the edge of the navigator past its widest drawn width stores the drawn width (${platform})`, async (t) => {
       const page = await load(t, platform, { n: FIGURES, size: { width: 1000, height: 900 } });
       await page.evaluate(`document.documentElement.classList.contains('beeson-format') || window.BeesonEditor.exec('shell.format'), true`);
@@ -1380,10 +1246,9 @@ describe('the width of the navigator when narrow', () => {
       const g2 = await geo();
       assert.ok(Math.abs(g2.nav - (g1.nav - 40)) <= 2, `a drag 40 px to the left took the navigator from ${g1.nav} to ${g2.nav} px`);
       assert.ok(Math.abs(g2.now - g2.nav) <= 1 && Math.abs(g2.stored - g2.nav) <= 1, `after the drag to the left, ${js(g2)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // formula-frame
     test(`a display formula stays selected and framed after its TeX is applied in the Formula pane, and after an undo and a redo (${platform})`, async (t) => {
       const page = await load(t, platform, { n: EQUATIONS });
       await page.evaluate(`(() => { const E = window.BeesonEditor; E.state('view.steps').checked && E.exec('view.steps'); E.state('shell.format').checked || E.exec('shell.format'); return true; })()`);
@@ -1420,7 +1285,7 @@ describe('the width of the navigator when narrow', () => {
       assert.deepEqual(await framed(), { selected: true, framed: true }, 'after a redo of the TeX');
       const { text } = await saveAndReopen(page, `r13-4-formula-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

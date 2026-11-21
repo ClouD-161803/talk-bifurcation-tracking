@@ -1,7 +1,3 @@
-// helpers that build the elements of the editor, and injectStyle, with which each module adds its
-// stylesheet. a stylesheet takes its colors from the custom properties of theme/beeson.css, with a
-// fallback for a deck on another theme
-
 export function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -16,9 +12,6 @@ export function button(text: string, title = '', label = ''): HTMLButtonElement 
   return el;
 }
 
-// injectStyle adds css once to the head, as style#beeson-edit-<id>. the stylesheets are thus in the
-// order in which main.ts installs the modules, and a rule that overrides a rule of another module
-// must have a higher specificity
 export function injectStyle(id: string, css: string): HTMLStyleElement {
   const key = `beeson-edit-${id}`;
   const found = document.getElementById(key);
@@ -30,11 +23,8 @@ export function injectStyle(id: string, css: string): HTMLStyleElement {
   return style;
 }
 
-// a phone or a tablet without a mouse, where a key and a chooser of a folder are not likely. a
-// machine without a pointer, e.g. with a keyboard alone, is not one
 export const touchOnly = (): boolean => matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
 
-// the storage of the browser may be blocked or full, and nothing is then kept
 export function stored(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -47,13 +37,9 @@ export function store(key: string, value: string | null): void {
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
-  } catch {
-    // nothing is kept
-  }
+  } catch {}
 }
 
-// a pointer click leaves the focus on the slide, and Enter or Space on a focused button keeps it.
-// the action is run after the click, and its error is passed to fail
 export function wire(el: HTMLButtonElement, action: () => unknown, fail: (e: unknown) => void): void {
   el.addEventListener('click', (ev) => {
     if (ev.detail > 0) el.blur();

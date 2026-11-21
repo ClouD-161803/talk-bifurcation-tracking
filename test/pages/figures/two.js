@@ -1,4 +1,3 @@
-// a fixture of test/pages/tikz.html in the form of an output of npm run tex, written by hand with three parts
 (window.beesonFigures ??= {})["two"] = {
   "hash": "0000000000000000",
   "width": 300,

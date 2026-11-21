@@ -1,9 +1,3 @@
-// the typing into the text elements of the slides. a text element paired with the file is made editable, and the
-// input of the browser is filtered so that a text element holds only what the file can hold: a line is a
-// br, or a newline in a pre, a paste is plain text, and ⌘B and ⌘I write strong and em. the typing
-// is recorded in the history as the content of the text element before and after, and an undo puts the
-// text element back with restoreHost
-
 import type { App, Typing } from '../app.ts';
 import { mathReady, setContentWithTex } from '../math.ts';
 import { hasTex } from '../typeset.ts';
@@ -19,8 +13,6 @@ html.beeson-editing .reveal [contenteditable="true"] mjx-container { cursor: poi
 html.beeson-editing .reveal [contenteditable="true"] mjx-container:hover, html.beeson-editing .reveal [contenteditable="true"] mjx-container:focus-visible { outline: 1px dashed var(--accent, #f80); outline-offset: 4px; }
 `;
 
-// the end of the part of after that differs from before, as an offset into after, i.e. the first
-// character that differs after an undo of typing. null when the texts are the same
 export function changeEnd(before: string, after: string): number | null {
   if (before === after) return null;
   let head = 0;
@@ -32,8 +24,6 @@ export function changeEnd(before: string, after: string): number | null {
 
 const loose = (n: Text): boolean => !n.data.trim() && !!n.parentElement?.matches('ul, ol');
 
-// the caret is put at the offset into the text of host, or at its end. an offset inside a formula
-// puts it after the formula
 export function placeCaret(host: Element, offset: number | null = null): void {
   if (!(host instanceof HTMLElement)) return;
   host.focus({ preventScroll: true });
@@ -47,8 +37,6 @@ export function placeCaret(host: Element, offset: number | null = null): void {
     let left = offset;
     for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
       if (left <= node.length) {
-        // white space between the items of a list does not take the caret, which goes to the end of
-        // the text before it, or else to the start of the text after it
         if (loose(node)) {
           const near = (way: 'previousNode' | 'nextNode') => {
             walker.currentNode = node!;
@@ -73,7 +61,6 @@ export function placeCaret(host: Element, offset: number | null = null): void {
   selection.addRange(range);
 }
 
-// the text nodes of host outside its formulas
 const wordsOf = (host: Element): Text[] => {
   const out: Text[] = [];
   const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
@@ -81,9 +68,6 @@ const wordsOf = (host: Element): Text[] => {
   return out;
 };
 
-// TeX put into host as text, e.g. by a paste, is typeset in place. the caret is kept before the
-// same text after it, since MathJax replaces the text nodes around a new formula, and a formula
-// drawn as SVG does not have a text to count. a caret that has left host is not moved
 export async function typesetTyped(app: App, host: Element): Promise<void> {
   const mj = window.MathJax;
   const sel = window.getSelection();
@@ -114,9 +98,6 @@ export async function typesetTyped(app: App, host: Element): Promise<void> {
   sel!.addRange(r);
 }
 
-// Cmd+B and Cmd+I wrap the selection in strong and em, as the deck is written, or take it out of
-// them when all of its text is inside. the command of the browser would write b and i, and it
-// nests a b inside a strong of the theme, whose weight of 500 it does not take for bold
 export function toggleFormat(host: Element, tag: 'strong' | 'em'): void {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
@@ -145,8 +126,6 @@ export function toggleFormat(host: Element, tag: 'strong' | 'em'): void {
   const outer = off ? formatOf(common) : null;
   let nodes: Node[];
   if (outer) {
-    // the element around the whole selection is split into the part before it, the selection
-    // without the element, and the part after it, so that the formats inside it are kept
     const start: [Node, number] = [range.startContainer, range.startOffset];
     const tail = document.createRange();
     tail.setStart(range.endContainer, range.endOffset);
@@ -189,8 +168,6 @@ export function toggleFormat(host: Element, tag: 'strong' | 'em'): void {
   host.normalize();
 }
 
-// a line in a text element is a br, or a newline in a pre, and a paste is plain text, so that the text
-// of a slide stays what the file can hold
 export function insertPlain(host: Element, text: string): void {
   const pre = host.closest('pre');
   if (pre && text.includes('\n')) return insertCode(host, pre, text);
@@ -205,11 +182,6 @@ export function insertPlain(host: Element, text: string): void {
   });
 }
 
-// a text of several lines pasted into a list item of a slide is an item for each line, as Return
-// makes a new item, in Keynote and PowerPoint. a blank line is dropped, since Return on an empty
-// item ends the list, apart from a blank first line after a text of the item, which starts a new
-// item there. the first line typed replaces a selected text in the entry of the paste, which is one
-// entry of the history, and blank lines alone take the selected text off
 export function pastesItems(app: App, host: Element, text: string): boolean {
   return host.matches('li') && /\r?\n/.test(text.replace(/\r?\n$/, '')) && app.commands.enabled('text.newParagraph');
 }
@@ -220,7 +192,6 @@ export async function pasteItems(app: App, text: string): Promise<void> {
     return app.hostOf(n instanceof Element ? n : n?.parentElement ?? null);
   };
   app.history.break();
-  // the text of the item before the caret, or before the selected text
   const before = () => {
     const r = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : null;
     const start = r?.startContainer;
@@ -237,7 +208,6 @@ export async function pasteItems(app: App, text: string): Promise<void> {
     const host = caretHost();
     if (!lines.length && host && !window.getSelection()?.isCollapsed) {
       app.history.beforeTyping(host, 'Paste');
-      // a range taken off directly, since execCommand leaves a br in an emptied item
       window.getSelection()!.getRangeAt(0).deleteContents();
       app.history.afterTyping(host);
       app.history.break();
@@ -256,11 +226,6 @@ export async function pasteItems(app: App, text: string): Promise<void> {
   });
 }
 
-// one word with the space after it, as a double click takes it on Windows, is pasted with the
-// spaces of PowerPoint. the space is dropped before a space, a closing mark, or the end of the
-// text, and a space is put after a letter, a digit, or a closing mark. a paste into a word or
-// into code is kept as it is. a line break is read as a new line, and a formula or a picture as
-// a word, which Range.toString() skips
 const spacedText = (r: Range): string => {
   const f = r.cloneContents();
   f.querySelectorAll('br').forEach((b) => b.replaceWith('\n'));
@@ -286,9 +251,6 @@ export function spaced(host: Element, text: string): string {
   return (word.test(before) || close.test(before) ? ' ' : '') + (!next || /\s/.test(next) || close.test(next) ? text.slice(0, -1) : text);
 }
 
-// Chrome drops a space after the caret where the space is not drawn, i.e. at the start of a text element,
-// when it types there. text is put into the text node instead, so that the space is kept and drawn,
-// as in Keynote and PowerPoint. false where the caret is not before such a space
 function typeBeforeSpace(host: Element, text: string): boolean {
   const sel = window.getSelection();
   const node = sel?.focusNode;
@@ -304,10 +266,6 @@ function typeBeforeSpace(host: Element, text: string): boolean {
   return true;
 }
 
-// Chrome types a newline of insertText in a pre as a split of its code element, hence a text with
-// lines is put at the caret as a text node. a newline at the end of a pre is drawn only before
-// another character, thus a second newline is put after the caret there, which the numbers of
-// commands/code.ts do not count
 function insertCode(host: Element, pre: Element, text: string): void {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return;
@@ -331,7 +289,6 @@ export function install(app: App): void {
   const history = app.history;
   let hosts: Element[] = [];
 
-  // each formula is one unit that the caret skips, reached with Tab and opened with Enter
   function markMath(root: Element): void {
     for (const c of root.querySelectorAll('mjx-container')) {
       c.setAttribute('contenteditable', 'false');
@@ -342,8 +299,6 @@ export function install(app: App): void {
     }
   }
 
-  // marks the text elements of the pairing editable, and the formulas in them as one unit each. a text element
-  // that stays a text element is left alone, so that a save does not take the focus
   function attach(): void {
     const next = app.pairing ? app.pairing.texts.map((b) => b.live) : [];
     for (const h of hosts) if (!next.includes(h)) h.removeAttribute('contenteditable');
@@ -356,15 +311,11 @@ export function install(app: App): void {
     app.notes.ensure();
   }
 
-  // a text element is put back to a content of the history, on its slide, with the caret at the end of
-  // the text that changed. a text element framed as an object stays framed without a caret, e.g. a
-  // paragraph after Apply of the TeX of its inline formula
   async function restoreHost(host: Element, content: string): Promise<void> {
     app.showSlide(host);
     if (host.matches('aside.notes') && !app.notes.shown()) app.notes.toggle();
     const before = host.textContent ?? '';
     await setContentWithTex(host, content);
-    // the content of the history is written without the heads and the numbers of the theme
     (window as { Beeson?: { refreshChrome?(): void } }).Beeson?.refreshChrome?.();
     markMath(host);
     history.track(host);
@@ -374,10 +325,7 @@ export function install(app: App): void {
     app.invalidate('content');
   }
 
-  // the undo of the browser, e.g. from its Edit menu, is taken by the command, which a session
-  // may refuse
   function onBeforeInput(ev: InputEvent): void {
-    // an input cancelled before, e.g. by the lock of commands/order.ts, is not applied by hand
     if (ev.defaultPrevented) return;
     const host = app.hostOf(ev.target);
     if (!host) return;
@@ -387,7 +335,6 @@ export function install(app: App): void {
       void app.commands.run(type === 'historyUndo' ? 'edit.undo' : 'edit.redo').catch((e) => app.fail(e));
       return;
     }
-    // bold and italic are an entry of the history each
     if (type === 'formatBold' || type === 'formatItalic') {
       ev.preventDefault();
       history.break();
@@ -404,7 +351,6 @@ export function install(app: App): void {
       void pasteItems(app, ev.dataTransfer?.getData('text/plain') ?? '').catch((e) => app.fail(e));
       return;
     }
-    // a new line starts a new entry of the history, as in a text editor
     if (type === 'insertParagraph' || type === 'insertLineBreak') history.break();
     history.beforeTyping(host, type === 'insertFromPaste' ? 'Paste' : type === 'deleteByCut' ? 'Cut' : 'typing');
     if (type === 'insertText' && ev.data && !host.closest('pre') && typeBeforeSpace(host, ev.data)) ev.preventDefault();
@@ -426,15 +372,11 @@ export function install(app: App): void {
     }
   }
 
-  // the space left before a cut word when a space or a punctuation mark follows it, which Chrome
-  // takes out only on macOS, and Word and PowerPoint on every platform. a space of code is kept
   function smartCut(): void {
     const s = getSelection();
     const n = s?.focusNode;
     const k = s?.focusOffset ?? 0;
     if (!s?.isCollapsed || !(n instanceof Text) || k === 0 || n.parentElement?.closest('pre, code')) return;
-    // a word that was the whole text of an inline element leaves the caret at the end of n, and
-    // the character after it is read from the next text of the text element
     let next = n.data[k];
     const host = next === undefined ? app.hostOf(n.parentElement) : null;
     if (host) {
@@ -466,11 +408,6 @@ export function install(app: App): void {
     app.invalidate('selection');
   });
   document.addEventListener('focusout', () => setTimeout(() => app.invalidate('selection'), 0));
-  // a formula is not editable, and the caret is kept beside it. at a click behind a formula at the
-  // end of a line, Chrome puts the caret at the start of the text, Safari before the formula, and
-  // Firefox inside it, where typing is lost. Firefox puts it inside at the end of a line as well,
-  // and holds it before a formula at the end of a text, hence the arrows step into the TeX of an
-  // inline formula, see shown-tex.ts, and over a display
   const besideMath = (math: Element, after: boolean) => {
     const r = document.createRange();
     if (after) r.setStartAfter(math);
@@ -478,7 +415,6 @@ export function install(app: App): void {
     getSelection()?.collapse(r.startContainer, r.startOffset);
   };
   const mathAt = (node: Node | null | undefined): Element | null | undefined => (node instanceof Element ? node : node?.parentElement)?.closest('mjx-container');
-  // the formula next to the collapsed caret toward the end, or toward the start
   const nextMath = (forward: boolean): Element | null => {
     const s = getSelection();
     if (!s?.isCollapsed) return null;
@@ -497,7 +433,6 @@ export function install(app: App): void {
     const math = nextMath(ev.key === 'ArrowRight');
     if (!math || !host.contains(math)) return;
     ev.preventDefault();
-    // the caret goes into the TeX of an inline formula, and over a display
     if (!showTex(app, math, ev.key === 'ArrowRight' ? 'start' : 'end')) besideMath(math, ev.key === 'ArrowRight');
   });
   document.addEventListener('selectionchange', () => {

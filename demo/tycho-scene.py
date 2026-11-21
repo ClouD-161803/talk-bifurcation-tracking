@@ -1,21 +1,4 @@
-"""Writes the tycho viewer of the demo deck into index.html.
-
-The scene is the L1 halo family of the Earth–Moon circular restricted three-body problem, after the
-halo example of tycho, in three panels: the rotating frame, the barycentric inertial frame, and the
-inertial frame centered on the Moon. The family is continued here in the initial z, from 8000 km to
-40000 km in 40 equal steps. Each member is corrected by Newton's method on its initial x and y
-velocity, so that vx and vz vanish at the half period, and it is then propagated for one period.
-The mass ratio is mu = 0.01215, as in src/orbits.ts, and a distance unit is 384400 km. You need
-pytycho with build_embed, of the build from which theme/vendor/tycho/tycho.js was copied, and SciPy.
-Run it as
-
-    uv run --project <the tycho checkout> --with scipy python demo/tycho-scene.py index.html
-
-The <tycho-viewer> element is written as a kiosk, i.e. without controls, into the figure box of the slide
-"Tycho on a slide", between its two marker comments, or in place of the div with the id tycho-slot
-on the first run. A kiosk plays from the initial state of the scene, in which the three panels are
-laid out, and its keys still step the selected member along the family.
-"""
+import re
 import sys
 from pathlib import Path
 
@@ -27,20 +10,16 @@ import pytycho as ty
 MU = 0.01215
 DU = 384400.0
 Z_START, Z_END, STEPS = 8000.0, 40000.0, 40
-# x0 and vy0 of the member at 8000 km, rounded to four digits, from a correction of the third-order
-# approximation of [Richardson 1980](https://doi.org/10.1007/BF01229511)
-SEED = (0.8234, 0.1332)
+RICHARDSON_1980_SEED = (0.8234, 0.1332)
 DENSE = 2000
 SAMPLES = 480
 LAPS = 9
-# a trail fraction is of the whole loop of LAPS periods, hence a quarter period
-TRAIL = 0.25 / LAPS
-START = "<!-- tycho-viewer start, written by demo/tycho-scene.py -->"
-END = "<!-- tycho-viewer end -->"
+ACCENT_OF_BOTH_MODES = "#f08050"
+QUARTER_PERIOD_OF_LOOP = 0.25 / LAPS
+VIEWER = re.compile(r"<tycho-viewer\b.*?</tycho-viewer>", re.S)
 
 
 def rhs(t, s):
-    """The CR3BP equations of motion in the rotating frame, with the state (x, y, z, vx, vy, vz)."""
     x, y, z, vx, vy, vz = s[:6]
     k1 = (1 - MU) / np.sqrt((x + MU) ** 2 + y**2 + z**2) ** 3
     k2 = MU / np.sqrt((x - 1 + MU) ** 2 + y**2 + z**2) ** 3
@@ -49,7 +28,6 @@ def rhs(t, s):
 
 
 def rhs_stm(t, s):
-    """The equations of motion followed by the variational equations of the STM, stored row by row."""
     x, y, z = s[:3]
     d1, d2 = np.array([x + MU, y, z]), np.array([x - 1 + MU, y, z])
     r1, r2 = np.linalg.norm(d1), np.linalg.norm(d2)
@@ -64,7 +42,6 @@ def rhs_stm(t, s):
 
 
 def crossing(t, s):
-    """The event y = 0 after the start, i.e. the half period of a symmetric orbit with vy0 above zero."""
     return s[1] if t > 0.5 else 1.0
 
 
@@ -73,8 +50,6 @@ crossing.terminal = True
 
 
 def correct(x0, z0, vy0):
-    """Returns x0, vy0, and the period of the halo orbit through (x0, 0, z0) with the velocity
-    (0, vy0, 0), corrected from the guess with z0 held fixed."""
     for _ in range(20):
         start = np.concatenate([[x0, 0.0, z0, 0.0, vy0, 0.0], np.eye(6).ravel()])
         sol = solve_ivp(rhs_stm, (0.0, 6.0), start, events=crossing, method="DOP853", rtol=1e-12, atol=1e-12)
@@ -85,8 +60,6 @@ def correct(x0, z0, vy0):
         if np.abs(miss).max() < 1e-11:
             return x0, vy0, 2 * half
         stm = end[6:].reshape(6, 6)
-        # the crossing time is shifted by -dy / vy when x0 or vy0 is changed, hence this shift, times
-        # the rates of vx and vz at the crossing, is added to their derivatives
         rate = rhs(half, end)
         jacobian = stm[np.ix_([3, 5], [0, 4])] - np.outer(rate[[3, 5]], stm[1, [0, 4]]) / end[4]
         dx0, dvy0 = np.linalg.solve(jacobian, -miss)
@@ -95,10 +68,8 @@ def correct(x0, z0, vy0):
 
 
 def halo_family():
-    """Returns the members from Z_START to Z_END as tuples (z0, x0, vy0, period), nondimensional. The
-    guess of each member is extrapolated linearly from the two members before it."""
     members = []
-    x0, vy0 = SEED
+    x0, vy0 = RICHARDSON_1980_SEED
     for z0 in np.linspace(Z_START, Z_END, STEPS + 1) / DU:
         if len(members) >= 2:
             (_, xa, va, _), (_, xb, vb, _) = members[-2:]
@@ -108,7 +79,6 @@ def halo_family():
 
 
 def jacobi(s):
-    """The Jacobi constant of the state s."""
     x, y, z, vx, vy, vz = s
     r1 = np.sqrt((x + MU) ** 2 + y**2 + z**2)
     r2 = np.sqrt((x - 1 + MU) ** 2 + y**2 + z**2)
@@ -116,7 +86,6 @@ def jacobi(s):
 
 
 def build():
-    """Returns the scene of the halo family."""
     scene = ty.Scene(title="Earth–Moon L1 halo family")
     rotating = scene.frame("rotating", label="rotating", axes=("x", "y", "z"), unit="DU")
     inertial = scene.frame("barycentric-inertial", label="barycentric inertial", axes=("X", "Y", "Z"), unit="DU",
@@ -127,8 +96,8 @@ def build():
                 parent=inertial, origin=moon)
     frames = ["rotating", "barycentric-inertial", "inertial-moon"]
 
-    family = scene.track_set("halo", frame=rotating, tags={"family": "L1 halo"}, attrs={"mu": MU}, periodic=True,
-                             label="Earth–Moon L1 halo family")
+    family = scene.trajectory_set("halo", frame=rotating, tags={"family": "L1 halo"}, attrs={"mu": MU}, periodic=True,
+                                  label="Earth–Moon L1 halo family")
     members = halo_family()
     for z0, x0, vy0, period in members:
         t = np.linspace(0.0, period, DENSE)
@@ -144,56 +113,46 @@ def build():
     family.describe("z0", label="initial z", unit="km")
     family.describe("period", label="period", unit="TU")
     family.describe("energy", label="Jacobi constant")
-    # the samples are kept at equal steps of arclength in all three frames, hence the passes near the
-    # Moon in the frame centered on it are not cut short
     family.thin(SAMPLES, frames=frames)
 
-    frame = scene.choice("frame", frames, labels=["rotating", "barycentric inertial", "inertial, Moon"], scope="panel")
-    z0 = scene.selector("z0", parameter="z0", default=members[len(members) // 2][0] * DU)
-    # one loop of the clock is LAPS periods long, about four revolutions of the Moon, so that the
-    # inertial traces are closed round the Earth
-    scene.clock("fraction", channels=["time", "@index"], labels=["time", "sample"], steps=SAMPLES * LAPS, laps=LAPS)
+    frame = scene.choice("frame", frames, labels=["rotating", "barycentric inertial", "inertial, Moon"], scope="per_panel")
+    z0 = scene.parameter("z0", parameter="z0", default=members[len(members) // 2][0] * DU)
+    scene.clock("fraction", channels=["time", "@index"], labels=["time", "sample"], frame_count=SAMPLES * LAPS,
+                revolutions=LAPS)
     plasma = {"parameter": "z0", "colormap": "plasma"}
-    scene.view("main", frame=frame, driver=ty.driver(family, z0),
-               camera={"kind": "orbit", "projection": "perspective", "up": "z"}, layers=[
-                   ty.track(family, "all", color=plasma, opacity=0.05,
-                            highlight={"var": z0, "width": 2.5, "opacity": 1.0, "kernel": {"width": 0.05, "opacity": 0.55}}),
-                   ty.track(family, z0, trail=TRAIL, taper=(0, 0), color=plasma, width=22.0, opacity=0.3),
-                   ty.track(family, z0, trail=TRAIL, taper=(0, 0), color=plasma, width=6.0),
-                   # the orange of the deck, since a layer color is fixed, and white would be lost in
-                   # the light mode
-                   ty.track(family, z0, trail=TRAIL, head=True, color="#f08050", width=2.0),
-                   ty.body(earth, trail=1.0, size=8.0),
-                   ty.body(moon, trail=1.0, size=5.0),
-                   ty.axes(),
-                   ty.grid(),
-               ])
-    scene.panel("rotating", "main", {frame: "rotating"})
-    scene.panel("inertial", "main", {frame: "barycentric-inertial"})
-    scene.panel("moon", "main", {frame: "inertial-moon"})
+    scene.panel("main", frame=frame, reference=ty.reference(family, z0),
+                camera={"kind": "3d", "projection": "perspective", "up": "z"}, layers=[
+                    ty.trajectories(family, "all", color=plasma, opacity=0.05,
+                                    highlight={"input": z0, "width": 2.5, "opacity": 1.0,
+                                               "kernel": {"width": 0.05, "opacity": 0.55}}),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=22.0,
+                                    opacity=0.3),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, taper=(0, 0), color=plasma, width=6.0),
+                    ty.trajectories(family, z0, trail=QUARTER_PERIOD_OF_LOOP, head=True, color=ACCENT_OF_BOTH_MODES,
+                                    width=2.0),
+                    ty.body(earth, trail=1.0, size=8.0),
+                    ty.body(moon, trail=1.0, size=5.0),
+                    ty.axes(),
+                    ty.grid(),
+                ])
+    scene.show("rotating", panel="main", inputs={frame: "rotating"})
+    scene.show("inertial", panel="main", inputs={frame: "barycentric-inertial"})
+    scene.show("moon", panel="main", inputs={frame: "inertial-moon"})
     scene.layout(ty.split("col", 0.5, "rotating", ty.split("row", 0.5, "inertial", "moon")))
     scene.slider(z0, label="initial z, km", domain=family)
     scene.tabs(frame, label="frame")
-    scene.transport()
-    scene.readout("caption", "z0 = ", {"member": "z0", "digits": 5}, " km, period ", {"member": "period", "digits": 5},
-                  " TU, Jacobi constant ", {"member": "energy", "digits": 7})
+    scene.playback()
+    scene.readout("caption", "z0 = ", {"parameter": "z0", "digits": 5}, " km, period ", {"parameter": "period", "digits": 5},
+                  " TU, Jacobi constant ", {"parameter": "energy", "digits": 7})
     return scene
 
 
 def main(deck):
     scene = build()
     element = ty.build_embed(scene.to_document(), scene.to_container(), theme="dark", kiosk=True, class_="figure-box")
-    page = Path(deck).read_text(encoding="utf-8")
-    block = f"{START}\n{element}\n{END}"
-    if START in page and END in page:
-        head, rest = page.split(START, 1)
-        _, tail = rest.split(END, 1)
-        page = head + block + tail
-    else:
-        slot = '<div class="figure-box" id="tycho-slot"></div>'
-        if slot not in page:
-            raise SystemExit("neither the markers nor the slot div are in the deck")
-        page = page.replace(slot, block)
+    page, count = VIEWER.subn(lambda _: element, Path(deck).read_text(encoding="utf-8"))
+    if count != 1:
+        raise SystemExit(f"{deck} has {count} tycho-viewer elements, not one")
     Path(deck).write_text(page, encoding="utf-8")
     print(f"wrote {len(element)} characters of viewer into {deck}")
 

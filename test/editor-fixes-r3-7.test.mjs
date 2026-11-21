@@ -1,14 +1,9 @@
-// regression tests of the bugs in selection and in the menus that the photo editor of round 1
-// found, each run on both platforms: the grips of a selected figure, the right-click on a word,
-// Select All in a text, the menu items enabled for the selection, the zoom keys under the zoom, and
-// the hovered thumbnail of the navigator
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { titled } from '../src/editor/commands/edit.ts';
+import { titled } from '../src/editor/history.ts';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -27,14 +22,11 @@ after(async () => {
   server?.close();
 });
 
-// the errors of the page, without the missing icon of a deck served over HTTP
-const errorsOf = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 let saves = 0;
 const saved = () => saveAndReopen(last, `fixes-${++saves}.html`);
 let last = null;
 
-// the editor on deck, served over HTTP, where a save is written into the origin private file system
 async function editor(platform, deck = 'test-deck.html') {
   await last?.close().catch(() => {});
   const page = await browser.newPage();
@@ -49,14 +41,11 @@ async function editor(platform, deck = 'test-deck.html') {
   return page;
 }
 
-// the slide of the first element matched by selector is shown
 async function slideOf(page, selector) {
   await page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); Reveal.slide(Reveal.getIndices(el.closest('section')).h); })()`);
   await sleep(250);
 }
 
-// the box of the picture of the first shown image or video matched by selector, fitted in its box
-// with object-fit contain, in CSS pixels of the viewport
 const pictureOf = (page, selector) => page.evaluate(`(() => {
   const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width);
   const r = el.getBoundingClientRect();
@@ -70,7 +59,6 @@ const pictureOf = (page, selector) => page.evaluate(`(() => {
 const CAPTION = '.reveal section.present .figure-box > figcaption';
 const frameOf = (page) => boxOf(page, '.beeson-frame.selected:not([hidden])');
 
-// the shown grips, each with its handle, its center, and whether it takes the pointer
 const gripsOf = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-grip')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return { handle: g.dataset.handle, x: r.left + r.width / 2, y: r.top + r.height / 2, live: getComputedStyle(g).pointerEvents !== 'none' }; })`);
 
 for (const platform of PLATFORMS) {
@@ -97,8 +85,6 @@ for (const platform of PLATFORMS) {
     await sleep(50);
 
     const after = await page.evaluate('window.BeesonEditor.render()');
-    // the figure keeps the corner across from the grip with a translate, and both images of the
-    // pair are given the width
     const widths = [...after.matchAll(/<img class="for-(?:dark|light)"[^>]* style="width: (\d+)px"/g)].map((m) => Number(m[1]));
     assert.equal(widths.length, 2, 'the width is not written on both images of the pair');
     assert.equal(widths[0], widths[1], 'the images of the pair are given different widths');
@@ -115,7 +101,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), after, 'a redo does not write the resize again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a figure without an image, a video, or a QR code is selected without grips`, async () => {
@@ -124,7 +110,6 @@ for (const platform of PLATFORMS) {
     await clickText(page, '.reveal section.present .plot.plate');
     assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden).length`), 1, 'the plot is not selected');
     assert.deepEqual(await gripsOf(page), [], 'a figure that cannot be resized shows grips');
-    // a white figure in a plate is resized from its first click too
     await slideOf(page, '.reveal .slides .plate > img.white-figure');
     await clickText(page, '.reveal section.present .plate > img.white-figure');
     const grips = await gripsOf(page);
@@ -134,11 +119,10 @@ for (const platform of PLATFORMS) {
     assert.match(await page.evaluate('window.BeesonEditor.render()'), /<img class="white-figure"[^>]* style="width: \d+px"/, 'the paper image is not resized');
     await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the center of word in the shown paragraph that holds it, and the box of the paragraph
 const wordAt = (page, word) => page.evaluate(`(() => {
   const p = [...document.querySelectorAll('.reveal section.present p')].find((e) => e.textContent.includes(${JSON.stringify(word)}));
   const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
@@ -153,10 +137,8 @@ const wordAt = (page, word) => page.evaluate(`(() => {
   }
 })()`);
 
-// the text of the selection of the document, and whether it is collapsed
 const selected = (page) => page.evaluate(`(() => { const s = getSelection(); return { text: s.toString(), collapsed: s.isCollapsed }; })()`);
 
-// the label and the keys of each item of the open context menu, and whether it is enabled
 const menuRows = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => ({ label: i.querySelector('.label')?.textContent ?? '', keys: i.querySelector('.keys')?.textContent ?? '', enabled: i.getAttribute('aria-disabled') !== 'true' }))`);
 
 const CLIP = { mac: ['⌘X', '⌘C', '⌘V'], other: ['Ctrl+X', 'Ctrl+C', 'Ctrl+V'] };
@@ -168,7 +150,6 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.textContent.includes('matplotlib figure')))`);
     await sleep(250);
     const word = await wordAt(page, 'matplotlib');
-    // the caret is put into the word first, as in the photo of state 34
     await clickText(page, { x: word.left + 20, y: word.y });
     await sleep(50);
     await click(page, { x: word.left + 20, y: word.y }, { button: 'right' });
@@ -183,7 +164,6 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
     await sleep(50);
 
-    // a right-click inside a selection of two words keeps the selection
     await page.evaluate(`(() => {
       const p = [...document.querySelectorAll('.reveal section.present p')].find((e) => e.textContent.includes('matplotlib'));
       const n = [...p.childNodes].find((c) => c.nodeType === 3 && c.data.includes('matplotlib figure'));
@@ -195,7 +175,7 @@ for (const platform of PLATFORMS) {
     await click(page, { x: word.left + 20, y: word.y }, { button: 'right' });
     await sleep(100);
     assert.equal((await selected(page)).text, 'matplotlib figure', 'a right-click inside a selection does not keep it');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a right-click on a word of a paragraph that is not edited puts the text into editing`, async () => {
@@ -208,15 +188,13 @@ for (const platform of PLATFORMS) {
     const sel = await selected(page);
     if (platform === 'mac') assert.equal(sel.text, 'matplotlib', 'a right-click on a word does not select the word');
     assert.deepEqual((await menuRows(page)).slice(0, 3).map((r) => r.label), ['Cut', 'Copy', 'Paste']);
-    // the menu holds the focus while it is open, and gives it back to the text at its close
     await press(page, 'Escape');
     await sleep(50);
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), true, 'the paragraph is not put into editing');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the rows of the menu of the menu bar named title, opened with a click on its title
 async function barMenu(page, title) {
   await page.evaluate('window.BeesonEditorShell.closeMenus()');
   await sleep(30);
@@ -226,7 +204,6 @@ async function barMenu(page, title) {
   return menuRows(page);
 }
 
-// the matplotlib paragraph of the demo deck is shown, and the caret is put into its first word
 async function caretInParagraph(page) {
   await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.textContent.includes('matplotlib figure')))`);
   await sleep(250);
@@ -251,7 +228,6 @@ for (const platform of PLATFORMS) {
     await sleep(50);
 
     const text = await page.evaluate(`[...document.querySelectorAll('.reveal section.present p')].find((e) => e.textContent.includes('matplotlib')).textContent`);
-    // the menu item selects the text of the block, as the first key press does
     await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar button')].find((x) => x.textContent === 'Edit'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await sleep(80);
     await click(page, await page.evaluate(`(() => { const i = [...document.querySelectorAll('.beeson-edit-menu .item')].find((x) => x.querySelector('.label')?.textContent === 'Select All'); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
@@ -264,17 +240,14 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), false, 'a second Select All does not leave the text');
     const count = await shownSelected(page);
     assert.ok(count >= 3, `a second Select All selects ${count} elements, not every element of the slide`);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// every menu of the menu bar with its submenus, as lines of the form 'Format > List' with the
-// enabled state of each submenu and each command
 const MENUS = ['File', 'Edit', 'Insert', 'Format', 'Arrange', 'Slide', 'View', 'Help'];
 const survey = (page) => page.evaluate(`(() => {
   const S = window.BeesonEditorShell, E = window.BeesonEditor;
   const subs = {}, commands = {}, wrong = [];
-  // the commands of a submenu at any depth, with the state of each
   const all = (items) => items.flatMap((i) => i.command ? [{ id: i.command, ...E.state(i.command) }] : i.items ? all(typeof i.items === 'function' ? i.items() : i.items) : []);
   const walk = (items, path) => {
     for (const item of items) {
@@ -284,8 +257,6 @@ const survey = (page) => page.evaluate(`(() => {
       const inner = all(list);
       const name = path + ' > ' + item.label;
       subs[name] = !item.disabled;
-      // a submenu is enabled only with an enabled command, and enabled with an enabled command that
-      // is not a switch
       if (!item.disabled && !inner.some((i) => i.enabled)) wrong.push(name + ' is enabled');
       if (item.disabled && inner.some((i) => i.enabled && i.checked === null)) wrong.push(name + ' is disabled');
       walk(list, name);
@@ -330,7 +301,7 @@ for (const platform of PLATFORMS) {
     const two = await survey(page);
     assert.deepEqual(two.wrong, [], 'with two elements selected, a submenu does not follow its items');
     assert.equal(two.subs['Arrange > Align'], true, 'two elements cannot be aligned');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -340,14 +311,14 @@ test('a label of the history is set in the title case of Apple, with short words
   assert.equal(titled('move to the back'), 'Move to the Back');
   assert.equal(titled('size of text and color'), 'Size of Text and Color');
   assert.equal(titled('paste in place'), 'Paste in Place');
-  // the first and the last word are capitalized, and a word given with a capital is kept
   assert.equal(titled('a move with Alt'), 'A Move with Alt');
   assert.equal(titled('set up'), 'Set Up');
+  assert.equal(titled('take out of group'), 'Take Out of Group');
+  assert.equal(titled('turn off spelling'), 'Turn Off Spelling');
   assert.equal(titled('insert QR code'), 'Insert QR Code');
   assert.equal(titled('zoom in'), 'Zoom In');
 });
 
-// the keys shown in every menu of the menu bar and in each of its submenus, as path and keys
 async function menuKeys(page) {
   const out = [];
   for (const bar of MENUS) {
@@ -368,7 +339,6 @@ async function menuKeys(page) {
 for (const platform of PLATFORMS) {
   test(`${platform}: no item lists a key twice in the menus and in the sheet of shortcuts, and the zoom keys are under the zoom`, async () => {
     const page = await editor(platform);
-    // the notes are shown, so that their commands are enabled
     await page.evaluate(`window.BeesonEditor.exec('view.notes')`);
     await sleep(100);
     const listed = await menuKeys(page);
@@ -381,16 +351,13 @@ for (const platform of PLATFORMS) {
     await sleep(100);
     const sheet = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-keys kbd')].map((k) => ({ path: k.previousElementSibling?.textContent ?? '', keys: k.textContent }))`);
     assert.ok(sheet.length > 10, 'the sheet of shortcuts is empty');
-    // the sheet lists a key at every command that it runs, e.g. ⌘= at Zoom In and at the bigger
-    // text of the notes, and once in each row
     for (const { path, keys } of sheet) assert.equal(new Set(keys.split(', ')).size, keys.split(', ').length, `${path} lists a key twice`);
     const zoomIn = sheet.find((r) => r.path === 'Zoom In');
     assert.ok(zoomIn?.keys.split(', ').includes(platform === 'mac' ? '⌘=' : 'Ctrl+='), 'Zoom In is listed without its key');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the outline of the thumbnail of row i of the navigator, and the box of the row
 const thumb = (page, i) => page.evaluate(`(() => {
   const row = document.querySelectorAll('.beeson-edit-nav .row')[${i}];
   const f = row.querySelector('.frame');
@@ -413,12 +380,10 @@ for (const platform of PLATFORMS) {
     assert.notEqual(hovered.outline, other.outline, 'the hovered thumbnail is drawn as at rest');
     assert.equal(await peekShown(page), false, 'the hover preview repeats a thumbnail that is shown whole');
 
-    // a thumbnail cut by the lower edge of the list is previewed
     const cut = await page.evaluate(`(() => {
       const list = document.querySelector('.beeson-edit-nav .rows');
       const edge = list.getBoundingClientRect().bottom;
       const frames = [...list.querySelectorAll('.row .frame')];
-      // the list is scrolled to cut a thumbnail at its middle, whatever the height of the window
       const below = frames.findIndex((f) => f.getBoundingClientRect().bottom > edge);
       if (below >= 0) { const r = frames[below].getBoundingClientRect(); list.scrollTop += r.top + r.height / 2 - edge; }
       const i = frames.findIndex((f) => { const r = f.getBoundingClientRect(); return r.top < edge - 20 && r.bottom > edge; });
@@ -431,21 +396,18 @@ for (const platform of PLATFORMS) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cut.x, y: cut.y });
     await sleep(700);
     assert.equal(await peekShown(page), true, 'a thumbnail cut by the edge of the list is not previewed');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the menus of the menu bar as a tree of labels, with a submenu as { label, items } and a rule as '|'
 const tree = (page) => page.evaluate(`(() => {
   const E = window.BeesonEditor;
   const walk = (items) => items.map((i) => i.rule ? '|' : i.command ? E.state(i.command).label : { label: i.label, items: walk(typeof i.items === 'function' ? i.items() : i.items) });
   return Object.fromEntries(${JSON.stringify(MENUS)}.map((bar) => [bar, walk(window.BeesonEditorShell.menuItems(bar))]));
 })()`);
 
-// the submenus of one item kept as the apps name them, e.g. Edit > Spelling and Grammar of R7.3
 const ONE = ['Edit > Spelling and Grammar'];
 
-// the paths of the submenus of one item, and of the groups of one item between two rules
 function sparse(items, path, out = []) {
   const groups = [[]];
   for (const i of items) if (i === '|') groups.push([]); else groups.at(-1).push(i);
@@ -472,10 +434,8 @@ for (const platform of PLATFORMS) {
     for (const want of ['Body', 'Subheading', 'Dashes', 'Numbers']) assert.ok(text.includes(want), `${want} is not in Text`);
     const top = format.map((i) => i.label ?? i);
     assert.ok(top.indexOf('Image') > top.indexOf('Clear Formatting') && top.indexOf('Table') > top.indexOf('Clear Formatting'), `the object items do not follow the text items: ${top.join(', ')}`);
-    // a group of one item, e.g. Delete Table set apart in Table, is checked at the top of Format only
     assert.deepEqual(sparse(format, 'Format').filter((p) => p.split(' > ').length === 2), [], 'the Format menu has a group of one item');
 
-    // a submenu of a submenu is opened in the menus
     await barMenu(page, 'Format');
     const hover = async (label, level) => {
       const at = await page.evaluate(`(() => { const i = [...[...document.querySelectorAll('.beeson-edit-menu')][${level}].querySelectorAll('.item')].find((x) => x.querySelector('.label').textContent === ${JSON.stringify(label)}); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -486,7 +446,7 @@ for (const platform of PLATFORMS) {
     await hover('Baseline', 1);
     assert.deepEqual(await page.evaluate(`[...[...document.querySelectorAll('.beeson-edit-menu')][2]?.querySelectorAll('.item .label') ?? []].map((l) => l.textContent)`), ['Superscript', 'Subscript']);
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -508,22 +468,18 @@ for (const platform of PLATFORMS) {
     const kind = Math.max(at('Replace Image…'), at('Edit Alt Text…'));
     const arrange = Math.min(at('Bring to Front'), at('Send to Back'));
     assert.ok(kind < arrange, `the items of an image do not come before the arrange items: ${labels.join(', ')}`);
-    // the figure of the image holds a caption, which is edited with a click or Return, as the menu
-    // of an image in Keynote does not have an item for text
     assert.ok(!labels.includes('Edit Text'), `Edit Text is offered on an image: ${labels.join(', ')}`);
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
 
-    // a figure of videos does not hold a text, hence Edit Text is not offered on it
     await slideOf(page, '.reveal .slides .figure-box > video');
     await click(page, '.reveal section.present .figure-box > video', { button: 'right' });
     await sleep(100);
     assert.ok(!(await menuRows(page)).some((r) => r.label === 'Edit Text'), 'Edit Text is offered on a figure without a text');
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the open menu that holds the focus, with the label of its highlighted item
 const menuFocus = (page) => page.evaluate(`(() => {
   const m = document.activeElement?.closest?.('.beeson-edit-menu');
   return { focused: !!m, hi: m?.querySelector('.item.hi .label')?.textContent ?? null, open: document.querySelectorAll('.beeson-edit-menu').length };
@@ -553,7 +509,6 @@ for (const platform of PLATFORMS) {
     assert.equal(pointed.hi, null, 'a menu opened with the mouse highlights an item');
     await press(page, 'Escape');
 
-    // the word selected by a right-click is kept, and the focus goes back to its text at the close
     const word = await caretInParagraph(page);
     await click(page, { x: word.left + 20, y: word.y }, { button: 'right' });
     await sleep(100);
@@ -562,15 +517,12 @@ for (const platform of PLATFORMS) {
     await sleep(50);
     assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present p')`), true, 'the focus does not go back to the text');
     if (platform === 'mac') assert.equal((await selected(page)).text, 'matplotlib', 'the selected word is lost at the close of the menu');
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the text of the readout of a drag and its box, or null while it is hidden
 const readoutOf = (page) => page.evaluate(`(() => { const o = document.querySelector('.beeson-offset:not(.beeson-guide-readout)'); if (!o || o.hidden) return null; const r = o.getBoundingClientRect(); return { text: o.textContent, left: r.left, top: r.top }; })()`);
 
-// the values of the fields X and Y of the Arrange pane, opened with its tab in the Format panel
-// where the selection has more than one pane. a figure has the Arrange pane alone
 async function arrangeXY(page) {
   if (!(await page.evaluate(`window.BeesonEditor.state('shell.format')`)).checked) await page.evaluate(`window.BeesonEditor.exec('shell.format')`);
   await sleep(50);
@@ -602,8 +554,6 @@ for (const platform of PLATFORMS) {
       const scale = r.width / s.offsetWidth;
       return 'x: ' + Math.round((f.left + 8 - r.left) / scale) + ' px  y: ' + Math.round((f.top + 8 - r.top) / scale) + ' px';
     })()`);
-    // the corner of the figure, i.e. of its picture with its caption, whose frame is drawn 8 px
-    // outside it
     assert.equal(during.text, corner, 'the readout is not the upper left corner of the figure in slide px');
 
     await page.evaluate('window.BeesonEditor.undo()');
@@ -611,14 +561,13 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.match(await page.evaluate('window.BeesonEditor.render()'), /class="figure-box"[^>]* style="translate: -?\d+px -?\d+px"/, 'a redo does not write the move again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
 const MULTI = 'test/pages/editor-multi.html';
 const QR = '.reveal section.present .qr';
 const FIGURE_BOX_IMG = '.reveal section.present .figure-box > img';
-// the box of the first shown element matched by selector, in CSS pixels of the viewport
 const boxOf = (page, selector) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width).getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })()`);
 const near = (a, b, by = 2) => Math.abs(a - b) < by;
 
@@ -650,8 +599,6 @@ for (const platform of PLATFORMS) {
     assert.ok(near(picAfter.left, pic.left) && near(picAfter.top, pic.top), 'the corner of the picture across from the grip is moved');
     assert.equal(await shownSelected(page), 3, 'the resize changes the selection');
     const after = await page.evaluate('window.BeesonEditor.render()');
-    // the paragraph, narrowed with the group, wraps and pushes the QR code down, which a translate
-    // takes back
     assert.match(after, /<div class="qr" [^>]*style="width: \d+px(; translate: [^"]+)?"/, 'the width of the QR code is not written');
     const widths = [...after.matchAll(/<img class="for-(?:dark|light)"[^>]* style="width: (\d+)px(; translate: [^"]+)?"/g)].map((m) => Number(m[1]));
     assert.equal(widths.length, 2, 'the width is not written on both images of the figure');
@@ -662,12 +609,10 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), after, 'a redo does not write the resize again');
     await saved();
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the switch Constrain Proportions of the Arrange pane, whether it follows the fields W and H, and
-// the note under it
 const constrainOf = (page) => page.evaluate(`(() => {
   const panel = document.querySelector('#beeson-edit-panel-format');
   const box = [...panel.querySelectorAll('label.ed-check')].find((l) => l.textContent.trim() === 'Constrain Proportions');
@@ -681,7 +626,6 @@ const constrainOf = (page) => page.evaluate(`(() => {
 for (const platform of PLATFORMS) {
   test(`${platform}: the Arrange pane has a Constrain Proportions switch beside the size fields, free for an image and held on for a QR code`, async () => {
     const page = await editor(platform, MULTI);
-    // a state kept in the browser does not free an aspect that the scope rule cannot write
     await page.evaluate(`localStorage.setItem('beeson-edit-constrain-qr', 'off')`);
     await selectFigure(page, FIGURE_BOX_IMG);
     await arrangeXY(page);
@@ -690,7 +634,6 @@ for (const platform of PLATFORMS) {
     assert.ok(figure.afterSize, 'the switch is not beside the size fields');
     assert.deepEqual([figure.checked, figure.disabled], [true, false], 'the switch of the image of a figure is not on and free');
     assert.deepEqual(figure.notes, [], `a figure, whose size fields size its image, shows a note: ${figure.notes.join(' | ')}`);
-    // the image itself, selected with a second click, has the same live size fields
     await clickText(page, FIGURE_BOX_IMG);
     await arrangeXY(page);
     const image = await constrainOf(page);
@@ -702,6 +645,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual([qr.checked, qr.disabled], [true, true], 'the switch of a QR code is not held on');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source, 'the switch writes into the file');
     await page.evaluate(`localStorage.removeItem('beeson-edit-constrain-qr')`);
-    assert.deepEqual(errorsOf(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

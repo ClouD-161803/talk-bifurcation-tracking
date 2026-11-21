@@ -1,20 +1,7 @@
-// the citations of a deck. a citation is an empty cite element after the cited words, with the key
-// of its paper in data-key, or the keys of several papers separated by commas. on each slide, the
-// papers are numbered from 1 in the order of their first citation, the number of a citation is
-// written into data-n and drawn by theme/beeson.css, and the references of the papers are written
-// into a div of the class refs at the place of the footnote line. a reference is shown once one of
-// its citations is shown, i.e. with the step of the cited words. the references are those of the
-// tex.js of the deck
-
 import { referenceLink, referenceParts, type Reference } from './reference.ts';
 
 export type Cited = { labels: string[]; missing: boolean[]; keys: string[] };
 
-/**
- * The label of each citation of a slide, e.g. 1,2 for two papers, whether a key of the citation is
- * not known, and the keys of the cited papers in the order of their numbers. A key that is not
- * known is written into the label in place of a number.
- */
 export function citedOf(citations: string[][], known: (key: string) => boolean): Cited {
   const keys: string[] = [];
   const labels: string[] = [];
@@ -37,15 +24,11 @@ export function citedOf(citations: string[][], known: (key: string) => boolean):
 }
 
 const keysOf = (cite: HTMLElement): string[] => (cite.dataset.key ?? '').split(',').map((key) => key.trim()).filter(Boolean);
-// a citation in the notes is not drawn on the slide
 const citesOf = (slide: HTMLElement): HTMLElement[] => [...slide.querySelectorAll<HTMLElement>('cite[data-key]')].filter((cite) => !cite.closest('aside.notes'));
 const refsOf = (slide: HTMLElement): HTMLElement | null => slide.querySelector<HTMLElement>(':scope > div.refs[data-generated]');
-// the slides of the deck without the stacks, and with the pages of the print view
 const slides = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.reveal .slides section:not(:has(> section))')];
-// the slides with references
 const cited = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.reveal .slides section > div.refs[data-generated]')].map((refs) => refs.parentElement as HTMLElement);
 
-// the references of each div made here, as a text. a div whose references are the same is kept
 const made = new WeakMap<Element, string>();
 
 function referenceEl(number: number, key: string, reference: Reference): HTMLElement {
@@ -98,11 +81,6 @@ function mount(slide: HTMLElement, references: Record<string, Reference>): void 
   }
 }
 
-// a reference is hidden until one of its citations is shown, and it keeps its place while it is
-// hidden. reveal.js hides a fragment before its step with its visibility, which a citation inherits.
-// the footnote of a slide is lifted by the height of its references, which is 0 while the slide is
-// not drawn. every visibility is read before a reference is hidden or shown, and every height after,
-// hence the style and the layout are computed once for all the slides rather than once per slide
 function sync(slides: HTMLElement[]): void {
   const listed = slides.flatMap((slide) => {
     const refs = refsOf(slide);
@@ -119,14 +97,12 @@ function sync(slides: HTMLElement[]): void {
   });
 }
 
-/** Numbers the citations of every slide and writes its references, after the start and after a change of a slide. */
 export function mountCitations(): void {
   const references = (window as unknown as { beesonTex?: { references?: Record<string, Reference> } }).beesonTex?.references ?? {};
   for (const slide of slides()) mount(slide, references);
   sync(slides());
 }
 
-/** Shows the references of slide, or of every slide, whose citations are shown, after a step or a change of slide. */
 export function syncCitations(slide?: HTMLElement | null): void {
   sync(slide ? [slide] : cited());
 }

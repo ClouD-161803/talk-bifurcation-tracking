@@ -1,20 +1,12 @@
-// the side of the edit command that registers a session with a relay, pulls the requests of the
-// guests, and pushes the answers. the protocol is described at the top of scripts/relay.mjs. the
-// address of the relay and the secret of the group are kept in the configuration folder of the
-// user, never in the talk folder
-
 import { mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readBody, type Request, type Response } from './http.ts';
 import type { Ended } from '../session/protocol.ts';
 
-// the largest file, or range of a file, that is answered through the relay
 export const RELAY_BODY = 16 * 1024 * 1024;
-// the largest answer that the relay takes, e.g. index.html, which a guest loads whole
 export const RELAY_ANSWER = 64 * 1024 * 1024;
 const PULLS = 4;
-// the files answered through the relay at once, each read into memory before it is pushed
 const FILE_ANSWERS = 8;
 
 export type RelayConfig = { relay: string; secret: string };
@@ -44,9 +36,6 @@ export function saveConfig(config: RelayConfig): void {
 
 export const ADDRESS_RULE = 'the address of the relay must start with https://';
 
-// the address of a relay without a trailing slash, or null when it is not an https URL, or an http
-// URL of this computer, without credentials, query, or fragment. a guest needs https, since
-// navigator.clipboard and crypto.randomUUID work only in a secure context
 export function relayAddress(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 2048) return null;
   try {
@@ -61,7 +50,6 @@ export function relayAddress(value: unknown): string | null {
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
-// header values are latin-1, hence the JSON of the headers is kept in ASCII
 const asciiJson = (value: unknown) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
 export class Taken extends Error {
@@ -82,14 +70,10 @@ export class RelayLink {
   private running = false;
   private registering: Promise<void> | null = null;
   private controllers = new Set<AbortController>();
-  // the requests of guests being answered, which a stop lets finish
   private serving = new Set<Promise<void>>();
   private fileSlots = FILE_ANSWERS;
   private fileQueue: (() => void)[] = [];
   private log: (message: string) => void;
-  // the token of the session kept in .session/relay.json with the relay and the folder, so that
-  // an edit command started again after it was killed gets its session back, which the relay keeps
-  // for 90 s from everyone without the token. a copy of the talk folder is in another folder
   private kept: { file: string; folder: string } | null;
 
   constructor(relay: string, secret: string, key: string, handle: (request: Request) => Promise<Response>, log: (message: string) => void, kept: { file: string; folder: string } | null = null) {
@@ -106,23 +90,19 @@ export class RelayLink {
     } catch {}
   }
 
-  // false once stopped, or once another edit command took the key
   get active(): boolean {
     return this.running;
   }
 
-  // registers the session and starts the pulls. rejects when the relay refuses the registration
   async start(): Promise<void> {
     await this.register();
     this.running = true;
     for (let i = 0; i < PULLS; i++) void this.pullLoop();
   }
 
-  // ended is the record of End session, which the relay answers to the guests that come later
   async stop(ended?: Ended): Promise<void> {
     this.running = false;
     for (const c of this.controllers) c.abort();
-    // an answer of ended still in flight would reach the guest as a 502 once the session is deleted
     await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
     const body = ended && JSON.stringify({ ended });
     await fetch(`${this.relay}/host/${this.key}`, { method: 'DELETE', headers: { ...this.auth(), ...(body && { 'Content-Type': 'application/json' }) }, body, signal: AbortSignal.timeout(3000) }).catch(() => {});
@@ -167,7 +147,6 @@ export class RelayLink {
         if (response.status === 401 || response.status === 404) {
           await response.body?.cancel();
           if (!this.running) break;
-          // the relay dropped the session, e.g. at its restart, hence it is registered again
           await this.register();
           continue;
         }
@@ -238,8 +217,6 @@ export class RelayLink {
       };
       let pushed = await push();
       if (pushed.status === 401 && this.running) {
-        // the token changed under the push, or the relay forgot the session, hence the answer
-        // goes once more after a registration, which keeps the waiting requests of the session
         if (this.registering) await this.registering.catch(() => {});
         if (this.token === pushed.token) await this.register();
         pushed = await push();

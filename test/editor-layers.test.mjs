@@ -1,7 +1,3 @@
-// the layer commands Bring to Front, Bring Forward, Send Backward, and Send to Back, for elements
-// in the flow and out of it, in the order that the Object List shows, with the z-index taken off
-// again
-
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,13 +5,8 @@ import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
-// regression tests of R13.1 on both platforms with trusted input: the four layer commands of
-// commands/order.ts for an element in the flow, e.g. a paragraph moved onto a figure, as Bring to
-// Front of Keynote (K70). each edit of the file is checked byte for byte, after an undo and a redo,
-// and after a save and an open
 describe('layer commands for an element in the flow', () => {
   const DECK = 'test-deck.html';
-  // the slide of the demo deck with a paragraph, a list, and a figure in a figure box
   const FIGURES = [...readFileSync(DECK, 'utf8').matchAll(/<section[\s\S]*?<\/section>/g)].findIndex((m) => m[0].includes('Figures are first class citizens'));
   const PLATFORMS = ['mac', 'other'];
   const KEYS = {
@@ -45,18 +36,14 @@ describe('layer commands for an element in the flow', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const orders = async (page) => Object.fromEntries(await Promise.all(['front', 'forward', 'backward', 'back'].map(async (o) => [o, (await state(page, `arrange.order.${o}`)).enabled])));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-  // the start tags of a text that differ from those of base
   const changedTags = (base, text) => {
     const a = base.match(/<[a-z][^>]*>/g), b = text.match(/<[a-z][^>]*>/g);
     return b.filter((t, i) => t !== a[i]);
   };
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`);
 
-  // the editor on the demo deck served over HTTP, with the storage of the origin emptied first, and
-  // with slide n shown
   async function load(t, platform, n = FIGURES, deck = DECK) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -73,10 +60,8 @@ describe('layer commands for an element in the flow', () => {
     return page;
   }
 
-  // the boxes of the children of the current slide, to compare their places before and after a command
   const boxes = (page) => page.evaluate(`[...document.querySelector('.reveal section.present').children].map((e) => { const r = e.getBoundingClientRect(); return e.localName + ' ' + [r.left, r.top, r.width, r.height].map(Math.round).join(' '); })`);
 
-  // a point of the text of the paragraph over the shown picture of the figure, in CSS px
   const textOverPicture = (page) => page.evaluate(`(() => {
   const p = document.querySelector(${js(P)});
   const img = [...document.querySelectorAll('.reveal section.present figure img')].find((i) => i.getClientRects().length);
@@ -90,17 +75,13 @@ describe('layer commands for an element in the flow', () => {
   return null;
 })()`);
 
-  // the element of the slide drawn at a point, past the frames and the chrome of the editor
   const drawnAt = (page, at) => page.evaluate(`(() => {
   const hit = document.elementsFromPoint(${at.x}, ${at.y}).find((e) => e.closest('.reveal section.present'));
   return hit ? (hit.closest(${js(P)}) ? 'p' : hit.localName) : null;
 })()`);
 
-  // the rows of the object list, from front to back
   const rows = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.querySelector('.name').textContent)`);
 
-  // the element of the slide with the figures drawn at a point of the text of its paragraph over the
-  // picture, in the show or in the print view of a deck, on the page of its last step
   const drawnInDeck = (page) => page.evaluate(`(() => {
   const slides = [...document.querySelectorAll('.reveal .slides section')].filter((x) => x.textContent.includes('Figures are first'));
   const s = slides.at(-1);
@@ -129,7 +110,7 @@ describe('layer commands for an element in the flow', () => {
     await frames(page);
     assert.equal(await render(page), edited);
     await saveAndReopen(page, `r13-1-${Math.random().toString(36).slice(2)}.html`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
   for (const platform of PLATFORMS) {
@@ -140,7 +121,6 @@ describe('layer commands for an element in the flow', () => {
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await selected(page), ['p']);
-      // the paragraph is moved by its handle by 700 by 100 slide px onto the picture
       const from = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       await drag(page, from, { dx: 700 * scale, dy: 100 * scale, steps: 12 });
       await frames(page);
@@ -151,7 +131,6 @@ describe('layer commands for an element in the flow', () => {
       assert.equal(await drawnAt(page, at), 'img', 'the paragraph is not under the picture before Bring to Front');
       const placed = await boxes(page);
 
-      // the heading in the flow is drawn under the moved paragraph, hence the back commands pass it
       assert.deepEqual(await orders(page), { front: true, forward: true, backward: true, back: true }, 'the layer commands of the moved paragraph');
       await press(page, KEYS[platform].front);
       await frames(page);
@@ -170,7 +149,6 @@ describe('layer commands for an element in the flow', () => {
       await frames(page);
       assert.equal((await rows(page))[0], 'Text: Export your matplotlib figure with…', 'the object list does not show the paragraph in front');
 
-      // the show and the print view of the saved deck draw the paragraph over the picture
       const file = `.r13-1-${platform}.html`;
       writeFileSync(file, front);
       t.after(() => rmSync(file, { force: true }));
@@ -183,7 +161,6 @@ describe('layer commands for an element in the flow', () => {
       await printView(show, deckUrl(file, 'print-pdf&still'));
       assert.equal(await drawnInDeck(show), 'p', 'the print view does not draw the paragraph over the picture');
 
-      // Send to Back puts it under the picture and the heading, without a move on the slide
       if ((await selected(page))[0] !== 'p') {
         await clickText(page, at);
         await press(page, 'Escape');
@@ -194,7 +171,7 @@ describe('layer commands for an element in the flow', () => {
       assert.equal(await drawnAt(page, at), 'img', 'the paragraph is not drawn under the picture after Send to Back');
       assert.deepEqual(await boxes(page), placed, 'an element is moved on the slide by Send to Back');
       assert.deepEqual(changedTags(front, await render(page)), [tags[0].replace('z-index: 1', 'z-index: -1')], 'Send to Back does not put the paragraph behind the heading');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -210,7 +187,6 @@ describe('layer commands for an element in the flow', () => {
       await frames(page);
       const at = await textOverPicture(page);
       const raised = await render(page);
-      // a click on the picture selects the figure, which is then brought in front of the paragraph
       const img = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.reveal section.present figure img')].find((i) => i.getClientRects().length).getBoundingClientRect(); return { x: r.left + 20, y: r.bottom - 20 }; })()`);
       await clickText(page, img);
       await frames(page);
@@ -222,8 +198,6 @@ describe('layer commands for an element in the flow', () => {
       const front = await render(page);
       assert.deepEqual(changedTags(raised, front), ['<figure class="figure-box" style="z-index: 1">']);
       await checkEdit(page, front, raised);
-      // Send to Back puts the figure behind the heading and the list in the flow, with a z-index under
-      // 0 in place of its z-index
       await clickText(page, img);
       await frames(page);
       assert.deepEqual(await selected(page), ['figure']);
@@ -241,7 +215,6 @@ describe('layer commands for an element in the flow', () => {
       await frames(page);
       assert.deepEqual(await selected(page), ['div']);
       assert.deepEqual(await orders(page), { front: false, forward: false, backward: false, back: false });
-      // the heading is moved by its handle onto the plate, under which it is drawn
       await clickText(page, '.reveal section.present > h2');
       await press(page, 'Escape');
       const from = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -253,7 +226,6 @@ describe('layer commands for an element in the flow', () => {
       await press(page, KEYS[platform].forward);
       await frames(page);
       const front = await render(page);
-      // the heading of a figure slide is out of the flow, hence it is moved after the plate in the file
       assert.ok(front.indexOf('<h2 style="translate: 0px') > front.indexOf('<div class="plate">'), 'the heading is not put after the plate');
       assert.doesNotMatch(front, /z-index/);
       assert.deepEqual(await orders(page), { front: false, forward: false, backward: true, back: true });
@@ -264,8 +236,6 @@ describe('layer commands for an element in the flow', () => {
     });
   }
 
-  // the list of the slide with the figures, sent behind the paragraph before it, which takes a
-  // negative z-index since the list is in the flow after it
   for (const platform of PLATFORMS) {
     test(`${platform}: a list sent behind the paragraph before it is drawn in the show and in the print view`, async (t) => {
       const page = await load(t, platform);
@@ -284,8 +254,6 @@ describe('layer commands for an element in the flow', () => {
       assert.deepEqual(changedTags(nudged, back), ['<ul style="translate: 0px 20px; position: relative; z-index: -1">']);
       assert.deepEqual(await orders(page), { front: true, forward: true, backward: false, back: false });
       await checkEdit(page, back, nudged);
-      // two steps of Bring Forward put the list over the heading, then over the paragraph again as in
-      // the file, and take the declarations off
       for (const step of [1, 2]) {
         await clickText(page, '.reveal section.present > ul li');
         await press(page, 'Escape');
@@ -302,7 +270,6 @@ describe('layer commands for an element in the flow', () => {
       const offline = await launch();
       t.after(() => offline.close());
       const view = await offline.newPage({ width: 1600, height: 1000 });
-      // the first element at a point of the text of the list, on the page of the last step
       const hit = () => view.evaluate(`(() => {
       const s = [...document.querySelectorAll('.reveal .slides section')].filter((x) => x.textContent.includes('Figures are first')).at(-1);
       s.scrollIntoView();
@@ -318,8 +285,6 @@ describe('layer commands for an element in the flow', () => {
     });
   }
 
-  // a paragraph that is not moved, ordered by the commands or by its row and brought back to the
-  // order of the file, keeps the style of the file, and Reset Slide takes the order off
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   async function selectP(page) {
     await clickText(page, P);
@@ -333,7 +298,6 @@ describe('layer commands for an element in the flow', () => {
     test(`${platform}: a paragraph that is not moved is put back to the style of the file by Send Backward and Bring Forward`, async (t) => {
       const page = await load(t, platform);
       await selectP(page);
-      // Bring Forward passes the list, which is a layer since it is moved, and the figure stays over it
       await press(page, KEYS[platform].forward);
       await frames(page);
       assert.deepEqual(changedTags(page.source, await render(page)), ['<p style="position: relative; z-index: 1">', '<figure class="figure-box" style="z-index: 1">']);
@@ -349,7 +313,6 @@ describe('layer commands for an element in the flow', () => {
         await frames(page);
       }
       assert.equal(await render(page), page.source, 'two steps of Send Backward leave a declaration on the paragraph or the figure');
-      // Send to Back passes the heading in the flow, and Bring Forward puts the paragraph back over it
       await press(page, KEYS[platform].back);
       await frames(page);
       assert.deepEqual(changedTags(page.source, await render(page)), ['<p style="position: relative; z-index: -1">']);
@@ -371,7 +334,6 @@ describe('layer commands for an element in the flow', () => {
       await frames(page);
       assert.ok((await rows(page))[0].startsWith(NAME), `the row of the paragraph is not in front: ${js(await rows(page))}`);
       assert.match(await render(page), /<p style="position: relative; z-index: 1">Export/);
-      // the row of the heading in the flow is the bottom row, under the paragraph in the file
       at = await rowOf(page, NAME);
       const heading = await rowOf(page, 'Text: Figures are first');
       await drag(page, { x: at.x, y: at.y }, { dy: heading.own + 2 - at.y, steps: 8 });
@@ -396,17 +358,10 @@ describe('layer commands for an element in the flow', () => {
   }
 });
 
-// regression tests of R15.2 on both platforms with trusted input. the layer commands of
-// commands/order.ts and a drag of a row of the object list follow the order that the object list
-// shows, also past a text in the flow that was never moved (D25, D26). the declarations that they
-// write are taken off every element once the slide is drawn in the same order without them (juror
-// item 3b). a text sent to the back is still drawn and clicked, and the declarations of the author
-// are kept
 describe('layers in the order of the Object List', () => {
   const DECK = 'test-deck.html';
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const slideOf = (deck, has) => [...readFileSync(deck, 'utf8').matchAll(/<section[\s\S]*?<\/section>/g)].findIndex((m) => has(m[0]));
-  // the slide of the demo deck with a heading, a paragraph, a list, and a figure in a figure box
   const FIGURES = slideOf(DECK, (s) => s.includes('Figures are first class citizens'));
   const TITLE = slideOf(DECK, (s) => s.startsWith('<section class="title"'));
   const SPLIT = slideOf(LAYOUTS, (s) => s.startsWith('<section class="split"'));
@@ -438,11 +393,8 @@ describe('layers in the order of the Object List', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const orders = async (page) => Object.fromEntries(await Promise.all(['front', 'forward', 'backward', 'back'].map(async (o) => [o, (await state(page, `arrange.order.${o}`)).enabled])));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`);
-  // the rows of the object list from front to back, and the same rows by their key in ROWS
-  // the rows without the row of the backdrop, which is at the ground of the list
   const rows = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].filter((r) => r.dataset.kind !== 'Backdrop').map((r) => r.querySelector('.name').textContent)`);
   const named = async (page) => (await rows(page)).map((r) => Object.keys(ROWS).find((k) => r.startsWith(ROWS[k])) ?? r);
 
@@ -462,7 +414,6 @@ describe('layers in the order of the Object List', () => {
     return page;
   }
 
-  // the element of selector selected as an object, by a click and Esc out of its text
   async function pick(page, selector, name) {
     await clickText(page, selector);
     await frames(page);
@@ -486,11 +437,9 @@ describe('layers in the order of the Object List', () => {
     await frames(page);
     assert.equal(await render(page), edited);
     await saveAndReopen(page, `r15-2-${Math.random().toString(36).slice(2)}.html`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
-  // a point of the text of the first element of selector inside the box of the shown picture of the
-  // figure of its slide, in CSS px, or null
   const textOverPicture = (selector) => `(() => {
   const el = document.querySelector(${js(selector)});
   const img = [...el.closest('section').querySelectorAll('figure img')].find((i) => i.getClientRects().length);
@@ -503,7 +452,6 @@ describe('layers in the order of the Object List', () => {
   }
   return null;
 })()`;
-  // the child of the slide drawn at a point, or null
   const childAt = (page, at, slide = S) => page.evaluate(`(() => {
   const hit = document.elementsFromPoint(${at.x}, ${at.y}).find((e) => e.closest(${js(slide)}));
   const child = hit?.closest(${js(slide + ' > *')});
@@ -520,7 +468,6 @@ describe('layers in the order of the Object List', () => {
       await clickText(page, img);
       await frames(page);
       assert.deepEqual(await selected(page), ['figure']);
-      // the drag of finding 2 of the judge opus in round 6, in slide px
       await drag(page, img, { dx: -556 * scale, dy: -226 * scale, steps: 12 });
       await frames(page);
       const dragged = await render(page);
@@ -541,7 +488,6 @@ describe('layers in the order of the Object List', () => {
       const back = await render(page);
       await checkEdit(page, back, dragged);
 
-      // the show and the print view of the saved deck draw the heading over the figure
       const file = `.r15-2-back-${platform}.html`;
       writeFileSync(file, back);
       t.after(() => rmSync(file, { force: true }));
@@ -576,8 +522,6 @@ describe('layers in the order of the Object List', () => {
       await frames(page);
       assert.equal(await render(page), page.source, 'the undo does not give the file back byte for byte');
 
-      // Send Backward passes the paragraph only, and two steps of Bring Forward put the list back in
-      // the order of the file
       await layer(page, platform, 'ul', 'backward');
       assert.deepEqual(await named(page), ['figure', 'p', 'ul', 'h2'], 'Send Backward does not pass one layer');
       await layer(page, platform, 'ul', 'backward');
@@ -587,17 +531,14 @@ describe('layers in the order of the Object List', () => {
       await layer(page, platform, 'ul', 'forward');
       assert.deepEqual(await named(page), ['figure', 'ul', 'p', 'h2']);
       assert.equal(await render(page), page.source, 'a declaration is left once the list is back in the order of the file');
-      // Bring Forward of the paragraph passes the list and leaves the paragraph under the figure
       await layer(page, platform, 'p', 'forward');
       assert.deepEqual(await named(page), ['figure', 'p', 'ul', 'h2']);
       await layer(page, platform, 'p', 'backward');
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the declarations of the layer commands are taken off every element once the slide is in the order of the file, and those of the author are kept`, async (t) => {
-      // a copy of the demo deck in which the author wrote a position on the list and a z-index on the
-      // figure
       const file = `.r15-2-author-${platform}.html`;
       const authored = readFileSync(DECK, 'utf8').replace('<ul style="translate: 0px 20px">', '<ul style="translate: 0px 20px; position: relative">').replace('<figure class="figure-box">\n    <img class="for-dark" src="demo/figure-dark.png"', '<figure class="figure-box" style="z-index: 2">\n    <img class="for-dark" src="demo/figure-dark.png"');
       assert.ok(authored.includes('position: relative">') && authored.includes('style="z-index: 2"'));
@@ -623,7 +564,7 @@ describe('layers in the order of the Object List', () => {
       assert.equal(await render(page), page.source, 'a declaration is left on the heading or the list, or one of the author is taken off');
       const { text } = await saveAndReopen(page, `.r15-2-clean-${platform}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: a text of the text column of a split slide sent to the back is drawn over the panel`, async (t) => {
@@ -700,24 +641,16 @@ describe('layers in the order of the Object List', () => {
       await frames(page);
       assert.deepEqual(await named(page), ['figure', 'ul', 'p', 'h2']);
       assert.equal(await render(page), page.source, 'a drag back to the order of the file leaves a declaration');
-      // a drag by one row is one step of Send Backward
       from = await box('ul');
       const below = await box('p');
       await drag(page, { x: from.x, y: from.y }, { dy: below.bottom - 2 - from.y, steps: 8 });
       await frames(page);
       assert.deepEqual(await named(page), ['figure', 'p', 'ul', 'h2']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R16.2 on both platforms with trusted input. the layer commands of
-// commands/order.ts move the selected element in the one order of the slide that the object list
-// shows. Bring Forward and Send Backward pass one row, also past a backdrop, which the list does not
-// show (finding G4). a z-index that a command writes gives the order that the list shows (G5). the
-// commands and a drag of a row order the texts of the block of a closing slide among the other
-// objects of the slide (G6). after each step, the order drawn, the order that a click hits, and the
-// order of the list are the same
 describe('Bring Forward and Send Backward pass one row', () => {
   const DECK = 'test-deck.html';
   const slideOf = (text, has) => [...text.matchAll(/<section[\s\S]*?<\/section>/g)].findIndex((m) => has(m[0]));
@@ -734,8 +667,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
   const LIST_KEY = { mac: 'Mod+Shift+L', other: 'Alt+F10' };
   const ROW = '.beeson-edit-objects .row';
 
-  // a copy of the demo deck in which the foot of slide 3 is moved up over the list, and the QR code
-  // of the closing slide over the heading and the subtitle
   const FOOT = '<div class="foot">Slides can have backdrops';
   const QR = '<div class="qr" data-qr="https://github.com/beeson-group/slides">';
   const OVERLAPS = SOURCE.replace(FOOT, '<div class="foot" style="translate: 0px -150px">Slides can have backdrops')
@@ -763,12 +694,9 @@ describe('Bring Forward and Send Backward pass one row', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const orders = async (page) => Object.fromEntries(await Promise.all(['front', 'forward', 'backward', 'back'].map(async (o) => [o, (await state(page, `arrange.order.${o}`)).enabled])));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`);
-  // the rows without the row of the backdrop, which is at the ground of the list
   const rows = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].filter((r) => r.dataset.kind !== 'Backdrop').map((r) => r.querySelector('.name').textContent)`);
-  // the rows of the object list from front to back, each by its key in names
   const named = async (page, names) => (await rows(page)).map((r) => Object.keys(names).find((k) => r.startsWith(names[k])) ?? r);
 
   async function load(t, platform, n) {
@@ -792,7 +720,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
     return page;
   }
 
-  // the element of the row of names[name] selected by a click on this row of the object list
   async function pick(page, names, name) {
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(ROW)})].find((x) => x.querySelector('.name').textContent.startsWith(${js(names[name])})).getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2 }; })()`);
     await click(page, at);
@@ -800,13 +727,9 @@ describe('Bring Forward and Send Backward pass one row', () => {
     assert.equal((await selected(page)).length, 1);
   }
 
-  // whether the row of names[name] is the one row selected in the object list
   const rowSelected = (page, names, name) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})]
   .filter((r) => r.getAttribute('aria-selected') === 'true').map((r) => r.querySelector('.name').textContent.startsWith(${js(names[name])})).join()`);
 
-  // the command of order run by its key on the element of the row of names[name], then undone and
-  // redone, which gives the text before and after the command byte for byte, with the row selected
-  // throughout
   async function layer(page, platform, order, names, name) {
     await pick(page, names, name);
     const base = await render(page);
@@ -826,7 +749,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
     return edited;
   }
 
-  // a point of the text of the element of selector a inside the box of the element of b, in CSS px
   const overlap = (page, a, b) => page.evaluate(`(() => {
   const el = document.querySelector(${js(a)});
   const box = [...document.querySelectorAll(${js(b)})].find((e) => e.getClientRects().length).getBoundingClientRect();
@@ -838,7 +760,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
   }
   return null;
 })()`);
-  // the key in els of the element drawn on top at a point, i.e. the one that a click there hits
   const topAt = (page, at, els) => page.evaluate(`(() => {
   const els = ${js(els)};
   for (const hit of document.elementsFromPoint(${at.x}, ${at.y})) {
@@ -847,7 +768,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
   }
   return null;
 })()`);
-  // whether the rows of list show a in front of b
   const listedOver = (list, a, b) => list.indexOf(a) < list.indexOf(b);
 
   for (const platform of PLATFORMS) {
@@ -885,7 +805,7 @@ describe('Bring Forward and Send Backward pass one row', () => {
       assert.equal(await render(page), page.source, 'a declaration is left once the list is back in the order of the file');
       const { text } = await saveAndReopen(page, `.r16-2-g4-${platform}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the order of the heading of the closing slide and the QR code is drawn as the object list shows it (G5)`, async (t) => {
@@ -893,13 +813,11 @@ describe('Bring Forward and Send Backward pass one row', () => {
       const pair = { h1: CLOSE_EL.h1, qr: CLOSE_EL.qr };
       const at = await overlap(page, CLOSE_EL.h1, CLOSE_EL.qr);
       assert.ok(at, 'the QR code is not over the heading');
-      // the theme draws the block of a closing slide in front of the QR code
       assert.deepEqual(await named(page, CLOSE_ROWS), ['who', 'sub', 'h1', 'qr']);
       assert.equal(await topAt(page, at, pair), 'h1');
       await layer(page, platform, 'front', CLOSE_ROWS, 'qr');
       assert.deepEqual(await named(page, CLOSE_ROWS), ['qr', 'who', 'sub', 'h1']);
       assert.equal(await topAt(page, at, pair), 'qr', 'the QR code brought to the front is drawn under the heading');
-      // the steps of the finding: Bring to Front of the heading, of the subtitle, and of the heading
       for (const name of ['h1', 'sub', 'h1']) {
         await layer(page, platform, 'front', CLOSE_ROWS, name);
         const list = await named(page, CLOSE_ROWS);
@@ -917,7 +835,7 @@ describe('Bring Forward and Send Backward pass one row', () => {
       assert.equal(await topAt(page, at, pair), 'h1', 'the QR code sent to the back is drawn over the heading');
       assert.equal(await render(page), page.source, 'a declaration is left once the slide is in the order of the file');
       await saveAndReopen(page, `.r16-2-g5-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the layer commands and a drag of a row order the texts of the block of the closing slide among the objects of the slide (G6)`, async (t) => {
@@ -928,9 +846,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
       const atSub = await overlap(page, CLOSE_EL.sub, CLOSE_EL.qr);
       assert.ok(at && atSub, 'the QR code is not over the heading and the subtitle');
 
-      // the theme draws the block of a closing slide in front of the QR code. the block is a stacking
-      // context, hence the QR code passes all of its texts or none, and Bring Forward and Send Backward
-      // of the QR code, which pass one row, are dimmed
       assert.deepEqual(await named(page, CLOSE_ROWS), ['who', 'sub', 'h1', 'qr']);
       assert.equal(await topAt(page, at, pair), 'h1');
       assert.equal(await topAt(page, atSub, subPair), 'sub');
@@ -947,7 +862,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
       assert.equal(await topAt(page, atSub, subPair), 'sub');
       assert.equal(await render(page), page.source, 'a declaration is left once the slide is in the order of the file');
 
-      // the heading passes one text of the block at a time, in front of the QR code
       await pick(page, CLOSE_ROWS, 'h1');
       assert.deepEqual(await orders(page), { front: true, forward: true, backward: false, back: false });
       await layer(page, platform, 'forward', CLOSE_ROWS, 'h1');
@@ -964,7 +878,6 @@ describe('Bring Forward and Send Backward pass one row', () => {
       assert.equal(await topAt(page, at, pair), 'h1');
       assert.equal(await render(page), page.source, 'a declaration is left once the slide is in the order of the file');
 
-      // a drag of the row of the heading to the top of the list
       const box = (name) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(ROW)})].find((x) => x.querySelector('.name').textContent.startsWith(${js(CLOSE_ROWS[name])})).getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2, top: r.top }; })()`);
       const from = await box('h1');
       const top = await box('who');
@@ -982,16 +895,11 @@ describe('Bring Forward and Send Backward pass one row', () => {
       await frames(page);
       assert.equal(await render(page), dragged);
       await saveAndReopen(page, `.r16-2-g6-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R18.1 on both platforms with trusted input. a layer command of
-// commands/order.ts changes the order drawn and not the order of the steps, and the file is back to
-// the source once the rows are in their first order, by the same bytes for the same order whatever
-// the route (finding C2). a list, whose items the theme positions, is drawn and listed in the order
-// of the layers of z-index 0 (C3). the selection of a command stays over its undo and redo (C4)
 describe('layers change the drawn order, not the steps', () => {
   const SOURCE = readFileSync('test-deck.html', 'utf8');
   const slideOf = (text, has) => [...text.matchAll(/<section[\s\S]*?<\/section>/g)].findIndex((m) => has(m[0]));
@@ -1010,10 +918,6 @@ describe('layers change the drawn order, not the steps', () => {
   const LIST_KEY = { mac: 'Mod+Shift+L', other: 'Alt+F10' };
   const ROW = '.beeson-edit-objects .row';
 
-  // copies of the demo deck. in each, the foot of slide 3 is moved over the list: written last, also
-  // as a step after the items, which have no index (FRAGFOOT), or written after the heading
-  // (FOOTFIRST). in OVERLAPS the QR code of the closing slide is over the heading, and in FIGOVER the
-  // figure of slide 5 is over the list
   const FOOT = '<div class="foot">Slides can have backdrops';
   const MOVED_FOOT = '<div class="foot" style="translate: 0px -150px">Slides can have backdrops';
   const QR = '<div class="qr" data-qr="https://github.com/beeson-group/slides">';
@@ -1047,15 +951,11 @@ describe('layers change the drawn order, not the steps', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const orders = async (page) => Object.fromEntries(await Promise.all(['front', 'forward', 'backward', 'back'].map(async (o) => [o, (await state(page, `arrange.order.${o}`)).enabled])));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => [e.localName, ...e.classList].filter((c) => !c.startsWith('beeson')).join('.'))`);
-  // the rows without the row of the backdrop, which is at the ground of the list
   const rows = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].filter((r) => r.dataset.kind !== 'Backdrop').map((r) => r.querySelector('.name').textContent)`);
-  // the rows of the object list from front to back, each by its key in names
   const named = async (page, names) => (await rows(page)).map((r) => Object.keys(names).find((k) => r.startsWith(names[k])) ?? r);
 
-  // the deck text saved as file and opened with the editor at slide n, with the object list shown
   async function load(t, platform, text, n, file = `.r18-1-${platform}-${n}.html`) {
     if (text !== LAYOUTS_SOURCE) {
       writeFileSync(file, text);
@@ -1079,14 +979,12 @@ describe('layers change the drawn order, not the steps', () => {
   }
 
   const rowAt = (page, names, name) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(ROW)})].find((x) => x.querySelector('.name').textContent.startsWith(${js(names[name])})).getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2 }; })()`);
-  // the element of the row of names[name] selected by a click on this row of the object list
   async function pick(page, names, name) {
     await click(page, await rowAt(page, names, name));
     await frames(page);
     assert.equal((await selected(page)).length, 1);
   }
 
-  // the command of order run by its key on the selection, with a check of its history entry
   async function layer(page, platform, order) {
     const base = await render(page);
     await press(page, KEYS[platform][order]);
@@ -1096,7 +994,6 @@ describe('layers change the drawn order, not the steps', () => {
     return edited;
   }
 
-  // the texts of the steps of slide n of text in the show without the editor, in the order shown
   async function stepsOf(t, text, n, file) {
     writeFileSync(file, text);
     t.after(() => rmSync(file, { force: true }));
@@ -1109,7 +1006,6 @@ describe('layers change the drawn order, not the steps', () => {
     .sort((a, b) => a.dataset.fragmentIndex - b.dataset.fragmentIndex).map((f) => f.textContent.trim().slice(0, 14)).filter((s) => s)`);
   }
 
-  // a point of the text of the element of selector a inside the box of the element of b, in CSS px
   const overlap = (page, a, b) => page.evaluate(`(() => {
   const el = document.querySelector(${js(a)});
   const box = [...document.querySelectorAll(${js(b)})].find((e) => e.getClientRects().length).getBoundingClientRect();
@@ -1121,7 +1017,6 @@ describe('layers change the drawn order, not the steps', () => {
   }
   return null;
 })()`);
-  // the key in els of the element drawn on top at a point, i.e. the one that a click there hits
   const topAt = (page, at, els) => page.evaluate(`(() => {
   const els = ${js(els)};
   for (const hit of document.elementsFromPoint(${at.x}, ${at.y})) {
@@ -1141,8 +1036,7 @@ describe('layers change the drawn order, not the steps', () => {
       const at = await overlap(page, STEP_EL.foot, STEP_EL.ul);
       assert.equal(await topAt(page, at, { foot: STEP_EL.foot, ul: STEP_EL.ul }), 'ul');
       const { text } = await saveAndReopen(page, `.r18-1-c2a-${platform}.html`);
-      assert.deepEqual(errors(page), []);
-      // a page of the show is opened last, since the page of the editor is then in the background
+      assert.deepEqual(page.errors, []);
       const source = await stepsOf(t, FRAGFOOT, STEPS, `.r18-1-${platform}-show-a.html`);
       assert.deepEqual(source, ['Each step is a', 'Two elements w', 'When exporting', 'Slides can hav']);
       assert.deepEqual(await stepsOf(t, text, STEPS, `.r18-1-${platform}-show-b.html`), source, 'Send Backward changes the order of the steps in the show');
@@ -1161,7 +1055,7 @@ describe('layers change the drawn order, not the steps', () => {
         assert.equal(await topAt(page, at, pair), list.indexOf('foot') < list.indexOf('ul') ? 'foot' : 'ul', `the order drawn at step ${i + 1} is not the order listed`);
       }
       assert.equal(await render(page), OVERLAPS, 'the file is not the source once the rows are in their first order');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: Send Backward three times, a drag of the row to the bottom, and Send to Back of the figure of slide 5 write the same bytes (C2)`, async (t) => {
@@ -1187,11 +1081,9 @@ describe('layers change the drawn order, not the steps', () => {
       await frames(page);
       assert.deepEqual(await named(page, FIG_ROWS), ['ul', 'p', 'h2', 'fig']);
       assert.equal(await render(page), back, 'a drag of the row and Send to Back write different bytes for the same order');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the heading is drawn under the backdrop over the whole slide, hence Send Backward of the caption,
-    // which would put it under the backdrop, is dimmed and does not change the file (R21.3, V20)
     test(`${platform}: Send Backward and Send to Back of the caption of a figure slide with a backdrop do not put it under the backdrop (C2)`, async (t) => {
       const page = await load(t, platform, LAYOUTS_SOURCE, BACKDROP, LAYOUTS);
       const list = await named(page, CAP_ROWS);
@@ -1204,7 +1096,7 @@ describe('layers change the drawn order, not the steps', () => {
       assert.equal(await render(page), LAYOUTS_SOURCE, 'the caption is moved in the file');
       const at = await page.evaluate(`(() => { const r = document.querySelector(${js(CAP_EL.cap)}).getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
       assert.equal(await topAt(page, at, CAP_EL), 'cap', 'the backdrop is drawn over the caption');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`${platform}: the object list shows a foot written before the list under it, and Bring to Front brings it over the list (C3)`, async (t) => {
@@ -1220,12 +1112,10 @@ describe('layers change the drawn order, not the steps', () => {
       assert.deepEqual(await named(page, STEP_ROWS), ['foot', 'ul', 'p', 'h2']);
       assert.equal(await topAt(page, at, pair), 'foot', 'Bring to Front does not draw the foot over the list');
       const { text } = await saveAndReopen(page, `.r18-1-c3-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
       assert.deepEqual(await stepsOf(t, text, STEPS, `.r18-1-${platform}-show-c.html`), await stepsOf(t, FOOTFIRST, STEPS, `.r18-1-${platform}-show-d.html`));
     });
 
-    // the theme draws the block of the closing slide in front of the QR code, and the block is a
-    // stacking context, hence the QR code passes all of its texts at once
     test(`${platform}: the QR code stays selected over the undo and the redo of Bring to Front, and Send to Back then moves it (C4)`, async (t) => {
       const page = await load(t, platform, OVERLAPS, CLOSING);
       const pair = { h1: `${S} .title-text > h1`, qr: `${S} > .qr` };
@@ -1255,7 +1145,7 @@ describe('layers change the drawn order, not the steps', () => {
       assert.equal(await topAt(page, at, pair), 'h1');
       assert.equal(await render(page), base, 'a declaration is left once the slide is in the order of the file');
       assert.deepEqual(await selected(page), ['div.qr']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

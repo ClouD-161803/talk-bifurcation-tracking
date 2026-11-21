@@ -1,10 +1,3 @@
-// A writer of an MP4 file with one H.264 video track, for the recordings of scripts/record.mjs. The
-// samples are the chunks of a WebCodecs VideoEncoder configured with avc: { format: 'avc' }, in
-// decode order and without reordered frames, hence the file does not need a ctts box. Every sample
-// lasts one frame, and moov is written before mdat, so that a player starts without reading the file
-// to its end. The files of this writer play in PowerPoint 16 and Keynote 15 on the Mac and in
-// PowerPoint for Windows.
-
 const u8 = (...v) => Buffer.from(v);
 const u16 = (v) => { const b = Buffer.alloc(2); b.writeUInt16BE(v); return b; };
 const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(v >>> 0); return b; };
@@ -13,26 +6,18 @@ const box = (type, ...parts) => {
   const body = Buffer.concat(parts);
   return Buffer.concat([u32(body.length + 8), Buffer.from(type, 'latin1'), body]);
 };
-// a box with a version and flags
 const full = (type, version, flags, ...parts) => box(type, u8(version, (flags >> 16) & 255, (flags >> 8) & 255, flags & 255), ...parts);
 const MATRIX = Buffer.concat([0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000].map(u32));
-// the code points of ISO/IEC 23091-2 for the names of a VideoColorSpace, and 2 for unspecified
-const PRIMARIES = { bt709: 1, bt470bg: 5, smpte170m: 6 };
-const TRANSFER = { bt709: 1, smpte170m: 6, 'iec61966-2-1': 13 };
-const COEFFICIENTS = { rgb: 0, bt709: 1, bt470bg: 5, smpte170m: 6 };
+const CICP_PRIMARIES = { bt709: 1, bt470bg: 5, smpte170m: 6 };
+const CICP_TRANSFER = { bt709: 1, smpte170m: 6, 'iec61966-2-1': 13 };
+const CICP_MATRIX = { rgb: 0, bt709: 1, bt470bg: 5, smpte170m: 6 };
 
-/**
- * Returns the bytes of an MP4 file. samples is an array of { data, key } in decode order, fps the
- * frames per second, avcC the description of the decoder config of the encoder, and color its
- * colorSpace, or undefined for a file without a colr box. perChunk is the number of samples in a
- * chunk of mdat.
- */
 export function mp4({ width, height, fps, samples, avcC, color, perChunk = fps }) {
   const timescale = fps * 1000, delta = 1000, duration = samples.length * delta;
   const ftyp = box('ftyp', Buffer.from('isom', 'latin1'), u32(0x200), Buffer.from('isomiso2avc1mp41', 'latin1'));
   const colr = color
-    ? box('colr', Buffer.from('nclx', 'latin1'), u16(PRIMARIES[color.primaries] ?? 2), u16(TRANSFER[color.transfer] ?? 2),
-      u16(COEFFICIENTS[color.matrix] ?? 2), u8(color.fullRange ? 0x80 : 0))
+    ? box('colr', Buffer.from('nclx', 'latin1'), u16(CICP_PRIMARIES[color.primaries] ?? 2), u16(CICP_TRANSFER[color.transfer] ?? 2),
+      u16(CICP_MATRIX[color.matrix] ?? 2), u8(color.fullRange ? 0x80 : 0))
     : zeros(0);
   const avc1 = box('avc1', zeros(6), u16(1), zeros(16), u16(width), u16(height), u32(0x480000), u32(0x480000), zeros(4), u16(1),
     zeros(32), u16(0x18), u16(0xffff), box('avcC', avcC), colr);
@@ -61,7 +46,6 @@ export function mp4({ width, height, fps, samples, avcC, color, perChunk = fps }
             full('stsc', 0, 0, u32(stsc.length), ...stsc.flatMap(([first, n]) => [u32(first), u32(n), u32(1)])),
             full('stsz', 0, 0, u32(0), u32(samples.length), ...samples.map((s) => u32(s.data.length))),
             full('stco', 0, 0, u32(offsets.length), ...offsets.map(u32)))))));
-  // the offsets of the chunks depend on the size of moov, which does not depend on them
   const head = ftyp.length + moov(chunks.map(() => 0)).length + 8;
   const offsets = [];
   let at = head;

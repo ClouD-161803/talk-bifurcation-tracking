@@ -1,10 +1,3 @@
-// the caret of the person through an apply of the synchronous editor, see
-// src/editor/session/session.ts. a caret that the person moves while the formulas of an apply are
-// typeset is left where the person put it, and a caret whose paragraph another person moves to a
-// slide that is not shown stays in the paragraph: the person stays on the slide, and the first key
-// that types shows the slide of the paragraph and goes into it. a selection is kept through a run
-// between two code elements that becomes a space
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -26,7 +19,6 @@ const once = (text, from, to) => {
   return text.replace(from, to);
 };
 
-// the text with the slide whose heading starts with heading put again after it
 function duplicated(text, heading) {
   const from = text.lastIndexOf('<section', text.indexOf(`<h2>${heading}`));
   const to = text.indexOf('</section>', from) + '</section>\n'.length;
@@ -57,7 +49,6 @@ for (const [label, change] of MOVED) {
       return true;
     })()`);
     await b.waitFor('window.__held > 0');
-    // the person puts the caret into the heading of the slide while the typeset waits
     assert.equal(await b.evaluate(`(() => {
       const h = ${H2};
       h.focus();
@@ -84,7 +75,6 @@ test('a caret whose paragraph is moved to another slide stays in it, and the per
   const text = once(once(b.source, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
-  // a key of a command leaves the person on the slide
   await press(b, 'Mod+C');
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide after a key that does not type');
   await typeKeys(b, 'Xyz');
@@ -101,7 +91,6 @@ test('a caret whose paragraph is moved to another slide is let go once the perso
   await caretAtEnd(b, P1);
   const text = once(once(b.source, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
   assert.equal((await applyOn(b, text)).reload, false);
-  // a press on the slide is a new choice of the person, after which the keys do not type
   await b.evaluate(`document.querySelector('.reveal').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`);
   await typeKeys(b, 'Xyz');
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
@@ -109,12 +98,8 @@ test('a caret whose paragraph is moved to another slide is let go once the perso
   assert.deepEqual(b.errors, []);
 });
 
-// the text with the paragraph of the caret moved under the heading of the slide of code boxes,
-// which is not shown
 const moveP1 = (text) => once(once(text, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
 
-// the caret at the end of the paragraph, parked by an apply that moves the paragraph, which returns
-// this text
 async function parkP1(b) {
   await showSlide(b, 'Show your steps');
   await caretAtEnd(b, P1);
@@ -128,10 +113,9 @@ test('a character typed with Option after a caret is parked goes into its paragr
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await parkP1(b);
-  // Option+L of a German layout of a Mac types @
-  const base = { key: '@', code: 'KeyL', windowsVirtualKeyCode: 76, modifiers: 1 };
-  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '@', unmodifiedText: 'l' });
-  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  const optionLOnGermanMac = { key: '@', code: 'KeyL', windowsVirtualKeyCode: 76, modifiers: 1 };
+  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...optionLOnGermanMac, text: '@', unmodifiedText: 'l' });
+  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...optionLOnGermanMac });
   await typeKeys(b, 'x');
   await b.waitFor(`${P1}.textContent.endsWith('x')`);
   assert.equal(await b.evaluate(`${P1}.textContent.slice(-12)`), 'attention.@x');
@@ -146,7 +130,6 @@ test('the input of a keyboard of a phone, whose key is Unidentified, goes into a
   await b.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
   await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'a key that does not type leaves the person on the slide');
-  // the keyboard inserts its text, which a beforeinput of the focused element announces
   await b.evaluate(`document.activeElement.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: 'x' }))`);
   assert.deepEqual(await b.evaluate(`({ shown: Reveal.getCurrentSlide().contains(${P1}), active: document.activeElement === ${P1} })`), { shown: true, active: true }, 'the slide of the paragraph is shown, with the caret in it');
   await type(b, 'x');
@@ -200,7 +183,6 @@ for (const [label, change] of SAME) {
       return true;
     })()`);
     await b.waitFor('window.__held > 0');
-    // a press in the same text, as a click there, puts the caret at its character 3
     await b.evaluate(`(() => {
       window.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       getSelection().collapse(${P1}.firstChild, 3);
@@ -217,8 +199,6 @@ for (const [label, change] of SAME) {
   });
 }
 
-// the selection of the person in the paragraph of expression, as the offsets of its anchor and its
-// focus in the text of the paragraph, or null when an end is outside it
 const selectionIn = (expression) => `(() => {
   const p = ${expression};
   const sel = getSelection();
@@ -226,7 +206,6 @@ const selectionIn = (expression) => `(() => {
   const at = (node, offset) => { const r = document.createRange(); r.selectNodeContents(p); r.setEnd(node, offset); return r.toString().length; };
   return { anchor: at(sel.anchorNode, sel.anchorOffset), focus: at(sel.focusNode, sel.focusOffset) };
 })()`;
-// the word complete of the paragraph selected from anchor to focus
 const selectComplete = (b, backward) => b.evaluate(`(() => {
   const p = ${P1};
   p.focus();
@@ -253,8 +232,6 @@ for (const backward of [false, true]) {
   });
 }
 
-// a selection in a paragraph moved to a slide that is not shown is parked with its focus alone, see
-// the tests of a parked caret above
 test('a selection keeps both ends when another person moves its paragraph to the end of its slide', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
@@ -269,7 +246,6 @@ test('a selection keeps both ends when another person moves its paragraph to the
   assert.deepEqual(b.errors, []);
 });
 
-// the calls of MathJax.typesetPromise from now on, in window.__typesets
 const countTypesets = (b) => b.evaluate(`(() => {
   const mj = window.MathJax;
   mj.__counted ??= mj.typesetPromise.bind(mj);
@@ -277,7 +253,6 @@ const countTypesets = (b) => b.evaluate(`(() => {
   mj.typesetPromise = (els) => (window.__typesets++, mj.__counted(els));
   return true;
 })()`);
-// the text node of the paragraph that holds needle, kept in window.__node
 const keepNode = (b, needle) => b.evaluate(`(() => {
   window.__node = [...${P1}.childNodes].find((n) => n.nodeType === 3 && n.data.includes(${JSON.stringify(needle)})) ?? null;
   return !!window.__node;
@@ -295,7 +270,6 @@ test('a character typed away from a literal dollar or backslash of its text keep
   assert.deepEqual(await applyOn(b, away), { reload: false, changed: ['p'] });
   assert.deepEqual(await b.evaluate(`({ same: window.__node.isConnected && window.__node.data.endsWith('attention.X'), typesets: window.__typesets })`), { same: true, typesets: 0 }, 'the character is written into the text node');
   assert.equal(await b.evaluate(`${E}.render()`), away);
-  // a dollar typed may begin a formula, and the content of the paragraph is set
   const dollar = once(away, 'attention.X</p>', 'attention.X$</p>');
   assert.deepEqual(await applyOn(b, dollar), { reload: false, changed: ['p'] });
   assert.equal(await b.evaluate('window.__typesets'), 1, 'the paragraph is typeset again');
@@ -324,8 +298,6 @@ test('on a clean page, a character typed by another person in a paragraph with a
   assert.deepEqual(b.errors, []);
 });
 
-// a blank run inside a p or an li cannot end the text element, see isTextElement(), hence it is set
-// in place, as any other run
 test('a run between two code elements that becomes a space keeps the selection of the person and both code elements', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
@@ -351,7 +323,6 @@ test('a run between two code elements that becomes a space keeps the selection o
   assert.deepEqual(b.errors, []);
 });
 
-// the caret of the person put after the first count characters of the text of P1
 const caretAfter = (b, count) => b.evaluate(`(() => {
   const p = ${P1};
   p.focus();
@@ -360,8 +331,6 @@ const caretAfter = (b, count) => b.evaluate(`(() => {
 })()`);
 const CHANGES = [
   ['on both sides of it', (text) => once(text, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C')), 'BDesignA the', 'C</p>'],
-  // a caret that went after such letters would follow the caret of the other person, and the letters
-  // of the two would then alternate
   ['at it, which leaves it before the letters of the other person', (text) => once(text, LINE, LINE.replace('Design', 'DesignX')), 'DesignAX the', 'attention.</p>'],
 ];
 for (const [label, change, typed, end] of CHANGES) {
@@ -391,13 +360,9 @@ test('a selection inside its text node keeps its characters through one apply th
   assert.deepEqual(b.errors, []);
 });
 
-// complete is replaced by whole while the caret is after comp. replaceData would put the caret at
-// the start of a run of changed letters, and the tag of the second change sends the apply through
-// mapOffset
 const WORDS = [
   ['in its text node', (text) => once(text, LINE, LINE.replace('complete', 'whole'))],
   ['with a tag put into its paragraph', (text) => once(text, LINE, LINE.replace('complete', 'whole').replace('attention.', '<strong>attention.</strong>'))],
-  // complete to entire is read as compl taken out before the e that both share and ire put in after it
   ['with letters that both words share', (text) => once(text, LINE, LINE.replace('complete', 'entire').replace('attention.', '<strong>attention.</strong>')), 'entire'],
 ];
 for (const [label, change, word = 'whole'] of WORDS) {

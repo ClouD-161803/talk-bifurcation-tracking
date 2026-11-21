@@ -1,8 +1,3 @@
-// the order of the attributes, the classes, and the declarations of a start tag through edits, undos,
-// and redos. the state that stateOf of tags.ts gives for an edit is the tag that renderTag writes
-// for it, read back in its order, and a seeded run of tag edits gives each tag byte for byte after
-// each undo
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inverseEdit, normalizeEdit } from '../src/editor/model/doc.ts';
@@ -18,7 +13,6 @@ const render = (html, edit) => {
   const open = renderTag(html, tag, tag.attrs, edit);
   return open === null ? html : html.slice(0, tag.start) + open + html.slice(tag.end);
 };
-// a state with the order of its keys, which deepEqual does not compare
 const ordered = (s) => ({ attrs: Object.entries(s.attrs), classes: s.classes, style: Object.entries(s.style) });
 const readBack = (html) => ordered(stateOf(tagOf(html).attrs));
 
@@ -29,7 +23,17 @@ test('the state of a tag without a class lists the class of a new step before it
   assert.deepEqual(Object.keys(stateOf(tagOf(html).attrs, edit).attrs), ['class', 'data-fragment-index']);
 });
 
-// a class set again keeps its place, and a translation without an order is put last
+test('a new step written with the class of its effect has the class fragment first, as reveal.js writes it', () => {
+  const edit = { fragment: true, index: 2, classes: { play: true } };
+  for (const [html, written] of [
+    ['<video src="a.mp4"></video>', '<video src="a.mp4" class="fragment play" data-fragment-index="2"></video>'],
+    ['<video class="for-dark" src="a.mp4"></video>', '<video class="for-dark fragment play" src="a.mp4" data-fragment-index="2"></video>'],
+  ]) {
+    assert.equal(render(html, edit), written);
+    assert.deepEqual(ordered(stateOf(tagOf(html).attrs, edit)), readBack(written));
+  }
+});
+
 test('the state lists the classes and the declarations in the order of the tag that is written', () => {
   const html = '<p class="fragment small" style="translate: 10px 0px; width: 2px">a</p>';
   const edit = { fragment: true, translate: { x: 20, y: 0 } };
@@ -37,8 +41,6 @@ test('the state lists the classes and the declarations in the order of the tag t
   assert.deepEqual(ordered(stateOf(tagOf(html).attrs, edit)), readBack(render(html, edit)));
 });
 
-// the run of the seed found an undo of a whole class value that kept the class fragment of a
-// change before it
 test('a whole class value replaces an earlier change of one class, in an edit and in its undo', () => {
   const m = model('<p class="small fragment">a</p>');
   m.set({ fragment: false });
@@ -78,8 +80,6 @@ test('an undo across a save writes the attributes and the classes of the file in
   assert.equal(m.text(), '<p class="a b" id="x">a</p>');
 });
 
-// start tags of a file, with values in each kind of quote, character references, odd white space,
-// and attributes without a value
 const TAGS = [
   '<p>a</p>',
   '<p id="a">a</p>',
@@ -93,7 +93,6 @@ const TAGS = [
   '<p\n  class="math"\n  data-keep>a</p>',
 ];
 
-// mulberry32 from the seed
 function random(seed) {
   let s = seed >>> 0;
   return () => {
@@ -105,7 +104,6 @@ function random(seed) {
   };
 }
 
-// a random edit of the classes, the attributes, and the declarations that the editor writes
 function editOf(next) {
   const pick = (list) => list[Math.floor(next() * list.length)];
   const n = (k) => Math.floor(next() * k);
@@ -125,8 +123,6 @@ function editOf(next) {
   ])();
 }
 
-// one tag in the document model of model/doc.ts, i.e. the edits since the last save merged over
-// the file. set records an edit with its inverse as Doc.setTag does, and save makes the text the file
 function model(html) {
   const m = { file: html, tags: {} };
   const attrs = () => tagOf(m.file).attrs;
@@ -144,8 +140,6 @@ function model(html) {
   return m;
 }
 
-// an undo across a save gives the attributes, the classes, and the declarations of the tag in
-// their order with their values, but not the white space of a file that the save replaced
 test('a seeded run of tag edits gives each tag byte for byte after each undo, and the edit after each redo', () => {
   const next = random(SEED);
   let done = 0;
@@ -179,8 +173,6 @@ test('a seeded run of tag edits gives each tag byte for byte after each undo, an
   }
 });
 
-// the same run through the document model on the demo deck in headless Chrome, with a save about
-// every 25 edits. each edit is undone and redone, and the file is compared byte for byte
 const browserRun = (seed, edits) => `(async () => {
   const E = window.BeesonEditor;
   const doc = E.doc;

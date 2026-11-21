@@ -1,6 +1,3 @@
-// turns by the rotate handle of elements, figures with captions, and groups, cancelled turns, and
-// the hold at multiples of 45 degrees
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,16 +6,8 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 
-// regression tests of R8.2 on both platforms with trusted input. the text of a text column fitted by a
-// change of layout to Split is drawn in the color of the text column. the rotate grip of a selected
-// element is drawn on a stem above the top center of its frame, outside its text, and the handle
-// of a block is drawn clear of the grips. a group is turned by its own rotate grip and by the field
-// Angle of the Arrange pane, each member about the center of the group. a thumbnail of the
-// navigator is drawn only from typeset formulas. after each edit the text is checked byte for byte,
-// after an undo and a redo, and after a save and an open
 describe('the rotate handle drawn above the frame', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the slide of the demo deck with the figure and its caption, under a paragraph and over a list
   const FIGURE = 4;
   const IMG = '.reveal section.present figure.figure-box > img';
   const PANEL = '#beeson-edit-panel-format';
@@ -39,14 +28,11 @@ describe('the rotate handle drawn above the frame', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   let saves = 0;
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 
-  // inScope asserts that the edit writes only what the scope rule allows, besides the problems of the
-  // text before it
   function inScope(edited, source) {
     const now = textProblems(edited, THEME);
     for (const p of textProblems(source, THEME)) {
@@ -56,9 +42,6 @@ describe('the rotate handle drawn above the frame', () => {
     assert.deepEqual(now, []);
   }
 
-  // the editor on the slide n of the demo deck served over HTTP, in a window of 1600 by 1000 px as
-  // in the shoot of the council, in the mode of the slides given, with the Format tab shown. with
-  // watch set, every drawing of a thumbnail is checked for raw TeX from before the open on
   async function load(t, platform, { n = FIGURE, mode = 'dark', watch = false } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -79,8 +62,6 @@ describe('the rotate handle drawn above the frame', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -90,15 +71,13 @@ describe('the rotate handle drawn above the frame', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r8-2-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
 
   const release = (page, at) => page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
 
-  // finding 1: Change Layout to Split set the text of the text column in the style Small, which the theme colors
-  // gray for a note on a white or black slide, and thus drew it gray on the black text column
   for (const platform of PLATFORMS) {
     for (const mode of ['dark', 'light']) {
       test(`the text of a panel fitted by Change Layout to Split is drawn in the color of the panel in ${mode} mode (${platform})`, async (t) => {
@@ -120,8 +99,6 @@ describe('the rotate handle drawn above the frame', () => {
     }
   }
 
-  // the frame of the selection, the rotate grip, its stem, the handle of a block, and the shown grips,
-  // in CSS px of the window, and the boxes of the lines of the text of the selected element
   const chrome = (page) => page.evaluate(`(() => {
   const box = (el) => { if (!el || el.hidden) return null; const r = el.getBoundingClientRect(); return r.width ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom, x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; };
   const frame = [...document.querySelectorAll('.beeson-frame.selected, .beeson-frame.union')].find((f) => !f.hidden);
@@ -145,7 +122,6 @@ describe('the rotate handle drawn above the frame', () => {
   };
 })()`);
 
-  // the paragraphs of the demo deck stacked close between a heading and a list or a display
   const STACKED = [
     [2, 'Design the complete slide'],
     [3, 'You can type LaTeX'],
@@ -155,8 +131,6 @@ describe('the rotate handle drawn above the frame', () => {
     [10, 'Videos are shown'],
   ];
 
-  // finding 2: the rotate grip of a text block was drawn inside its frame over its first line, and
-  // the handle of the block over its upper left grip
   for (const platform of PLATFORMS) {
     test(`the rotate grip of a text block is drawn on a stem above its frame, and the block handle clear of its grips (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -180,14 +154,12 @@ describe('the rotate handle drawn above the frame', () => {
         assert.ok(!hit, `the block handle of ${what} at ${js(v.handle)} covers a grip at ${js(hit)}`);
         assert.ok(!meets(v.handle, v.rotor), `the block handle of ${what} covers its rotate grip`);
       }
-      // the grip turns the last paragraph, under the heading of slide 11
       const v = await chrome(page);
       await drag(page, { x: v.rotor.x, y: v.rotor.y }, { dx: 120, dy: 40 });
       await frames(page);
       assert.match(await render(page), /<p[^>]* style="rotate: \d+deg">Videos are shown/, 'the grip does not turn the paragraph');
       await roundTrip(page);
 
-      // an image has its grip on the same stem above its frame
       await page.evaluate(`Reveal.slide(${FIGURE})`);
       await frames(page);
       await click(page, IMG);
@@ -197,15 +169,12 @@ describe('the rotate handle drawn above the frame', () => {
     });
   }
 
-  // the members of the selected group, each with its angle in degrees and its center on the screen. a figure is
-  // turned at its picture, i.e. its shown image, since its caption is not turned with it
   const members = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => {
   const pic = el.matches('figure, .figure-box, .plate') ? [...el.querySelectorAll('img, video')].find((m) => m.getBoundingClientRect().width) ?? el : el;
   const r = pic.getBoundingClientRect();
   const deg = (parseFloat(getComputedStyle(pic).rotate) || 0) + (pic === el ? 0 : parseFloat(getComputedStyle(el).rotate) || 0);
   return { tag: el.localName, deg, x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })`);
-  // the point p turned by deg degrees about the point c
   const turn = (p, c, deg) => {
     const a = (deg * Math.PI) / 180;
     return { x: c.x + (p.x - c.x) * Math.cos(a) - (p.y - c.y) * Math.sin(a), y: c.y + (p.x - c.x) * Math.sin(a) + (p.y - c.y) * Math.cos(a) };
@@ -219,7 +188,6 @@ describe('the rotate handle drawn above the frame', () => {
     });
   }
 
-  // the paragraph and the figure of slide 5 grouped with the key of the platform, which selects the group
   async function grouped(page, platform) {
     await click(page, IMG);
     await click(page, '.reveal section.present > p', { modifiers: 'Shift' });
@@ -230,8 +198,6 @@ describe('the rotate handle drawn above the frame', () => {
     assert.deepEqual((await members(page)).map((m) => m.tag).sort(), ['figure', 'p'], 'the group is not selected');
   }
 
-  // finding 3: a group was drawn without a rotate grip, and the field Angle set the angle of each
-  // member about its own center
   for (const platform of PLATFORMS) {
     test(`a group is turned by its rotate grip about its center as one entry of the history (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -241,7 +207,6 @@ describe('the rotate handle drawn above the frame', () => {
       assert.ok(v.rotor.bottom < v.frame.top && Math.abs(v.rotor.x - v.frame.x) <= 1 && v.stem, `the rotate grip of the group at ${js(v.rotor)} is not on a stem above the middle of its frame at ${js(v.frame)}`);
       const before = await members(page);
       const c = { x: v.frame.x, y: v.frame.y };
-      // a drag of the grip from above the center to the right of the center turns the group by 90 degrees
       const r = c.y - v.rotor.y;
       await drag(page, { x: v.rotor.x, y: v.rotor.y }, { dx: r, dy: r, steps: 12, hold: true });
       await frames(page);
@@ -253,7 +218,6 @@ describe('the rotate handle drawn above the frame', () => {
       turnedAbout(await members(page), before, c, 90, 'after the drag');
       const edited = await render(page);
       assert.match(edited, /<p style="rotate: 90deg; translate: -?\d+px -?\d+px" data-group="g\d+">Export/, 'the paragraph is not written with its offset and its angle');
-      // the figure, with its caption in it, is turned as one object, with the angle on the figure
       assert.match(edited, /<figure class="figure-box" style="rotate: 90deg; translate: -?\d+px -?\d+px" data-group="g\d+">/, 'the figure is not written with its offset and its angle');
       assert.equal(edited.match(/<img class="for-(dark|light)" [^>]*style="[^"]*rotate/g), null, 'the images of the figure are written with an angle');
       assert.deepEqual((await members(page)).map((m) => m.tag).sort(), ['figure', 'p'], 'the group is not selected after the turn');
@@ -282,8 +246,6 @@ describe('the rotate handle drawn above the frame', () => {
     });
   }
 
-  // every drawing of a thumbnail with a shown formula of the deck in raw TeX, kept in
-  // window.rawThumbs, and the number of drawings of the thumbnail of slide 5 with typeset formulas
   const WATCH = `(() => {
   window.rawThumbs = [];
   window.typesetThumbs = 0;
@@ -308,8 +270,6 @@ describe('the rotate handle drawn above the frame', () => {
   return true;
 })()`;
 
-  // finding 4: the thumbnail of a slide was drawn before its formulas were typeset, and showed raw
-  // TeX, e.g. while the image of slide 5 was rotated right after the deck was opened
   for (const platform of PLATFORMS) {
     test(`a thumbnail of the navigator is drawn only from typeset formulas (${platform})`, async (t) => {
       const page = await load(t, platform, { mode: 'light', watch: true });
@@ -323,19 +283,13 @@ describe('the rotate handle drawn above the frame', () => {
       const raw = await page.evaluate('window.rawThumbs');
       assert.deepEqual(raw, [], `a thumbnail is drawn with raw TeX: ${js(raw)}`);
       assert.ok((await page.evaluate('window.typesetThumbs')) > 0, 'the thumbnail of slide 5 is not drawn with its typeset formulas');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R15.1 on both platforms, after finding 1 and finding 5 of the judge opus in
-// round 6: a figure with a caption is turned as one object, with its frame, its grips, and its
-// rotate handle turned with it, and its grips still resize it. the fields X and Y of a turned
-// figure, text, or group give its unturned box, a turned figure is checked against the texts by
-// its turned picture, and a group selected with another object is drawn as one frame
 describe('a figure with a caption turned as one', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const PLATFORMS = ['mac', 'other'];
@@ -357,7 +311,6 @@ describe('a figure with a caption turned as one', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg !== undefined ? `, ${js(arg)}` : ''})).then(() => true)`);
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
@@ -392,8 +345,6 @@ describe('a figure with a caption turned as one', () => {
     return page;
   }
 
-  // an undo gives the text before and a redo the edited text byte for byte, and the saved text is
-  // opened again without problems
   async function checkEdit(page, name, before) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -405,8 +356,6 @@ describe('a figure with a caption turned as one', () => {
     assert.equal(text, edited);
   }
 
-  // the shown frames of the selection, the grips at their centers with their cursors, and the
-  // center of the rotate handle, in CSS px of the viewport
   const overlay = (page) => page.evaluate(`(() => {
   const shown = (el) => !el.hidden && el.getClientRects().length > 0;
   const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -420,14 +369,11 @@ describe('a figure with a caption turned as one', () => {
   const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
   const sameAngle = (a, b, d = 1.5) => Math.abs(((a - b + 540) % 360) - 180) <= d;
 
-  // the frame of the figure, its grips, and its rotate handle all turned by deg, with the frame as
-  // large as the fields W and H give it, and each grip with the cursor of its turned direction
   async function assertTurnedFrame(page, deg, size) {
     const o = await overlay(page);
     assert.equal(o.frames.length, 1, `the frames are ${js(o.frames)}`);
     const [f] = o.frames;
     assert.equal(f.rotate, `${deg}deg`, `the frame is ${js(f)}, not turned by ${deg}°`);
-    // the frame is drawn 8 px outside the box of the figure
     assert.ok(near(f.width, size.w * o.scale + 16, 3) && near(f.height, size.h * o.scale + 16, 3), `the frame ${js(f)} against the fields ${js(size)} at the scale ${o.scale}`);
     const g = o.grips;
     for (const h of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) assert.ok(g[h], `the grip ${h} is not drawn: ${js(g)}`);
@@ -435,7 +381,6 @@ describe('a figure with a caption turned as one', () => {
     assert.ok(sameAngle(angle(g.nw, g.sw), deg + 90), `the left edge from ${js(g.nw)} to ${js(g.sw)} is not turned by ${deg}°`);
     assert.ok(near(dist(g.nw, g.ne), f.width, 3) && near(dist(g.nw, g.sw), f.height, 3), `the grips ${js(g)} are not at the corners of the frame ${js(f)}`);
     assert.ok(o.rotor && sameAngle(angle(g.n, o.rotor), deg - 90, 3), `the rotate handle at ${js(o.rotor)} is not above the grip n at ${js(g.n)} on the turned frame`);
-    // the cursor of a grip at its direction turned by deg, to the nearest eighth of a turn
     const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
     const DIRS = { e: 0, se: 45, s: 90, sw: 135, w: 180, nw: 225, n: 270, ne: 315 };
     for (const [h, d] of Object.entries(DIRS)) {
@@ -444,7 +389,6 @@ describe('a figure with a caption turned as one', () => {
     }
   }
 
-  // a drag of the rotate handle about the center of the figure by the turn of deg degrees, released
   async function dragRotor(page, deg) {
     const o = await overlay(page);
     const c = o.frames[0].center;
@@ -461,13 +405,11 @@ describe('a figure with a caption turned as one', () => {
     await frames(page);
   }
 
-  // the texts of the figures slide that are outlined as an overflow, and the message of the state
   const overflow = async (page) => ({
     outlined: await page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('.beeson-overflow')].map((el) => el.localName)`),
     message: (await page.evaluate('window.BeesonEditor.status()')).message,
   });
 
-  // the paragraph and the figure of the figures slide made one group with the key of Group
   async function groupOnFigures(page, platform) {
     await clickText(page, IMG);
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
@@ -477,8 +419,6 @@ describe('a figure with a caption turned as one', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // finding 1: at an angle of 30 typed into the field, the frame was the upright box of the
-    // figure, about 908 slide px wide, with upright grips
     test(`a figure with a caption turned by the field Angle is turned as one object, with its frame, grips, and rotate handle (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, IMG);
@@ -494,7 +434,7 @@ describe('a figure with a caption turned as one', () => {
       assert.deepEqual({ w: size.w, h: size.h }, { w: rest.w, h: rest.h }, `W and H at 0° ${js(rest)} and at 30° ${js(size)}`);
       await assertTurnedFrame(page, 30, size);
       await checkEdit(page, `r15-1-angle-${platform}.html`, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a figure with a caption turned by its rotate handle is framed turned, and its corner grip resizes it with the corner across kept (${platform})`, async (t) => {
@@ -507,7 +447,6 @@ describe('a figure with a caption turned as one', () => {
       assert.match(turned, new RegExp(`<figure class="figure-box" style="[^"]*\\brotate: ${deg}deg[^"]*">`), 'the figure is not turned as one object');
       const before = await fields(page);
       await assertTurnedFrame(page, deg, before);
-      // the grip se dragged outward along the turned diagonal of the frame
       const o = await overlay(page);
       const { nw, se } = o.grips;
       const u = { x: (se.x - nw.x) / dist(nw, se), y: (se.y - nw.y) / dist(nw, se) };
@@ -527,10 +466,9 @@ describe('a figure with a caption turned as one', () => {
       const kept = (await overlay(page)).grips.nw;
       assert.ok(dist(kept, nw) <= 3, `the corner nw moved from ${js(nw)} to ${js(kept)}`);
       await checkEdit(page, `r15-1-resize-${platform}.html`, turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding 1: X and Y read 1060 and 58 at 30°, against 1200 and 160 at 0°
     test(`X and Y of a turned figure and text are those of the unturned box, and a typed X or Y reads back (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, IMG);
@@ -554,7 +492,7 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'angle', 30);
       const turnedH2 = await fields(page);
       assert.ok(near(turnedH2.x, h2.x, 1) && near(turnedH2.y, h2.y, 1), `the heading at 0° ${js(h2)} and at 30° ${js(turnedH2)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`X and Y of a turned group are those of its unturned frame, and a typed X reads back (${platform})`, async (t) => {
@@ -568,12 +506,9 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'x', 200);
       assert.equal(await fieldValue(page, 'x'), 200);
       await checkEdit(page, `r15-1-group-x-${platform}.html`, last);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding 1: after the turn by 30 degrees, the title bar read "5 texts lie over a figure". an
-    // overlap is reported only after a change of the layout or an insert, hence the layout of the
-    // slide is changed and changed back before each look at the report
     test(`a figure turned by the field Angle or by its rotate handle is not reported over the texts that its picture does not cover (${platform})`, async (t) => {
       const page = await load(t, platform);
       const checked = async () => {
@@ -596,15 +531,13 @@ describe('a figure with a caption turned as one', () => {
       s = await checked();
       assert.deepEqual(s.outlined, [], `after the rotate handle: ${js(s)}`);
       assert.doesNotMatch(s.message, / (under|over) a /);
-      // the turned figure moved over the paragraph is reported at the next check
       await typeField(page, 'x', 200);
       s = await checked();
       assert.ok(s.outlined.includes('p'), `the turned figure over the paragraph: ${js(s)}`);
       assert.match(s.message, /\d+ texts? (is|are) under a picture/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding 5: the group of the paragraph and the figure with the heading was drawn as three frames
     test(`a group selected with another object is drawn as one frame, beside the frame of the other object (${platform})`, async (t) => {
       const page = await load(t, platform);
       await groupOnFigures(page, platform);
@@ -618,11 +551,9 @@ describe('a figure with a caption turned as one', () => {
       assert.equal(both.length, 2, `the group with the heading is drawn as ${js(both)}`);
       const union = both.find((f) => f.union);
       assert.ok(union && near(union.width, alone[0].width, 2) && near(union.height, alone[0].height, 2), `the frame of the group ${js(union)} against ${js(alone[0])}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // item 5: a typed Height of 700 of a group turned by 180 degrees read 709, since the paragraph
-    // rewrapped by the scale kept the upright top of its box, which is its bottom on the screen
     test(`a typed Height of a group turned by 180 degrees reads back as typed (${platform})`, async (t) => {
       const page = await load(t, platform);
       await groupOnFigures(page, platform);
@@ -631,23 +562,17 @@ describe('a figure with a caption turned as one', () => {
       await typeField(page, 'height', 700);
       assert.equal(await fieldValue(page, 'height'), 700);
       await checkEdit(page, `r15-1-group-height-${platform}.html`, last);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R19.8 on both platforms, after the findings D19 to D21 of the fourth review
-// of round 7: a group with a member turned by itself is turned and reset back to the grouped file,
-// a drag of the rotate handle cancelled by Esc does not change the place that a later reset gives
-// back, and Esc cancels a drag of a row of the Object List and of a thumbnail of the navigator
 describe('groups with a turned member, and cancelled turns', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const PLATFORMS = ['mac', 'other'];
   const STOCK = readFileSync(DECK, 'utf8');
-
 
   let browser;
   let server;
@@ -666,7 +591,6 @@ describe('groups with a turned member, and cancelled turns', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const enabled = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`);
 
@@ -685,8 +609,6 @@ describe('groups with a turned member, and cancelled turns', () => {
   }
   const fields = async (page) => ({ x: await fieldValue(page, 'x'), y: await fieldValue(page, 'y'), w: await fieldValue(page, 'width'), h: await fieldValue(page, 'height') });
 
-  // the editor on the demo deck at the figures slide, opened from text, with the script prep run on
-  // the page before the open
   async function load(t, platform, text = STOCK, prep = '') {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -704,7 +626,6 @@ describe('groups with a turned member, and cancelled turns', () => {
     return page;
   }
 
-  // one undo gives the text before, and one redo the edited text, byte for byte
   async function undoes(page, before, what) {
     const edited = await render(page);
     assert.notEqual(edited, before, `${what} did not change the text`);
@@ -715,7 +636,6 @@ describe('groups with a turned member, and cancelled turns', () => {
     return edited;
   }
 
-  // the start tags of the figure and of its two images in the text, and the computed angles of the three
   async function figureState(page) {
     const text = await render(page);
     const start = text.indexOf('<figure class="figure-box"');
@@ -724,7 +644,6 @@ describe('groups with a turned member, and cancelled turns', () => {
     return { tags, turned };
   }
 
-  // the paragraph and the figure of the figures slide made one group with the key of Group
   async function groupOnFigures(page, platform) {
     await click(page, IMG);
     const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
@@ -733,8 +652,6 @@ describe('groups with a turned member, and cancelled turns', () => {
     await frames(page);
   }
 
-  // a drag of the shown rotate handle by deg degrees about the center of the frame of the
-  // selection, with the button held at the end where hold is set
   async function dragRotor(page, deg, hold = false) {
     const o = await page.evaluate(`(() => {
     const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -757,17 +674,14 @@ describe('groups with a turned member, and cancelled turns', () => {
     return at;
   }
 
-  // the label of the entry that Undo takes back, or undefined
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo')?.label`);
 
-  // the figure of the figures slide turned by 20 degrees by itself, then grouped with the paragraph
   async function groupTurnedFigure(page, platform) {
     await click(page, IMG);
     await typeField(page, 'angle', 20);
     await groupOnFigures(page, platform);
   }
 
-  // Esc pressed during a drag of the rotate handle by 40 degrees, then the release
   async function cancelledTurn(page) {
     const at = await dragRotor(page, 40, true);
     await press(page, 'Escape');
@@ -776,8 +690,6 @@ describe('groups with a turned member, and cancelled turns', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D19: the figure turned by 20 degrees and grouped read translate: 27px 5px, and 26px 6px after
-    // the turns to 30 and 75 and Reset Rotation
     test(`a group with a member turned by itself, turned by the field or by its rotate handle and reset, gives back the grouped file (${platform})`, async (t) => {
       const page = await load(t, platform);
       await groupTurnedFigure(page, platform);
@@ -799,11 +711,9 @@ describe('groups with a turned member, and cancelled turns', () => {
       await exec(page, 'arrange.resetRotation');
       await frames(page);
       assert.equal(await render(page), grouped, 'Reset Rotation after the turns by the rotate handle');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // D20: Esc in a drag of the rotate handle after a typed 30 left translate: 1px -1px after Reset
-    // Rotation
     for (const own of [false, true]) {
       test(`a drag of the rotate handle cancelled by Esc does not change the place that Reset Rotation gives back${own ? ', with a member turned by itself' : ''} (${platform})`, async (t) => {
         const page = await load(t, platform);
@@ -820,11 +730,10 @@ describe('groups with a turned member, and cancelled turns', () => {
         await frames(page);
         assert.equal(await render(page), grouped, 'Reset Rotation after the cancelled drag');
         await undoes(page, thirty, 'Reset Rotation');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
-    // D21: after Esc the drop line was still shown, and the release wrote the Reorder
     test(`Esc during a drag of a row of the Object List cancels it, and the release leaves the order and the file (${platform})`, async (t) => {
       const page = await load(t, platform);
       await press(page, platform === 'mac' ? 'Mod+Shift+L' : 'Alt+F10');
@@ -847,10 +756,9 @@ describe('groups with a turned member, and cancelled turns', () => {
       assert.deepEqual(await names(), rows);
       assert.equal(await undoLabel(page), label);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // a guard: the navigator already ends the drag of a thumbnail at Esc
     test(`Esc during a drag of a thumbnail of the navigator cancels it, and the release leaves the file (${platform})`, async (t) => {
       const page = await load(t, platform);
       const THUMB = '.beeson-edit-nav .rows .row';
@@ -866,21 +774,14 @@ describe('groups with a turned member, and cancelled turns', () => {
       await frames(page);
       assert.equal(await undoLabel(page), label);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R20.5 on both platforms with trusted input: a drag of the rotate handle is
-// held at a multiple of 45 degrees while its absolute angle is within 4 degrees of it, with an
-// angle guide through the center of the turn, and follows the pointer to the degree beyond. the
-// free modifier turns the hold off, a group is held by its first member and a multiple selection by
-// its first object, and Esc puts a held drag back. the file is checked byte for byte
 describe('the hold at multiples of 45 degrees', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r20-5.html';
-  // the bit masks of the modifiers of Input.dispatchMouseEvent: Shift, and the free modifier, ⌘ on a
-  // Mac and Alt elsewhere
   const SHIFT = 8;
   const FREE = { mac: 4, other: 1 };
   const QR = 'section.present > .qr';
@@ -900,7 +801,6 @@ describe('the hold at multiples of 45 degrees', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const exec = (page, id, args) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${args ? `, ${js(args)}` : ''})).then(() => true)`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
@@ -923,8 +823,6 @@ describe('the hold at multiples of 45 degrees', () => {
     return page;
   }
 
-  // the text of the readout and the angle guide shown during a drag, the guide with its center on
-  // the screen and its angle
   const shown = (page) => page.evaluate(`(() => {
   const out = document.querySelector('.beeson-offset');
   const spoke = document.querySelector('.beeson-guide.spoke');
@@ -933,9 +831,6 @@ describe('the hold at multiples of 45 degrees', () => {
   return { readout: out && !out.hidden ? out.textContent : null, spoke: on ? { x: r.left + r.width / 2, y: r.top + r.height / 2, deg: spoke.style.rotate } : null };
 })()`);
 
-  // a drag of the rotate handle that turns the pointer by deg degrees about the screen point c, with
-  // the modifiers of the bit mask mods. the button is held, and the function returned releases it.
-  // its method to turns the pointer on to deg2 degrees from the press, with the modifiers mods2
   async function turnBy(page, c, deg, mods = 0) {
     const r = await center(page, '.beeson-rotor');
     const mouse = (type, x, y, extra) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
@@ -979,7 +874,7 @@ describe('the hold at multiples of 45 degrees', () => {
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 45deg"']]);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a turn on from 43 to 50 degrees leaves the hold and follows the pointer to the degree (${platform})`, async (t) => {
@@ -991,7 +886,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual(await shown(page), { readout: '50°', spoke: null });
       await release();
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 50deg"']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the free modifier turns the hold off, and Shift keeps its steps of 15 degrees (${platform})`, async (t) => {
@@ -1009,7 +904,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual(await shown(page), { readout: '30°', spoke: null });
       await release();
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 30deg"']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the hold acts on the absolute angle, and a turn back to 0 gives back the file (${platform})`, async (t) => {
@@ -1019,18 +914,16 @@ describe('the hold at multiples of 45 degrees', () => {
       await exec(page, 'arrange.setRotation', { deg: 20 });
       await frames(page);
       const c = await center(page, `.reveal ${QR}`);
-      // a turn by 23 from 20 degrees reaches 43 and is held at 45. a hold of the delta would write 43
       let release = await turnBy(page, c, 23);
       assert.equal((await shown(page)).readout, '45°');
       await release();
       await byteExact(page, [['style="width: 300px"', 'style="width: 300px; rotate: 45deg"']]);
-      // a turn by -42 from 45 degrees reaches 3 and is held at 0, which takes the declaration off
       release = await turnBy(page, c, -42);
       assert.equal((await shown(page)).readout, '0°');
       await release();
       await byteExact(page);
       assert.equal(await angle(page, QR), '');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a group is held by the angle of its first member, and its other member keeps its angle to it (${platform})`, async (t) => {
@@ -1050,7 +943,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.match(edited, /<div class="qr" data-qr="two" style="width: 240px; rotate: 100deg; translate: -?\d+px -?\d+px" data-group="g1"><\/div>/);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a multiple selection is held by its first object, and the other object turns by the same delta (${platform})`, async (t) => {
@@ -1069,7 +962,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.deepEqual([await angle(page, P), await angle(page, QR)], ['45deg', '65deg']);
       assert.ok(near(await center(page, `.reveal ${P}`), p0) && near(await center(page, `.reveal ${QR}`), q0), 'an object is not turned about its own center');
       assert.match(await render(page), /<p style="rotate: 45deg">Export[\s\S]*<div class="qr" data-qr="three" style="width: 240px; rotate: 65deg"><\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Esc during a drag held at 45 degrees puts the page and the file back (${platform})`, async (t) => {
@@ -1084,7 +977,7 @@ describe('the hold at multiples of 45 degrees', () => {
       assert.equal(await angle(page, QR), '');
       assert.equal(await render(page), page.source);
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'the cancelled drag is in the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

@@ -1,6 +1,3 @@
-// follow-ups of the shell: Edit Text only on an element that holds a block, the scrim of a modal
-// dialog seen in both modes of the chrome, and the inspector as a region of the keyboard
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
@@ -17,11 +14,9 @@ const showSlideWith = async (page, selector) => {
   await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector(${JSON.stringify(selector)})))`);
   await frames(page);
 };
-// whether the item of the open context menu with the label is enabled, or null when it is absent
 const contextItem = (page, label) => page.evaluate(`(() => { const i = [...document.querySelectorAll('.beeson-edit-menu.context .item')].find((i) => i.querySelector('.label').textContent === ${JSON.stringify(label)}); return i ? i.getAttribute('aria-disabled') !== 'true' : null; })()`);
 const editText = async (page) => (await page.evaluate(`window.BeesonEditor.state('selection.editText')`)).enabled;
 
-// the rows of pixels of a PNG written by Chrome, with 8 bits per channel and without interlace
 function decodePng(png) {
   let at = 8, width = 0, height = 0, channels = 4;
   const data = [];
@@ -45,34 +40,25 @@ function decodePng(png) {
   return { width, channels, px };
 }
 
-// the mean of the three channels of the pixel at a point, given in CSS pixels of a screenshot
-// taken at a device pixel ratio of 1
 const gray = (image, { x, y }) => {
   const at = (Math.round(y) * image.width + Math.round(x)) * image.channels;
   return (image.px[at] + image.px[at + 1] + image.px[at + 2]) / 3;
 };
 
-// a regression test of Edit Text in the context menu of a figure without text: the command was
-// enabled on a figure with a video and no text, and Keynote offers Edit Text only on an element with
-// text
 test('Edit Text is enabled on an element with a block and not on a figure without text', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
   await showSlideWith(page, '.figure-box video');
   await click(page, await centerOf(page, '.reveal section.present .figure-box video'), { button: 'right' });
-  // an item that a kind of element cannot run is left out of its menu
   assert.notEqual(await contextItem(page, 'Edit Text'), true, 'Edit Text is enabled on a figure of videos');
   await press(page, 'Escape');
   assert.equal(await editText(page), false);
-  // Return into the figure still selects its video, with a command of its own
   assert.equal((await page.evaluate(`window.BeesonEditor.state('selection.selectMedia')`)).enabled, true);
   await showSlideWith(page, '.qr');
   await click(page, await centerOf(page, '.reveal section.present .qr'), { button: 'right' });
   assert.notEqual(await contextItem(page, 'Edit Text'), true, 'Edit Text is enabled on a QR code');
   await press(page, 'Escape');
-  // a figure with its caption holds a block, which Return edits, and so does a heading selected as
-  // an element. the menu of the image of the figure does not offer Edit Text, as in Keynote
   await showSlideWith(page, 'figure.figure-box');
   await click(page, await centerOf(page, '.reveal section.present figure.figure-box img'), { button: 'right' });
   assert.notEqual(await contextItem(page, 'Edit Text'), true, 'Edit Text is offered on the image of a figure');
@@ -86,14 +72,10 @@ test('Edit Text is enabled on an element with a block and not on a figure withou
   assert.deepEqual(page.errors, []);
 });
 
-// a regression test of the scrim of a modal dialog, which was a black of 22 percent: the window
-// behind the dialog must be dimmed by at least 30 percent, and the dialog must be lighter than the
-// window behind it, in both modes of the chrome
 test('a modal dialog dims the window behind it in both modes', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
-  // an empty point of the toolbar, between the groups at the left and those at the right
   const spot = await page.evaluate(`(() => { const right = document.querySelector('.beeson-edit-top .group.right').getBoundingClientRect(); const top = document.querySelector('.beeson-edit-top').getBoundingClientRect(); return { x: right.left - 24, y: top.top + top.height / 2 }; })()`);
   for (const mode of ['light', 'dark']) {
     await scheme(page, mode);
@@ -114,8 +96,6 @@ test('a modal dialog dims the window behind it in both modes', async (t) => {
   assert.deepEqual(page.errors, []);
 });
 
-// a regression test of the region of the inspector: the tabs of the inspector were reported as the
-// canvas, and F6 skipped the inspector while its Format tab was shown
 for (const platform of PLATFORMS) {
   test(`F6 reaches the inspector and a command of the inspector runs there on ${platform}`, async (t) => {
     const browser = await launch();
@@ -125,7 +105,6 @@ for (const platform of PLATFORMS) {
     if (!(await page.evaluate(`window.BeesonEditor.state('shell.format').checked`))) await page.evaluate(`window.BeesonEditor.exec('shell.format')`);
     await frames(page);
     await page.evaluate(`document.activeElement?.blur()`);
-    // F9 is not taken on the canvas
     await press(page, 'F9');
     assert.equal(await page.evaluate('window.ran ?? 0'), 0);
     let reached = false;
@@ -140,8 +119,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the label of a toolbar button is toolbar.label, which does not follow the menu label, e.g. Undo
-// for Undo Typing, and toolbar.split draws the submenu named by it as a split button
 test('a toolbar button takes its label and its split from the toolbar place of its command', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -162,8 +139,6 @@ test('a toolbar button takes its label and its split from the toolbar place of i
   assert.deepEqual(page.errors, []);
 });
 
-// the gear menu of the find panel is a menu of ui/menu.ts: a check at the mode, Esc closes the
-// menu and keeps the panel, and a mode chosen in it switches the panel
 test('the gear menu of the find panel is a menu of the chrome', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());

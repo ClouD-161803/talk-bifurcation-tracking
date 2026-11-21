@@ -1,9 +1,3 @@
-// the thumbnail of a slide with a tycho viewer in the navigator of the editor (issue #69). its box holds a still
-// of the scene, copied from the viewer of the slide, which is not cloned, since a clone would start a second
-// renderer. the still is drawn in both modes, from the current slide and from a slide that reveal.js does not lay
-// out, and it is drawn again once the frame of the scene is changed. the viewer of a slide that was not laid out
-// draws at its own resolution again once the slide is shown
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -17,13 +11,10 @@ after(async () => {
   await browser?.close();
 });
 
-// the index of the slide of test-deck.html with the tycho viewer, its viewer, and its thumbnail
 const SLIDE = `[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('tycho-viewer'))`;
 const VIEWER = `document.querySelectorAll('.reveal .slides > section')[${SLIDE}].querySelector('tycho-viewer')`;
 const PIC = `document.querySelectorAll('.beeson-edit-nav .row .pic')[${SLIDE}]`;
 
-// the still in the thumbnail: the share of its pixels that are drawn, its mean lightness from 0 to 1, and a hash
-// of its pixels, or null while the thumbnail has no still
 const STILL = `(() => {
   const still = ${PIC}?.shadowRoot?.querySelector('.beeson-thumb .viewer-still > canvas');
   if (!still) return null;
@@ -42,7 +33,6 @@ const STILL = `(() => {
 
 const loaded = `(() => { const v = ${VIEWER}; return !!v && (v.state ?? null) !== null && !!v.shadowRoot.querySelector('canvas'); })()`;
 
-// the editor on test-deck.html in mode, with the thumbnail of the slide with the viewer scrolled into view
 async function open(t, mode) {
   const page = await editorPage(browser, { query: `edit&still&theme=${mode}`, clear: true });
   t.after(() => page.close().catch(() => {}));
@@ -87,7 +77,6 @@ test('a still is drawn from a slide that is not laid out, drawn again after a se
   const page = await open(t, 'light');
   assert.equal(await page.evaluate(`${VIEWER}.offsetWidth`), 0, 'the slide with the viewer is laid out, and the case is not checked');
   await page.waitFor(`(() => { const s = ${STILL}; return !!s && s.drawn > 0.5; })()`, 60000);
-  // the frame of the scene changed twice, each time to another picture
   for (const at of [0.37, 0.71]) {
     const { hash } = await page.evaluate(STILL);
     await page.evaluate(`(() => { const v = ${VIEWER}; v.seek(1e9); v.seek(v.time * ${at}); return true; })()`);
@@ -96,9 +85,9 @@ test('a still is drawn from a slide that is not laid out, drawn again after a se
   await page.evaluate(`(() => { Reveal.slide(${SLIDE}); return true; })()`);
   const sharp = `(() => {
     const v = ${VIEWER};
-    const stage = v.shadowRoot.querySelector('.stage');
+    const area = v.shadowRoot.querySelector('.panel-area');
     const canvas = v.shadowRoot.querySelector('canvas');
-    return stage.clientWidth > 0 && Math.abs(canvas.width - stage.clientWidth * Math.min(2, devicePixelRatio || 1)) <= 1;
+    return area.clientWidth > 0 && Math.abs(canvas.width - area.clientWidth * Math.min(2, devicePixelRatio || 1)) <= 1;
   })()`;
   await page.waitFor(sharp, 60000);
   assert.deepEqual(page.errors, []);

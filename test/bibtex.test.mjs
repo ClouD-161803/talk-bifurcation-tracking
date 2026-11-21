@@ -1,7 +1,3 @@
-// the BibTeX parser of src/bibtex.ts: the types and the fields of the entries, the values in braces
-// and in quotes, the strings of @string, the accents, the place of an entry in the source, and the
-// entries that are skipped with their reason. the plain text of TeX text of src/accents.ts
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { plainText } from '../src/accents.ts';
@@ -67,7 +63,6 @@ test('a string of @string and a month are put into a value, and the parts of a v
   assert.deepEqual(entries[0].fields, { journal: 'Celestial Mechanics and Dynamical Astronomy', month: 'June', year: '2004' });
   assert.equal(entries[1].fields.booktitle, 'AAS/AIAA Astrodynamics Specialist Conference, 2019');
   assert.equal(entries[1].fields.month, 'July');
-  // the name of a string is read without its case, and a name that is not a string is kept
   assert.deepEqual(entries[2].fields, { journal: 'Celestial Mechanics and Dynamical Astronomy', publisher: 'unknown' });
 });
 
@@ -122,4 +117,10 @@ test('an entry that is not read is skipped with its reason, and the entries afte
     { line: 9, text: '@article{, title = {No key}}', reason: 'the entry does not have a key' },
     { line: 10, text: '@article{third, title = "A quote that is not closed, year = 2003}', reason: 'a quote is not closed' },
   ]);
+});
+
+test('as in BibTeX, a backslash does not escape a brace or a quote, and the first of two fields of one name is kept', () => {
+  const { entries, skipped } = readBibtex(String.raw`@misc{slash, title = {a \{ brace}}, note = "ends at \", year = 1999, Year = 2000}`);
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(entries[0].fields, { title: String.raw`a \{ brace}`, note: 'ends at \\', year: '1999' });
 });

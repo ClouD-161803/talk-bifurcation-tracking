@@ -1,38 +1,22 @@
-// the speaker notes of the current slide, in a pane under the canvas as in PowerPoint and Keynote,
-// in the font of the chrome and at a zoom of their own. the text that is edited is the aside.notes
-// of the slide, so that the typing, the history, find, and the save treat it as any other text element.
-// lay() sets the aside over the box of the pane, in the slide px of its section, at every zoom and
-// scroll of the canvas, and its font is divided by the scale of the slide, hence its text keeps
-// its size on the screen. while the notes are shown, a slide without notes gets an empty aside to
-// type into, which is not written into the file before it has text. the divider above the pane is
-// dragged to set its height, and dragged down to the bottom it hides the notes, as in PowerPoint
-
 import type { App, Notes } from './app.ts';
 import { button, injectStyle, make, store, stored } from './ui/dom.ts';
 
 declare module './app.ts' {
   interface Notes {
-    // the zoom of the text of the notes, 1 at 100 percent
     textZoom(): number;
-    // a step up or down the zooms of TEXT_ZOOMS, or back to 100 percent with 0
     zoomText(way: 1 | -1 | 0): void;
   }
 }
 
 const PANE_KEY = 'beeson-pane';
 const ZOOM_KEY = 'beeson-notes-zoom';
-// the heights of the pane in CSS px. a drag of the divider below HIDE hides the notes
 const MIN = 80;
 const MAX = 600;
 const HIDE = 40;
 export const TEXT_ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
-// the size of the text at 100 percent and the padding of the pane, in CSS px
 const FONT = 13;
 const PAD = { top: 10, side: 16 };
 
-// the box of the pane and the font are written by lay() in the slide px of the present section:
-// --ed-notes-x, -y, -w, and -h, --ed-notes-font, and --ed-notes-pad-t, -s, and -r. the
-// section keeps its clip at its edge, widened by the box of the pane in --ed-notes-clip
 const CSS = `
 html.beeson-editor body > .beeson-edit-pane { display: none; }
 html.beeson-editor.beeson-notes body > .beeson-edit-pane { display: block; }
@@ -62,7 +46,6 @@ export function install(app: App): void {
   const root = document.documentElement;
   const notesButton = button('Notes', 'Show the speaker notes under the slide');
   notesButton.setAttribute('aria-pressed', 'false');
-  // the backdrop of the notes in the grid of the shell, over which the aside is laid
   const pane = make('div', 'beeson-edit-pane');
   pane.setAttribute('aria-hidden', 'true');
   const resizer = make('div', 'beeson-edit-resize');
@@ -74,8 +57,6 @@ export function install(app: App): void {
   resizer.setAttribute('aria-valuemin', String(MIN));
   resizer.setAttribute('aria-valuemax', String(MAX));
 
-  // the zoom of the text, at the upper right of the pane, as the A buttons of the notes of the
-  // presenter display of Keynote
   const zoomBox = make('div', 'beeson-edit-notes-zoom');
   zoomBox.setAttribute('role', 'group');
   zoomBox.setAttribute('aria-label', 'Size of the notes text');
@@ -89,7 +70,6 @@ export function install(app: App): void {
   let textZoom = 1;
   const shown = () => root.classList.contains('beeson-notes');
 
-  // the aside is laid over the pane, in the slide px of the present section
   function lay(): void {
     if (!shown() || !app.stage) return;
     const slide = app.current();
@@ -110,10 +90,8 @@ export function install(app: App): void {
     set('--ed-notes-font', px(FONT * textZoom));
     set('--ed-notes-pad-t', px(PAD.top));
     set('--ed-notes-pad-s', px(PAD.side));
-    // the text keeps clear of the zoom control at the top right of the pane
     set('--ed-notes-pad-r', px((zoomBox.offsetWidth || 110) + 14 + PAD.side));
     set('--ed-notes-hair', px(1));
-    // the box of the slide and the box of the pane, both drawn clockwise, hence their union
     const W = sec.width / s;
     const H = sec.height / s;
     set('--ed-notes-clip', `path('M0 0H${W}V${H}H0Z M${x} ${y}H${x + w}V${y + h}H${x}Z')`);
@@ -189,7 +167,6 @@ export function install(app: App): void {
     const startHeight = paneHeight;
     let wanted = startHeight;
     resizer.classList.add('dragging');
-    // the resize cursor is kept past the limits of the height, as the pointer is captured
     resizer.setPointerCapture(ev.pointerId);
     root.classList.add('beeson-resizing-rows');
     const onMove = (e: PointerEvent) => {
@@ -201,7 +178,6 @@ export function install(app: App): void {
       document.removeEventListener('pointerup', onUp);
       resizer.classList.remove('dragging');
       root.classList.remove('beeson-resizing-rows');
-      // dragged down to the bottom, the notes are hidden, and shown again at their height before
       if (wanted < HIDE) {
         setPane(startHeight);
         setShown(false);
@@ -214,12 +190,9 @@ export function install(app: App): void {
 
   smaller.addEventListener('click', () => zoomText(-1));
   bigger.addEventListener('click', () => zoomText(1));
-  // a press on the zoom buttons keeps the caret in the notes
   zoomBox.addEventListener('pointerdown', (ev) => ev.preventDefault());
 
   const inNotes = (ev: Event) => ev.target instanceof Element && !!ev.target.closest('aside.notes, .beeson-edit-notes-zoom');
-  // a pinch or the wheel with Ctrl over the notes zooms their text, as over the notes pane of
-  // PowerPoint, and Safari sends a pinch as gesture events
   let pinch: number | null = null;
   window.addEventListener('wheel', (ev) => {
     if (!ev.ctrlKey || !inNotes(ev)) return;
@@ -255,12 +228,6 @@ export function install(app: App): void {
   installDashes(app);
 }
 
-// the dash lists of the speaker notes, which are rich text in Keynote. a line of the notes, i.e.
-// the text between two br or lists, is made an item of a ul by the list commands, or by a dash and
-// a space typed at its start, and an item is made a line again. Enter in an item starts the next
-// one, or ends the list in an empty item, and Backspace at the start of an item makes it a line.
-// each change is recorded as the content of the aside before and after
-
 type Caret = { aside: HTMLElement; range: Range; li: HTMLLIElement | null };
 
 function caretOf(app: App): Caret | null {
@@ -277,7 +244,6 @@ function caretOf(app: App): Caret | null {
 const isBreak = (n: Node | null) => n instanceof Element && (n.localName === 'br' || n.matches('ul, ol, div, p'));
 const isInline = (n: Node | null) => !!n && !isBreak(n);
 
-// the children of the aside on the line of the caret, and the br or list on each side of them
 function lineOf(c: Caret): { nodes: Node[]; before: Node | null; after: Node | null } {
   const kids = [...c.aside.childNodes];
   const { startContainer: node, startOffset: offset } = c.range;
@@ -293,7 +259,6 @@ function lineOf(c: Caret): { nodes: Node[]; before: Node | null; after: Node | n
   return { nodes: kids.slice(lo + 1, hi), before: kids[lo] ?? null, after: kids[hi] ?? null };
 }
 
-// the caret at the start of the text of node, or before node where it is a br
 function caretAt(node: Node): void {
   if (node instanceof Element && node.localName !== 'br' && node.firstChild) return caretAt(node.firstChild);
   const r = document.createRange();
@@ -306,7 +271,6 @@ function caretAt(node: Node): void {
 
 const empty = (el: Element) => !el.textContent?.trim() && !el.querySelector('mjx-container, img');
 
-// the line of the caret made an item, joined to a list right before or after it
 function toItem(c: Caret): void {
   const { nodes, before, after } = lineOf(c);
   let next = after;
@@ -315,8 +279,6 @@ function toItem(c: Caret): void {
     next.remove();
     next = n;
   }
-  // a list starts a line, hence the br after a line with text is taken off, and the br of an
-  // empty line is kept
   if (before instanceof Element && before.localName === 'br' && isInline(before.previousSibling)) before.remove();
   const li = document.createElement('li');
   li.append(...nodes);
@@ -337,7 +299,6 @@ function toItem(c: Caret): void {
   caretAt(li);
 }
 
-// li made a line of the aside in its place, which cuts its list in two. an empty line is a br
 function toLine(aside: HTMLElement, li: HTMLLIElement): void {
   const ul = li.parentElement!;
   const items = [...ul.children];
@@ -360,7 +321,6 @@ function toLine(aside: HTMLElement, li: HTMLLIElement): void {
   caretAt(line[0] ?? out.find((n) => n instanceof Element && n.localName === 'br')!);
 }
 
-// fn run on the aside of c as one input of typing, named by label or by the command around it
 function change(app: App, c: Caret, fn: () => void, label?: string): void {
   app.history.beforeTyping(c.aside, label);
   fn();
@@ -369,13 +329,11 @@ function change(app: App, c: Caret, fn: () => void, label?: string): void {
   app.invalidate('content');
 }
 
-// ul at an item of the notes, none on another line of the notes, and null outside the notes
 export function notesListKind(app: App): 'ul' | 'none' | null {
   const c = caretOf(app);
   return !c ? null : c.li ? 'ul' : 'none';
 }
 
-// the notes take lines and items of a plain ul, and not numbers, dots, or dashes
 export function canSetNotesList(app: App, kind: string): boolean {
   return (kind === 'none' || kind === 'ul') && notesListKind(app) !== null;
 }
@@ -388,7 +346,6 @@ export function setNotesList(app: App, kind: string): void {
 
 export const canSplitNotesItem = (app: App): boolean => !!caretOf(app)?.li;
 
-// the text of the item after the caret is made the next item, and an empty item is made a line
 export function splitNotesItem(app: App): void {
   const c = caretOf(app);
   if (!c?.li) return;
@@ -401,14 +358,12 @@ export function splitNotesItem(app: App): void {
     tail.setEnd(li, li.childNodes.length);
     const next = document.createElement('li');
     next.append(tail.extractContents());
-    // an empty item holds a br, without which the caret cannot be put into it
     for (const item of [li, next]) if (empty(item)) item.replaceChildren(document.createElement('br'));
     li.after(next);
     caretAt(next);
   });
 }
 
-// whether the caret is collapsed at the start of an item of the notes
 export function canJoinNotesItem(app: App): boolean {
   const c = caretOf(app);
   if (!c?.li || !c.range.collapsed) return false;
@@ -423,8 +378,6 @@ export function joinNotesItem(app: App): void {
   if (c?.li) change(app, c, () => toLine(c.aside, c.li!));
 }
 
-// a dash and a space typed at the start of a line of the notes make it an item, as an entry of
-// the history after the typing, named as the list command Arrows of a plain ul
 function installDashes(app: App): void {
   let typed = false;
   document.addEventListener('beforeinput', (ev) => {
@@ -437,8 +390,6 @@ function installDashes(app: App): void {
     if (!c || c.li || !c.range.collapsed) return;
     const first = lineOf(c).nodes[0];
     if (!(first instanceof Text) || c.range.startContainer !== first || c.range.startOffset !== 2 || !/^[-–][  ]/u.test(first.data)) return;
-    // this listener runs before the one of text/typing.ts, hence the typed space is recorded here.
-    // the item is an entry of typing, which a change of the notes by others in a session keeps
     app.history.afterTyping(c.aside);
     change(app, c, () => {
       first.deleteData(0, 2);

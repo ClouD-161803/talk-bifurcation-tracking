@@ -1,6 +1,3 @@
-// what theme/editor.js hands to theme/session.js in its one call, start(). the client may not
-// import a stateful module of the editor, hence the parts of the shell that it needs come here
-
 import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';
 import type { Edit } from '../../editor/merge.ts';
@@ -15,65 +12,36 @@ import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
 export type Handover = {
   app: App;
   port: Port;
-  // a modal dialog of ui/dialog.ts, kept in the page between its opens
   dialog(options: DialogOptions): Dialog;
-  // an icon of ui/icons.ts, e.g. cloud, cloud-off, or warning
   icon(name: string, size?: number): SVGSVGElement;
-  // .right of the title bar of shell/menubar.ts, into which the client puts its buttons
   bar: HTMLElement;
-  // a download of a copy of the deck under the name of its file
   download(text: string): void;
-  // a command added to the menus, the toolbar, and the keys
   define(command: Command): void;
-  // a menu of ui/menu.ts, e.g. of an avatar, which closes any menu open before
   menu(items: MenuItem[], options: MenuOptions): OpenMenu;
-  // the numbers of the slides, from 1, of the ranges in a text of the deck, as the navigator counts them
   slidesAt(text: string, ranges: Edit[]): number[];
-  // the slides of after that differ from before, by their numbers in after
   changedSlides(before: string, after: string): number[];
-  // ' on slide 3', ' on slides 3 and 5', or '' without a slide
   onSlides(numbers: number[]): string;
-  // the images and videos added in the editor and not saved yet
   media: MediaStore;
-  // what presence.ts and layer.ts of the client read of the editor, from src/editor/session/presence.ts
   presence: PresenceHooks;
-  // what the navigator and the Slide Sorter give the client, from src/editor/session/slides.ts
   slides: SlideHooks;
-  // the groups of two members or more among els, each with the shape of the frame that frames.ts
-  // draws around its members, read with the shapes of presence
   groups(els: Element[]): { els: Element[]; shape: Shape }[];
-  // the Version History mode of src/editor/session/history-mode.ts
   history: HistoryShell;
-  // the parts of the shell for the comments, from editor/session/comments-shell.ts
   comments: CommentsShell;
 };
 
 export type HistoryShell = {
-  // the inspector, which the pane of Version History takes the place of while the mode is on
   inspector: HTMLElement | null;
-  // the run of File > Version History and of its key, which are defined in a session only
   onCommand(fn: () => void): void;
-  // the mode on or off: the chrome inert, the commands of the person held, and Esc handed to back
   setMode(on: boolean, back?: () => void): void;
-  // the rectangle of the canvas in the window
   canvas(): DOMRect;
 };
 
 export type CommentsShell = {
-  // the tab Comments of the inspector, hidden until it is enabled
   tab: CommentsTab;
-  // the kind and the text of an element, e.g. Heading and Low-thrust transfers
   describe(el: Element): { kind: string; text: string };
-  // the selected element, else the text element of the caret, and the slide that holds it, or the
-  // current slide
   target(): { el: Element | null; slide: Element | null };
-  // the slide of el shown, and el selected, or the slide shown when el is null
   frame(el: Element | null, slide: Element | null): void;
-  // the row of a slide in the navigator
   row(slide: Element): HTMLElement | null;
 };
 
-// window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is
-// not served by an edit command, e.g. by a static server, and editor.js then opens its file as it
-// does without a session
 export type Entry = { start(handover: Handover): Promise<boolean> };

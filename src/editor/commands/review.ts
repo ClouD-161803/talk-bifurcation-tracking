@@ -1,12 +1,3 @@
-// the commands of the show and of the review of a deck, after the Play menu of Keynote and the
-// Slide Show and Review tabs of PowerPoint, and the transition at the head of the Steps tab. the
-// Play menu holds Present and Present from Start, moved from the File menu, the presenter view,
-// Customize Presenter Display…, the rehearsal of timings, Use Rehearsed Timings, and Clear
-// Timings. the Slide menu holds the transition of a slide, Magic Move, and Preview Transition, and
-// the View menu the Slide Sorter. Present keeps the keys of PowerPoint, since F5 reloads the
-// page, and the presenter view takes Alt+Enter, the key of PowerPoint on a Mac. the Slide Sorter
-// is not given a key, since Chrome takes Mod+1 to Mod+9 for its tabs
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import type { Navigator } from '../navigator/navigator.ts';
@@ -17,8 +8,6 @@ import { install as installAnimate } from '../review/animate.ts';
 import { magicMoveCopy, nextShown, paired, preview, setTransition, transitionOf, type Transition } from '../review/transitions.ts';
 import { MENUS } from '../shell/menubar.ts';
 
-// the Play menu after the View menu, as in Keynote, added before the menu bar is built at its
-// install
 if (!MENUS.includes('Play')) MENUS.splice(MENUS.indexOf('View') + 1, 0, 'Play');
 
 const navOf = (app: App): Navigator => app.nav as Navigator;
@@ -45,13 +34,11 @@ export function install(app: App): void {
     menu: play(20),
     enabled: (a) => ready(a) && !showing(),
     run: async (a) => {
-      // the show is played in a tab of its own, which is moved to the screen of the audience
       const from = a.current();
       const shown = await presentAt(a, false, true);
       if (shown) void presenter.open('present', from, shown.win);
     },
   });
-  // the display without the show, with the popover of its parts open, as in Keynote
   c.define({
     id: 'play.customizePresenter',
     label: 'Customize Presenter Display…',
@@ -70,7 +57,6 @@ export function install(app: App): void {
       void presenter.open('rehearse', a.current());
     },
   });
-  // the switch is shown on only while the deck has timings, as in Keynote, and kept in the storage
   const timed = (a: App) => slidesOf(a).some((s) => s.hasAttribute('data-timing') && paired(a, s));
   c.define({
     id: 'play.useTimings',
@@ -95,8 +81,6 @@ export function install(app: App): void {
     },
   });
 
-  // the transition of the selected slides, as a submenu of the Slide menu with a check at the
-  // transition of the current slide
   const names: [Transition, string][] = [['none', 'None'], ['fade', 'Fade'], ['magic', 'Magic Move'], ['push', 'Push']];
   names.forEach(([t, label], i) => {
     c.define({

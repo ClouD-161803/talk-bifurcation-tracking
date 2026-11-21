@@ -1,10 +1,3 @@
-// the comments of a session as data, in Chrome, on two or three pages of one edit command: a thread
-// made after the merge that follows a break offline, a comment on one of identical paragraphs, a
-// thread on one of them while the edits of its page wait, a thread whose answer was lost, what a
-// person read kept over a reload and told to the other pages of the person, a listener that
-// throws, an element of another name at the offset of an anchor, a reply counted as unread, and an
-// answer of GET comments older than the base of the page
-
 import assert from 'node:assert/strict';
 import { cpSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -19,14 +12,10 @@ import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
-// the message of a send whose answer did not arrive, which is not sent again without a press
 const LOST = 'Not sent. The connection to the host was lost.';
 const ARTICLES = `document.querySelectorAll('${PANE} article').length`;
-// the id of each thread in the pane, followed by * when the thread is unread
 const UNREAD = `[...document.querySelectorAll('${PANE} article')].map((a) => a.dataset.id + (a.classList.contains('unread') ? '*' : ''))`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
-// the label of the button Comments, when its title is the same, the text of its count, and what the
-// count is drawn as inside the button: a dot narrower than the 14 px of a number, a number, or null
 const BUTTON = `(() => {
   const b = document.querySelector('.beeson-session-comments');
   const c = b.querySelector('.count');
@@ -35,11 +24,9 @@ const BUTTON = `(() => {
   const drawn = r.width > 0 && r.height > 0 && r.left >= o.left && r.right <= o.right && r.top >= o.top && r.bottom <= o.bottom;
   return [b.title === b.getAttribute('aria-label') ? b.title : null, c.textContent, drawn ? (r.width < 14 ? 'dot' : 'number') : null];
 })()`;
-// the requests of a page that is offline fail in its console
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const TWINS = TALK.replace('<p>First slide</p>', '<p>TBD</p>\n  <p>TBD</p>\n  <p>TBD</p>');
 
-// the text of the badge of the element of expression, as in session-comments.test.mjs
 const badgeOf = (expression, slide = false) => `(() => {
   const el = ${expression};
   if (!el) return null;
@@ -50,11 +37,9 @@ const badgeOf = (expression, slide = false) => `(() => {
   });
   return b ? b.textContent + (b.classList.contains('unread') ? '*' : '') : null;
 })()`;
-// whether each paragraph of slide One has a badge
 const TWIN_BADGES = `[0, 1, 2].map((i) => !!${badgeOf("document.querySelectorAll('.reveal .slides > section')[0].querySelectorAll('p')[i]")})`;
 const on = (heading, selector = null) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.startsWith(${JSON.stringify(heading)}))${selector ? `?.querySelector(${JSON.stringify(selector)})` : ''}`;
 
-// the operations of the page wait until window.__go(), or one at a time with window.__goOne()
 const HOLD = `(() => {
   const fetched = window.fetch;
   window.__held = [];
@@ -108,7 +93,6 @@ async function openPane(page) {
   await page.waitFor(`!!document.querySelector('${PANE}:not([hidden])')`);
 }
 
-// a comment of text on the target of the Comment command, sent from the draft of the pane
 async function comment(page, text) {
   await front(page);
   await press(page, COMMENT_KEY);
@@ -128,7 +112,6 @@ async function pair(t, names = ['Ann', 'Ben']) {
   return { browser, server, pages };
 }
 
-// talk() of helpers/client.mjs on the deck given
 async function talkOf(t, deck) {
   const folder = talkFolder(t, deck);
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
@@ -142,7 +125,6 @@ async function talkOf(t, deck) {
   return server;
 }
 
-// a thread on the deck that page posts with a mention of person, resolved with its id
 const mention = (page, text, person) => page.evaluate(`(async () => {
   const c = ${C};
   const thread = await c.transport.post('comments', { token: c.token, anchor: null, slide: null, base: c.base.v, text: ${JSON.stringify(`${text} @{${person}}`)}, mentions: [${JSON.stringify(person)}] });
@@ -171,7 +153,6 @@ test('a thread made after a merge of the offline path is shown on the page that 
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'First');
 
-  // the merge of conflicts.ts follows a break of over 5 s with an edit that waits
   await goOffline(a);
   await show(a, 'One');
   await caretAtEnd(a, el(0, 'h2'));
@@ -230,7 +211,6 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   await show(a, 'One');
   await sees(a, TWIN_BADGES, [false, true, false]);
 
-  // the removal of the first paragraph is acknowledged while the typing after it waits
   await b.evaluate(LATE);
   await a.evaluate(HOLD);
   await show(a, 'One');
@@ -261,7 +241,6 @@ test('a thread on one of identical paragraphs is shown at its place while later 
 
 test('a thread whose answer was lost is made once when it is sent again', { timeout: 300_000 }, async (t) => {
   const { server, pages: [a, b] } = await pair(t);
-  // the edit command takes the first thread that Ben posts, and the answer is lost on its way back
   await b.evaluate(`(() => {
     const fetched = window.fetch;
     let lose = 1;
@@ -320,7 +299,6 @@ test('what a person read of a thread reaches the other pages of the person', { t
   t.after(() => browser.close());
   const server = await talk(t);
   const url = sessionUrl(server.edit);
-  // tab() shares localStorage between the pages, which are thus one person
   const a = await tab(browser, url);
   const other = await tab(browser, url);
   const b = await open(browser, url, { name: 'Ben' });
@@ -356,8 +334,6 @@ test('a listener that throws does not stop the page', { timeout: 300_000 }, asyn
   await caretAtEnd(a, el(0, 'h2'));
   await type(a, ' typed');
   await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
-  // the long poll of the page whose listener throws goes on. its text is read only then, since
-  // session.text() waits for the loop of events
   await sees(b, `${C}.base.text.includes('<h2>One typed</h2>')`, true, 'the typing on the page whose listener throws');
   await converge(server, [a, b]);
   clean(a);
@@ -370,8 +346,6 @@ test('an element of another name at the offset of an anchor is not taken', { tim
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'On the paragraph');
   await badge(b, 'One', 'p', '1*');
-  // port.elementsAt answers the heading at the offset of the paragraph, as an index that is behind
-  // its deck would. the event base draws the badges again
   await b.evaluate(`(() => {
     const c = ${C};
     const at = c.port.offsetOf(${el(0, 'p')});
@@ -396,7 +370,6 @@ test('the badges of four threads are placed with one read of the elements of the
     }
   }
   await badge(b, 'Two', 'p', '1*');
-  // the reads of the paired elements of the page of Ben while the event base draws the badges again
   const reads = await b.evaluate(`(() => {
     const c = ${C};
     let reads = 0;
@@ -441,7 +414,6 @@ test('a dot on the button Comments shows an unread open thread while no comment 
   await sees(a, BUTTON, none);
   const g = await post('For everyone');
   await sees(a, BUTTON, dot);
-  // the number of For You is shown without the dot
   const m = await mention(b, 'For Ann', ann);
   await sees(a, BUTTON, ['Comments, 1 unread', '1', 'number']);
   await openPane(a);
@@ -457,9 +429,6 @@ test('a dot on the button Comments shows an unread open thread while no comment 
   clean(b);
 });
 
-// in a page loaded with this script, the answer of GET comments waits until window.__goComments(),
-// and the comments are taken out of each answer of events, as when the change log of the edit
-// command does not reach back
 const HELD_COMMENTS = `{
   const fetched = window.fetch;
   window.__comments = [];
@@ -490,8 +459,6 @@ test('an answer of GET comments older than the base is moved through the operati
   await comment(a, 'On the paragraph');
   await badge(a, 'Two', 'p', '1');
 
-  // after the reload, the answer of GET comments waits. the typing of Ben moves the anchor in the
-  // meantime
   await a.send('Page.addScriptToEvaluateOnNewDocument', { source: HELD_COMMENTS });
   await reload(a);
   await a.waitFor('window.__comments.length === 1');
@@ -516,8 +483,6 @@ test('an answer of GET comments older than a removal of its element and the Undo
   await a.send('Page.addScriptToEvaluateOnNewDocument', { source: HELD_COMMENTS });
   await reload(a);
   await a.waitFor('window.__comments.length === 1');
-  // Ben types before the paragraph, removes it, and puts it back. the text before each of these
-  // operations differs from the text that the page holds at the end
   await show(b, 'One');
   await caretAtEnd(b, el(0, 'h2'));
   await type(b, ' typed');
@@ -545,12 +510,10 @@ test('a comment written on one page of a person is not unread on another page of
   t.after(() => browser.close());
   const server = await talk(t);
   const url = sessionUrl(server.edit);
-  // tab() shares localStorage between the pages, which are thus one person
   const a = await tab(browser, url);
   const other = await tab(browser, url);
   await converge(server, [a, other]);
   await openPane(other);
-  // sent with the transport, hence without the read that the pane sends after its own comment
   await a.evaluate(`${C}.transport.post('comments', { token: ${C}.token, anchor: null, slide: null, base: ${C}.base.v, text: 'Written by Ann', mentions: [] })`);
   await sees(other, `[...document.querySelectorAll('${PANE} article')].map((a) => a.classList.contains('unread'))`, [false]);
   await sees(other, COUNT, 'Comments');
@@ -565,7 +528,6 @@ test('a draft whose element is not found in the source says so and is not sent',
   await press(a, COMMENT_KEY);
   await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   await type(a, 'On a paragraph without an offset');
-  // the port does not find the paragraph in the source, as for an element that no edit has reached
   await a.evaluate(`(() => { const port = ${C}.port; const find = port.offsetOf.bind(port); port.offsetOf = (x) => (x.localName === 'p' ? null : find(x)); })()`);
   await click(a, `${PANE} .draft .actions .primary`);
   await sees(a, `document.querySelector('${PANE} .draft .error:not([hidden])')?.textContent ?? null`, 'The element is not found in the deck. Try again.');
@@ -575,7 +537,6 @@ test('a draft whose element is not found in the source says so and is not sent',
 
 test('a thread refused for a base that left the log is sent again on a new base', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
-  // the edit command refuses the first thread, as when the version of its anchors left the log
   await a.evaluate(`(() => {
     const fetched = window.fetch;
     let refuse = 1;
@@ -601,12 +562,10 @@ test('a thread refused for a base that left the log is sent again on a new base'
 test('the keys typed in a deck of 2 MB add less than 30 texts of the deck to the memory of a page', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // the text of a scene, as a talk holds it in a script next to its slides
   const scene = `<script type="application/json">${JSON.stringify('x'.repeat(2 * 2 ** 20))}</script>`;
   const server = await talkOf(t, TALK.replace('<script src="theme/vendor', `${scene}\n<script src="theme/vendor`));
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const deck = (await converge(server, [a])).length;
-  // the bytes of the heap of the page that a collection leaves
   const held = async () => {
     await a.send('HeapProfiler.collectGarbage');
     return (await a.send('Runtime.getHeapUsage')).usedSize;
@@ -614,7 +573,6 @@ test('the keys typed in a deck of 2 MB add less than 30 texts of the deck to the
   await show(a, 'One');
   await caretAtEnd(a, el(0, 'h2'));
   const before = await held();
-  // each key is answered before the next one, hence it is an operation of its own
   for (let i = 0; i < 80; i++) {
     await type(a, 'k');
     await a.waitFor(`${C}.acked()`);

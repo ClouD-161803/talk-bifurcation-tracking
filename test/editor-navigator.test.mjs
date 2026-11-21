@@ -1,8 +1,3 @@
-// regression tests of R9.2 on both platforms with trusted input. a thumbnail of the navigator shows
-// its slide at the load of the deck, after a click on it, after the arrow keys, after an edit of its
-// slide, and after an undo, and it is never drawn with raw TeX. after each edit the text is checked
-// byte for byte, after an undo and a redo, and after a save and an open
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -26,12 +21,9 @@ after(async () => {
 const js = (v) => JSON.stringify(v);
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 let saves = 0;
 
-// every drawing of a thumbnail of the navigator with a shown formula in raw TeX, kept in
-// window.rawThumbs from before the open of the deck on
 const WATCH = `(() => {
   window.rawThumbs = [];
   const check = () => {
@@ -53,9 +45,6 @@ const WATCH = `(() => {
   return true;
 })()`;
 
-// the editor on the slide n of the demo deck served over HTTP, in a window of 1600 by 1000 px as in
-// the shoot of the council, with the thumbnails watched for raw TeX from before the open. the deck
-// is opened at once after the editor is ready, as the shoot opens it
 async function load(t, platform, { n = 0, mode = 'light', width = 1600, height = 1000 } = {}) {
   const page = await browser.newPage({ width, height });
   t.after(() => page.close().catch(() => {}));
@@ -75,8 +64,6 @@ async function load(t, platform, { n = 0, mode = 'light', width = 1600, height =
   return page;
 }
 
-// roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-// and an open of the saved edit without problems, which is the text before the next check
 async function roundTrip(page, undos = 1) {
   const edited = await render(page);
   assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -86,13 +73,11 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await render(page), edited);
   const { text } = await saveAndReopen(page, `r9-2-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
 
-// the thumbnails of the navigator in view, each with the heading of its slide and the heading
-// drawn in its picture, which is null for a blank thumbnail
 const PICTURES = `(() => {
   const list = document.querySelector('.beeson-edit-nav .rows') ?? document.querySelector('.beeson-edit-nav');
   const box = list.getBoundingClientRect();
@@ -106,27 +91,21 @@ const PICTURES = `(() => {
   }).filter((p) => p.shown);
 })()`;
 
-// allDrawn asserts that every thumbnail in view shows its slide, in the state named by what
 async function allDrawn(page, what) {
   const pics = await page.evaluate(PICTURES);
   assert.ok(pics.length >= 3, `only ${pics.length} thumbnails are in view ${what}`);
   for (const p of pics) assert.equal(p.drawn, p.heading, `the thumbnail of slide ${p.slide} is drawn ${p.drawn === null ? 'blank' : `with the heading "${p.drawn}"`} ${what}`);
 }
 
-// the center of the thumbnail of slide n, counted from 1
 const thumb = (page, n) =>
   page.evaluate(`(() => { const r = document.querySelectorAll('.beeson-edit-nav .row .pic')[${n - 1}].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
 const noRawTex = async (page) => assert.deepEqual(await page.evaluate('window.rawThumbs'), [], 'a thumbnail is drawn with raw TeX');
 
-// finding 1: the thumbnail of the selected slide was drawn blank, with only its row of step
-// circles, while the formulas of the deck were not typeset yet, since a thumbnail without a picture
-// waited for them
 for (const platform of PLATFORMS) {
   test(`every thumbnail in view shows its slide at the load of the deck and after a click on it (${platform})`, async (t) => {
     const page = await load(t, platform);
     await allDrawn(page, 'at the load of the deck');
-    // slide 3 has formulas in the labels of its backdrop, and slide 2 does not have a formula
     for (const n of [3, 2, 4]) {
       await clickText(page, await thumb(page, n));
       await frames(page);
@@ -136,7 +115,7 @@ for (const platform of PLATFORMS) {
     await sleep(800);
     await allDrawn(page, 'after the clicks settle');
     await noRawTex(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`every thumbnail in view shows its slide after the arrow keys in the navigator (${platform})`, async (t) => {
@@ -151,12 +130,11 @@ for (const platform of PLATFORMS) {
     await sleep(800);
     await allDrawn(page, 'after the arrow keys settle');
     await noRawTex(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the thumbnail of a slide with formulas shows the slide after an edit and an undo, never with raw TeX (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
-    // the paragraph of slide 4 with the formula \(\tilde U\), whose TeX is shown while it is edited
     const para = '.reveal section.present p.fragment[data-fragment-index="2"]';
     await clickText(page, para);
     await press(page, 'End');
@@ -181,10 +159,7 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the caret put into the block of selector by a click, then moved after the first occurrence of
-// mark in its text, or to its start or end for the marks 'start' and 'end'
 async function caretAt(page, selector, mark) {
-  // a click on a block selected after an open of the text may select it, and a second one edits it
   for (let i = 0; i < 2; i++) {
     await clickText(page, selector);
     await frames(page);
@@ -218,9 +193,6 @@ const DASHED = [
   ['list item', '.reveal section.present li:nth-child(2)', ITEM],
 ];
 
-// finding 2: a space typed after an en dash at the end of a paragraph was reported lost, " - ok"
-// written as "–ok". an en dash keeps the spaces typed around it at the start, in the middle, and at
-// the end of a paragraph and of a list item, with a plain space between it and the next word
 for (const platform of PLATFORMS) {
   for (const [what, selector, html] of DASHED) {
     test(`a hyphen typed between spaces becomes an en dash and keeps the space after it, at the start, the middle, and the end of a ${what} (${platform})`, async (t) => {
@@ -242,7 +214,6 @@ for (const platform of PLATFORMS) {
         const lines = (await render(page)).split('\n').filter((l) => !page.source.split('\n').includes(l));
         assert.deepEqual(lines.map((l) => l.trim()), [want], `${js(typed)} typed at ${mark} of the ${what} is not written as in Keynote`);
         await byteExact(page, [[html, want]]);
-        // the typing before the dash, the dash, and the typing after it are undone one at a time
         await roundTrip(page, 3);
         await page.close();
       }
@@ -253,9 +224,6 @@ for (const platform of PLATFORMS) {
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-// the new table of the current slide with its bars, the boxes of the other elements of the slide
-// that a table must not mix with, i.e. the ink of the text of each block and the box of each figure
-// and drawing, and whether the table hides what is under it. a box is in CSS px of the window
 const TABLE_STATE = `(() => {
   const slide = document.querySelector('.reveal section.present');
   const table = slide.querySelector('table');
@@ -279,7 +247,6 @@ const TABLE_STATE = `(() => {
     const r = el.getBoundingClientRect();
     if (r.width && r.height && getComputedStyle(el).display !== 'none') others.push({ what: el.localName + '.' + el.className, box: box(r) });
   }
-  // a point of each cell is drawn by the table, and not by an element under it or over it
   const hidden = [...table.querySelectorAll('td, th')].every((c) => {
     const r = c.getBoundingClientRect();
     return [[0.25, 0.3], [0.5, 0.5], [0.75, 0.7]].every(([u, v]) => table.contains(document.elementFromPoint(r.left + u * r.width, r.top + v * r.height)));
@@ -288,8 +255,6 @@ const TABLE_STATE = `(() => {
   return { table: t, all, slide: box(slide.getBoundingClientRect()), others, hidden, opaque, shape: [...table.rows].map((r) => r.cells.length) };
 })()`;
 
-// a new table of columns by rows inserted on the current slide by Insert Table, as from the grid of
-// the button Table, after the last list item of the slide is selected as a block, as in state 93
 async function insertTableOn(page, columns, rows) {
   const last = '.reveal section.present ul > li:last-child';
   if (await page.evaluate(`!!document.querySelector('${last}')`)) {
@@ -301,14 +266,7 @@ async function insertTableOn(page, columns, rows) {
   return page.evaluate(TABLE_STATE);
 }
 
-// finding 3: a new table that did not fit under the text of its slide was moved up over the last
-// lines of the text, with its column bar over the last line of the list, and the two texts mixed.
-// a new table is put in the free space of its slide with its bars, and where it does not fit, at
-// the center of the slide over the content, which it hides as a table with fills does
 const TABLES = [
-  // slide, columns, rows, whether the slide has free space for the table with its bars, and the
-  // texts under a table on a slide without free space where they are known. by R15.10, the table
-  // of state 93 is put at the middle of the slide off the figure, over the first two list items
   [4, 3, 3, false, 'the slide with the figure, as in state 93', ['li:Dark and light mode: exp', 'li:You might have noticed a']],
   [4, 4, 6, false, 'the slide with the figure, as in shot 10 of the opus report'],
   [8, 3, 3, false, 'the slide with the surface, as in shot 11 of the opus report'],
@@ -327,8 +285,6 @@ for (const platform of PLATFORMS) {
         assert.deepEqual(hit, [], `the table with its bars at ${js(s.all)} is drawn over the content of the slide, where it has free space`);
         assert.ok(inside && s.table.bottom <= s.slide.bottom + 1, `the table with its bars at ${js(s.all)} runs past the slide at ${js(s.slide)}`);
       } else if (hit.length) {
-        // the table is put inside the slide at the place that covers the least of it, and not on
-        // more than half of the box of a figure
         assert.ok(inside && s.table.bottom <= s.slide.bottom + 1, `the table at ${js(s.table)} runs past the slide at ${js(s.slide)}`);
         if (under) assert.deepEqual(hit, under);
         for (const o of s.others.filter((o) => !/^[a-z0-9]+:/.test(o.what))) {
@@ -347,8 +303,6 @@ for (const platform of PLATFORMS) {
 
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 
-// the boxes of the navigator, the canvas, the inspector, the slide, and the Format button of the
-// toolbar, each null while it is not shown
 const shellBoxes = (page) => page.evaluate(`(() => {
   const box = (sel) => {
     const el = [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
@@ -359,15 +313,12 @@ const shellBoxes = (page) => page.evaluate(`(() => {
   return { nav: box('body > .beeson-edit-nav'), canvas: box('.beeson-edit-canvas'), inspector: box('body > .beeson-edit-inspector'), slide: box('.reveal:not(.beeson-peek) .slides > section.present'), format: box('.beeson-edit-header [data-command="shell.format"]') };
 })()`);
 
-// the window resized to width by height px, as a drag of its edge does
 async function resize(page, width, height = 800) {
   await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
   await sleep(250);
   await frames(page);
 }
 
-// asserts that the regions of b are docked side by side and that the slide is shown whole on the
-// canvas, beside the inspector, at the window width named by what
 function docked(b, what) {
   assert.ok(b.canvas && b.slide, `the canvas or the slide is not shown ${what}`);
   if (b.inspector) assert.ok(b.inspector.left >= b.canvas.right - 1, `the inspector at ${Math.round(b.inspector.left)} px is drawn over the canvas, which ends at ${Math.round(b.canvas.right)} px, ${what}`);
@@ -384,11 +335,6 @@ const pressFormat = async (page) => {
   await frames(page);
 };
 
-// finding 4: in a window 760 px wide, the inspector was drawn as a sheet over the right part of
-// the canvas and hid the right half of the slide. the inspector is docked beside the canvas at every
-// width, and the slide is scaled to the rest of the window. in a window too narrow for the
-// navigator, the canvas, and the inspector, the navigator is narrowed to its smallest width first,
-// and then hidden while the inspector is open, as View > Slide Only hides it
 for (const platform of PLATFORMS) {
   test(`the inspector is docked beside the whole slide at 1440, 1024, 900, and 760 px, and the navigator is hidden only while both do not fit (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 2, width: 1440, height: 800 });
@@ -410,13 +356,12 @@ for (const platform of PLATFORMS) {
       await pressFormat(page);
       assert.ok((await shellBoxes(page)).inspector, `the Format button does not open the inspector at ${width} px`);
     }
-    // the navigator is shown again once the window is wide again
     await resize(page, 1440);
     const wide = await shellBoxes(page);
     docked(wide, 'at 1440 px after 760 px');
     assert.ok(wide.nav && Math.abs(wide.nav.width - 200) <= 1, 'the navigator is not shown again at its width when the window is wide again');
     assert.equal((await state(page, 'view.navigator'))?.checked ?? true, true);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -424,8 +369,6 @@ const PANE_NOTE = `document.querySelector('#beeson-edit-panel-format .ed-note')?
 const cellOf = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
 const middle = (r) => ({ x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 });
 
-// the boxes of the frame of the selected cells, of its fill handle, and of each of its corner
-// handles that is shown, keyed by the corner it is drawn at
 const RANGE = `(() => {
   const box = (el) => {
     if (!el || !el.getClientRects().length) return null;
@@ -438,8 +381,6 @@ const RANGE = `(() => {
   return { frame: box(bars?.querySelector('.cell')), fill: box(bars?.querySelector('.fill')), corners };
 })()`;
 
-// asserts that the corner handles of the range are at the upper left, upper right, and lower left
-// corners of its frame, and the fill handle at its lower right corner, without an overlap
 async function handlesAtCorners(page, what) {
   const { frame, fill, corners } = await page.evaluate(RANGE);
   assert.ok(frame, `the range is not framed ${what}`);
@@ -455,7 +396,6 @@ async function handlesAtCorners(page, what) {
   return corners;
 }
 
-// the corner handle name dragged to the middle of the cell r, c
 async function dragCorner(page, name, r, c) {
   const { corners } = await page.evaluate(RANGE);
   const from = middle(corners[name]);
@@ -464,10 +404,6 @@ async function dragCorner(page, name, r, c) {
   await frames(page);
 }
 
-// finding 5: the frame of a range of cells did not have handles at its corners to extend or
-// contract the range by a drag, as Keynote draws them beside its yellow fill handle. a drag of a
-// corner handle moves that corner of the range to the cell under the pointer, and the opposite
-// corner stays, without an edit of the file
 for (const platform of PLATFORMS) {
   test(`a range of cells is extended and contracted by a drag of the handles at the corners of its frame (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -502,7 +438,6 @@ for (const platform of PLATFORMS) {
       assert.equal(await render(page), source, `the file is edited ${what}`);
       assert.equal((await state(page, 'edit.undo')).label, undo, `a history entry is added ${what}`);
     }
-    // the fill handle still fills from the range that the corner handles set
     const { fill } = await page.evaluate(RANGE);
     const handle = middle(fill);
     const end = middle(await page.evaluate(`document.querySelector(${js(cellOf(4, 2))}).getBoundingClientRect().toJSON()`));
@@ -511,6 +446,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.match(await page.evaluate(PANE_NOTE), /cells A1:C5$/);
     await handlesAtCorners(page, 'after an autofill');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

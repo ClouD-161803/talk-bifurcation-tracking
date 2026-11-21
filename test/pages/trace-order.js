@@ -1,7 +1,3 @@
-// three crossing trajectories traced by test/pages/trace.html for test/backdrops.test.mjs. without a
-// clock, each trajectory is traced at one speed along its length, hence the shorter trajectories are
-// finished first, in the reverse of the order of the file: the white one at 0.88 s, the orange one
-// at 1.41 s, and the violet one at 2 s
 const segment = (x0, y0, x1, y1) => Array.from({ length: 121 }, (_, k) => [x0 + ((x1 - x0) * k) / 120, y0 + ((y1 - y0) * k) / 120]);
 Beeson.trajectories({
   families: [

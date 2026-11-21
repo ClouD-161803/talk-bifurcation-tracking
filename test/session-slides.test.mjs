@@ -1,16 +1,10 @@
-// the slides of a deck and the slides that differ between two texts, as the version history reads
-// them: a moved slide is not a removed one, and a slide removed while another is added is reported
-// as removed, however short the slides
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { diff, slideChanges, slidesOf } from '../theme/edit.mjs';
 
-// a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
 const slide = (title, ...lines) => [`<h2>${title}</h2>`, ...lines];
 
-// the ranges of after that the operation from before changed, as the marks of a version
 function marksOf(before, after) {
   let delta = 0;
   return diff(before, after).map((p) => {
@@ -117,7 +111,6 @@ test('a slide edited in place next to slides inserted, removed, moved, or edited
       assert.deepEqual(removedOf(changes(after, before)), []);
     });
   }
-  // the inserted slide is removed in the reverse direction
   await t.test('a new slide inserted after it', () => {
     const after = deck(INTRO, MOTIVATION, RESULTS2, METHOD, OUTLOOK, QUESTIONS);
     assert.deepEqual(changes(base, after), { slides: [3, 4] });

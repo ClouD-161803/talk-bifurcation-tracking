@@ -1,6 +1,3 @@
-// the formulas of the page, read from MathJax: the TeX of each mjx-container with its delimiters,
-// and the typesetting of a host again after a formula in it was changed
-
 import { fileIndexes, notePlaced } from './shown-steps.ts';
 import { stripRuntime } from './render.ts';
 
@@ -30,38 +27,26 @@ function lookupOf(items: MathItem[]): MathLookup {
   return (el) => map.get(el) ?? null;
 }
 
-// the lookup is built when it is needed, since the items of a host are replaced when it is typeset
-// again
 export function mathLookup(): MathLookup {
   const mj = mathjax();
   return lookupOf(mj ? mj.startup.document.getMathItemsWithin([document.body]) : []);
 }
 
-// the formulas of el alone, since mathLookup() reads those of the whole deck, which is too slow for
-// an apply or a caret at each character typed
 export function mathIn(el: Element): MathLookup {
   const mj = el.querySelector('mjx-container') ? mathjax() : null;
   return lookupOf(mj ? mj.startup.document.getMathItemsWithin([el]) : []);
 }
 
-// typesets tex on its own, and gives the rendering and the error of MathJax, e.g. a missing brace.
-// the rendering is empty where MathJax is not loaded, and the error is then empty as well. a blank
-// tex is an error, since it would leave a formula without a width on the slide
 export async function previewTex(tex: string, display: boolean): Promise<{ node: Element | null; error: string | null }> {
   if (!tex.trim()) return { node: null, error: 'The formula is empty' };
   const mj = mathjax();
   if (!mj?.tex2svgPromise) return { node: null, error: null };
   const node = await mj.tex2svgPromise(tex, { display });
-  // the error is an attribute of a group of the SVG, and an mjx-merror element in the CHTML output
   const merror = node.querySelector('[data-mjx-error], mjx-merror');
   const error = merror ? (merror.getAttribute('data-mjx-error') ?? merror.textContent ?? 'TeX error') : null;
   return { node, error };
 }
 
-// writes each formula of host back as text, with the TeX of container replaced by tex, and
-// typesets host again. the result is false when MathJax does not find the formula again, e.g. with
-// a brace left open in tex, since the closing delimiter is then inside the brace. the former TeX
-// is then put back and typeset, so that the slide is kept as it was
 export async function retypeset(host: Element, container: Element, tex: string): Promise<boolean> {
   const mj = mathjax();
   if (!mj) return false;
@@ -74,7 +59,6 @@ export async function retypeset(host: Element, container: Element, tex: string):
       if (!info) continue;
       c.replaceWith(document.createTextNode(info.open + (c === container ? replacement : info.tex) + info.close));
     }
-    // adjacent text nodes are merged, so that a formula is found in one node
     host.normalize();
     mj.typesetClear([host]);
     await mj.typesetPromise([host]);
@@ -97,17 +81,10 @@ export async function retypeset(host: Element, container: Element, tex: string):
 
 export const mathReady = (): Promise<unknown> => window.MathJax?.startup?.promise ?? Promise.resolve();
 
-// the content of host as HTML with each formula as its TeX between its delimiters, i.e. as the
-// file has it, and host set to such a content and typeset again. the pair is used by the history
-// to put a text element back, since the formulas of a text element cannot be restored from its HTML
 export function contentWithTex(host: Element, replace?: ReadonlyMap<Element, string>): string {
   return withTex(host, replace).innerHTML;
 }
 
-// a copy of host with each formula as its TeX between its delimiters, the TeX of a formula of
-// replace given by its value. the text nodes are not merged yet, and edit is called before they
-// are, with the copy and a function that gives the node of the copy at a node of host, so that a
-// range of host is found in the copy. a formula is one text node of the copy
 function withTex(host: Element, replace?: ReadonlyMap<Element, string>, edit?: (copy: Element, at: (node: Node) => Node | null) => void): Element {
   const copy = host.cloneNode(true) as Element;
   const indexed = '[data-fragment-index]';
@@ -142,9 +119,6 @@ function withTex(host: Element, replace?: ReadonlyMap<Element, string>, edit?: (
   return copy;
 }
 
-// the content of host with an inline formula of tex in place of range, as the file has it, and
-// the place of the new formula among the formulas of host. a range inside a formula is put after
-// the formula
 export function contentWithInline(host: Element, range: Range, tex: string): { content: string; index: number } {
   const mark = '\ue000beeson-formula\ue000';
   const outside = (node: Node, offset: number): [Node, number] => {
@@ -181,8 +155,6 @@ export async function setContentWithTex(host: Element, content: string): Promise
   if (mj) await mj.typesetPromise([host]);
 }
 
-// the content of a pre with one code is put into the same code element, since the document model
-// keeps the tag edits of the code, e.g. its line steps, under this element
 function keepCode(host: Element, content: string): boolean {
   const code = host.localName === 'pre' && host.children.length === 1 ? host.firstElementChild : null;
   if (code?.localName !== 'code') return false;
@@ -197,21 +169,15 @@ function keepCode(host: Element, content: string): boolean {
   return true;
 }
 
-// a macro of the deck, from the preamble.tex of the talk as its tex.js gives it, with its number of
-// arguments and its replacement, and the default of its first argument where this argument is
-// optional. deck is false for a command of TeX
 export type Macro = { name: string; args: number; body: string; default?: string; deck: boolean };
 
 export function deckMacros(): Macro[] {
-  // an older talk without a tex.js has the macros of its theme/macros.js, as in theme/mathjax-config.js
   type Def = string | [string, number, string?];
   const page = window as unknown as { beesonTex?: { macros?: Record<string, Def> }; beesonMacros?: Record<string, Def> };
   const raw = page.beesonTex?.macros ?? page.beesonMacros ?? {};
   return Object.entries(raw).map(([name, v]) => (Array.isArray(v) ? { name, body: String(v[0]), args: Number(v[1]) || 0, ...(v.length > 2 && { default: String(v[2]) }), deck: true } : { name, body: String(v), args: 0, deck: true }));
 }
 
-// the commands of TeX that completions offers after the macros of the deck, with their number of
-// arguments
 const COMMANDS: [string, number][] = [
   ['frac', 2], ['sqrt', 1], ['class', 2], ['dot', 1], ['ddot', 1], ['tilde', 1], ['hat', 1], ['bar', 1], ['vec', 1],
   ['mathrm', 1], ['mathbf', 1], ['mathcal', 1], ['mathbb', 1], ['boldsymbol', 1], ['text', 1], ['operatorname', 1],
@@ -224,9 +190,6 @@ const COMMANDS: [string, number][] = [
   ...['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'varphi', 'chi', 'psi', 'omega', 'Gamma', 'Delta', 'Theta', 'Lambda', 'Xi', 'Pi', 'Sigma', 'Phi', 'Psi', 'Omega'].map((g): [string, number] => [g, 0]),
 ];
 
-// the completions of the name typed after a backslash. the macros of the deck in macros come
-// before the commands of TeX, and a name that starts with prefix comes before one that only
-// contains it. a name typed in full without arguments is not offered again
 export function completions(prefix: string, macros: Macro[], limit = 8): Macro[] {
   const lower = prefix.toLowerCase();
   const names = new Set(macros.map((m) => m.name));
@@ -244,13 +207,10 @@ export function completions(prefix: string, macros: Macro[], limit = 8): Macro[]
     .map((x) => x.m);
 }
 
-// whether name is a whole name of a macro of the deck or of a TeX command
 export function isName(name: string, macros: Macro[]): boolean {
   return macros.some((m) => m.name === name) || COMMANDS.some(([n]) => n === name);
 }
 
-// the TeX that draws the glyph of a command of TeX in the completion list, where the command with
-// an x for each argument does not draw it, or null for a command without a glyph of its own
 const SAMPLES: Record<string, string | null> = {
   frac: '\\frac{a}{b}', class: null, text: '\\text{ab}', operatorname: '\\operatorname{op}', mathrm: '\\mathrm{d}',
   mathbf: '\\mathbf{v}', mathcal: '\\mathcal{L}', mathbb: '\\mathbb{R}', boldsymbol: '\\boldsymbol{\\mu}',
@@ -262,8 +222,6 @@ export function sampleTex(m: Macro): string | null {
   return `\\${m.name}${'{x}'.repeat(m.args)}`;
 }
 
-// the glyph of a completion, typeset once by MathJax and kept for every later list, or null where
-// MathJax is not loaded or does not typeset its sample
 const glyphs = new Map<string, Promise<Element | null>>();
 
 export function glyphOf(m: Macro): Promise<Element | null> {
@@ -277,14 +235,11 @@ export function glyphOf(m: Macro): Promise<Element | null> {
   return out;
 }
 
-// the text that a completion writes, with a pair of braces for each argument, and the offset of
-// the caret in it, which is inside the first pair
 export function completionText(m: Macro): { text: string; caret: number } {
   const text = `\\${m.name}${'{}'.repeat(m.args)}`;
   return { text, caret: m.args ? m.name.length + 2 : text.length };
 }
 
-// the offset of the brace that closes the group opened at open, or -1 when the group is not closed
 function closing(tex: string, open: number): number {
   let depth = 0;
   for (let i = open; i < tex.length; i++) {
@@ -295,8 +250,6 @@ function closing(tex: string, open: number): number {
   return -1;
 }
 
-// whether the braces of part are balanced, which wrapClass asks of a selected symbol. an escaped
-// brace is not counted
 export function balanced(part: string): boolean {
   let depth = 0;
   for (let i = 0; i < part.length; i++) {
@@ -307,8 +260,6 @@ export function balanced(part: string): boolean {
   return depth === 0;
 }
 
-// a \class{name}{body} of a TeX. start is the offset of its backslash, end the offset after its
-// closing brace, and bodyStart the offset of the first character of body
 export type Marked = { name: string; body: string; start: number; end: number; bodyStart: number };
 
 export function classesIn(tex: string): Marked[] {
@@ -328,9 +279,6 @@ export function classesIn(tex: string): Marked[] {
   return out;
 }
 
-// a class name for the symbol of body that is not in taken, made of the letters and digits of
-// body without its accents and fonts, so that the TeX \tilde U gives u. a name must start with a
-// letter to be a class of CSS, hence sym- is put before a name that starts with a digit
 export function suggestName(body: string, taken: Iterable<string>): string {
   const used = new Set(taken);
   const words = body
@@ -343,10 +291,6 @@ export function suggestName(body: string, taken: Iterable<string>): string {
   for (let i = 2; ; i++) if (!used.has(`${stem}-${i}`)) return `${stem}-${i}`;
 }
 
-// tex with its part from start to end marked as \class{name}{part}, and the name of the class.
-// white space at the ends of the part is left outside the class. a part that is already the body
-// of a class, or a whole class, keeps its class and its name. a part whose braces are not balanced
-// is refused, since it is not a whole symbol
 export function wrapClass(tex: string, start: number, end: number, name: string): { tex: string; name: string } {
   let s = Math.min(start, end);
   let e = Math.max(start, end);
@@ -361,7 +305,6 @@ export function wrapClass(tex: string, start: number, end: number, name: string)
   return { tex: `${tex.slice(0, s)}\\class{${name}}{${part}}${tex.slice(e)}`, name };
 }
 
-// tex with each \class{name}{body} of name replaced by its body
 export function unwrapClass(tex: string, name: string): string {
   const found = classesIn(tex).filter((c) => c.name === name).reverse();
   let out = tex;

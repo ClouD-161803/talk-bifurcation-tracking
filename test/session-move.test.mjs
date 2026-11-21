@@ -1,9 +1,3 @@
-// a text element or a slide that one person moves while another person, whose page has not
-// received the move, types in it. the move and the key are both kept, the element is in the deck
-// once, and every key is kept. the edit command takes the move first and the key comes from a page
-// that has not received it, or it takes the key first and the move comes from such a page, or the
-// move reaches the page of the key before the editor has read the key
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
@@ -12,18 +6,15 @@ import { press, typeKeys } from './helpers/editor.mjs';
 import { P, leave, session } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
-// every answer of the edit command to the page waits while window.__held is set
 const HOLD = `(() => {
   const f = window.fetch.bind(window);
   window.__held = false;
   window.fetch = (...a) => f(...a).then(async (r) => { while (window.__held) await new Promise((d) => setTimeout(d, 20)); return r; });
   return true;
 })()`;
-// the history of the page waits in an open entry until window.__end(), hence its keys are not read
 const BUSY = `(${C}.app.history.transact('Wait', () => new Promise((end) => (window.__end = end))), true)`;
 const IDLE = `(window.__end(), ${C}.app.history.settle().then(() => true))`;
 
-// the paragraph or heading whose text starts with text
 const para = (text) => `[...document.querySelectorAll('.reveal .slides :is(p, h2)')].find((p) => p.textContent.startsWith(${JSON.stringify(text)}))`;
 const slide = (heading) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.startsWith(${JSON.stringify(heading)}))`;
 const run = (body) => `(async () => { ${body}; return true; })()`;
@@ -34,8 +25,6 @@ const MOVE = run(`const p = ${para('Second slide')}; await ${C}.app.doc.move(p, 
 const SWAP = run(`await ${C}.app.commands.run('slide.moveTo', { slides: [${slide('One')}], gap: 2 })`);
 const THREE = [['  </ul>\n</section>\n', '  </ul>\n</section>\n\n<section>\n  <h2>Three</h2>\n  <p>Third slide</p>\n</section>\n']];
 const NEXT = [['  <p>Second slide</p>\n', '  <p>Second slide</p>\n  <p>Next paragraph</p>\n']];
-// a change of Ben, the text element that Ana types in, and the slide of this element at the end.
-// then is what Ben does next on his page, and slides the slides of the deck
 const CASES = [
   { name: 'a paragraph moved inside its slide', ben: MOVE, into: 'Second slide', ends: /<\/ul>\n {2}<p>Second slide by Ana<\/p>\n<\/section>/ },
   {
@@ -88,8 +77,6 @@ const CASES = [
   },
 ];
 
-// the session of Ana and Ben, with a key of the other page in the heading of slide One, which the
-// held page received through the wait of its answers, and then the change before of Ben, if any
 async function start(t, held, { edits = [], before }) {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { edits });
   const [ana, ben] = pages;
@@ -121,7 +108,6 @@ async function typeIn(ana, into) {
   await typeKeys(ana, ' by Ana');
 }
 
-// the deck holds each text once, the key of Ana in her text element, and its slides
 function kept(text, into, { ends, slides: n = 2 }) {
   const slides = text.slice(text.indexOf('<div class="slides">'));
   assert.equal(count(slides, '<section'), n, `the deck has ${n} slides`);
@@ -166,7 +152,6 @@ for (const c of CASES) {
 
   test(`${name} by one person while the key of another person in ${where} is not read yet keeps the move, the key, and the text once`, { timeout: 300_000 }, async (t) => {
     const { server, pages, ana, ben } = await start(t, 'ana', c);
-    // the apply of the change of Ben waits on the history of Ana, which reads the keys after it
     await show(ana, headingOf(c.into));
     assert.ok(await ana.evaluate(BUSY));
     const was = server.read();
@@ -174,7 +159,6 @@ for (const c of CASES) {
     assert.ok(await ben.evaluate(c.ben));
     await until(() => server.read() !== was, 'index.html to hold the change of Ben');
     await until(async () => (await ana.evaluate(`${C}.base?.text`)) === server.read(), 'the page of Ana to receive the change of Ben');
-    // the page of Ana takes the next change of Ben only once its history is free
     if (c.then) {
       const moved = server.read();
       await c.then(ben);

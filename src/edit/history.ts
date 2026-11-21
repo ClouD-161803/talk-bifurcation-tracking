@@ -1,53 +1,28 @@
-// the version history of a session. a version is a state of the text of index.html with its time,
-// the people who changed the deck since the version before, and an optional name. a version is
-// closed 60 s after the last operation, at the latest 5 min after the first operation since the
-// version before, at once when a person names the current state or restores a version, and at a
-// stop. the versions are kept in .session/history.jsonl, appended only: a first line
-// { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
-// slides, removed?, restored?, start? } per version, whose patches turn the text of the version
-// before into its own, and a line { kind: "name", id, name } per name given or taken off. a new
-// history begins with a version of the base marked start. a line { kind: "open", author } is
-// written when a person becomes an author of the open version, so that a start after a crash
-// knows who made the edits after the last version. the texts that a person set aside at a
-// conflict are kept in .session/aside/, one file each
-
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, applyEach, byWords, copy, diff } from '../session/patch.ts';
+import { apply, applyEach, byWords, diff, unsliced } from '../session/patch.ts';
 import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Removal, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
 export type HistoryOptions = {
-  // a version is closed quiet ms after the last operation, and at the latest longest ms after the
-  // first operation since the version before
   quiet?: number;
   longest?: number;
-  // past maxBytes the file is written anew without the versions older than keep ms, apart from
-  // the named ones and those after them
   maxBytes?: number;
   keep?: number;
-  // the texts set aside: at most asideBytes each, at most asideFiles per person, the oldest of the
-  // person removed first, and at most asideTotal bytes in all, the oldest removed first
   asideBytes?: number;
   asideFiles?: number;
   asideTotal?: number;
-  // the texts kept as starting points of a rebuild take at most checkpointBytes, at two bytes a
-  // character, or four texts of the deck when they are larger
   checkpointBytes?: number;
   now?: () => number;
-  // the time in ms of a clock that does not jump, which stands while the computer sleeps, as the
-  // timers do
   clock?: () => number;
   log?: (message: string) => void;
 };
 
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
-// first and last are times of clock, since and time of now
-// ops are the patches of the operations of the version as one operation of the text of the version before
 type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
@@ -55,14 +30,10 @@ type Range = { start: number; end: number };
 export const isVersionId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 const newId = () => randomBytes(9).toString('base64url');
 const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
-// a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
-// once more than CHECKPOINTS are kept or their budget in bytes is passed
 const STEP = 50;
-// the longest removed text in characters that a version serves for its preview
 const REMOVAL_MAX = 4096;
 const CHECKPOINTS = 64;
 
-// the new ranges of the patches of an operation in the text after it
 function rangesOf(patches: Patch[]): Range[] {
   let delta = 0;
   return patches.map((p) => {
@@ -72,8 +43,6 @@ function rangesOf(patches: Patch[]): Range[] {
   });
 }
 
-// marks sorted, with the marks of one author that touch joined, which also takes in an empty mark
-// at the place of a mark of its author
 function tidy(marks: Mark[]): Mark[] {
   marks.sort((a, b) => a.start - b.start || a.end - b.end);
   const out: Mark[] = [];
@@ -85,7 +54,6 @@ function tidy(marks: Mark[]): Mark[] {
   return out;
 }
 
-// the first index of a list of n for which at is true, where at is false and then true
 function first(n: number, at: (i: number) => boolean): number {
   let lo = 0;
   let hi = n;
@@ -97,7 +65,6 @@ function first(n: number, at: (i: number) => boolean): number {
   return lo;
 }
 
-// shiftOffset of patch.ts for many offsets, by a binary search of the sorted patches
 function shifter(patches: Patch[]): (offset: number, after: boolean) => number {
   const deltas = [0];
   for (const p of patches) deltas.push(deltas[deltas.length - 1] + p.text.length - (p.end - p.start));
@@ -110,10 +77,6 @@ function shifter(patches: Patch[]): (offset: number, after: boolean) => number {
   };
 }
 
-// the marks of an open version moved over an operation, with the ranges that the operation wrote
-// marked as changed by its author. a removal leaves an empty mark at its place, and an older mark
-// keeps only what the operation did not write over. the ranges are sorted and do not overlap,
-// hence the ranges that meet a mark are found by a binary search
 export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark[] {
   if (patches.length === 0) return marks;
   const ranges = rangesOf(patches);
@@ -135,8 +98,6 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
     }
     if (at < end) out.push({ start: at, end, author: m.author });
   }
-  // a removal inside a mark of the same author is already marked. reach is the furthest end of
-  // the marks of author that start at or before the removal
   const mine = out.filter((m) => m.author === author).sort((a, b) => a.start - b.start);
   let k = 0;
   let reach = -1;
@@ -151,35 +112,25 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
   return tidy(out);
 }
 
-// a and then b as one operation of the text before a, where b is an operation of the text after a.
-// a character is kept unless an operation wrote over it or removed it, whereas the diff of the two
-// texts may place a change at another equal text
 function compose(a: Patch[], b: Patch[]): Patch[] {
   const out: Patch[] = [];
   let i = 0;
-  // the length that the patches of a before i add
   let delta = 0;
   const next = () => {
     const p = a[i++];
     delta += p.text.length - (p.end - p.start);
     return p;
   };
-  // the text of the last patch of out is head and then tail, where tail is the end of a patch of a
-  // that a later q may replace. only tail is sliced, since V8 copies a joined string to slice it
-  let [head, tail] = ['', ''];
+  let [head, unjoinedTail] = ['', ''];
   for (const q of b) {
     while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
-    // low and high are the ends of the text after a that q and the patches of a that meet it
-    // replace
     const before = delta;
     let [low, high, pre, post] = [q.start, q.end, '', ''];
-    // q starts before o.end + delta only in the text of a patch of a that o, the last patch, took
-    // in, hence q is joined to o
     const o = out[out.length - 1];
     if (o && q.start < o.end + delta) {
       out.pop();
       high = o.end + delta;
-      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + unjoinedTail.slice(0, unjoinedTail.length - (high - q.start)), unjoinedTail.slice(unjoinedTail.length - (high - q.end))];
     }
     while (i < a.length && a[i].start + delta <= q.end) {
       const at = a[i].start + delta;
@@ -187,15 +138,12 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
       if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
       if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
     }
-    [head, tail] = [pre + q.text, post];
-    if (low - before < high - delta || head || tail) out.push({ start: low - before, end: high - delta, text: head + tail });
+    [head, unjoinedTail] = [pre + q.text, post];
+    if (low - before < high - delta || head || unjoinedTail) out.push({ start: low - before, end: high - delta, text: head + unjoinedTail });
   }
   return out.concat(a.slice(i));
 }
 
-// whether patch p of a change from outside replaces text of marks that a person wrote, or writes
-// where a person removed text. the marks are sorted, and only an empty mark may lie inside another
-// one, hence the marks are walked back from p to a mark of characters that ends before it
 function overwrites(marks: Mark[], p: Patch): boolean {
   for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
     const m = marks[k];
@@ -204,20 +152,15 @@ function overwrites(marks: Mark[], p: Patch): boolean {
   return false;
 }
 
-// whether a mark of a person lies in p or touches its ends, walked as in overwrites(). the words
-// of a patch that touches none are not aligned, since they cannot keep a word of a person
 function touches(marks: Mark[], p: Patch): boolean {
   for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
   return false;
 }
 
-// the marks of a version kept to the ranges that the version changed, since a change made and
-// undone in one version is not a change of it. a range without a mark is given to author
 function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   const ranges = rangesOf(patches);
   const out: Mark[] = [];
   for (const m of marks) {
-    // the ends of the ranges do not decrease, hence the ranges that meet m follow one another
     for (let k = first(ranges.length, (i) => ranges[i].end >= m.start); k < ranges.length && ranges[k].start <= m.end; k++) {
       const r = ranges[k];
       if (m.start === m.end || r.start === r.end) {
@@ -229,8 +172,6 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
     }
   }
   const kept = tidy(out);
-  // a range is held by a mark that starts before its end, or at its place when it is empty, and
-  // reaches into it. reach is the furthest end of those marks
   const added: Mark[] = [];
   let k = 0;
   let reach = -1;
@@ -244,13 +185,8 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   return added.length ? tidy([...kept, ...added]) : kept;
 }
 
-// the operation ops of the text before as patches of what each changed, found by a diff of the text
-// that it replaces and the text that it writes. the diff of the whole texts could place a change at
-// another equal text
 const refined = (before: string, ops: Patch[]): Patch[] => ops.flatMap((p) => diff(before.slice(p.start, p.end), p.text).map((q) => ({ start: p.start + q.start, end: p.start + q.end, text: q.text })));
 
-// the texts that the patches of a version removed, at their places in the text after it, each given
-// to the author of a mark at its place. a removal longer than REMOVAL_MAX is left out
 function removalsOf(before: string, patches: Patch[], marks: Mark[], author: string): Removal[] {
   const out: Removal[] = [];
   let delta = 0;
@@ -267,11 +203,8 @@ function removalsOf(before: string, patches: Patch[], marks: Mark[], author: str
   return out;
 }
 
-// patches whose texts are copied, since a slice of a text keeps the whole text in memory
-const copied = (patches: Patch[]): Patch[] => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+const copied = (patches: Patch[]): Patch[] => patches.map((p) => ({ start: p.start, end: p.end, text: unsliced(p.text) }));
 
-// the patches of a version, sorted, in bounds, and without overlap. valid() of patch.ts is not
-// used, since it caps the patches of one operation and a version may hold more
 const validPatches = (patches: unknown, n: number): patches is Patch[] => {
   if (!Array.isArray(patches)) return false;
   let at = 0;
@@ -282,11 +215,8 @@ const validPatches = (patches: unknown, n: number): patches is Patch[] => {
   return true;
 };
 
-// the most patches that the authority takes in one operation, as valid() of patch.ts allows
 const MAX_PATCHES = 2000;
 
-// the patches that turn a into b in one operation that the authority takes: the diff, or one
-// patch from the common start to the common end when the diff has too many
 export function operationOf(a: string, b: string): Patch[] {
   const patches = diff(a, b);
   if (patches.length <= MAX_PATCHES) return patches;
@@ -297,8 +227,6 @@ const validMarks = (marks: unknown, n: number): marks is Mark[] =>
   Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === 'string');
 const numbers = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 
-// a name as it is kept, without characters that do not show nor controls other than whitespace,
-// trimmed with inner whitespace collapsed, or null when it is too long
 export function cleanVersionName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const name = shown(raw).replace(/(?!\s)\p{Cc}/gu, '').replace(/\s+/g, ' ').trim();
@@ -308,15 +236,9 @@ export function cleanVersionName(raw: unknown): string | null {
 class Unreadable extends Error {}
 
 export class History {
-  // grows with every change of the list of versions or of the texts set aside
   rev = 0;
-  // the count of restores
   restores = 0;
-  // the n of the version of the authority made by the last change from outside that replaced text
-  // that a person wrote in this run, or 0
   overwritten = 0;
-  // the patches from the text of the last version to index.html at the start, or null when the
-  // history began at this start
   readonly found: { before: string; patches: Patch[] } | null = null;
   private readonly dir: string;
   private readonly file: string;
@@ -333,11 +255,9 @@ export class History {
   private readonly now: () => number;
   private readonly clock: () => number;
   private readonly log: (message: string) => void;
-  // the text after the last operation
   private held: string;
   private base = { time: 0, text: '' };
   private versions: Version[] = [];
-  // the texts after some versions, by index, as starting points of a rebuild
   private checkpoints = new Map<number, string>();
   private step = STEP;
   private lastText = '';
@@ -345,23 +265,16 @@ export class History {
   private open: Open | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private bytes = 0;
-  // true when the file may not hold every line, after a write that failed
   private broken = false;
-  // true when the file could not be read nor set aside, hence it is not written in this run
   private frozen = false;
-  // the lines of a name in the file, which is written anew once they are many more than the versions
   private names = 0;
   private stopped = false;
   private asides: AsideInfo[] = [];
-  // the size in bytes of each text set aside, by id
   private asideSizes = new Map<string, number>();
-  // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
-  // the marks of the closed versions of people of this run, in the text before an open one
   private typed: Mark[] = [];
   private listeners = new Set<() => void>();
 
-  // dir is the .session folder of the talk
   constructor(dir: string, authority: Authority, options: HistoryOptions = {}) {
     this.dir = dir;
     this.file = join(dir, 'history.jsonl');
@@ -381,7 +294,6 @@ export class History {
     try {
       mkdirSync(dir, { recursive: true });
     } catch {}
-    // the authors of the version that was open when the last run ended, or null for a new history
     let loaded: string[] | null = null;
     try {
       loaded = this.load();
@@ -401,7 +313,6 @@ export class History {
     if (!loaded) {
       this.base = { time: this.now(), text };
       this.lastText = text;
-      // the deck as it read at the start is the first version, so that it can be restored
       const start = this.version([], [], [], text);
       start.start = true;
       this.versions.push(start);
@@ -410,7 +321,6 @@ export class History {
       this.found = { before: this.lastText, patches: copied(diff(this.lastText, text)) };
       if (this.found.patches.length) {
         const patches = this.found.patches;
-        // the ranges of several authors cannot be told apart, hence they are given to none of them
         const authors = loaded.length ? loaded : [AUTHOR];
         this.push(this.version(authors, patches, clip([], patches, authors.length > 1 ? '' : authors[0]), text), text);
       } else if (loaded.length) this.writeAll();
@@ -421,7 +331,6 @@ export class History {
     authority.observe((op, after) => this.operation(op, after));
   }
 
-  // calls fn after every change of rev
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -439,21 +348,17 @@ export class History {
     return { ...info(v), marks: v.marks, removals };
   }
 
-  // the text of the deck at version id, or null for an unknown id
   textOf(id: unknown): string | null {
     const i = this.indexOf(id);
     return i < 0 ? null : this.textAt(i);
   }
 
-  // the version of the current state closed at once and named. name is cleaned, and an empty name
-  // takes the name off. null for an unknown id, and 'long' for a name over VERSION_NAME_MAX
   name(id: unknown, raw: unknown): VersionInfo | null | 'long' {
     const name = cleanVersionName(raw);
     if (name === null) return 'long';
     let v: Version | null;
     if (id === 'current') {
       this.close();
-      // a deck without a version yet gets one that holds the base
       v = this.versions[this.versions.length - 1] ?? this.close(true);
     } else v = this.find(id);
     if (!v) return null;
@@ -467,9 +372,6 @@ export class History {
     return info(v);
   }
 
-  // the deck made to read as version id by one operation of person, between a version of the
-  // current state and a version of the restore. null for an unknown id. id is null in the answer
-  // when the deck already reads as the version
   restore(id: unknown, person: string): { id: string | null } | null {
     const i = this.indexOf(id);
     if (i < 0) return null;
@@ -485,21 +387,17 @@ export class History {
     return { id: v?.id ?? null };
   }
 
-  // the last restore when it is after the version since of a page, which is the latest restore
-  // that the page has not had. every restore is after a version of an earlier start
   restoredAfter(since: unknown): Restored | null {
     const at = parseVersion(since);
     if (!at || !this.restored) return null;
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
 
-  // whether a change from outside replaced text of a person after the version since of a page
   overwrittenAfter(since: unknown): boolean {
     const at = parseVersion(since);
     return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
   }
 
-  // a text that a person set aside, or null when it is too large
   setAside(text: string, author: string): AsideInfo | null {
     const bytes = Buffer.from(text, 'utf8');
     if (bytes.length > this.asideBytes) return null;
@@ -525,7 +423,6 @@ export class History {
     } catch {}
   }
 
-  // the oldest texts set aside removed while all of them take more than asideTotal
   private trimAsides(): void {
     let total = 0;
     for (const n of this.asideSizes.values()) total += n;
@@ -535,7 +432,6 @@ export class History {
     }
   }
 
-  // the text set aside as id, or null
   asideText(id: unknown): string | null {
     const aside = this.asides.find((a) => a.id === id);
     if (!aside) return null;
@@ -546,20 +442,13 @@ export class History {
     }
   }
 
-  // the open version closed, e.g. at a stop. empty closes a version without a change when there
-  // is not any, so that it can be named. restored is the id of the version that it restores
   close(empty = false, restored?: string, text = this.authority.text): Version | null {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const open = this.open;
     this.open = null;
-    // typed takes in a version of people when it closes, which a change from outside does first. the
-    // characters of the version are given to its last author, since overwrites() does not tell
-    // people apart. typed is moved over a change from outside at each operation
     if (open && open.author !== AUTHOR) this.typed = moveMarks(this.typed, open.ops, open.author);
     if (text === this.lastText && !empty) {
-      // the lines of the open version are taken out of the file, so that a later start does not
-      // give its authors to a change from outside
       if (open) this.writeAll();
       return null;
     }
@@ -611,7 +500,6 @@ export class History {
     }
   }
 
-  // a new version of text, which patches make from the text of the last version
   private version(authors: string[], patches: Patch[], marks: Mark[], text: string, time = this.now()): Version {
     this.lastSlides ??= slidesOf(this.lastText);
     const slides = slidesOf(text);
@@ -640,12 +528,8 @@ export class History {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    // the timer is late after a sleep, hence a version that is due is closed on the text before op.
-    // a change from outside is a version of its own, so that the text that it replaces is kept
     if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
     if (op.author === AUTHOR) {
-      // a patch of diff() over a line or a run of cap() keeps words, hence the patches are aligned
-      // again by words, and the words that they keep stay with the people who wrote them
       const patches = op.patches.flatMap((p) => (touches(this.typed, p) ? byWords(this.held, p) : [p]));
       if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
       this.typed = moveMarks(this.typed, patches, AUTHOR);
@@ -664,13 +548,10 @@ export class History {
     this.arm();
   }
 
-  // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
-  // not hold it open, and one that jumped ahead in a sleep closes it
   private due(open: Open, t: number, w: number): boolean {
     return t - open.last >= this.quiet || t - open.first >= this.longest || w - open.time >= this.quiet || w - open.since >= this.longest;
   }
 
-  // one timer at a time, which looks again at the times of the open version when it fires
   private arm(): void {
     if (this.timer || !this.open) return;
     const wait = Math.max(0, Math.min(this.open.last + this.quiet, this.open.first + this.longest) - this.clock());
@@ -699,7 +580,6 @@ export class History {
     }
   }
 
-  // the file written anew from memory, by a temporary file and a rename
   private writeAll(): void {
     if (this.frozen) return;
     const lines = [JSON.stringify({ kind: 'base', ...this.base })];
@@ -727,13 +607,10 @@ export class History {
     }
   }
 
-  // the versions before the oldest of the last keep ms left out but the tagged ones, the version
-  // before the first one kept becoming the base
   private compact(): void {
     const cutoff = this.now() - this.keep;
     let k = this.versions.findIndex((v) => v.time >= cutoff);
     if (k < 0) k = this.versions.length - 1;
-    // a tagged version before k is kept, with the changes of the versions left out before it
     const keep = this.versions.flatMap((v, i) => (i >= k || v.name ? [i] : []));
     if (keep[0] === 0 && keep.length === this.versions.length) return;
     const first = keep[0];
@@ -748,9 +625,6 @@ export class History {
     this.changed();
   }
 
-  // the authors of the lines open after the last version line when the file was read, and null
-  // when it does not exist or is empty. throws Unreadable for a file without a base, or with a line
-  // other than the last that cannot be read
   private load(): string[] | null {
     let content: string;
     try {
@@ -761,7 +635,6 @@ export class History {
     }
     if (content === '') return null;
     const lines = content.split('\n');
-    // the index of the last line with text, which a crash may have cut
     let last = lines.length - 1;
     if (lines[last] === '') last--;
     let good = 0;
@@ -772,8 +645,6 @@ export class History {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
         if (i < last || i === 0) throw new Unreadable();
-        // the line cut by a crash is taken off, so that the next line is appended whole. a file that
-        // cannot be written is written anew at the next line
         try {
           truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
         } catch {

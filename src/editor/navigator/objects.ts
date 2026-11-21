@@ -1,14 +1,3 @@
-// the object list of Keynote (View > Object List), under the thumbnails in the column of the
-// navigator: a row for each element of the current slide that can be selected, from front to back,
-// with an icon of its kind, a name made of its kind and the first words of its text, and a padlock
-// that locks and unlocks it. the members of a group are rows under a row of the group, which is
-// folded with its chevron. a click selects, Shift and the command modifier add or take a row off
-// the selection, and a drag of a row changes its layer within the limits of the layer commands of
-// commands/order.ts. a group row is dragged as one object, whose members keep their order.
-// a member row is dragged as an object of its own, and it stays in its group. the field at the bottom filters the rows by their name, as the search of
-// Keynote. an element of the theme does not have a name or a hidden state, hence a row is not
-// renamed or hidden
-
 import type { App } from '../app.ts';
 import { SHAPE_KINDS, kindOf as shapeKind } from '../commands/shape.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
@@ -22,12 +11,9 @@ import { icon } from '../ui/icons.ts';
 
 const KEY = 'beeson-edit-objects';
 const SVG = 'http://www.w3.org/2000/svg';
-// the distance in CSS px by which a press is moved before it is a drag
 const DRAG_START = 4;
-// the longest name of a row before its words are cut, in characters
 const NAME_MAX = 34;
 
-// the glyphs that ui/icons.ts does not have, on its grid of 20 px
 const GLYPHS: Record<string, string[]> = {
   line: ['M4.5 15.5 15.5 4.5'],
   arrow: ['M4.5 15.5 15.5 4.5', 'M9.5 4.5h6v6'],
@@ -92,7 +78,6 @@ html.beeson-editor body > .beeson-edit-objects[hidden] { display: none; }
 .beeson-edit-objects .search input:focus { border-color: var(--ed-select); box-shadow: 0 0 0 3px var(--ed-focus); }
 `;
 
-// the words of the text of el, without the rendering of its formulas, cut at a word
 function wordsOf(el: Element): string {
   const copy = el.cloneNode(true) as Element;
   for (const m of copy.querySelectorAll('mjx-container, [data-generated], .beeson-handle')) m.remove();
@@ -103,7 +88,6 @@ function wordsOf(el: Element): string {
   return `${(space > NAME_MAX / 2 ? cut.slice(0, space) : cut.slice(0, NAME_MAX)).replace(/[\s,;:.]+$/, '')}…`;
 }
 
-// the kind of el, its icon, and its name in the list
 export function describeObject(el: Element): { kind: string; icon: string; name: string } {
   const named = (kind: string, glyphName: string, words = '') => ({ kind, icon: glyphName, name: words ? `${kind}: ${words}` : kind });
   if (el.matches(LINE)) {
@@ -132,14 +116,11 @@ export function describeObject(el: Element): { kind: string; icon: string; name:
   return named('Text', 'text', hasText(el) || el.textContent?.trim() ? wordsOf(el) : '');
 }
 
-// a row of the list: an element, or a group with its members at any depth, the rows under it,
-// and the names of the groups around it
 type Item = { el: Element; group: null } | { el: null; group: string; members: Element[]; children: Item[]; path: string[] };
 
 type Key = Element | string;
 const keyOf = (item: Item): Key => item.el ?? `group:${item.group}`;
 
-// whether a is drawn under b, by the order of the layer commands
 const before = drawnUnder;
 
 export function install(app: App): void {
@@ -166,25 +147,20 @@ export function install(app: App): void {
 
   let on = stored(KEY) === '1';
   const folded = new Set<string>();
-  // the key of the row with the focus, kept over a rebuild of the rows
   let focusKey: Element | string | null = null;
   let rows: { item: Item; row: HTMLElement }[] = [];
   let press: { els: Element[]; key: Key; x: number; y: number; id: number; on: boolean; gap: number } | null = null;
 
   const mod = (ev: MouseEvent | KeyboardEvent) => (app.platform === 'mac' ? ev.metaKey : ev.ctrlKey);
 
-  // the objects of the current slide from front to back
   const objects = (): Element[] => {
     if (app.state !== 'loaded') return [];
     const found = [...movablesOf(app), ...linesOf(app)];
     const els = found.filter((el) => !found.some((o) => o !== el && o.contains(el)));
-    // the backdrop is the last row, at the ground, where the layer commands keep it
     const ground = slideBackdrop(app);
     return [...els.sort((a, b) => (before(a, b) ? 1 : -1)), ...(ground ? [ground] : [])];
   };
 
-  // the rows in order: a group at the place of its member in front, which holds its members and
-  // its inner groups, each at the place of its member in front
   const tree = (els: Element[], path: string[]): Item[] => {
     const out: Item[] = [];
     const done = new Set<string>();
@@ -204,11 +180,9 @@ export function install(app: App): void {
   const nameOf = (item: Item): string => (item.el ? describeObject(item.el).name : 'Group');
   const membersOf = (item: Item): Element[] => (item.el ? [item.el] : item.members);
 
-  // the selected object of each element of the selection, and the text element of a text with its caret
   const selectedObjects = (): Set<Element> => {
     const sel = app.selection;
     if (sel.kind === 'text') return new Set(objects().filter((o) => sel.items.some((h) => o.contains(h))));
-    // a picture of a pair also stands for its twin, which the selection may hold after a flip of the mode
     return new Set(sel.elements().flatMap((el) => {
       const o = objectOf(app, el);
       const twin = twinOf(app, o);
@@ -274,8 +248,6 @@ export function install(app: App): void {
     refresh(true);
   }
 
-  // the rows built again from the slide, with the focus kept on the row of the same element. the
-  // rows are kept while they would be built the same, since a row that is replaced loses the focus
   const ids = new WeakMap<Element, number>();
   let lastId = 0;
   const idOf = (key: Element | string) => {
@@ -306,7 +278,6 @@ export function install(app: App): void {
     const on2 = (item: Item) => membersOf(item).every((el) => selected.has(el));
     const keys = plan.map((p) => keyOf(p.item));
     const current = focusKey && keys.includes(focusKey) ? focusKey : keys[plan.findIndex((p) => on2(p.item))] ?? keys[0];
-    // a group row holds its members, which a folded row does not show as rows of their own
     const sig = [query, ...plan.map((p) => [idOf(keyOf(p.item)), p.level, nameOf(p.item), on2(p.item), membersOf(p.item).every(locked), !p.item.el && folded.has(p.item.group), !p.item.el && p.item.members.map(idOf).join(',')].join('|'))].join('\n');
     if (sig !== built) {
       built = sig;
@@ -321,15 +292,12 @@ export function install(app: App): void {
     if (keepFocus && row && document.activeElement !== row) row.focus({ preventScroll: true });
   }
 
-  // a click on a row: the row alone, or the row added to or taken off the selection
   function choose(item: Item, extend: boolean): void {
     focusKey = keyOf(item);
     const els = membersOf(item);
-    // a change of the steps shown drops the selection, hence it is made first
     if (!extend && els[0]) app.shownSteps.reveal(els[0]);
     const sel = app.selection;
     if (extend) {
-      // the row of a pair is bound to the twin shown, and the selection may hold the other one
       const now = (sel.kind === 'elements' ? sel.elements().map((el) => objectOf(app, el)) : []).map((o) => {
         const twin = twinOf(app, o);
         return twin && els.includes(twin) ? twin : o;
@@ -338,7 +306,6 @@ export function install(app: App): void {
       sel.set('elements', all ? now.filter((el) => !els.includes(el)) : [...now, ...els.filter((el) => !now.includes(el))]);
     } else if (!item.el) selectIn(app, item.path, els);
     else {
-      // a member row selects the member inside the groups around it
       const list = groupsOf(item.el);
       if (rows.some((r) => !r.item.el && list.includes(r.item.group))) selectIn(app, list, els);
       else sel.set('elements', els);
@@ -351,9 +318,6 @@ export function install(app: App): void {
     return rows.find((r) => r.row === row) ?? null;
   };
 
-
-  // a drag of a row that the layer commands can move: the gap at the pointer, as the index of the
-  // row that it is put in front of
   const gapAt = (y: number): number => {
     const i = rows.findIndex((r) => {
       const b = r.row.getBoundingClientRect();
@@ -361,13 +325,10 @@ export function install(app: App): void {
     });
     return i < 0 ? rows.length : i;
   };
-  // the element of the row before which, or behind which, els of row k are put at gap
   const passed = (k: number, gap: number) => {
     const m = membersOf(rows[gap < k ? gap : gap - 1].item);
     return m[gap < k ? 0 : m.length - 1];
   };
-  // the gap nearest to gap, toward row k, that Bring to Front or Send to Back lets els reach, or -1
-  // when els stay in place
   const reachable = (els: Element[], k: number, gap: number): number => {
     const set = new Set(els);
     for (let g = gap; k >= 0 && (g < k || g > k + 1); g += g < k ? 1 : -1) {
@@ -390,11 +351,9 @@ export function install(app: App): void {
   list.addEventListener('pointerdown', (ev) => {
     const r = itemAt(ev.target);
     if (ev.button !== 0 || !r || (ev.target as Element).closest('.lock, .twist')) return;
-    // the row is selected at the press, since the rows are built again once it is selected
     choose(r.item, ev.shiftKey || mod(ev));
     if (movable(r.item)) press = { els: membersOf(r.item), key: keyOf(r.item), x: ev.clientX, y: ev.clientY, id: ev.pointerId, on: false, gap: -1 };
   });
-  // refresh() puts the focus on the row pressed, which a mousedown would put on the row rebuilt
   list.addEventListener('mousedown', (ev) => {
     if (itemAt(ev.target) || ev.target === list) ev.preventDefault();
   });
@@ -428,8 +387,6 @@ export function install(app: App): void {
     if (press && ev.pointerId === press.id) void endDrag(true).catch((e) => app.fail(e));
   });
   list.addEventListener('pointercancel', () => void endDrag(false));
-  // Esc ends a drag of a row without a change, wherever the focus is, in place of the commands of
-  // the key, as Esc ends a drag on the canvas
   app.commands.veto((_, c) => !!press?.on && Object.values(c.keys ?? {}).some((k) => k.includes('Escape')));
   window.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape' || !press?.on) return;
@@ -439,9 +396,6 @@ export function install(app: App): void {
     void endDrag(false).catch((e) => app.fail(e));
   }, true);
 
-  // the elements els of row k, from front to back, moved by layers until each is drawn in front of
-  // the row at gap, or behind the row before gap, or until the layer commands stop it. the element
-  // that goes first is moved first, hence a member of a group does not pass another member
   async function moveTo(els: Element[], key: Key, k: number, gap: number): Promise<void> {
     const up = gap < k;
     const other = passed(k, gap);
@@ -459,7 +413,6 @@ export function install(app: App): void {
   list.addEventListener('keydown', (ev) => {
     const i = rows.findIndex((r) => r.row === document.activeElement);
     if (i < 0) return;
-    // the keys of the Arrange menu and Duplicate act on the rows chosen, as in Keynote's object list
     const arrange = app.commands.forKey(ev, 'canvas', false);
     if (arrange && /^(arrange\.(order\.|group|ungroup|lock|unlock)|edit\.duplicate$)/.test(arrange.id)) {
       ev.preventDefault();
@@ -529,7 +482,6 @@ export function install(app: App): void {
   app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], () => refresh());
   app.listen('resize', () => refresh());
   app.listen('slide', () => (focusKey = null));
-  // a flip of the mode shows the other twin of a dark and light pair, whose row is built again
   new MutationObserver(() => refresh()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   const toggle = () => {
@@ -542,8 +494,6 @@ export function install(app: App): void {
   app.commands.define({
     id: 'view.objects',
     label: 'Object List',
-    // Keynote's key on a Mac, and PowerPoint's key of the Selection Pane on Windows, since Ctrl+Shift+L
-    // is Unlock there
     keys: { mac: ['Mod+Shift+L'], other: ['Alt+F10'] },
     in: OUTSIDE_DIALOGS,
     menu: { bar: 'View', group: 'panes', order: 10.7 },

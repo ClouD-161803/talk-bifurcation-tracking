@@ -1,8 +1,3 @@
-// a paste from another deck on a server that answers every path with status 200, as a development
-// server that falls back to index.html does. its page for a path without a file is not taken as the
-// file, hence the search for a free name under media/ ends, and a missing file of the first deck is
-// listed as not copied
-
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
@@ -16,7 +11,6 @@ let server;
 before(async () => {
   browser = await launch({ offline: false });
   inner = await serve('.');
-  // the files of the repository, and a page of HTML for every other path
   const outer = createServer(async (request, response) => {
     const r = await fetch(`${inner.origin}${request.url}`, { headers: request.headers.range ? { range: request.headers.range } : {} });
     if (r.status === 404) return void response.writeHead(200, { 'Content-Type': 'text/html' }).end('<!doctype html><title>A deck</title>');

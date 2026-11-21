@@ -1,35 +1,14 @@
-// the commands Undo and Redo of the Edit menu, named after the entry of the history that they take
-// back, e.g. Undo Typing. their keys are those of both apps, and Redo has the key of PowerPoint
-// and the key of Keynote. the browser keeps a history of its own in a text, hence the keys are
-// taken in a text too, and they are left to a field and a dialog. the install also defines Edit >
-// Spelling and Grammar > Check Spelling While Typing of Keynote, and Size and Position… of the menu
-// of an element in PowerPoint
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import { store, stored } from '../ui/dom.ts';
+import { titled } from '../history.ts';
+import { entering } from '../inspector/controls.ts';
+import { showFormat } from '../inspector/inspector.ts';
 
 const IN = OUTSIDE_DIALOGS.filter((r) => r !== 'field');
 
-// the articles, coordinating conjunctions, and short prepositions that the title case of Apple
-// keeps in lowercase inside a menu item. up, out, off, and over are left out, since they are most
-// often a part of the verb, as in Set Up
-const MINOR = new Set(['a', 'an', 'the', 'and', 'but', 'nor', 'or', 'as', 'at', 'by', 'for', 'from', 'in', 'into', 'of', 'on', 'onto', 'to', 'via', 'with']);
-
-// a label of the history in the title case of macOS menus, e.g. resize column to fit content as
-// Resize Column to Fit Content. a word given with a capital is kept, e.g. QR
-export function titled(label: string): string {
-  const words = label.split(/(\s+)/);
-  const last = words.length - 1;
-  return words.map((w, i) => (i === 0 || i === last || !MINOR.has(w) ? w.replace(/^\p{Ll}/u, (l) => l.toUpperCase()) : w)).join('');
-}
-
 const SPELLING_KEY = 'beeson-spelling';
 
-// the switch of the spelling of the browser, which underlines a misspelled word in a text element. it is
-// set as spellcheck="false" on the html element of the page, which every text element inherits, and the
-// file is not changed. a field of the editor that asks for spelling itself is switched when it is
-// focused
 function installSpelling(app: App): void {
   let on = stored(SPELLING_KEY) !== '0';
   const asked = new WeakSet<HTMLElement>();
@@ -59,34 +38,19 @@ function installSpelling(app: App): void {
   });
 }
 
-// a field of the inspector, by its input. enter writes a value typed into it as an entry of its
-// own, and gives false when the field refuses the value. follow shows the value of its targets
-// after an undo or a redo. Undo enters the value of the focused field first, and a refused value
-// is put back in place of the undo. Redo redoes the entry that it names, whose value then replaces
-// the typed one. both keep the focus in the field, from the menu and the toolbar alike, as in
-// Keynote
-export type Entering = { enter(): unknown; follow(): void };
-export const entering = new WeakMap<Element, Entering>();
 const entered = async (run: () => Promise<void>, enter: boolean) => {
   const field = document.activeElement && entering.get(document.activeElement);
   if (!field) return run();
-  // the typed value is dropped before a redo, since a pane rebuilt for the selection of the redone
-  // entry would commit it to the targets of the field
   if (!enter) field.follow();
   const input = document.activeElement;
   if (!enter || (await field.enter()) !== false) await run();
-  // a step that put a text selection back, e.g. the undo of Bold, keeps it and its focus
   if (document.activeElement !== input && document.activeElement?.closest('[contenteditable="true"]')) return;
   field.follow();
 };
 
 const frame = () => new Promise((done) => requestAnimationFrame(done));
 
-// the Arrange pane of the Format tab, with the focus in W, or in X when the size is set by the
-// layout of the slide, as Size and Position… of PowerPoint opens the Size and Position pane
 async function sizeAndPosition(app: App): Promise<void> {
-  // imported here, since the tests of titled import this module in node, without a document
-  const { showFormat } = await import('../inspector/inspector.ts');
   showFormat(app, 'arrange');
   for (let i = 0; i < 3; i++) {
     const panel = document.getElementById('beeson-edit-panel-format');
@@ -127,7 +91,6 @@ export function install(app: App): void {
     id: 'arrange.sizeAndPosition',
     label: 'Size and Position…',
     context: ['element'],
-    // a backdrop does not have the Arrange pane
     enabled: (a) => a.selection.elements().some((el) => !el.matches('.backdrop')) && a.region() !== 'dialog',
     run: (a) => sizeAndPosition(a),
   });

@@ -1,10 +1,3 @@
-// a shape on a slide, as Insert > Shape of Keynote and PowerPoint: a div.shape of theme/beeson.css
-// placed and sized in its style, drawn by a drag in the drawing mode of its command, with Shift a
-// square, or by a click at 240 by 240 px. its tone, fill, outline, corners, and geometry are classes
-// set with the commands of Format > Shape, which the Shape pane of inspector/shape.ts runs. a key
-// typed while one shape is selected starts its words, and Return or a double click on an empty
-// shape puts the caret into it, with its p written only at the first input
-
 import type { App } from '../app.ts';
 import { HOST } from '../app.ts';
 import { injectStyle } from '../ui/dom.ts';
@@ -26,21 +19,14 @@ export const SHAPE_KINDS: [string, string][] = [
   ['plus', 'Plus'],
   ['equals', 'Equals'],
 ];
-// the class of each kind, none for a rectangle
 const KIND_CLASSES = SHAPE_KINDS.map(([k]) => k).filter((k) => k !== 'rectangle');
 export const FILLS: [string, string, string | null][] = [['tint', 'Tint', null], ['none', 'None', 'fill-none'], ['ground', 'Background', 'fill-ground'], ['translucent', 'Translucent', 'fill-translucent']];
 export const WEIGHTS: [string, string, string | null][] = [['none', 'None', 'no-outline'], ['3', '3 px', null], ['6', '6 px', 'weight-6'], ['8', '8 px', 'weight-8']];
 export const CORNERS: [string, string, string | null][] = [['small', 'Small', 'round-s'], ['medium', 'Medium', null], ['large', 'Large', 'round-l']];
 
-// the side of a shape placed by a click, and the pointer travel under which a press is a click
 const CLICKED = 240;
 const CLICK = 3;
-// the band in which a press hits a shape without a fill: its outline and NEAR slide px on each side
-// of it. inside the band, a press goes through the shape, e.g. to start a marquee. the band of a
-// drawn geometry is its stroke
 const NEAR = 6;
-// the inner edge of the band, measured from the edge of the ::before box, which is NEAR px outside
-// the outline
 const HOLE = `calc(${2 * NEAR}px + var(--weight))`;
 const HOLE_END = `calc(100% - ${2 * NEAR}px - var(--weight))`;
 
@@ -58,31 +44,25 @@ html.beeson-editing .reveal .slides section .shape.fill-none:not(:is(${DRAWN.map
 
 export const isShape = (el: Element): boolean => el.matches('.reveal .slides section .shape');
 
-// the selected elements when every one of them is a shape, else none
 export function selectedShapes(app: App): Element[] {
   const els = app.selection.elements();
   return els.length && els.every(isShape) ? els : [];
 }
 
-// whether the shape el is drawn with an svg, which a flip mirrors
 export const isDrawn = (el: Element): boolean => DRAWN.some((k) => el.classList.contains(k));
 
 export const kindOf = (el: Element): string => KIND_CLASSES.find((k) => el.classList.contains(k)) ?? 'rectangle';
 
-// the class of one of the choices of a family that el carries, e.g. weight-6 of WEIGHTS
 const choiceOf = (el: Element, family: [string, string, string | null][]): string =>
   (family.find(([, , cls]) => cls && el.classList.contains(cls)) ?? family.find(([, , cls]) => !cls)!)[0];
 
-// the classes of a tag edit that set the choice of a family and take the other ones off
 const choose = (family: [string, string, string | null][], id: string): Record<string, boolean> =>
   Object.fromEntries(family.filter(([, , cls]) => cls).map(([k, , cls]) => [cls!, k === id]));
 
-// the tones of a shape, with text for a shape without a tone class
 const TONES: [string, string, string | null][] = LINE_TONES.map(([t, label]) => [t, label, t === 'text' ? null : `tone-${t}`]);
 export const toneOfShape = (el: Element): string => choiceOf(el, TONES);
 export const isShapeTone = (tone: string): boolean => TONES.some(([t]) => t === tone);
 
-// the tone of each shape of els written as one edit of its tag, as Shape Color writes it
 export function setShapeTone(app: App, els: Element[], tone: string): void {
   for (const el of els) app.doc.setTag(el, { classes: choose(TONES, tone) }, 'Shape Color');
 }
@@ -101,9 +81,6 @@ function caretAtEnd(el: Element): void {
 
 type Box = { left: number; top: number; width: number; height: number };
 
-// the outline of a shape of the kind in a box of w by h px, with the outline s px wide drawn inside
-// the box as the theme draws it: by the border of the box for a rectangle, a rounded rectangle, and
-// an ellipse, and by the path of shapes.ts for the other kinds
 function outlineOf(kind: string, w: number, h: number, s: number): string {
   if (DRAWN.includes(kind)) return shapePath(kind, w, h, s);
   const i = s / 2, l = i, t = i, r = w - i, b = h - i;
@@ -118,16 +95,9 @@ function outlineOf(kind: string, w: number, h: number, s: number): string {
 
 export function shapeText(kind: string, b: Box): string {
   const cls = kind === 'rectangle' ? 'shape' : `shape ${kind}`;
-  // the translate is last, where the tag writer puts one that a move changes
   const at = b.left || b.top ? `; translate: ${b.left}px ${b.top}px` : '';
   return `<div class="${cls}" style="width: ${b.width}px; height: ${b.height}px${at}"></div>`;
 }
-
-// a character typed while one shape is selected starts its words or adds to them. the key is taken
-// before the keyboard handler of commands.ts, which this listener precedes as it is added when the
-// module loads, since a bare key such as G is a command of the canvas
-let typed: ((ev: KeyboardEvent) => void) | null = null;
-window.addEventListener('keydown', (ev) => typed?.(ev), true);
 
 export function install(app: App): void {
   injectStyle('shape', CSS);
@@ -136,12 +106,9 @@ export function install(app: App): void {
   const root = document.documentElement;
   const ready = (a: App) => !!a.pairing?.root && !!a.current() && a.region() !== 'dialog';
 
-  // the kind of shape that the next press on the canvas draws, or null, and the press of a drawing
   let drawing: string | null = null;
   let press: { kind: string; x: number; y: number; from: { x: number; y: number }; moved: boolean } | null = null;
 
-  // the shape being drawn by a drag, in the overlay over the canvas, in the tone of the text of the
-  // slide over its tint, as a new shape is drawn
   const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   ghost.classList.add('beeson-shape-ghost');
   ghost.setAttribute('aria-hidden', 'true');
@@ -166,7 +133,6 @@ export function install(app: App): void {
     root.classList.remove('beeson-drawing-shape');
   };
 
-  // a new shape of the box in slide px on the current slide, in front of its elements, selected
   const add = async (kind: string, b: Box): Promise<void> => {
     const slide = app.current();
     if (!slide) return;
@@ -182,8 +148,6 @@ export function install(app: App): void {
     app.invalidate('content', 'selection');
   };
 
-  // the box of a drag from the press to the point p in slide px, with Shift a square of the
-  // longer side
   const boxOf = (from: { x: number; y: number }, p: { x: number; y: number }, square: boolean): Box => {
     let w = p.x - from.x, h = p.y - from.y;
     if (square) {
@@ -231,15 +195,12 @@ export function install(app: App): void {
     await add(p.kind, p.moved ? boxOf(from, slideAt(ev), ev.shiftKey) : { left: from.x, top: from.y, width: CLICKED, height: CLICKED });
   };
 
-  // the words of an empty shape, begun with a p of the editor only that is written at its first input
   let opened: HTMLElement | null = null;
   const close = () => {
     const p = opened;
     opened = null;
     if (p?.isConnected) p.remove();
   };
-  // the shape el with its words set to the text, written in place of it as one entry of the
-  // history, with the caret at the end of the words
   const startWords = async (el: Element, text: string) => {
     const parent = el.parentElement;
     if (!parent) return;
@@ -270,7 +231,6 @@ export function install(app: App): void {
       close();
       void startWords(el, text).catch((e) => app.fail(e));
     });
-    // the words are kept while the sheet of a formula typed into them is open
     p.addEventListener('focusout', () => setTimeout(() => opened === p && document.activeElement !== p && !app.math.isOpen() && close(), 0));
     p.focus({ preventScroll: true });
   };
@@ -292,25 +252,19 @@ export function install(app: App): void {
       return;
     }
   }, true);
-  typed = (ev) => {
-    // in Version History, the focus is on the body as well, and the shape selected before it is kept
-    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return;
-    // an Alt key of a command, e.g. Alt+= of Insert Formula on other, runs the command
-    if (ev.altKey && app.commands.forKey(ev, 'canvas')) return;
+  c.intercept((ev) => {
+    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return false;
+    if (ev.altKey && app.commands.forKey(ev, 'canvas')) return false;
     const el = app.selection.only();
-    if (!el || !isShape(el) || el.hasAttribute('data-locked')) return;
+    if (!el || !isShape(el) || el.hasAttribute('data-locked')) return false;
     ev.preventDefault();
-    ev.stopImmediatePropagation();
     const host = [...el.querySelectorAll(HOST)].at(-1);
     if (host) {
       caretAtEnd(host);
       document.execCommand('insertText', false, ev.key);
     } else void startWords(el, ev.key).catch((e) => app.fail(e));
-  };
-  // a press on the words of a selected text element or shape is taken by the move of
-  // canvas/drag.ts, whose click puts the caret, hence the word at the caret of a double click is
-  // selected here, as the browser selects it in a text. a space or a mark between two words is
-  // selected by itself
+    return true;
+  });
   window.addEventListener('dblclick', (ev) => {
     const host = ev.target instanceof Element ? ev.target.closest(HOST) : null;
     const s = getSelection(), node = s?.anchorNode;
@@ -328,7 +282,6 @@ export function install(app: App): void {
     openWords(el);
   }, true);
 
-  // with an arg { box } in slide px the shape is inserted at once, e.g. by a test
   const startDrawing = (kind: string) => async (a: App, arg?: unknown) => {
     const box = (arg as { box?: Box } | undefined)?.box;
     if (box) return add(kind, box);
@@ -350,7 +303,6 @@ export function install(app: App): void {
     setItemIcon(`insert.shape.${kind}`, `shape:${kind}`);
   });
 
-  // Return on an empty shape puts the caret into it, before Edit Text of commands/arrange.ts
   c.define({
     id: 'shape.editWords',
     label: 'Edit Text',
@@ -384,8 +336,6 @@ export function install(app: App): void {
     });
   family('tone', TONES, 'Shape Color', 'shape-tone', 80);
   family('fill', FILLS, 'Shape Fill', 'shape-fill', 90);
-  // a translucent shape is drawn without an outline unless it has weight-6 or weight-8, hence 3 px, which does not
-  // have a class, is not offered on a translucent shape, and the outline of a translucent shape without a class reads as None
   const translucent = (el: Element) => el.classList.contains('fill-translucent');
   family('weight', WEIGHTS, 'Outline', 'shape-weight', 100, (el, id) => id !== '3' || !translucent(el), (el) => (translucent(el) && choiceOf(el, WEIGHTS) === '3' ? 'none' : choiceOf(el, WEIGHTS)));
   family('corner', CORNERS, 'Corners', 'shape-corner', 110, (el) => el.classList.contains('rounded'));

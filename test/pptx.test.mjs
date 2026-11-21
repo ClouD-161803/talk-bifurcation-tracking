@@ -1,5 +1,3 @@
-// checks of the PowerPoint export, read from the XML of the file, as AGENTS.md asks
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -15,7 +13,6 @@ import { color as mp4Color, stream as mp4Stream } from './helpers/mp4.mjs';
 
 const EMU_PER_PX = 6350;
 
-// the parts of a zip, from its central directory, as a map of a name to a Buffer
 function unzip(file) {
   const end = file.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   const parts = new Map();
@@ -37,7 +34,6 @@ function unzip(file) {
 
 const text = (parts, name) => parts.get(name).toString('utf8');
 
-// the relationships of a part, as a map of an id to the name of the target part
 function relationships(parts, name) {
   const rels = `${dirname(name)}/_rels/${posix.basename(name)}.rels`;
   if (!parts.has(rels)) return new Map();
@@ -54,7 +50,6 @@ function assertBalanced(xml, name) {
   assert.deepEqual(open, [], `${name}: elements are left open`);
 }
 
-// every XML part is balanced, every part has a content type, and every reference has a target
 function assertPackage(parts) {
   const types = text(parts, '[Content_Types].xml');
   for (const [name, data] of parts) {
@@ -72,9 +67,6 @@ function assertPackage(parts) {
   for (const [, name] of types.matchAll(/PartName="\/([^"]+)"/g)) assert.ok(parts.has(name), `${name} of the content types exists`);
 }
 
-// the run of the export of a deck, with options before and after the deck and the output, and the
-// parts of its file. with noH264, the export is run in a browser without an H.264 encoder, and with
-// reduced, in a browser that prefers reduced motion
 function runExport(deck, before = [], after = [], { noH264 = false, reduced = false } = {}) {
   const folder = mkdtempSync(join(tmpdir(), 'beeson-pptx-'));
   try {
@@ -113,7 +105,6 @@ test('a video that is shown on two slides is embedded once, and it starts by its
   assert.ok(slide.includes(box(video)));
   assert.match(slide, /<a:videoFile r:link="rId\d+"\/>/);
   assert.match(slide, /<p14:media [^>]*r:embed="rId\d+"\/>/);
-  // an effect that starts after the previous one, in place of one on a click, keeps a click a step
   assert.match(slide, /presetClass="mediacall"[^>]*nodeType="afterEffect"/);
   assert.match(slide, /cmd="playFrom\(0\.0\)"/);
   assert.match(slide, /<p:cMediaNode vol="80000" mute="1"><p:cTn id="\d+" repeatCount="indefinite"/);
@@ -121,8 +112,6 @@ test('a video that is shown on two slides is embedded once, and it starts by its
   assert.deepEqual(ids, ids.map((_, n) => n + 1));
 });
 
-// a slide of one still, a recording, three pictures of the words, and a video, with small Buffers
-// in place of the PNGs and MP4s
 const recorded = ({ tops = 3, loop = true } = {}) => ({
   name: 'Recorded',
   notes: [],
@@ -134,7 +123,6 @@ const recorded = ({ tops = 3, loop = true } = {}) => ({
 
 const pictures = (slide) => [...slide.matchAll(/<p:pic><p:nvPicPr><p:cNvPr id="(\d+)" name="([^"]+)"/g)].map((m) => m.slice(1));
 
-// the parts that a picture of a slide points to, in the order of its r:link and r:embed
 function targets(parts, name, shape) {
   const picture = text(parts, name).match(new RegExp(`<p:cNvPr id="${shape}" [^]*?</p:pic>`))[0];
   const rels = relationships(parts, name);
@@ -174,7 +162,6 @@ test('a video after another lies under it, which is hidden once it has played, a
   const loop = { ...clip, data: Buffer.from([3]), duration: 2000, loop: true, after: true };
   const slide = text(unzip(pptx([{ name: 'Changed', notes: [], images: [Buffer.from([4]), Buffer.from([5])], videos: [clip, loop] }])), 'ppt/slides/slide1.xml');
   assert.deepEqual(pictures(slide), [['2', 'Step 1'], ['3', 'Step 2'], ['5', 'Video 5'], ['4', 'Video 4']]);
-  // Keynote reads the delay of an effect from the effect before it, and PowerPoint from the group
   const effects = [...slide.matchAll(/presetClass="(\w+)"[^>]*nodeType="(\w+)"><p:stCondLst><p:cond delay="(\d+)"\/>[^]*?(?:cmd="([^"]+)"[^]*?)?<p:spTgt spid="(\d+)"/g)]
     .map((m) => m.slice(1).filter(Boolean));
   assert.deepEqual(effects, [
@@ -188,8 +175,6 @@ test('a video after another lies under it, which is hidden once it has played, a
 
 test('a click shows the next picture of the words and hides the one before', () => {
   const slide = text(unzip(pptx([recorded()])), 'ppt/slides/slide1.xml');
-  // in the main sequence, a click is a lone indefinite condition. the media nodes after the
-  // sequence have one as well
   const sequence = slide.slice(0, slide.indexOf('<p:prevCondLst>'));
   const clicks = sequence.split('<p:cond delay="indefinite"/></p:stCondLst>').slice(1);
   assert.equal(clicks.length, 2);
@@ -259,11 +244,9 @@ test('videos are placed on their steps of a deck, in the box of their picture', 
   assert.equal(slideCount(parts), 4);
   const slides = [1, 2, 3, 4].map((n) => text(parts, `ppt/slides/slide${n}.xml`));
   assert.deepEqual(slides.map((slide) => slide.match(/<a:videoFile /g)?.length ?? 0), [1, 0, 0, 1]);
-  // a clip of 1200 by 1600 px in a plate of 1680 by 630 px is at its right, as in object-position
   assert.ok(slides[0].includes(box({ x: 1327.5, y: 200, width: 472.5, height: 630 })));
   assert.ok(slides[0].includes('repeatCount="indefinite"') && slides[0].includes('mute="1"'));
   assert.ok(!slides[3].includes('repeatCount') && !slides[3].includes('mute="1"'));
-  // the videos of the for-light class are hidden, hence one clip is in the file
   assert.equal([...parts.keys()].filter((name) => name.endsWith('.mp4')).length, 1);
   const notes = text(parts, 'ppt/notesSlides/notesSlide1.xml');
   assert.ok(notes.includes('<a:t>The first paragraph &lt;of the notes&gt;.</a:t>'), notes);
@@ -271,7 +254,6 @@ test('videos are placed on their steps of a deck, in the box of their picture', 
   assert.ok(!parts.has('ppt/notesSlides/notesSlide2.xml'));
 });
 
-// a video is restarted on a new PowerPoint slide, and a later step is shown on a click in its place
 test('a video is played through the steps of its slide', () => {
   const parts = exportDeck('test/pages/video-steps.html');
   assertPackage(parts);
@@ -279,31 +261,23 @@ test('a video is played through the steps of its slide', () => {
   const slide = text(parts, 'ppt/slides/slide1.xml');
   assert.deepEqual([...slide.matchAll(/<p:pic><p:nvPicPr><p:cNvPr id="(\d+)" name="(\w+)/g)].map((m) => m.slice(1)),
     [['2', 'Step'], ['3', 'Step'], ['4', 'Step'], ['5', 'Step'], ['6', 'Video']]);
-  // the last click is the step that restores the dimmed fragments
   assert.deepEqual([...slide.matchAll(/nodeType="clickEffect".*?<p:spTgt spid="(\d+)"/g)].map((m) => m[1]), ['3', '4', '5']);
   assert.ok(slide.indexOf('nodeType="afterEffect"') < slide.indexOf('nodeType="clickEffect"'));
 });
 
-// a clip of the style play is in the images of the steps before its own, and it is started on the
-// PowerPoint slide of its step. A clip under a later one of its place is left out
 test('a video is started on the click of its step, and two videos of one step together', () => {
   const parts = exportDeck('test/pages/video-play.html');
   assertPackage(parts);
   assert.equal(slideCount(parts), 10);
   const slides = Array.from({ length: 10 }, (_, n) => text(parts, `ppt/slides/slide${n + 1}.xml`));
   assert.deepEqual(slides.map((slide) => slide.match(/<a:videoFile /g)?.length ?? 0), [0, 0, 1, 0, 2, 0, 1, 1, 0, 1]);
-  // the steps after the step of the clip are clicks on its slide
   assert.equal(slides[2].match(/nodeType="clickEffect"/g).length, 2);
   assert.deepEqual([...slides[4].matchAll(/presetClass="mediacall"[^>]*nodeType="(\w+)"/g)].map((m) => m[1]), ['afterEffect', 'withEffect']);
-  // the clips of a slide, the first test pattern and then the second on the slide of two
   const clips = (n) => [...new Set([...relationships(parts, `ppt/slides/slide${n}.xml`).values()].filter((name) => name.endsWith('.mp4')))];
   const [a, b] = clips(5);
   assert.deepEqual([clips(7), clips(8)], [[a], [b]], 'the second clip is shown in place of the first');
 });
 
-// with --still, a tycho viewer of the style play is in the image of each step of its slide, as the
-// still of its first frame. The stills themselves are checked in the print view, in
-// test/viewers.test.mjs
 test('with --still, a tycho viewer of the style play is exported as its still on every step of its slide', () => {
   const parts = exportDeck('test/pages/viewer-play.html', [], ['--still']);
   assertPackage(parts);
@@ -313,7 +287,6 @@ test('with --still, a tycho viewer of the style play is exported as its still on
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 
-// with --still, since the loop of the scene of the demo deck lasts 72 s
 test('the demo deck is exported with a step for each page of its PDF', () => {
   const parts = exportDeck('test-deck.html', ['--still']);
   assertPackage(parts);
@@ -331,11 +304,6 @@ test('the demo deck is exported with a step for each page of its PDF', () => {
   assert.ok([...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 
-// runs in Chrome. a and b are { png } or { mp4, time }, where png is the base64 of a PNG or a list
-// of them drawn one over the other, and mp4 is the base64 of an MP4 at a time in s, each with a crop
-// { x, y, width, height } in px of the file or without one. Returns the largest difference of a
-// channel, the shares of the pixels off by more than 8 and by more than 32 in a channel, the mean
-// difference of a channel, and the PSNR in dB over RGB
 async function differences(a, b) {
   const pixels = async ({ png, mp4, time, crop }) => {
     let source, over = [];
@@ -383,9 +351,6 @@ async function differences(a, b) {
 
 const compare = (page, a, b) => page.evaluate(`(${differences})(${JSON.stringify(a)}, ${JSON.stringify(b)})`);
 
-// the height in px and the picture of each .pdf-page of the print view of a deck in page, clipped to
-// the box of the page in the document. with pdfPageHeightOffset=0, a page is as high as its slide,
-// in place of a pixel less
 async function printedSteps(page, deck) {
   await printView(page, deckUrl(deck, 'print-pdf&still&pdfPageHeightOffset=0'));
   const boxes = await page.evaluate(`[...document.querySelectorAll('.pdf-page')]
@@ -399,21 +364,14 @@ async function printedSteps(page, deck) {
   return { heights: boxes.map((b) => b.height), shots };
 }
 
-// the picture of PowerPoint slide n of a file of one picture per slide
 const stepOf = (parts, n) => parts.get(relationships(parts, `ppt/slides/slide${n}.xml`).get(
   text(parts, `ppt/slides/slide${n}.xml`).match(/<a:blip r:embed="([^"]+)"/)[1]));
 
-// each slide of test/pages/print-rows.html has a bar on its first row and another on its last row.
-// by default, a page of the print view is 1079 px high. a picture of 1080 px then ends on the first
-// row of the next page, and on the last page the scroll stops a pixel short of its top
 test('the picture of each step is its page of the print view, the last page too', { timeout: 300000 }, async (t) => {
   const parts = exportDeck('test/pages/print-rows.html');
-  // with wholeFrames, since the export draws its text without subpixel antialiasing. on Linux and
-  // Windows, the page number of a picture otherwise differs from the one of its page
   const browser = await launch({ wholeFrames: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ scale: 2 });
-  // every picture is taken before the comparisons, which are made in the same page
   const { heights, shots } = await printedSteps(page, 'test/pages/print-rows.html');
   assert.deepEqual(heights, shots.map(() => 1080));
   assert.equal(slideCount(parts), shots.length);
@@ -421,8 +379,6 @@ test('the picture of each step is its page of the print view, the last page too'
   for (const [n, shot] of shots.entries()) {
     const seen = await compare(page, { png: stepOf(parts, n + 1).toString('base64') }, { png: shot.toString('base64') });
     t.diagnostic(`step ${n + 1}: ${JSON.stringify(seen)}`);
-    // measured on a Mac as equal. a picture with the last row of a slide replaced has 0.09 % of
-    // its pixels off by more than 32
     if (!(seen.over < 1e-5 && seen.mean < 0.01)) off.push({ step: n + 1, ...seen });
   }
   assert.deepEqual(off, []);
@@ -430,15 +386,12 @@ test('the picture of each step is its page of the print view, the last page too'
 
 const pngSize = (png) => [png.readUInt32BE(16), png.readUInt32BE(20)];
 
-// the box in px of a picture of a slide
 function placeOf(slide, shape) {
   const [, x, y, cx, cy] = slide.match(new RegExp(`<p:cNvPr id="${shape}" [^]*?<a:off x="(\\d+)" y="(\\d+)"/><a:ext cx="(\\d+)" cy="(\\d+)"/>`));
   const [left, top, width, height] = [x, y, cx, cy].map((emu) => Number(emu) / EMU_PER_PX);
   return { x: left, y: top, width, height };
 }
 
-// the videos of a PowerPoint slide of a file, each with its box and the parts of its recording and
-// its poster
 function videosOf(parts, n) {
   const name = `ppt/slides/slide${n}.xml`;
   const slide = text(parts, name);
@@ -449,7 +402,6 @@ function videosOf(parts, n) {
   });
 }
 
-// the file of test/pages/scene-record.html, exported once for the tests of its recordings
 let sceneParts;
 const sceneDeck = () => (sceneParts ??= exportDeck('test/pages/scene-record.html'));
 
@@ -461,18 +413,13 @@ test('a tycho scene is recorded into a video in the box of its viewer, at twice 
   assert.deepEqual(pictures(slide).map(([, name]) => name.split(' ')[0]), ['Step', 'Step', 'Video']);
   const [video] = videosOf(parts, 1);
   assert.deepEqual({ ...video, recording: undefined, poster: undefined }, { x: 1200, y: 120, width: 600, height: 800, recording: undefined, poster: undefined });
-  // the loop of the scene lasts 1 s
   assert.deepEqual(mp4Stream(parts.get(video.recording)), { width: 1200, height: 1600, fps: 60, frames: 60, duration: 1, keys: [1] });
   assert.deepEqual(pngSize(parts.get(video.poster)), [1200, 1600]);
-  // a scene is played without sound and looped, as in its viewer, and the later step is a click
   assert.match(slide, /<p:cMediaNode vol="80000" mute="1"><p:cTn id="\d+" repeatCount="indefinite"/);
   assert.equal(slide.match(/nodeType="clickEffect"/g).length, 1);
-  // a recording for each of the three viewers
   assert.equal([...parts.keys()].filter((name) => name.endsWith('.mp4')).length, 3);
 });
 
-// the viewer without the attribute kiosk is on the PowerPoint slides of both steps, and it is
-// recorded once
 test('a viewer of the style play starts a new PowerPoint slide at its step, with its first frame in the pictures before', { timeout: 120000 }, async (t) => {
   const parts = sceneDeck();
   const [first] = videosOf(parts, 2);
@@ -487,17 +434,13 @@ test('a viewer of the style play starts a new PowerPoint slide at its step, with
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  // the step of slide 2 is a picture at twice the size of the slide
   const step = parts.get(targets(parts, 'ppt/slides/slide2.xml', 2)[0]);
   const crop = { x: 2 * later.x, y: 2 * later.y, width: 2 * later.width, height: 2 * later.height };
   const seen = await compare(page, { png: step.toString('base64'), crop }, { png: parts.get(later.poster).toString('base64') });
   t.diagnostic(JSON.stringify(seen));
-  // the same pixels, since the first frame is put in place of the still of the print view
   assert.ok(seen.max <= 8, JSON.stringify(seen));
 });
 
-// a frame of the recording, decoded in Chrome, against a screenshot of the viewer at the time of
-// the frame, both at twice the size of the slide
 test('a frame of a recording is the picture of its viewer on the page at the same time', { timeout: 120000 }, async (t) => {
   const [video] = videosOf(sceneDeck(), 1);
   const mp4 = sceneDeck().get(video.recording).toString('base64');
@@ -512,13 +455,8 @@ test('a frame of a recording is the picture of its viewer on the page at the sam
     await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
     const box = await page.evaluate('steady.getBoundingClientRect().toJSON()');
     const shot = await page.screenshot({ x: box.x, y: box.y, width: box.width, height: box.height, scale: 1 });
-    // the middle of frame k
-    // in the page of the deck, since a page behind it does not get animation frames
     const seen = await compare(page, { png: shot.toString('base64') }, { mp4, time: (k + 0.5) / 60 });
     t.diagnostic(`frame ${k}: ${JSON.stringify(seen)}`);
-    // measured on a Mac at 44 to 46 dB, with 0.03 to 0.06 % of the pixels off by more than 32.
-    // the drawn frames differ from the page by 50 dB and 0.004 %, all in the rotated label of the
-    // axis y, and the rest is the loss of the encoder
     assert.ok(seen.psnr > 40 && seen.over < 0.003 && seen.mean < 1, `frame ${k}: ${JSON.stringify(seen)}`);
   }
   assert.deepEqual(page.errors, []);
@@ -533,8 +471,6 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 
-// the file of test/pages/animations-record.html, exported once for the tests of its recordings, in a
-// browser that prefers reduced motion, in which the export records them all the same
 let animationsRun;
 const animationsDeck = () => {
   animationsRun ??= runExport('test/pages/animations-record.html', [], [], { reduced: true });
@@ -542,7 +478,6 @@ const animationsDeck = () => {
   return animationsRun;
 };
 
-// the videos of PowerPoint slide n, each with the stream of its MP4 and whether it is looped
 function playedOf(parts, n) {
   const slide = text(parts, `ppt/slides/slide${n}.xml`);
   const shapes = pictures(slide).filter(([, label]) => label.startsWith('Video')).map(([shape]) => shape);
@@ -552,8 +487,6 @@ function playedOf(parts, n) {
   });
 }
 
-// the surface turns in 2 s, and a step that changes its stage starts a PowerPoint slide of its
-// own. The loop of the new stage lies under the clip of the change, see the test of pptx() above
 test('a surface is recorded as a loop of one turn in its box, and a step that changes its stage as a clip before the loop', { timeout: 300000 }, () => {
   const { run, parts } = animationsDeck();
   assertPackage(parts);
@@ -565,19 +498,16 @@ test('a surface is recorded as a loop of one turn in its box, and a step that ch
   assert.deepEqual({ ...first.stream, duration: undefined }, { width: size[0], height: size[1], fps: 24, frames: 48, duration: undefined, keys: [1] });
   assert.equal(first.looped, true);
   assert.deepEqual(pngSize(parts.get(first.poster)), size);
-  // the step of the stage and the step after it, which keeps the stage, then the same stage again
   assert.deepEqual(kinds(parts, 2), ['Step', 'Step', 'Step', 'Video', 'Video']);
   const [loop, clip] = playedOf(parts, 2);
   assert.deepEqual([loop.looped, loop.stream.frames, loop.x, loop.y], [true, 48, first.x, first.y]);
   assert.notEqual(loop.recording, first.recording);
-  // the change lasts 1.4 s, and the clip ends once the surface has settled
   const { frames } = clip.stream;
   assert.equal(clip.looped, false);
   assert.ok(frames >= Math.ceil(1.4 * 24) && frames < 3 * 24, `${frames} frames`);
   const slide = text(parts, 'ppt/slides/slide2.xml');
   assert.match(slide, new RegExp(`presetClass="exit"[^>]*nodeType="withEffect"><p:stCondLst><p:cond delay="${Math.round(frames / 24 * 1000)}"/>[^]*?<p:spTgt spid="${clip.shape}"/>`));
   assert.equal(slide.match(/nodeType="clickEffect"/g).length, 2);
-  // the surface that does not turn is left in the picture of its step
   assert.deepEqual(kinds(parts, 5), ['Step']);
 });
 
@@ -589,7 +519,6 @@ test('a plot is recorded at each step as a loop of its pass and its hold, at twi
   assert.notEqual(one.recording, two.recording);
   for (const video of [one, two]) {
     const size = [2 * Math.round(video.width), 2 * Math.round(video.height)];
-    // a pass of 1 s and a hold of 0.5 s
     assert.deepEqual({ ...video.stream, duration: undefined }, { width: size[0], height: size[1], fps: 30, frames: 45, duration: undefined, keys: [1] });
     assert.equal(video.looped, true);
     assert.deepEqual(pngSize(parts.get(video.poster)), size);
@@ -645,60 +574,39 @@ test('with --still, the surfaces and the plots are the pictures of their steps, 
   assert.match(run.stderr, /--still to keep the surfaces and the plots as stills/);
 });
 
-// the scene of the demo deck is recorded in 83 s on a Mac, and in minutes on a runner of GitHub,
-// above the limit of 120 s of a DevTools call in launch() of scripts/chrome.mjs. The limit of the
-// second browser is a third of the time of the first recording, and twice the time of every call
-// before it, i.e. of the load of the deck
-test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 1200000 }, async (t) => {
+test('a scene is recorded in DevTools calls that each span less than a third of its frames', { timeout: 600000 }, async (t) => {
   const boxes = new Map([['0', { width: 300, height: 400, name: 'A long recorded scene' }]]);
-  const timed = async (options) => {
-    const browser = await launch(options);
-    let started;
+  const browser = await launch();
+  t.after(() => browser.close());
+  const spanned = (expression) => `(async () => {
+    const done = () => window.beesonRecording?.done ?? 0;
+    const from = done();
     try {
-      const start = Date.now();
-      const { newPage } = browser;
-      browser.newPage = async (...args) => {
-        const page = await newPage(...args);
-        const { evaluate } = page;
-        page.evaluate = (expression) => {
-          if (started === undefined && expression.includes('exportVideo')) started = Date.now();
-          return evaluate(expression);
-        };
-        return page;
-      };
-      const [recording] = (await recordScenes(browser, 'test/pages/scene-long.html', boxes)).values();
-      return { recording, load: started - start, record: Date.now() - started };
-    } catch (error) {
-      error.loading = started === undefined;
-      throw error;
+      return await (0, eval)(${JSON.stringify(expression)});
     } finally {
-      await browser.close();
+      (window.spans ??= []).push(done() - from);
     }
+  })()`;
+  const spans = [];
+  const { newPage } = browser;
+  browser.newPage = async (...args) => {
+    const page = await newPage(...args);
+    const { evaluate, waitFor, close } = page;
+    page.evaluate = (expression) => evaluate(spanned(expression));
+    page.waitFor = (expression, timeout) => waitFor(spanned(expression), timeout);
+    page.close = async () => {
+      spans.push(...await evaluate('window.spans'));
+      await close();
+    };
+    return page;
   };
-  // a call over the limit, e.g. behind a long task of a crowded runner, is measured again with a new
-  // pair, twice at most. A late call before the recording belongs to the load of the deck, which
-  // this test does not limit, hence the test is still skipped when the next load is too slow
-  let first, second, late;
-  for (let n = 0; !second; n++) {
-    first = await timed();
-    const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
-    t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
-    if (timeout > first.record / 2 && late) throw late;
-    if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
-    second = await timed({ timeout }).catch((error) => {
-      if (n >= 2 || !/^Chrome did not answer/.test(error.message)) throw error;
-      if (!error.loading) late = error;
-      t.diagnostic(`a call is not answered within ${timeout} ms, and the pair is recorded again`);
-    });
-  }
-  t.diagnostic(`load ${second.load} ms, recording ${second.record} ms`);
-  // the bytes of two recordings of one scene differ by a few hundred
-  const stream = { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] };
-  assert.deepEqual(mp4Stream(first.recording.data), stream);
-  assert.deepEqual(mp4Stream(second.recording.data), stream);
+  const [recording] = (await recordScenes(browser, 'test/pages/scene-long.html', boxes)).values();
+  const stream = mp4Stream(recording.data);
+  assert.deepEqual(stream, { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] });
+  t.diagnostic(`${spans.length} calls, which span ${Math.max(...spans)} frames at most`);
+  assert.ok(Math.max(...spans) < stream.frames / 3, `a call spans ${Math.max(...spans)} of ${stream.frames} frames`);
 });
 
-// the run and the file of test/pages/record.html exported without and with --still, each made once
 let recordRun, recordStill;
 const recordDeck = () => {
   recordRun ??= runExport('test/pages/record.html');
@@ -707,11 +615,8 @@ const recordDeck = () => {
 };
 const recordStillDeck = () => (recordStill ??= exportDeck('test/pages/record.html', ['--still']));
 
-// the first words of the names of the pictures of PowerPoint slide n
 const kinds = (parts, n) => pictures(text(parts, `ppt/slides/slide${n}.xml`)).map(([, name]) => name.split(' ')[0]);
 
-// the recording of PowerPoint slide n, with the parts of its MP4 and its poster, the stream of the
-// MP4, and whether it is looped, or null for a slide without a recording
 function recordingOf(parts, n) {
   const name = `ppt/slides/slide${n}.xml`;
   const slide = text(parts, name);
@@ -723,8 +628,6 @@ function recordingOf(parts, n) {
   return { part: link, poster, ...mp4Stream(parts.get(link)), looped: node[1].includes('repeatCount="indefinite"') };
 }
 
-// the title of four steps is slide 1, the closing slide 2, and the loop 3. the trace that is a step
-// is on slides 4 and 5, the still backdrop that is a step on 6 and 7, and the two traces on 8
 test('a slide of the deck with a traced backdrop is one PowerPoint slide with its still, its recording, and the words of each step', { timeout: 600000 }, () => {
   const { run, parts } = recordDeck();
   assertPackage(parts);
@@ -732,7 +635,6 @@ test('a slide of the deck with a traced backdrop is one PowerPoint slide with it
   assert.equal(slideCount(parts), 8);
   assert.deepEqual(kinds(parts, 1), ['Step', 'Recording', 'Words', 'Words', 'Words', 'Words']);
   const title = recordingOf(parts, 1);
-  // a trace of 1 s ends with the frame at which its clock reaches its end
   assert.deepEqual({ ...title, part: undefined, poster: undefined, duration: undefined },
     { width: 3840, height: 2160, fps: 60, frames: 61, keys: [1], looped: false, part: undefined, poster: undefined, duration: undefined });
   assert.deepEqual(pngSize(parts.get(title.poster)), [3840, 2160]);
@@ -748,7 +650,6 @@ test('a backdrop that is a step starts a new PowerPoint slide at its step, and t
   assert.deepEqual(kinds(parts, 4), ['Step']);
   assert.deepEqual(kinds(parts, 5), ['Step', 'Recording', 'Words']);
   assert.equal(recordingOf(parts, 5).frames, 61);
-  // a backdrop of a content slide without data-live is drawn complete at its step
   assert.deepEqual([kinds(parts, 6), kinds(parts, 7)], [['Step'], ['Step']]);
 });
 
@@ -756,7 +657,6 @@ test('a loop is a looped recording of one period', { timeout: 600000 }, () => {
   const { parts } = recordDeck();
   const loop = recordingOf(parts, 3);
   assert.equal(loop.looped, true);
-  // the heads of a loop go round in 9 s, see LOOP in src/orbits.ts
   assert.equal(loop.frames, 9 * 60);
   assert.equal(recordingOf(parts, 2).looped, false);
 });
@@ -776,9 +676,6 @@ test('without an H.264 encoder, the export of a traced backdrop fails and names 
   assert.match(run.stderr, /--still/);
 });
 
-// PowerPoint on the Mac draws a video in limited range 1 level darker near black than the slide
-// around it, e.g. 4 for 5, and a video in full range at the level of the slide. Keynote matches
-// both, and draws the transfer that the file describes, the transfer of sRGB of the slide
 test('every kind of recording is described in its colr box as full range, with the primaries and matrix of BT.709 and the transfer of sRGB', { timeout: 900000 }, () => {
   const decks = { scenes: sceneDeck(), 'surfaces and plots': animationsDeck().parts, backdrops: recordDeck().parts };
   for (const [kind, parts] of Object.entries(decks)) {
@@ -796,9 +693,6 @@ test('a deck without a scene and without a traced backdrop is exported by a brow
   assert.doesNotMatch(run.stdout, /recorded/);
 });
 
-// the bound of the still with the picture of the words against the print view in
-// test/record.test.mjs, where a channel of a pixel differs by mean on average, by at most max, and
-// by more than 8 in at most a share few of the pixels
 const LAYERS = { mean: 0.005, max: 160, few: 0.0001 };
 
 test('the still of a recorded slide with the words of a step over it is the picture of the step in the file of --still', { timeout: 600000 }, async (t) => {
@@ -812,7 +706,6 @@ test('the still of a recorded slide with the words of a step over it is the pict
     const shape = pictures(text(file, name)).find(([, l]) => l === label)[0];
     return file.get(targets(file, name, shape)[0]).toString('base64');
   };
-  // the third step of the title, and the second step of the two traces, the last page of the deck
   for (const [n, k, m] of [[1, 3, 3], [8, 2, 12]]) {
     const seen = await compare(page, { png: [picture(parts, n, 'Step 1'), picture(parts, n, `Words ${k}`)] }, { png: picture(still, m, 'Step 1') });
     t.diagnostic(`slide ${n}, step ${k}: ${JSON.stringify(seen)}`);

@@ -1,6 +1,3 @@
-// the history of the editor without a page: an undo or a redo asked for while another one runs is
-// queued, never dropped, and the changes made in a transaction are one entry with its label
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { History } from '../src/editor/history.ts';
@@ -11,7 +8,6 @@ function history() {
   return new History({ snapshot: () => '', restore: async () => {}, onChange: () => {} });
 }
 
-// an entry whose undo and redo take ms, as a formula that is typeset again
 function slow(log, name, ms = 50) {
   return {
     label: name,
@@ -43,7 +39,6 @@ test('an undo asked for while an undo runs is queued, not dropped', async () => 
   assert.equal(h.canUndo, true);
 });
 
-// an entry that sets one key of state, and sets it back at an undo
 function change(state, key, value, label = key) {
   const before = state[key];
   state[key] = value;
@@ -95,8 +90,6 @@ test('the changes made before an error in a transaction are recorded, and the er
   assert.deepEqual(state, { a: 0 });
 });
 
-// the typing of a text element over the changes of other people, with a text element as an object
-// whose content is its text. the undo of an entry of typing reads the focus of the page
 globalThis.document ??= { activeElement: null };
 
 function texts() {
@@ -107,7 +100,6 @@ function texts() {
 
 const textEl = (content) => ({ content, isConnected: true, closest: () => null, matches: () => false });
 
-// the keys of one entry of typing, which turn the content of el into content
 function typeInto(h, el, content) {
   h.beforeTyping(el);
   el.content = content;
@@ -190,11 +182,9 @@ test('an entry of typing whose carry was refused is not undone from its old text
   const el = textEl('rho');
   h.track(el);
   typeInto(h, el, 'xaarho');
-  // another person types an a after the x, which the texts also give inside the span of the person
   el.content = 'xaaarho';
   h.prune((x) => x === el, undefined, undefined, [el]);
   h.carry(el);
-  // and then removes the last a of the person, after which the text reads as after the typing
   el.content = 'xaarho';
   h.prune((x) => x === el, undefined, undefined, [el]);
   h.carry(el);
@@ -226,7 +216,6 @@ test('an entry of typing that has ended is refused, as one in progress is, when 
   assert.deepEqual(told, [['typing', 'undo']]);
 });
 
-// each content of contents written into el by another person, as the session applies it
 function edit(h, el, ...contents) {
   for (const content of contents) {
     el.content = content;
@@ -245,7 +234,6 @@ test('an undo of an earlier entry of typing in a text element is refused when an
   h.break();
   typeInto(h, el, 'the dogs runs fast');
   h.break();
-  // the other person selects dogs and types cats over it, key by key
   edit(h, el, 'the c runs fast', 'the ca runs fast', 'the cat runs fast', 'the cats runs fast');
   await h.undo();
   assert.equal(el.content, 'the cats runs');
@@ -268,15 +256,12 @@ test('an undo of an entry of typing under an undone one is refused when another 
   await h.undo();
   await h.redo();
   assert.equal(el.content, 'a big dog');
-  // the other person selects all and types over it
   edit(h, el, '', 'a big cat');
   await h.undo();
   assert.equal(el.content, 'a big cat', 'the words of the other person are kept');
   assert.deepEqual(told, ['undo']);
 });
 
-// the check of each entry reads the text without the entries after it, whose letters beside its
-// own would make its place read two ways
 test('an undo of an entry of typing is not refused for the same letters typed right after it in later entries, after a change of another person', async () => {
   const { h } = texts();
   const told = [];
@@ -293,8 +278,6 @@ test('an undo of an entry of typing is not refused for the same letters typed ri
   assert.deepEqual(told, []);
 });
 
-// a change of another person checks at most eight entries below the latest one, since a page
-// receives a change for each of his keys
 test('an undo of an entry of typing more than eight entries below the latest one of its text element is refused after a change of another person', async () => {
   const { h } = texts();
   const told = [];
@@ -324,7 +307,6 @@ test('an entry of typing refused at a change of another person is not one of the
     typeInto(h, el, `${el.content} w${i}`);
     h.break();
   }
-  // the other person removes the w of w5, whose entry is then refused
   edit(h, el, el.content.replace('w5', '5'));
   typeInto(h, el, `${el.content} w10`);
   h.break();
@@ -334,8 +316,6 @@ test('an entry of typing refused at a change of another person is not one of the
   assert.deepEqual(told, ['undo']);
 });
 
-// Ana types zz and then zx and x, and the other person removes letters around them. the second
-// entry is refused, and its letters stay in the text as letters of others
 test('an undo of an entry of typing under a refused one reads the letters of the refused one as letters of another person', async () => {
   const { h } = texts();
   const told = [];
@@ -357,8 +337,6 @@ test('an undo of an entry of typing under a refused one reads the letters of the
   assert.deepEqual(told, ['undo']);
 });
 
-// Ana types x, y, and z, and the other person types over the letters of the text before. the
-// second redo of Ana is refused, and the entry under it reads the y of the other person as hers
 test('undos and redos of two entries of typing, one of them refused, keep the letters of another person', async () => {
   const { h } = texts();
   const el = textEl('cbbcec');
@@ -424,9 +402,6 @@ test('typing that ended inside a transaction is undone with the transaction afte
   assert.equal(h.redoLabel, 'Two');
 });
 
-// a diff of the text before the redo against the text now may read a letter removed on one side of
-// the place of the typing and the same letter typed on its other side, or the other way round. the
-// redo is made where the two readings give one place, and refused where they give two
 test('a redo of typing after another person typed a letter on one side of its place and removed one on the other side is placed right, or refused where its place reads two ways', async () => {
   for (const c of [
     { before: 'see', at: 2, typed: 'XYZ', first: 'seXYZde', undone: 'sede', keys: ['sdede', 'sdee'], redone: null },
@@ -464,17 +439,14 @@ test('an undo of typing empties the text element when another person removed eve
   assert.equal(el.content, '');
 });
 
-// the contents that write() sets after each step in a session, from which the next step starts
 test('an undo after a redo puts back a word before the letters that another person typed right after it while it was undone', async () => {
   const { h } = texts();
   const el = textEl('ab');
   h.track(el);
-  // Ana deletes the b
   typeInto(h, el, 'a');
   h.break();
   await h.undo();
   assert.equal(el.content, 'ab');
-  // Ben types a space at the end and aa after the b, while the entry of Ana is undone
   for (const content of ['ab ', 'abaa ']) {
     el.content = content;
     h.prune((x) => x === el, undefined, undefined, [el]);
@@ -522,7 +494,6 @@ test('a redo drops an entry of typing that cannot be redone, tells refused of it
   await h.undo();
   await h.undo();
   assert.equal(el.content, 'X Y');
-  // another person replaces the text around the point of the typing
   el.content = 'Z';
   await h.redo();
   assert.equal(el.content, 'Z', 'the text element is not changed');
@@ -533,9 +504,8 @@ test('a redo drops an entry of typing that cannot be redone, tells refused of it
   assert.deepEqual(state, { a: 1 });
 });
 
-// ' one' ends with the letter that ends "slide", and ' two' does not
-for (const word of [' two', ' one']) {
-  test(`a redo of "${word}" right after its undo puts it back before an insertion of another person after the typing had ended`, async () => {
+for (const [word, ending] of [[' two', 'which does not end with the e of "slide"'], [' one', 'which ends with the e of "slide"']]) {
+  test(`a redo of "${word}", ${ending}, right after its undo puts it back before an insertion of another person after the typing had ended`, async () => {
     const { h } = texts();
     const el = textEl('Second slide');
     h.track(el);
@@ -549,7 +519,6 @@ for (const word of [' two', ' one']) {
     await h.redo();
     assert.equal(el.content, `Second slide${word}XY`);
     assert.equal(h.undoLabel, 'typing');
-    // a step after a change of another person goes from the text that the step before wrote
     el.content = `QSecond slide${word}XY`;
     await h.undo();
     assert.equal(el.content, 'QSecond slideXY');
@@ -591,9 +560,6 @@ test('a retract of an entry of typing that cannot be undone takes it out of the 
   assert.equal(h.canRedo, false);
 });
 
-// outside a session, a text element is changed only by its person and by the editor. a change that
-// the history was not told of, e.g. the closing brace that the list of citations takes out of a
-// typed \cite{key}, is then not an edit of another person
 test('outside a session, an undo and a redo of typing write the old text over a change that the history was not told of', async () => {
   const h = new History({ snapshot: (el) => el.content, restore: async (el, content) => void (el.content = content), onChange: () => {}, alone: () => true });
   const el = textEl('Cited words');

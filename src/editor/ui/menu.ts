@@ -1,25 +1,9 @@
-// the menus of the editor, built of DOM elements, since the popup of a native select is not seen
-// in a screenshot of the Chrome DevTools protocol: the menus of the menu bar with their submenus,
-// the context menus, the split buttons of the toolbar, and a select of the chrome.
-//
-// a menu does not take the focus when it is opened with the pointer, so that the caret and the
-// range of a text are kept for its command, as in the menus of macOS. while a menu is open, every
-// key is taken by the listener below, which is added at the import of this module and thus runs
-// before the keyboard handler that commands.ts adds at its install. the highlighted item is kept
-// in the menu and announced with aria-activedescendant. a menu with a search field, i.e. the Help
-// menu, gives the focus to its field, which lists the commands of the menu bar that match
-
 import type { App, Platform } from '../app.ts';
 import { keysOf, type Command, type Context, type Group } from '../commands.ts';
 import { display } from '../keymap.ts';
 import { injectStyle, make } from './dom.ts';
 import { icon } from './icons.ts';
 
-// an item of a menu: a command of the registry by its id, a submenu, an action of the chrome, or a
-// rule between groups. a command item may give a label of its own, e.g. a short one in a submenu,
-// the path of its menu, e.g. in the results of a search, and an icon of ui/icons.ts. a note is a
-// line of gray text, and a search is the field at the top of the Help menu over the commands of
-// the menus of bars
 export type MenuItem =
   | { command: string; arg?: unknown; label?: string; path?: string[]; icon?: string }
   | { label: string; items: MenuItem[] | (() => MenuItem[]); disabled?: boolean }
@@ -28,25 +12,17 @@ export type MenuItem =
   | { search: { bars: string[] } }
   | { rule: true };
 
-// where a menu is put: under a rectangle, e.g. a menu bar title, beside it for a submenu, or with
-// its upper left at a point for a context menu. a select puts its checked item over the rectangle
 export type Placement = 'below' | 'beside' | 'point' | 'over';
 
 export type MenuOptions = {
   anchor: DOMRect | { x: number; y: number };
   placement?: Placement;
-  // the button that opened the menu, marked with aria-expanded while it is open
   owner?: HTMLElement | null;
-  // true when the menu is opened from the keyboard: its first item is highlighted, and the focus
-  // is given to the menu and back to the owner at the close
   keyboard?: boolean;
-  // true when a menu opened with the pointer takes the focus without a highlight, as a context
-  // menu of macOS, and gives it back at the close
   focus?: boolean;
   label?: string;
   className?: string;
   onClose?: () => void;
-  // the move to the menu beside a menu of the menu bar, with Left or Right
   onSibling?: (step: 1 | -1) => void;
 };
 
@@ -55,12 +31,8 @@ export interface OpenMenu {
   close(): void;
 }
 
-// the item kinds, each with its rendered element
 type Row = { el: HTMLElement; item: Exclude<MenuItem, { rule: true } | { note: string } | { search: unknown }>; enabled: boolean; submenu: (() => MenuItem[]) | null; text: string };
 
-// the note of a command that does not fit behind its label is on a line below it, which the wider
-// system fonts of Linux and Android need at the same width. the keys, the check, and the arrow of
-// its row are then in line with the label
 const CSS = `
 .beeson-edit-menu { position: fixed; z-index: 90; box-sizing: border-box; min-width: 220px; max-width: 420px; max-height: calc(100vh - 16px); overflow-y: auto; padding: 5px; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); color: var(--ed-text); font: 13px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); outline: none; user-select: none; -webkit-user-select: none; }
 .beeson-edit-menu .item { display: grid; grid-template-columns: 18px 1fr auto 14px; align-items: center; column-gap: 4px; min-height: 24px; padding: 0 8px 0 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
@@ -103,19 +75,15 @@ const layer = (): HTMLElement => {
   return el;
 };
 
-// the open menus, the root first and each open submenu after its parent
 const stack: Menu[] = [];
 let uid = 0;
 let platform: Platform = 'other';
 
-// the first key of a command on the platform, as a menu shows it, e.g. ⇧⌘Z on a Mac and Ctrl+Y
-// elsewhere for Redo, which the sheet of shortcuts lists with its other keys
 export function commandKeys(c: Command, on: Platform = platform): string {
   const k = keysOf(c, on)[0];
   return k ? display(k, on) : '';
 }
 
-// the groups of the registry as items, with a rule between two groups
 export function itemsOfGroups(groups: Group[]): MenuItem[] {
   const out: MenuItem[] = [];
   for (const g of groups) {
@@ -126,10 +94,6 @@ export function itemsOfGroups(groups: Group[]): MenuItem[] {
   return out;
 }
 
-// whether a submenu of commands has an item that can run. a switch is counted when a command of its
-// group is not a switch, e.g. Dashes beside Increase Indent Level in Text, or when every group of
-// the submenu is made of switches. a group of settings, e.g. Align to Slide in Align, thus does not
-// enable a submenu whose commands are disabled
 function canRun(app: App, commands: Command[]): boolean {
   const plain = (c: Command) => !c.checked || c.checked(app) === null;
   const groups = new Set(commands.filter(plain).map((c) => c.menu?.group));
@@ -137,19 +101,11 @@ function canRun(app: App, commands: Command[]): boolean {
   return counted.some((c) => app.commands.enabled(c.id));
 }
 
-// the layout of a menu over the submenus and the groups that the packages declare, by the name of
-// a declared submenu or, for a command without one, of its group. parent sets it in a submenu of
-// the layout, flat sets the commands of a declared submenu straight into that parent, and order is
-// added to the order of the first command of a submenu. keep shows a submenu of one command as a
-// submenu. '*' places a submenu of the menu that the layout does not name
 type Place = { parent?: string; group: string; order?: number; flat?: boolean; keep?: boolean };
 const LAYOUT: Record<string, Record<string, Place>> = {
-  // Spelling and Grammar of Keynote, before Substitutions, with the one switch a page can set
   Edit: {
     'Spelling and Grammar': { group: 'substitutions', keep: true },
   },
-  // Keynote's Format menu: the commands of the text in Font and Text, then the menus of an object,
-  // e.g. Image and Table
   Format: {
     Font: { group: 'text', order: -1000 },
     Text: { group: 'text', order: -1000 },
@@ -165,12 +121,9 @@ const LAYOUT: Record<string, Record<string, Place>> = {
   },
 };
 
-// the items of a submenu read when it is opened, e.g. one per kind of theorem in Insert > Theorem,
-// by the menu and the name of the submenu
 const LIVE = new Map<string, (app: App) => MenuItem[]>();
 export const liveSubmenu = (bar: string, submenu: string, items: (app: App) => MenuItem[]) => void LIVE.set(`${bar} > ${submenu}`, items);
 
-// the path of submenus of a command in its menu, and its group and order there
 function placeOf(c: Command): { path: string[]; group: string; order: number } {
   const m = c.menu as NonNullable<Command['menu']>;
   const layout = LAYOUT[m.bar] ?? {};
@@ -180,9 +133,6 @@ function placeOf(c: Command): { path: string[]; group: string; order: number } {
   return p.flat ? { path: [p.parent], group: p.group, order: m.order } : { path: [p.parent, m.submenu], group: m.group, order: m.order };
 }
 
-// the items of a menu of the menu bar, or of one of its submenus at any depth. a submenu is shown
-// at the group and the order of its first command, unless the layout places it, and a submenu of
-// one command is replaced by the command
 export function menuItems(app: App, bar: string, submenu?: string): MenuItem[] {
   type Entry = { group: string; order: number; item: MenuItem };
   const placed = app.commands.list().filter((c) => c.menu?.bar === bar).map((c) => ({ c, ...placeOf(c) }));
@@ -216,10 +166,8 @@ export function menuItems(app: App, bar: string, submenu?: string): MenuItem[] {
   return out;
 }
 
-// a command of a menu of the menu bar, with the names of the menu and the submenus that lead to it
 export type MenuEntry = { command: string; label: string; path: string[] };
 
-// the commands of the menus of bars as they are shown, each once, in the order of the menus
 export function menuEntries(app: App, bars: string[]): MenuEntry[] {
   const out: MenuEntry[] = [];
   const seen = new Set<string>();
@@ -235,12 +183,8 @@ export function menuEntries(app: App, bars: string[]): MenuEntry[] {
   return out;
 }
 
-// the lowercase letters of a label without accents and the ellipsis, as a search compares them
 const plain = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').replace(/…/g, '').toLowerCase();
 
-// the entries whose label holds every word of query, as the search of the Help menu of macOS
-// matches the items of the menus: first the labels that start with the query, then the labels
-// with a word that starts with its first word, then the others, each in the order of the menus
 export function searchEntries(entries: MenuEntry[], query: string): MenuEntry[] {
   const q = plain(query).trim();
   const words = q.split(/\s+/).filter(Boolean);
@@ -255,33 +199,18 @@ export function searchEntries(entries: MenuEntry[], query: string): MenuEntry[] 
 
 const CLIPBOARD = ['edit.cut', 'edit.copy', 'edit.paste'];
 
-// the sections of the menu of an element, as in PowerPoint: the clipboard, the items of its kind,
-// e.g. Replace Image… and Edit Alt Text…, the arrange items, and the steps
 const SECTIONS = ['edit', 'kind', 'arrange', 'steps'] as const;
 const sectionOf = (c: Command): (typeof SECTIONS)[number] =>
   c.menu?.bar === 'Edit' ? 'edit' : c.menu?.bar === 'Arrange' || c.id.startsWith('arrange.') ? 'arrange' : c.id.startsWith('steps.') ? 'steps' : 'kind';
 
-// the items of a context menu of a kind, each run with the kind and the element clicked. a rule
-// is put where the group of the menu bar changes between two neighbors, and in the menu of an
-// element where its section changes. the items of the kind of another element are left out of the
-// menu of an element, i.e. a disabled item of a submenu without an enabled item, e.g. the items of
-// Video on an image, or one outside a menu, e.g. Edit Text on a figure without a text. Reset Mask,
-// disabled next to Edit Mask on an image without a mask, is kept, and so are the items of a locked
-// element, which a lock dims, as in Keynote and PowerPoint
 export function contextItems(app: App, kind: Context, target: Element | null): MenuItem[] {
   const out: MenuItem[] = [];
   let last: string | null = null;
-  // the menu of a text or an element opens with the clipboard, and the menu of the canvas with
-  // Paste, as in Keynote and PowerPoint
   const lead = (kind === 'text' ? [...CLIPBOARD, 'edit.pasteAndMatchStyle'] : kind === 'element' ? CLIPBOARD : kind === 'canvas' ? ['edit.paste'] : []).filter((id) => app.commands.get(id));
   for (const id of lead) out.push({ command: id, arg: { kind, target } });
   if (lead.length) last = kind === 'element' ? 'edit' : 'Edit/clipboard';
   let rest = app.commands.forContext(kind).filter((x) => !lead.includes(x.id));
   if (kind === 'element') {
-    // Edit Text, enabled on an element that holds a text, follows the items of the kind of the
-    // element. it is left out of the menu of a figure with an image or a video, as the menu of an
-    // image in Keynote does not have an item for text, and its caption is edited with a click on
-    // the selected figure or Return
     if (target?.matches('figure') && target.querySelector('img, video')) rest = rest.filter((c) => c.id !== 'selection.editText');
     const rank = (c: Command) => SECTIONS.indexOf(sectionOf(c)) + (c.id === 'selection.editText' ? 0.5 : 0);
     const home = (c: Command) => (c.menu ? `${c.menu.bar}/${c.menu.submenu ?? c.menu.group}` : c.id);
@@ -292,9 +221,6 @@ export function contextItems(app: App, kind: Context, target: Element | null): M
     const group = kind === 'element' ? sectionOf(c) : `${c.menu?.bar ?? ''}/${c.menu?.group ?? ''}`;
     if (last !== null && group !== last) out.push({ rule: true });
     last = group;
-    // the commands of a submenu of the menu bar are a submenu of the menu of a text, e.g. Speech. in
-    // the menu of an element, Align and Distribute are submenus, and so is the group of Group,
-    // Ungroup, and Regroup of the Arrange menu, as in PowerPoint
     const arranged = kind === 'element' && sectionOf(c) === 'arrange';
     const sub = kind === 'text' ? c.menu?.submenu : arranged ? (c.menu?.submenu ?? (c.menu?.group === 'group' ? 'Group' : undefined)) : undefined;
     const prev = out.at(-1);
@@ -305,18 +231,14 @@ export function contextItems(app: App, kind: Context, target: Element | null): M
       prev.items.push(item);
     } else out.push(sub ? { label: sub, items: [item] } : item);
   }
-  // a submenu without an item that can run is dimmed, e.g. Align of a locked element
   for (const m of out) {
     if ('items' in m && Array.isArray(m.items)) m.disabled = !canRun(app, m.items.flatMap((i) => ('command' in i ? app.commands.get(i.command) ?? [] : [])));
   }
   if (kind === 'canvas') addGrid(app, out);
-  // the menu of the browser, with its spelling guesses, is opened by a second right-click
   if (kind === 'text' && out.length) out.push({ rule: true }, { note: browserNote(app) });
   return out;
 }
 
-// the submenu Grid and Guides and the switch of the rulers of the menu of a slide in PowerPoint,
-// after the items of the slide and before those of its backdrop
 const GRID: (string | null)[] = ['view.grid', null, 'view.grid.snap', null, 'view.grid.settings'];
 
 function addGrid(app: App, out: MenuItem[]): void {
@@ -329,8 +251,6 @@ function addGrid(app: App, out: MenuItem[]): void {
   out.splice(at < 0 ? out.length : at, 0, { rule: true }, ...add, { rule: true });
 }
 
-// the note at the end of the menu of a text, on what a second right-click opens. a page cannot
-// read the spelling guesses of the browser, and it cannot open its menu either
 function browserNote(app: App): string {
   const spelling = !!app.commands.get('edit.spelling') && app.commands.state('edit.spelling').checked;
   if (!spelling) return 'Right-click again for the menu of the browser';
@@ -349,12 +269,9 @@ class Menu {
   private readonly restore: Element | null;
   private readonly opened = performance.now();
   private typed = '';
-  // the row of the parent menu that opened this submenu
   anchorRow: HTMLElement | null = null;
   private typedAt = 0;
   private ids = 0;
-  // the search field of the Help menu, the rows of its results before the rows of the items, and
-  // the commands that it searches
   private search: { input: HTMLInputElement; results: HTMLElement; rows: Row[]; bars: string[] } | null = null;
 
   constructor(app: App, items: MenuItem[], options: MenuOptions, parent: Menu | null) {
@@ -368,8 +285,6 @@ class Menu {
     if (options.label) this.el.setAttribute('aria-label', options.label);
     if (options.className) this.el.classList.add(...options.className.split(' '));
     this.build(items);
-    // a press in a menu does not move the focus, and it is not seen by the editor below. a press in
-    // the search field places the caret
     const field = (ev: Event) => ev.target instanceof Element && !!ev.target.closest('.search input');
     this.el.addEventListener('pointerdown', (ev) => field(ev) || ev.preventDefault());
     this.el.addEventListener('mousedown', (ev) => field(ev) || ev.preventDefault());
@@ -377,7 +292,6 @@ class Menu {
     layer().append(this.el);
     this.place();
     if (options.owner) options.owner.setAttribute('aria-expanded', 'true');
-    // the search field takes the focus at once, as in the Help menu of macOS
     if (this.search) this.search.input.focus({ preventScroll: true });
     else if (options.keyboard) {
       this.highlight(this.next(-1, 1));
@@ -406,8 +320,6 @@ class Menu {
     }
   }
 
-  // the listeners of a row, which find its index when they run, since the results of a search are
-  // put before the other rows
   private attach(row: Row): Row {
     const at = () => this.rows.indexOf(row);
     row.el.addEventListener('pointermove', () => {
@@ -417,15 +329,12 @@ class Menu {
       if (!this.child && this.hi === at()) this.highlight(-1);
     });
     row.el.addEventListener('click', () => this.activate(at()));
-    // a press on a menu bar title held and released over an item runs it, as in macOS
     row.el.addEventListener('pointerup', (ev) => {
       if (ev.button === 0 && performance.now() - this.opened > 250) this.activate(at());
     });
     return row;
   }
 
-  // the field Search at the top of the Help menu, with the commands that match under the heading
-  // Menu Items, each with the path of its menu and its keys, before the items of the menu
   private buildSearch(bars: string[]): void {
     const box = make('div', 'search');
     const field = make('span', 'field');
@@ -449,8 +358,6 @@ class Menu {
     input.addEventListener('input', () => this.find());
   }
 
-  // the results of the text of the search field, of which the first that can run is highlighted, so
-  // that Return runs it
   private find(): void {
     const s = this.search;
     if (!s) return;
@@ -519,8 +426,6 @@ class Menu {
     return { el, item, enabled, submenu, text: label.toLowerCase() };
   }
 
-  // the menu is kept inside the window, and flipped to the other side of its anchor when it would
-  // leave the window
   private place(): void {
     const a = this.options.anchor;
     const box = 'width' in a ? a : new DOMRect(a.x, a.y, 0, 0);
@@ -607,7 +512,6 @@ class Menu {
     }
   }
 
-  // the root and its submenus are closed, and the focus goes back where it was before the open
   closeAll(): void {
     const root = this.root();
     root.destroy();
@@ -621,11 +525,8 @@ class Menu {
     return m;
   }
 
-  // the item i is run after every menu is closed, so that its command sees the focus and the
-  // selection of the editor as they were before the menu was opened
   private activate(i: number): void {
     const row = this.rows[i];
-    // a pointer release runs the item, and the click after it finds the menu closed
     if (!row || !row.enabled || !stack.includes(this)) return;
     if (row.submenu) {
       this.highlight(i);
@@ -651,9 +552,6 @@ class Menu {
     return -1;
   }
 
-  // the keys of the deepest open menu. Left and Right move between the menus of the menu bar
-  // when the menu is not a submenu and its item does not open one. 'field' leaves a key to the
-  // search field and keeps it from the editor
   key(ev: KeyboardEvent): boolean | 'field' {
     const row = this.rows[this.hi];
     if (this.search && document.activeElement === this.search.input) {
@@ -714,7 +612,6 @@ class Menu {
           }
           return true;
         }
-        // a shortcut with a modifier closes the menu and is left to the editor, as in macOS
         if (ev.metaKey || ev.ctrlKey) {
           this.closeAll();
           return false;
@@ -724,7 +621,6 @@ class Menu {
   }
 }
 
-// a menu of items is opened at its anchor, and any menu open before is closed
 export function openMenu(app: App, items: MenuItem[], options: MenuOptions): OpenMenu {
   closeMenus();
   const menu = new Menu(app, items, options, null);
@@ -738,41 +634,12 @@ export function closeMenus(): void {
 
 export const menuOpen = (): boolean => stack.length > 0;
 
-// the context menu of a kind at the point of ev, or null when no command is shown for the kind,
-// in which case the menu of the browser is left alone
-// whether the last input is a press of the key of the context menu or of Shift+F10, which opens
-// the menu from the keyboard. it is set before the listener of shell.ts that opens the menu, since
-// this module is imported first, and a press of the pointer clears it
 let menuKey = false;
-window.addEventListener('keydown', (ev) => {
-  menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
-}, true);
-
-// whether the menu of a text or a cell was open at the last press, which the press closes
 let textMenu = false;
-window.addEventListener('pointerdown', () => {
-  menuKey = false;
-  const kinds = stack[0]?.options.className?.split(' ') ?? [];
-  textMenu = kinds.includes('context') && (kinds.includes('text') || kinds.includes('cell'));
-}, true);
 
-// a second right-click in a text, or a right-click with ⌥ or Alt held, is left to the browser,
-// which opens its own menu with the spelling guesses, Look Up, and Translate. this listener is added
-// at the import of this module, before every other listener of the menus of the editor
-window.addEventListener('contextmenu', (ev) => {
-  const t = ev.target instanceof Element ? ev.target : null;
-  const again = textMenu && !!t?.closest('[contenteditable="true"]');
-  textMenu = false;
-  if (!t || t.closest('.beeson-edit-menu') || !(again || ev.altKey)) return;
-  closeMenus();
-  ev.stopImmediatePropagation();
-}, true);
-
-// a context menu takes the focus, and opened from the keyboard it highlights its first item
 export function openContextMenu(app: App, kind: Context, target: Element | null, at: { x: number; y: number }, more: MenuItem[] = []): OpenMenu | null {
   const items = contextItems(app, kind, target);
   if (!items.length) return null;
-  // more goes last, before the rule and the note of the menu of the browser
   if (more.length) {
     const last = items.at(-1);
     const note = last && 'note' in last ? items.splice(-2) : [];
@@ -783,8 +650,6 @@ export function openContextMenu(app: App, kind: Context, target: Element | null,
   return openMenu(app, items, { anchor: at, placement: 'point', label: `${kind} menu`, className: `context ${kind}`, keyboard, focus: true });
 }
 
-// a button with a menu of its own beside it, e.g. Add Slide with its layouts. the main button runs
-// its action, and the narrow button opens items under the pair
 export function splitButton(app: App, main: HTMLButtonElement, items: () => MenuItem[], label: string): HTMLElement {
   const box = make('span', 'beeson-edit-split');
   const more = make('button', 'more');
@@ -809,8 +674,6 @@ export function splitButton(app: App, main: HTMLButtonElement, items: () => Menu
 
 export type SelectOption = { value: string; label: string };
 
-// a select of the chrome: a button that shows the label of the value, and a DOM menu of the
-// options with a check mark at the value, put over the button as a pop-up button of macOS
 export function chromeSelect(app: App, options: { label: string; choices: () => SelectOption[]; value: () => string; text?: () => string; onChange: (value: string) => void; className?: string }): HTMLButtonElement {
   const b = make('button', `beeson-edit-select ${options.className ?? ''}`.trim());
   b.type = 'button';
@@ -841,31 +704,43 @@ export function chromeSelect(app: App, options: { label: string; choices: () => 
   return b;
 }
 
-// the keys are taken from every other listener while a menu is open
-window.addEventListener('keydown', (ev) => {
-  if (!stack.length) return;
-  const handled = stack[stack.length - 1].key(ev);
-  if (handled) ev.stopImmediatePropagation();
-  if (handled === true) ev.preventDefault();
-}, true);
-
-// a press outside the open menus closes them. a press on the owner of the menu is left to the
-// owner, which closes it or opens the next one
-window.addEventListener('pointerdown', (ev) => {
-  if (!stack.length) return;
-  const t = ev.target instanceof Node ? ev.target : null;
-  if (t && stack.some((m) => m.el.contains(t))) {
-    ev.stopPropagation();
-    return;
-  }
-  const owner = stack[0].options.owner;
-  if (owner && t && owner.contains(t)) return;
-  closeMenus();
-}, true);
-window.addEventListener('blur', () => closeMenus());
-window.addEventListener('resize', () => closeMenus());
-
 export function install(app: App): void {
   injectStyle('menu', CSS);
   platform = app.platform;
+  app.commands.intercept((ev) => {
+    menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
+    return false;
+  });
+  app.commands.intercept((ev) => {
+    if (!stack.length) return false;
+    const handled = stack[stack.length - 1].key(ev);
+    if (handled === true) ev.preventDefault();
+    return !!handled;
+  });
+  window.addEventListener('pointerdown', () => {
+    menuKey = false;
+    const kinds = stack[0]?.options.className?.split(' ') ?? [];
+    textMenu = kinds.includes('context') && (kinds.includes('text') || kinds.includes('cell'));
+  }, true);
+  window.addEventListener('contextmenu', (ev) => {
+    const t = ev.target instanceof Element ? ev.target : null;
+    const again = textMenu && !!t?.closest('[contenteditable="true"]');
+    textMenu = false;
+    if (!t || t.closest('.beeson-edit-menu') || !(again || ev.altKey)) return;
+    closeMenus();
+    ev.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('pointerdown', (ev) => {
+    if (!stack.length) return;
+    const t = ev.target instanceof Node ? ev.target : null;
+    if (t && stack.some((m) => m.el.contains(t))) {
+      ev.stopPropagation();
+      return;
+    }
+    const owner = stack[0].options.owner;
+    if (owner && t && owner.contains(t)) return;
+    closeMenus();
+  }, true);
+  window.addEventListener('blur', () => closeMenus());
+  window.addEventListener('resize', () => closeMenus());
 }

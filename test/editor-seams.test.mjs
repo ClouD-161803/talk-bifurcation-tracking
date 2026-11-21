@@ -1,7 +1,3 @@
-// the seams of the editor: the deck with every layout is paired and written back byte for byte,
-// the commands of the registry are run and read by their ids, and the keys sent as trusted input
-// reach the commands on either platform
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -69,10 +65,9 @@ test('a deck with every layout is saved and opened again without a problem', asy
   await page.evaluate(`document.querySelector('.reveal .slides p.caption').firstChild.data = 'An edited caption.'`);
   const { text } = await saveAndReopen(page, 'layouts.html');
   assert.ok(text.includes('<p class="caption">An edited caption.</p>'));
-  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+  assert.deepEqual(page.errors, []);
 });
 
-// a handle whose write takes ms, so that an edit can be made while the file is written
 const slowHandle = (ms) => `window.BeesonEditor.attach({
   name: 'slow.html',
   createWritable: async () => ({
@@ -101,9 +96,7 @@ test('an edit made while the file is written keeps the deck dirty after both edi
   const afterB = await page.evaluate('window.BeesonEditor.status()');
   await page.evaluate('window.BeesonEditor.undo()');
   await byteExact(page);
-  // the file on disk has edit A, which the page no longer has
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
-  // with edit B undone, the page reads as the file on disk again
   assert.equal(afterB.dirty, false);
   assert.deepEqual(page.errors, []);
 });

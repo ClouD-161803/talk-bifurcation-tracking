@@ -1,15 +1,5 @@
-// backdrops drawn from a file of polylines next to the deck, named in the attribute data-trajectories of
-// a `.backdrop`. the format of the file is described in REFERENCE.md under "Backdrops"
-
 import type { Trajectory, Tone } from './orbits.ts';
 
-// one polyline of a file, e.g. one member of a family in one frame. t or theta, when given, is the
-// clock of each point, e.g. the time or the true anomaly. craft, when true, marks the path of a
-// spacecraft. the look of the trajectory is set with tone, a color of the theme, color, a CSS color or
-// a pair of them for the dark and the light mode in place of the color of the tone, alpha, its
-// opacity, weight, its width in line widths, head, the radius of its head in line widths, start,
-// the clock at which its trace begins, fade, the seconds of its clock from its first point after
-// which its opacity falls to zero at its last point, and glow. the other keys are free
 export type TrajectoryData = {
   points: [number, number][];
   t?: number[];
@@ -26,21 +16,12 @@ export type TrajectoryData = {
   [key: string]: unknown;
 };
 export type TrajectoryFile = { families: TrajectoryData[]; bodies: Record<string, unknown>[] };
-// a body drawn as a dot, with the fraction of the total mass that sets its radius when it is known
 export type Dot = { x: number; y: number; mass?: number };
-// the window of a backdrop: its center and its half height, in the units of the file
 export type View = { cx: number; cy: number; half: number };
-// a box in slide pixels
 export type Box = { left: number; top: number; width: number; height: number };
 
-// the fraction of the drawing held in the window of a fitted backdrop, with each trajectory weighted
-// equally along its length. it is the fraction of tubes held in the window of the closing slide of
-// the demo deck
 export const FILL = 0.93;
-// the margin in slide pixels between a drawing and an edge of its box inside the slide
 const MARGIN = 40;
-// the opacity of a trajectory colored from the palette, a little above the 0.42 of the tones orange and
-// violet, since a member of a family is not overlaid by a dense tube
 const INK_ALPHA = 0.6;
 
 const isPair = (p: unknown): p is [number, number] =>
@@ -49,10 +30,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const isColorString = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
 const isColor = (v: unknown): v is string | [string, string] =>
   isColorString(v) || (Array.isArray(v) && v.length === 2 && v.every(isColorString));
-// the tones of a trajectory of a file. hero and line are the tones of the built-in backdrops only
 const TONES = ['orange', 'violet', 'text'];
 
-// the trajectories and bodies of a parsed file. throws an Error that says what is malformed
 export function parse(data: unknown): TrajectoryFile {
   const fileTrajectories = isObject(data) ? data.families : undefined;
   if (!Array.isArray(fileTrajectories)) throw new Error('it does not have a list "families"');
@@ -94,10 +73,6 @@ export function parse(data: unknown): TrajectoryFile {
 
 const TERM = /^\s*([^=<>\s]+)\s*(<=|>=|=|<|>)\s*(.*?)\s*$/;
 
-// the trajectories chosen by spec, the value of data-trajectories-select. spec is a list of groups separated
-// by semicolons, and a trajectory is chosen when it passes every term of a group. the terms of a group
-// are separated by commas, and a term is key=a, or key=a|b for either value, or key<v, key<=v,
-// key>v, or key>=v for a number. throws an Error on a term of another form
 export function select(fileTrajectories: TrajectoryData[], spec: string | undefined): TrajectoryData[] {
   if (!spec?.trim()) return fileTrajectories;
   const groups = spec.split(';').map(group);
@@ -123,15 +98,6 @@ function group(spec: string): ((r: TrajectoryData) => boolean)[] {
   });
 }
 
-// the polylines of the trajectories chosen from file. with color, the key of data-trajectories-color, each value
-// of this key takes a pair of colors of the palette, in the order of its first trajectory in the file.
-// with ramp, the key of data-trajectories-ramp, a trajectory is colored from the first color of its pair at the
-// smallest value of ramp among the chosen trajectories of its pair to the second at the largest. with
-// shade, the key of data-trajectories-shade, which is used in place of ramp, a trajectory is drawn in a shade of
-// the first color of its pair, from a lighter shade at the smallest value to a darker at the largest.
-// with map, the colormap of data-trajectories-colormap, a trajectory is colored from map at its fraction along
-// ramp instead, and shade is ignored. the clock of a trajectory is moved by the start of its trajectory, and
-// the look of the trajectory is copied
 export function trajectoriesOf(file: TrajectoryFile, chosen: TrajectoryData[], color?: string, ramp?: string, shade?: string, map?: Colormap): Trajectory[] {
   if (map) shade = undefined;
   const along = shade ?? ramp;
@@ -155,7 +121,6 @@ export function trajectoriesOf(file: TrajectoryFile, chosen: TrajectoryData[], c
     for (let i = 0; i < n; i++) {
       pts[2 * i] = r.points[i][0];
       pts[2 * i + 1] = r.points[i][1];
-      // without a clock, a trajectory is traced at a uniform speed along its length
       if (i > 0 && !clock) length += Math.hypot(pts[2 * i] - pts[2 * i - 2], pts[2 * i + 1] - pts[2 * i - 1]);
       times[i] = (clock ? clock[i] - clock[0] : length) + (r.start ?? 0);
     }
@@ -181,16 +146,8 @@ export function trajectoriesOf(file: TrajectoryFile, chosen: TrajectoryData[], c
   });
 }
 
-// the distance in the units of a file within which two positions of a body are taken as one
 const SAME = 1e-4;
 
-// the bodies of the chosen trajectories, drawn only when every chosen trajectory puts the same bodies at the
-// same positions within SAME, e.g. m1 and m2 of one mass ratio in the rotating-pulsating frame. none
-// is drawn otherwise, e.g. in the inertial frame, where the bodies move, or for trajectories of two mass
-// ratios. a body entry of the file is matched to a trajectory when every number, string, or boolean of
-// the body entry is equal to the value of the same key in the trajectory, if the trajectory has this key.
-// the positions are read from the object of the body entry named by the frame of the trajectory, or
-// from the body entry itself. m1 and m2 are given the masses 1 - mu and mu
 export function bodiesOf(file: TrajectoryFile, chosen: TrajectoryData[]): Dot[] {
   const apart = (a: Dot, b: Dot) => Math.hypot(a.x - b.x, a.y - b.y) > SAME;
   let first: Map<string, Dot> | null = null;
@@ -217,11 +174,7 @@ export function bodiesOf(file: TrajectoryFile, chosen: TrajectoryData[]): Dot[] 
   return first ? [...first.values()] : [];
 }
 
-// the window of the box in which FILL of the trajectories is held, centered on the middle of the
-// drawing. the drawing may run off the slide, but an edge of the box inside the slide is kept
-// MARGIN slide pixels clear of it, as asked in AGENTS.md of every backdrop. null without trajectories
 export function fitView(trajectories: Trajectory[], box: Box, slide: { width: number; height: number }): View | null {
-  // the midpoints of the segments, with weights that sum to 1 on each trajectory
   const xs: number[] = [],
     ys: number[] = [],
     ws: number[] = [];
@@ -271,7 +224,6 @@ export function fitView(trajectories: Trajectory[], box: Box, slide: { width: nu
       if (Math.abs(xs[i] - cx) <= half * aspect && Math.abs(ys[i] - cy) <= half) k += ws[i];
     return k / total;
   };
-  // the half height that holds FILL, by bisection, since held grows with it
   let a = 0,
     b = Math.max(Math.max(cx - x0, x1 - cx) / aspect, Math.max(cy - y0, y1 - cy), 1e-9);
   for (let i = 0; i < 50; i++) {
@@ -286,11 +238,7 @@ export function fitView(trajectories: Trajectory[], box: Box, slide: { width: nu
     top: box.top > 0.5,
     bottom: box.top + box.height < slide.height - 0.5,
   };
-  // the margin is MARGIN / k in the units of the file, with k = box.height / (2 half) the scale in
-  // slide pixels, hence the margin is half times g
   const g = (2 * MARGIN) / box.height;
-  // along an axis, the span from the edge of the drawing at an inner side, or else from the quantile
-  // at this side, must fit in the window with a margin at each inner side
   const need = (span: number, sides: number, width: number) => span / Math.max(width - sides * g, 1e-9);
   half = Math.max(
     half,
@@ -305,9 +253,6 @@ export function fitView(trajectories: Trajectory[], box: Box, slide: { width: nu
   return { cx, cy, half };
 }
 
-// the color at the fraction at from the color from to the color to, interpolated in OKLCH along the
-// shorter arc of hue. both colors are #rrggbb or rgb(r, g, b), as serialized by a canvas, and the
-// result is #rrggbb. null when either color is of another form
 export function mix(from: string, to: string, at: number): string | null {
   const a = rgbOf(from),
     b = rgbOf(to);
@@ -323,14 +268,9 @@ export function mix(from: string, to: string, at: number): string | null {
   return hex(rgbFromLab([L, C * Math.cos(h), C * Math.sin(h)]));
 }
 
-// the change of OKLCH lightness from the middle shade to either end of the shades of a color
 const SHADES = 0.16;
-// the least WCAG contrast against the background of a shade drawn at INK_ALPHA, met by every color
-// of the palette in theme/beeson.css
 export const CONTRAST = 2.5;
 
-// the WCAG contrast against the background bg of the color c drawn over it at the opacity alpha, as
-// a canvas blends them, both in sRGB from 0 to 1
 function contrastOver(c: [number, number, number], bg: [number, number, number], alpha = INK_ALPHA): number {
   const luminance = ([R, G, B]: number[]) => 0.2126 * linear(R) + 0.7152 * linear(G) + 0.0722 * linear(B);
   const a = luminance(c.map((v, i) => alpha * v + (1 - alpha) * bg[i])),
@@ -338,11 +278,6 @@ function contrastOver(c: [number, number, number], bg: [number, number, number],
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-// the shade at the fraction at of a color, from a lighter shade at 0 to a darker at 1, by a change of
-// its OKLCH lightness at the same chroma and hue. with the background bg, the shades are moved away
-// from bg until the end on its side keeps CONTRAST against it, e.g. lighter on a dark background.
-// the colors are #rrggbb or rgb(r, g, b), and the result is #rrggbb. null when the color is of
-// another form
 export function shadeOf(color: string, at: number, bg?: string): string | null {
   const c = rgbOf(color);
   if (!c) return null;
@@ -352,8 +287,6 @@ export function shadeOf(color: string, at: number, bg?: string): string | null {
     dark = Math.max(0.2, L - SHADES);
   const back = bg ? rgbOf(bg) : null;
   if (back) {
-    // the contrast grows away from the background, hence the lightness at which the near end keeps
-    // CONTRAST is found by bisection, and the far end is moved as much, within its bound
     const below = lch(back)[0] < L,
       near = below ? dark : light,
       far = below ? 0.95 : 0.2;
@@ -373,12 +306,6 @@ export function shadeOf(color: string, at: number, bg?: string): string | null {
   return shade(light + (dark - light) * at);
 }
 
-// the colormaps of matplotlib named in data-trajectories-colormap, as colors at even stops from 0 to 1.
-// the stops were sampled from matplotlib's own viridis, plasma, and Blues_r at 17 stops each.
-// interpolated linearly in sRGB, they stay within 0.6 of matplotlib in OKLab distance times 100 at
-// every point, and they give the ends of colormapEnds() that matplotlib gives on --bg of the dark
-// mode. ends are the default lower and upper ends, short of the yellow end of viridis and plasma and
-// of the white end of Blues_r
 export const COLORMAPS = {
   viridis: {
     stops: ['#440154', '#48186a', '#472d7b', '#424086', '#3b528b', '#33638d', '#2c728e', '#26818e', '#21908c', '#1f9f88', '#28ae80', '#3ebc74', '#5dc963', '#82d34c', '#abdc32', '#d5e21a', '#fde725'],
@@ -394,18 +321,11 @@ export const COLORMAPS = {
   },
 } as const;
 export type ColormapName = keyof typeof COLORMAPS;
-// a colormap with its lower and upper ends in [0, 1], before they are moved for the background
 export type Colormap = { name: ColormapName; lo: number; hi: number };
 
-// the least WCAG contrast of an end of a colormap, drawn opaque, against the background, as in
-// matplotlib figures drawn for the slides, whose dark end is cut in dark mode until it keeps 3:1
 export const MAP_CONTRAST = 3;
-// the opacity of a trajectory colored from a colormap. it is opaque, hence the color on the slide is the
-// color of the matplotlib figures, and the MAP_CONTRAST of colormapEnds() holds as drawn
 export const MAP_ALPHA = 1;
 
-// the colormap of spec, the value of data-trajectories-colormap: a name of COLORMAPS, alone or followed by
-// a lower and an upper end, e.g. viridis 0 0.85. throws an Error that says what is malformed
 export function colormapOf(spec: string): Colormap {
   const [name, ...ends] = spec.trim().split(/\s+/);
   if (!Object.prototype.hasOwnProperty.call(COLORMAPS, name)) throw new Error(`"${name}" is not viridis, plasma, or Blues_r`);
@@ -418,7 +338,6 @@ export function colormapOf(spec: string): Colormap {
   return { name: name as ColormapName, lo, hi };
 }
 
-// the color of the colormap name at x from 0 to 1, as #rrggbb
 export function colormapAt(name: ColormapName, x: number): string {
   const stops = COLORMAPS[name].stops,
     n = stops.length - 1;
@@ -429,14 +348,10 @@ export function colormapAt(name: ColormapName, x: number): string {
   return hex(a.map((v, i) => v + (b[i] - v) * (u - k)) as [number, number, number]);
 }
 
-// the ends of map on the background bg. an end whose color, drawn opaque, is short of MAP_CONTRAST
-// against bg is moved toward the other end in steps of 0.01 until it keeps it, e.g. the lower, dark
-// end of viridis on a dark background and its upper, light end on a light one. the other end is kept
 export function colormapEnds(map: Colormap, bg?: string): [number, number] {
   const back = bg ? rgbOf(bg) : null;
   if (!back) return [map.lo, map.hi];
   const keeps = (x: number) => contrastOver(rgbOf(colormapAt(map.name, x)) as [number, number, number], back, 1) >= MAP_CONTRAST;
-  // the ends are rounded, since a sum of steps of 0.01 is not exact in binary
   const round = (x: number) => Math.round(x * 1e9) / 1e9;
   let lo = map.lo,
     hi = map.hi;
@@ -445,7 +360,6 @@ export function colormapEnds(map: Colormap, bg?: string): [number, number] {
   return [Math.min(lo, hi), hi];
 }
 
-// the color of map at the fraction at from the lower to the upper end of colormapEnds() on bg
 export function colormapColor(map: Colormap, at: number, bg?: string): string {
   const [lo, hi] = colormapEnds(map, bg);
   return colormapAt(map.name, lo + (hi - lo) * at);
@@ -465,7 +379,6 @@ function rgbOf(color: string): [number, number, number] | null {
 const linear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const gamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
 
-// lightness, chroma, and hue in rad of an sRGB color, by the OKLab matrices of Björn Ottosson
 function lch([R, G, B]: [number, number, number]): [number, number, number] {
   const r = linear(R),
     g = linear(G),
@@ -499,12 +412,9 @@ const hex = (c: [number, number, number]) =>
     )
     .join('')}`;
 
-// the data given by the script files that were run, by their absolute URLs
 const given = new Map<string, unknown>();
 const files = new Map<string, Promise<TrajectoryFile | null>>();
 
-// called in a script file of polylines, i.e. a JSON file wrapped in Beeson.trajectories( and );, which is
-// read in a deck opened from the disk, where a JSON file cannot be fetched
 export function register(data: unknown): void {
   const script = document.currentScript;
   if (script instanceof HTMLScriptElement && script.src) given.set(script.src, data);
@@ -535,8 +445,6 @@ function read(url: string, path: string): Promise<unknown> {
   });
 }
 
-// the parsed file at path, relative to the deck, read once for all the backdrops that name it. a
-// missing or malformed file is reported in one console warning and given as null
 export function load(path: string): Promise<TrajectoryFile | null> {
   const url = new URL(path, document.baseURI).href;
   let out = files.get(url);
@@ -552,8 +460,6 @@ export function load(path: string): Promise<TrajectoryFile | null> {
   return out;
 }
 
-// the colormap of the backdrop el from its attribute data-trajectories-colormap, or undefined without it.
-// a malformed attribute is reported in a warning, and the trajectories are then colored from the palette
 function colormapFor(el: HTMLElement): Colormap | undefined {
   const spec = el.dataset.trajectoriesColormap;
   if (!spec?.trim()) return undefined;
@@ -569,9 +475,6 @@ function colormapFor(el: HTMLElement): Colormap | undefined {
   return map;
 }
 
-// the trajectories and bodies of the backdrop el, from its attributes data-trajectories, data-trajectories-select,
-// data-trajectories-color, data-trajectories-ramp, data-trajectories-shade, and data-trajectories-colormap. never throws,
-// and gives empty lists after a warning
 export async function trajectoriesFor(el: HTMLElement): Promise<{ trajectories: Trajectory[]; dots: Dot[] }> {
   const path = el.dataset.trajectories ?? '';
   const file = await load(path);

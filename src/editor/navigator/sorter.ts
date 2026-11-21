@@ -1,32 +1,18 @@
-// the slide sorter, as the light table of Keynote: the slides as a grid of thumbnails over the
-// navigator and the slide, in groups headed by the section slides. the slides before the first
-// section slide are the opening, and the slides after the closing slide the appendix. a group is
-// collapsed with the triangle of its head, or with Return on its head. a click on a head selects
-// the slides of its group, as a section of PowerPoint. the head of a section slide is dragged
-// between the groups to move the section through slide.moveSection, and a double click on its name
-// renames the section through slide.renameSection. a click selects a slide, Shift a range, and the
-// command modifier one more slide. a drag moves the selected slides through slide.moveTo, Return or
-// a double click shows a slide on the canvas and closes the sorter, and Esc closes it. the size of
-// the thumbnails and the choice to leave out the hidden slides are kept in the storage of the
-// browser
-
 import type { App } from '../app.ts';
 import { injectStyle, make, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { transitionOf } from '../review/transitions.ts';
 import type { MoveSection, RenameSection } from '../commands/slide.ts';
 import { describe, droppedOrder, isHidden, showPlaces, type MoveTo, type Navigator } from './navigator.ts';
-import { Thumbs } from './thumbs.ts';
+import { followTheme, Thumbs } from './thumbs.ts';
 
 const SIZE_KEY = 'beeson-sorter-size';
 const HIDE_KEY = 'beeson-sorter-hide';
 const MIN = 120;
 const MAX = 360;
 const DEFAULT = 220;
-// the distance in CSS px by which a press is moved before it is a drag
 const DRAG_START = 4;
 
-// the slide of each tile, by which the context menu of shell.ts finds the slide of a tile
 export const tileSlide = new WeakMap<Element, Element>();
 
 type Group = { key: string; head: Element | null; title: string; slides: Element[] };
@@ -76,8 +62,6 @@ html.beeson-editor body > .beeson-edit-sorter[hidden], .beeson-edit-sorter[hidde
 .beeson-edit-sorter .bar .done:focus-visible, .beeson-edit-sorter .bar input:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 `;
 
-// the groups of slides, each headed by a section slide, with the opening before the first one and
-// the appendix after the closing slide
 export function groupsOf(slides: Element[]): Group[] {
   const out: Group[] = [];
   let group: Group = { key: 'opening', head: null, title: 'Opening', slides: [] };
@@ -98,11 +82,9 @@ export function groupsOf(slides: Element[]): Group[] {
   return out;
 }
 
-// the heading of a section slide, which names its section
 export const sectionHeading = (slide: Element): HTMLElement | null =>
   [...slide.querySelectorAll<HTMLElement>('h1, h2')].find((h) => !h.closest('aside.notes, .backdrop')) ?? null;
 
-// the children of parent made want, with a node moved only where the order differs
 function putChildren(parent: HTMLElement, want: Element[]): void {
   const now = [...parent.children];
   if (now.length === want.length && now.every((c, i) => c === want[i])) return;
@@ -184,8 +166,7 @@ export class Sorter {
     if (!this.el.isConnected) document.body.append(this.el);
     if (!this.thumbs) {
       this.thumbs = new Thumbs(this.app, this.scroller);
-      const thumbs = this.thumbs;
-      new MutationObserver(() => thumbs.all()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+      followTheme(this.thumbs);
     }
     this.el.hidden = !on;
     (this.app.nav as Navigator).table = this;
@@ -211,7 +192,6 @@ export class Sorter {
     return [...this.app.slides().querySelectorAll(':scope > section')];
   }
 
-  // the slides shown, in the order of the deck, without the hidden ones when they are left out
   private shownSlides(): Element[] {
     return this.slides().filter((s) => !(this.hide.checked && isHidden(s)) && this.tiles.get(s)?.el.isConnected && !this.tiles.get(s)?.el.closest('[hidden]'));
   }
@@ -220,12 +200,8 @@ export class Sorter {
     return (this.app.nav as Navigator).selected();
   }
 
-  // the groups and tiles follow the slides, their positions as in the status bar, their
-  // transitions, steps, and hidden state, and the selection. a tile is kept with its thumbnail
-  // while its slide is on the page
   refresh(): void {
     const slides = this.slides();
-    // the numbers of the navigator, and the struck number that a hidden slide would take
     const at = showPlaces(slides);
     const kept = new Set(slides);
     for (const s of [...this.tiles.keys()]) if (!kept.has(s)) this.tiles.delete(s);
@@ -269,7 +245,6 @@ export class Sorter {
       putChildren(box, want);
       parts.push(head, box);
     }
-    // the nodes are moved only where their order changed, since a move takes the focus off a tile
     const had = document.activeElement instanceof HTMLElement && this.scroller.contains(document.activeElement) ? document.activeElement : null;
     putChildren(this.scroller, [...parts, this.drop, ...(this.renaming ? [this.renaming] : [])]);
     if (had?.isConnected && document.activeElement !== had) had.focus({ preventScroll: true });
@@ -288,7 +263,6 @@ export class Sorter {
     const triangle = icon('chevron-right', 14);
     head.append(triangle, title, count);
     const group = { head, title, count, box: make('div', 'tiles'), slides: [] as Element[] };
-    // a key or a click on the triangle collapses the group, and a click elsewhere selects its slides
     head.addEventListener('click', (ev) => {
       if (this.eatClick) {
         this.eatClick = false;
@@ -313,8 +287,6 @@ export class Sorter {
     return group;
   }
 
-  // a field over the name of the section of head, a section slide, whose text is written into its
-  // heading with Return or when it is left, and dropped with Esc
   private rename(head: Element, name: HTMLElement): void {
     const h = sectionHeading(head);
     if (!h || this.renaming) return;
@@ -349,7 +321,6 @@ export class Sorter {
     };
     field.addEventListener('keydown', (ev) => {
       if (ev.isComposing) return;
-      // the keys of the field stay with it, apart from the command keys of the editor
       if (!ev.metaKey && !ev.ctrlKey) ev.stopPropagation();
       if (ev.key === 'Enter' || ev.key === 'Escape') {
         ev.preventDefault();
@@ -401,7 +372,6 @@ export class Sorter {
     tile.el.scrollIntoView({ block: 'nearest' });
   }
 
-  // the slide shown on the canvas, with the sorter closed
   open(slide: Element): void {
     this.select([slide], slide);
     this.toggle(false);
@@ -428,7 +398,6 @@ export class Sorter {
     this.focus(slide);
   }
 
-  // the number of tiles in a row of the grid of slide
   private columns(slide: Element): number {
     const box = this.tiles.get(slide)?.el.parentElement;
     if (!box) return 1;
@@ -478,7 +447,6 @@ export class Sorter {
     this.focus(next);
   }
 
-  // a drag of a tile moves the selected slides, or the slide of the tile when it is not selected
   private onDown(ev: PointerEvent): void {
     if (ev.button !== 0 || (this.app.platform === 'mac' && ev.ctrlKey)) return;
     const tile = ev.target instanceof Element ? ev.target.closest('.tile') : null;
@@ -498,7 +466,6 @@ export class Sorter {
     window.addEventListener('pointercancel', up, true);
   }
 
-  // a drag of the head of a section slide moves the section, i.e. the slides of its group
   private onHeadDown(head: Element, ev: PointerEvent): void {
     if (ev.button !== 0 || (this.app.platform === 'mac' && ev.ctrlKey) || ev.shiftKey || ev.metaKey || ev.ctrlKey || this.renaming) return;
     const slides = this.groups.get(head)?.slides ?? [];
@@ -516,8 +483,6 @@ export class Sorter {
     window.addEventListener('pointercancel', up, true);
   }
 
-  // the gap of a section is the start of the group whose head is nearest the pointer, or the end of
-  // the deck below the last group, drawn as a line across the Slide Sorter
   private onHeadMove(ev: PointerEvent, d: Drag): void {
     const all = this.slides();
     const box = this.scroller.getBoundingClientRect();
@@ -553,8 +518,6 @@ export class Sorter {
       this.onHeadMove(ev, d);
       return this.scrollNear(ev);
     }
-    // the gap is before the tile under the pointer, or after it past its middle, in the order of
-    // the deck
     const all = this.slides();
     const list = this.shownSlides();
     let best: { s: Element; r: DOMRect; dist: number } | null = null;
@@ -576,7 +539,6 @@ export class Sorter {
     this.scrollNear(ev);
   }
 
-  // the Slide Sorter scrolled while a drag is near its top or its bottom
   private scrollNear(ev: PointerEvent): void {
     const r = this.scroller.getBoundingClientRect();
     if (ev.clientY < r.top + 28) this.scroller.scrollTop -= 12;

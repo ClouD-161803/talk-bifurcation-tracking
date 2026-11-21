@@ -1,29 +1,3 @@
-// Exports a deck to PowerPoint, so that a click is a step of the deck.
-//
-//   node scripts/export-pptx.mjs [--still] [deck] [output]
-//
-// The default deck is index.html, and the default output is slides.pptx. Each step is an image of
-// the print view of the deck, the same view as in scripts/export-pdf.mjs, hence the text is not
-// editable. A backdrop that the deck traces or loops is recorded into an MP4 in scripts/record.mjs,
-// from the first step of its slide at which it is traced. The PowerPoint slide of this step holds
-// the last frame of the recording as its image, the recording over it, which starts with the slide,
-// and a picture of the words of each step over the recording. Each later step that shows the same
-// videos is shown on a click on this PowerPoint slide. Each tycho scene is recorded into an MP4 in
-// scripts/scenes.mjs, and it is placed in the box of its viewer as a video. Each surface and each
-// plot is recorded at each step in scripts/animations.mjs, as a loop placed in its box as a video,
-// and a step that changes the stage of a surface plays a clip of the change before the loop. A
-// video is placed over its image as a PowerPoint video, and it would be restarted on a new
-// PowerPoint slide, hence the steps that show it are stacked on one PowerPoint slide under the
-// video, and each later step is shown on a click. A recording would be restarted as well, hence a step that changes the videos of
-// a recorded slide starts a PowerPoint slide whose images show the backdrops complete. Any other
-// step is a PowerPoint slide of its own. With --still, the backdrops are drawn complete, a scene is
-// left in the images as the still of its first frame, a surface or a plot as the still of its step,
-// and an H.264 encoder is not needed. The notes of a slide are copied to each of its PowerPoint
-// slides, and each item of a list in the notes is a paragraph of its own after a dash.
-// Keynote opens this file too. The script exits nonzero on a JavaScript error in the page, on a
-// video without an MP4 source, since MP4 is the one format that plays in every version of
-// PowerPoint, and on a backdrop, a scene, a surface, or a plot that is not recorded, e.g. in a
-// browser without an H.264 encoder.
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { deckUrl, launch, printView } from './chrome.mjs';
@@ -41,12 +15,6 @@ if (unknown.length) {
 const still = args.includes('--still');
 const [deck = 'index.html', output = 'slides.pptx'] = args.filter((arg) => arg !== '--still');
 
-// a step is a .pdf-page. A video that is hidden, e.g. by the style of its fragment or under a later
-// video of its place, or in a step still to come, is left out. A video of the fragment style play
-// is thus in the image of the steps before its own, with its poster. Its box is the box of the
-// picture, which is smaller than the element under object-fit: contain, and a video of PowerPoint is
-// stretched to its box. A scene is listed as a video with the number of its viewer, in the box of
-// the still of its viewer, and without --still it is left out of the images in the same way
 const listSteps = `[...document.querySelectorAll('.pdf-page')].map((step) => {
   const page = step.getBoundingClientRect();
   const notes = [...step.querySelectorAll('aside.notes')]
@@ -84,7 +52,6 @@ const listSteps = `[...document.querySelectorAll('.pdf-page')].map((step) => {
     });
   return {
     top: window.scrollY + page.y,
-    // the first step of a slide does not show a fragment
     continues: !!step.querySelector('.fragment.visible'),
     name: step.querySelector('h1, h2')?.textContent ?? '',
     notes,
@@ -92,12 +59,6 @@ const listSteps = `[...document.querySelectorAll('.pdf-page')].map((step) => {
   };
 })`;
 
-// joins each step to the slide before it if both are of one slide of the deck and show the same
-// videos, and keeps the scroll offset and the index of each step. live holds the indices of the
-// traced backdrops of each step, or it is null with --still. a slide is recorded from the first step
-// of its slide of the deck with a traced backdrop, and the steps after it are joined to it while
-// they show the same videos, none included. a recording would restart on a later PowerPoint slide,
-// hence the slide after a change of the videos is not recorded
 function stackSteps(steps, live) {
   const slides = [];
   let recorded = null, started = false;
@@ -125,7 +86,6 @@ function localFile(video) {
   return fileURLToPath(source);
 }
 
-// the box and the name of the slide of each scene, at its first step, by the number of its viewer
 function sceneBoxes(slides) {
   const boxes = new Map();
   for (const slide of slides) {
@@ -136,8 +96,6 @@ function sceneBoxes(slides) {
   return boxes;
 }
 
-// whether a backdrop of the print view is traced or looped at a step, as in live() of
-// scripts/record.mjs, which is made only once the encoder is checked
 const traced = `[...document.querySelectorAll('.pdf-page .backdrop')].some((el) => {
   const orbits = Beeson.backdrops.find((o) => o.el === el);
   return !!orbits && Beeson.animated(orbits);
@@ -145,20 +103,12 @@ const traced = `[...document.querySelectorAll('.pdf-page .backdrop')].some((el) 
 
 const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
 
-// with wholeFrames, since the pictures are taken in the page where the recordings are made
 const browser = await launch({ wholeFrames: true });
 let failed = false;
 try {
-  // twice the design size, since an image of text is blurred on a display above 1080 lines. a plot
-  // does not move in a browser that prefers reduced motion, and is recorded only with motion
   const page = await browser.newPage({ scale: 2, motion: true });
-  // by default, a .pdf-page of reveal.js is a pixel shorter than its slide, and a picture of 1080 px
-  // would then end on the first row of the next page
   await printView(page, deckUrl(deck, 'print-pdf&still&pdfPageHeightOffset=0'));
   const steps = await page.evaluate(listSteps);
-  // each surface and plot of a step is a video in its box, with the text of its look, so that the
-  // steps that show it alike are stacked. a surface whose stage is changed at its step is recorded
-  // from the stage of the step before
   const shown = still ? [] : await listAnimations(page);
   let slideIndex = -1;
   for (const [n, step] of steps.entries()) {
@@ -172,8 +122,6 @@ try {
       step.animations.push({ id, index, from: from?.index ?? null, record: from ? `${id} from ${from.key}` : id });
     }
   }
-  // the recorder fails in a browser without an H.264 encoder, which a deck without a traced
-  // backdrop does not need
   const rec = !still && (await page.evaluate(traced)) ? await recorder(browser) : null;
   const slides = stackSteps(steps, rec && (await rec.live(page)));
   let start = Date.now();
@@ -194,7 +142,6 @@ try {
     });
   }
   if (animations.size) console.log(`recorded surfaces and plots: ${animations.size} in ${seconds(Date.now() - start)}`);
-  // a page behind another one, e.g. behind the page of the scenes, is not given animation frames
   await page.send('Page.bringToFront');
   let backdrops = 0, recording = 0;
   const scrollTo = async (top) => {
@@ -217,7 +164,6 @@ try {
       }
     }
     for (const video of slide.videos) {
-      // the same Buffer of a scene on several PowerPoint slides is embedded once in pptx
       if (video.scene !== undefined) {
         Object.assign(video, scenes.get(video.scene), { muted: true });
         continue;
@@ -235,8 +181,6 @@ try {
   for (const error of page.errors) console.error(`page error: ${error}`);
   if (page.errors.length) failed = true;
 } catch (error) {
-  // the reason first, e.g. that the browser does not encode H.264, in place of the source line
-  // that Node prints over an uncaught error
   console.error(error);
   failed = true;
 } finally {

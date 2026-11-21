@@ -1,6 +1,3 @@
-// the formulas in the texts of a plot, typeset by MathJax with the macros of the deck in the slides
-// and the print view, once per TeX
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';

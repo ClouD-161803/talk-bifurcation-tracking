@@ -1,17 +1,7 @@
-// Preview of the toolbar, a split button before Present. its main part runs Play Slide, which
-// traces the backdrop of the current slide once and then plays its steps, and its menu runs Trace
-// Backdrop and Play Steps alone, Select Backdrop, and Add Backdrop…. the backdrop is traced on the
-// canvas as Preview of the Backdrop pane traces it, and the steps are drawn on a layer over the
-// canvas, one per timing.step ms, each by showStep of present.ts as the show draws it. a preview
-// stops at a click on Stop, Esc, a press outside the toolbar and the menus, a change of slide, an
-// edit, and Slide Sorter, after which the slide is drawn complete. it does not change the file,
-// the history, or the selection, which is not drawn while it plays
-
 import type { App } from '../app.ts';
 import { previewPlays, setPreview, stopPreviews } from '../canvas/frames.ts';
-import { boundKeys, type Command } from '../commands.ts';
+import type { Command } from '../commands.ts';
 import { showFormat } from '../inspector/inspector.ts';
-import { fallback, matches } from '../keymap.ts';
 import { OFF } from '../shown-steps.ts';
 import { drawInto } from '../navigator/thumbs.ts';
 import { showStep, stepsOfSlide } from '../present.ts';
@@ -19,7 +9,6 @@ import { stepVideos } from '../steps.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { liveOf, slideBackdrop, spanOf, type Live } from './backdrop.ts';
 
-// the delay of each step in ms, which a test shortens through BeesonEditor.preview
 export const timing = { step: 1000 };
 
 const CSS = `
@@ -29,7 +18,6 @@ const CSS = `
 
 const theme = () => (window as unknown as { Beeson?: { preview?(el: HTMLElement): Live } }).Beeson;
 
-// the preview that plays, whose stop ends its waits, takes its layer down, and completes its traces
 let current: { stop(): void } | null = null;
 export const playing = (): boolean => !!current;
 
@@ -46,7 +34,6 @@ const ready = (app: App) => !!app.pairing?.root && !!app.current();
 const backdropOf = (app: App) => (ready(app) ? slideBackdrop(app) : null);
 const hasSteps = (app: App) => ready(app) && stepsOfSlide(app.current()!) > 0;
 const tableShown = (app: App) => !!app.commands.get('view.lightTable') && !!app.commands.state('view.lightTable').checked;
-// the backdrop that a trace on the canvas shows, i.e. not one hidden at the steps shown in the editor
 const traceable = (app: App) => {
   const el = tableShown(app) ? null : backdropOf(app);
   return el && !el.classList.contains(OFF) ? el : null;
@@ -65,7 +52,6 @@ async function play(app: App, parts: Part[]): Promise<void> {
   current = me;
   setPreview(app, 'play', true, () => halt(app));
   app.invalidate();
-  // Slide Sorter stops the preview, and the layer of the steps follows the slide at every frame
   let place: (() => void) | null = null;
   let frame = 0;
   const follow = () => {
@@ -76,13 +62,11 @@ async function play(app: App, parts: Part[]): Promise<void> {
   };
   frame = requestAnimationFrame(follow);
   ends.push(() => cancelAnimationFrame(frame));
-  // a wait of ms, or until the preview stops
   const pause = (ms: number) => new Promise<void>((done) => {
     const t = window.setTimeout(done, ms);
     ends.push(() => { clearTimeout(t); done(); });
   });
 
-  // the backdrop on the canvas, until its last trajectory is traced, or after the same seconds for a loop
   const trace = async (el: HTMLElement) => {
     const o = liveOf(el);
     if (!o) return;
@@ -91,13 +75,11 @@ async function play(app: App, parts: Part[]): Promise<void> {
     ends.push(() => { if (o.tracing) o.complete(); });
     o.reset();
     o.start();
-    // a loop is cut after the same seconds
     const until = performance.now() + spanOf(o) * 1000 + 100;
     while (!stopped && o.tracing && performance.now() < until) await pause(50);
     if (o.tracing) o.complete();
   };
 
-  // the steps on a layer over the canvas, clipped to its viewport
   const steps = async () => {
     const stage = app.slides() as HTMLElement;
     const box = stage.getBoundingClientRect();
@@ -109,7 +91,6 @@ async function play(app: App, parts: Part[]): Promise<void> {
     layer.append(host);
     document.body.append(layer);
     const traced: Live[] = [];
-    // the backdrops that are steps and still traced
     const busy: (() => boolean)[] = [];
     ends.push(() => {
       for (const o of traced) o.destroy();
@@ -117,7 +98,6 @@ async function play(app: App, parts: Part[]): Promise<void> {
     });
     const deck = { width: stage.offsetWidth || 1920, height: stage.offsetHeight || 1080 };
     drawInto(host, slide, deck, box.width);
-    // the layer at the box of the slide, clipped to the viewport, after a zoom or a scroll too
     place = () => {
       const b = stage.getBoundingClientRect();
       layer.style.left = `${b.left}px`;
@@ -133,7 +113,6 @@ async function play(app: App, parts: Part[]): Promise<void> {
       if (shot) shot.style.transform = `scale(${b.width / deck.width})`;
     };
     place();
-    // the videos of the copy that the show plays at their step, once each fragment around them is shown
     const copy = host.shadowRoot?.querySelector('.beeson-thumb .slides > section');
     const videos = copy ? stepVideos(copy) : null;
     if (videos) ends.push(() => videos.stop());
@@ -147,13 +126,11 @@ async function play(app: App, parts: Part[]): Promise<void> {
       if (stopped) return;
       showStep(host, slide, k);
       videos?.update(reached);
-      // a backdrop that is a step is traced from its step on, as the show traces it
       const now = '.backdrop.fragment.current-fragment:not(.beeson-off)';
       for (const el of host.shadowRoot?.querySelectorAll<HTMLElement>(now) ?? []) {
         const o = theme()?.preview?.(el);
         if (!o) continue;
         traced.push(o);
-        // after the completion that preview of src/main.ts queues once the trajectories are ready
         void o.ready.then(() => {
           if (stopped) return;
           o.reset();
@@ -179,7 +156,6 @@ async function play(app: App, parts: Part[]): Promise<void> {
   }
 }
 
-// a command returns once the preview has started, and the preview plays on
 const start = (app: App, parts: Part[]) => void play(app, parts).catch((e) => app.fail(e));
 
 export function install(app: App): void {
@@ -191,7 +167,6 @@ export function install(app: App): void {
     label: 'Play Slide',
     menu: menu(25),
     toolbar: preview(39),
-    // a click on the main part while a preview plays stops it
     enabled: (a) => playing() || !!traceable(a) || playable(a),
     run: (a) => (playing() ? halt(a) : start(a, ['backdrop', 'steps'])),
   });
@@ -231,41 +206,21 @@ export function install(app: App): void {
     run: (a) => a.commands.run('insert.backdrop'),
   });
 
-  // a press outside the toolbar and the menus, Esc, a change of slide, and an edit stop a preview.
-  // Esc stops it alone, without the Deselect of its key. the keymap matches a key before the
-  // listener below, hence a command is turned off only during the keydown of Esc, and Deselect keeps
-  // Mod+Shift+A. the same holds for Preview Steps of the Steps pane and Preview Transition
-  const esc = () => { const ev = window.event; return ev instanceof KeyboardEvent && ev.type === 'keydown' && ev.key === 'Escape'; };
-  c.veto((_, cmd) => previewPlays() && esc() && Object.values(cmd.keys ?? {}).some((k) => k.includes('Escape')));
+  c.veto((_, cmd, ev) => previewPlays() && ev?.key === 'Escape' && Object.values(cmd.keys ?? {}).some((k) => k.includes('Escape')));
   window.addEventListener('pointerdown', (ev) => {
     const t = ev.target;
     if (playing() && !(t instanceof Element && t.closest('.beeson-edit-top, .beeson-edit-menu'))) halt(app);
   }, true);
-  // a press on Preview, on the Play button of the Steps pane, or on Preview of the Transition pane
-  // leaves the caret in a text, as Undo and Redo of the toolbar do, hence it is where it was at the
-  // end of the preview
   const starts = '.beeson-edit-top [data-command="preview.slide"], .beeson-edit-side button.play, [data-command="slide.previewTransition"]';
   window.addEventListener('mousedown', (ev) => {
     const t = ev.target;
     if (t instanceof Element && t.closest(starts) && (document.activeElement as HTMLElement | null)?.isContentEditable) ev.preventDefault();
   }, true);
-  // a key typed in that text, or an input into it, stops every preview before it is written, hence
-  // it is not written into a text that a preview hides, under a caret that is not drawn. the
-  // command of a key, e.g. Enter, runs before the listener below, hence its key stops the previews
-  // in the veto, which is checked before the command runs. the veto is also checked for the other
-  // commands while a command of the key runs, e.g. for the toolbar, hence it stops the previews
-  // only for a command of the key. a zoom key changes the view alone, and the preview plays on at
-  // the new zoom
   const typing = () => previewPlays() && !!(document.activeElement as HTMLElement | null)?.isContentEditable;
-  const typed = (ev: Event | undefined): ev is KeyboardEvent => ev instanceof KeyboardEvent && ev.type === 'keydown' && ev.key !== 'Escape' && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(ev.key) && typing();
+  const typed = (ev: KeyboardEvent) => ev.key !== 'Escape' && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(ev.key) && typing();
   const zooms = (cmd: Command | undefined) => !!cmd?.id.startsWith('zoom.');
-  const keyOf = (cmd: Command, ev: KeyboardEvent) => {
-    const alt = fallback(ev, app.platform);
-    return boundKeys(cmd, app.platform).some((k) => matches(ev, k, app.platform) || (!!alt && matches(alt, k, app.platform)));
-  };
-  c.veto((_, cmd) => {
-    const ev = window.event;
-    if (typed(ev) && !zooms(cmd) && keyOf(cmd, ev)) stopPreviews();
+  c.veto((_, cmd, ev) => {
+    if (ev && typed(ev) && !zooms(cmd)) stopPreviews();
     return false;
   });
   window.addEventListener('keydown', (ev) => { if (typed(ev) && !zooms(c.forKey(ev, app.region()))) stopPreviews(); }, true);

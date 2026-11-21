@@ -1,26 +1,15 @@
-// the script tex.js of a deck, which is written next to index.html from the preamble.tex and the
-// references.bib of the talk: the macros and the environments for MathJax, the kinds of theorem,
-// and the references of the entries that the deck cites. the script is a classic script, since a
-// deck opened from a file cannot read the text of a file next to it. it is written by scripts/tex.mjs
-// and by a save in the editor, with the same text
-
 import { readBibtex, type Bibliography } from './bibtex.ts';
 import { readPreamble, type EnvironmentDef, type Kind, type MacroDef, type Preamble, type Resolve } from './preamble.ts';
 import { referenceOf, type Reference } from './reference.ts';
 
-/** The content of tex.js, i.e. the value of window.beesonTex in a deck. */
 export type Tex = {
   macros: Record<string, MacroDef>;
   environments: Record<string, EnvironmentDef>;
-  // the extensions of MathJax to load on top of those of every deck
   packages: string[];
-  // the kinds of theorem of the preamble, without the usual ones of the theme
   theorems: Record<string, Kind>;
-  // the references of the cited entries, by key
   references: Record<string, Reference>;
 };
 
-/** The keys of the citations of a deck, each once, in the order of the file. */
 export function citedKeys(html: string): string[] {
   const keys = new Set<string>();
   const text = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[\s\S]*?<\/script\s*>/gi, '');
@@ -30,12 +19,10 @@ export function citedKeys(html: string): string[] {
   return [...keys];
 }
 
-/** The content of tex.js for a deck, and the keys that the deck cites without an entry of the bibliography. */
 export function texOf(preamble: Preamble, bibliography: Bibliography, html: string): { tex: Tex; missing: string[] } {
   const entries = new Map(bibliography.entries.map((entry) => [entry.key, entry]));
   const references: Record<string, Reference> = {};
   const missing: string[] = [];
-  // in the order of the keys, so that a slide moved in the deck does not change the script
   for (const key of citedKeys(html).sort()) {
     const entry = entries.get(key);
     if (entry) references[key] = referenceOf(entry);
@@ -45,10 +32,7 @@ export function texOf(preamble: Preamble, bibliography: Bibliography, html: stri
   return { tex: { macros, environments, packages, theorems, references }, missing };
 }
 
-/** The preamble, the bibliography, the content of tex.js, and the keys cited without an entry, for the deck html and the files of its folder, which read gives, null for a file that is not there. */
 export function folderTex(read: (name: string) => string | null, html: string): { preamble: Preamble; bibliography: Bibliography; tex: Tex; missing: string[] } {
-  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
-  // without an extension
   const names = {
     input: (name: string) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
     package: (name: string) => [`${name}.sty`],
@@ -66,7 +50,6 @@ export function folderTex(read: (name: string) => string | null, html: string): 
   return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
 }
 
-/** The lines that npm run tex prints for the skipped lines of the sources, and for the keys that the deck of the file deck cites without an entry. */
 export function skippedLines(preamble: Preamble, bibliography: Bibliography, missing: string[], deck: string): string[] {
   const short = (statement: string) => (statement.length > 100 ? `${statement.slice(0, 99)}…` : statement);
   return [
@@ -76,12 +59,10 @@ export function skippedLines(preamble: Preamble, bibliography: Bibliography, mis
   ];
 }
 
-// a value as JSON in ASCII, since the script is read in the encoding of its page
 const ascii = (value: unknown): string => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
-/** The text of tex.js, with one line per macro, environment, kind, and reference. */
 export function texScript(tex: Tex): string {
-  const lines = ['// written from preamble.tex and references.bib by npm run tex and by a save in the editor.', '// change the two sources, since this file is written again from them', 'window.beesonTex = {'];
+  const lines = ['window.beesonTex = {'];
   for (const [name, part] of Object.entries(tex)) {
     const entries = Array.isArray(part) ? [] : Object.entries(part);
     if (!entries.length) lines.push(`  ${ascii(name)}: ${ascii(part)},`);
@@ -91,7 +72,6 @@ export function texScript(tex: Tex): string {
   return `${lines.join('\n')}\n`;
 }
 
-/** The source of a preamble with the macros of a theme/macros.js of an older talk, each under its comment lines. */
 export function preambleOf(macros: Record<string, MacroDef>, comments: Record<string, string[]> = {}): string {
   const lines = ['% the macros of the talk. npm run tex reads them into tex.js for MathJax'];
   for (const [name, def] of Object.entries(macros)) {

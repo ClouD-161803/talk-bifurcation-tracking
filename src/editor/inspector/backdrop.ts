@@ -1,17 +1,9 @@
-// the pane Backdrop of the inspector, for a selected backdrop: its drawing, chosen from a popup or
-// from the gallery of Choose…, the family, the frame, and the branch of a Broucke drawing, the colormap
-// of a drawing of a file, its window, i.e. its center and its half height, the labels of the points of a
-// built-in backdrop, and its motion, with the Lock button of the Arrange pane. each control runs a
-// command of commands/backdrop.ts, whose writes the theme draws again
-
 import type { App } from '../app.ts';
 import { BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, brouckePick, colormapName, drawnBy, entryName, isBroucke, library, liveOf, probeLibrary, selectedBackdrop, type Pick } from '../commands/backdrop.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { make } from '../ui/dom.ts';
 import { button, checkbox, glyph, keepFocus, note, numberField, row, section, type Control, type Run } from './controls.ts';
 
-// a popup button whose menu runs the items of list, as the Paragraph Style popup of inspector/text.ts.
-// the menu is opened once ready, if given, has settled
 function popup(app: App, label: string, current: () => string, list: () => MenuItem[], enabled: () => boolean, ready?: () => Promise<void>): Control {
   const b = make('button', 'ed-popup');
   b.type = 'button';
@@ -42,8 +34,6 @@ function popup(app: App, label: string, current: () => string, list: () => MenuI
   return { el: b, sync };
 }
 
-// parts in a box that is shown while shown() is true, so that the pane follows a change of the
-// drawing between a built-in backdrop and a file without being built again
 function when(shown: () => boolean, parts: Control[]): Control {
   const box = make('div');
   box.append(...parts.map((p) => p.el));
@@ -74,8 +64,6 @@ export function backdropPane(app: App, run: Run): Control[] {
     disabled: !!e.missing,
     run: () => run('backdrop.builtIn', { value: e.key, el }),
   })), on, () => probeLibrary(app));
-  // a popup of a Broucke drawing, which shows Custom for a selection that is not a pick. Frame and
-  // Branch are picked only from a pick
   const brouckePopup = (label: string, key: keyof Pick, values: string[]) => popup(app, label, () => brouckePick(el)?.[key] ?? NAMES.custom, () => values.map((v) => ({
     label: v,
     checked: brouckePick(el)?.[key] === v,
@@ -129,14 +117,6 @@ export function backdropPane(app: App, run: Run): Control[] {
   return parts;
 }
 
-// a checkbox of the label of a point, checked while the backdrop has it
 function labelBox(app: App, run: Run, el: HTMLElement | null, at: string, name: string): Control {
-  const c = checkbox(app, run, 'backdrop.label', name, () => !!el && [...el.querySelectorAll(':scope > .label')].some((l) => l.getAttribute('data-at') === at));
-  // the command is run with the point, which checkbox() does not pass
-  c.el.addEventListener('click', (ev) => {
-    ev.stopImmediatePropagation();
-    ev.preventDefault();
-    if (!c.el.classList.contains('off')) void Promise.resolve(run('backdrop.label', { at, el })).then(() => setTimeout(c.sync));
-  }, true);
-  return c;
+  return checkbox(app, run, 'backdrop.label', name, () => !!el && [...el.querySelectorAll(':scope > .label')].some((l) => l.getAttribute('data-at') === at), { at, el });
 }

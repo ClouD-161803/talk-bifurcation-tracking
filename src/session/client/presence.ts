@@ -1,16 +1,3 @@
-// the presence of each page of a session: its slide, its selected elements, and its caret, sent as
-// offsets of the text of the authority at a version, and read back by every other page as its own
-// elements, for layer.ts, the avatars, and the navigator. another person holds a text element
-// while their caret is in it and they were active in the last IDLE ms, and floor.ts refuses the
-// commands of this page that would move, delete, split, retag, or replace a held element.
-//
-// an offset is carried twice. the sender carries it from the source of its port, which offsetOf
-// refers to, to the text of the authority at v. the receiver carries it through the operations
-// after v that it received, and from the text of the authority to the source of its own port. an
-// offset is in doubt when a change touches it, or when the change could slide onto it and leave
-// the same text, e.g. a copy of an element put next to it. an offset in doubt is not read as an
-// element, and the element read before is kept while it is in the page
-
 import type { AppliedOp, Patch, Version } from '../protocol.ts';
 import { parseVersion } from '../protocol.ts';
 import { apply, diff } from '../patch.ts';
@@ -21,18 +8,12 @@ export type PresenceState = {
   v: Version;
   slide: number | null;
   selected: number[];
-  // the focus and the anchor of the selection in the text element at el, with the text on each side
-  // of the focus, see shapes() of the editor
   caret: (Omit<Caret, 'el'> & { el: number }) | null;
   typing: boolean;
-  // the person typed or moved the caret to another element in the last IDLE ms, by the clock of the
-  // page, which a page that first hears the state holds by
   active: boolean;
   following: string | null;
   mode: 'edit' | 'present' | 'history';
-  // the page is hidden, e.g. in a tab behind another
   away: boolean;
-  // the sheet of preamble.tex or references.bib that is open on the page
   sheet: 'preamble' | 'bibliography' | null;
 };
 
@@ -46,32 +27,19 @@ export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret'> & {
   caret: Caret | null;
 };
 
-// in ms: the shortest gap between two states sent for a change of offsets alone, the rest of the
-// caret before its offset is sent, and the time that typing stays true after a key
 const THROTTLE = 200;
 const REST = 200;
 const TYPING = 2000;
-// in ms, the time after which a hidden page is sent as away, since a page that closes is hidden
-// just before or just after its bye, and a state that reaches the edit command after the bye
-// brings the page back
 const HIDING = 1000;
-// in ms, the time after which a person who neither typed nor moved the caret to another element
-// does not hold the element of the caret
 const IDLE = 30000;
-// the operations kept for carrying an offset, and the farthest that a change is slid
 const LOG = 256;
 const SLIDE = 4096;
-// a state is sent again with the newest version when the one sent is this many operations behind
 const BEHIND = 64;
 const MAX_SELECTED = 500;
-// the characters on each side of a caret that a state keeps, as selectionIn() of the editor reads them
 const NEAR = 12;
 
-// a change of the text, as it moves an offset: an offset at hi or after it moves by delta, an
-// offset in lo to hi is in doubt, and one before lo stays
 type Carried = { lo: number; hi: number; delta: number };
 
-// patch with the characters that it keeps at its ends taken off, since diff widens to tokens
 function trim(a: string, p: Patch): Patch {
   let i = 0;
   while (p.start + i < p.end && i < p.text.length && a.charCodeAt(p.start + i) === p.text.charCodeAt(i)) i++;
@@ -80,7 +48,6 @@ function trim(a: string, p: Patch): Patch {
   return { start: p.start + i, end: p.end - j, text: p.text.slice(i, p.text.length - j) };
 }
 
-// how far an insertion or a deletion can slide left and right in a with the same result
 function slide(a: string, p: Patch): [number, number] {
   const t = p.start === p.end ? p.text : p.text ? '' : a.slice(p.start, p.end);
   if (!t) return [0, 0];
@@ -93,8 +60,6 @@ function slide(a: string, p: Patch): [number, number] {
 
 const NAME = /[\w-]/;
 
-// the offset of the < of a tag whose name p changes, e.g. of <p> to <h3>, which replaces the element
-// there, or -1. a change of the attributes keeps the element
 function renamed(a: string, p: Patch): number {
   if (!NAME.test(p.text[0] ?? '') && !(p.end > p.start && NAME.test(a[p.start]))) return -1;
   let i = p.start;
@@ -102,7 +67,6 @@ function renamed(a: string, p: Patch): number {
   return a[i - 1] === '<' ? i - 1 : -1;
 }
 
-// patches of the text a, sorted, as they move offsets of a
 export function carried(a: string, patches: readonly Patch[]): Carried[] {
   const out: Carried[] = [];
   for (const raw of patches) {
@@ -115,7 +79,6 @@ export function carried(a: string, patches: readonly Patch[]): Carried[] {
   return out;
 }
 
-// o carried through changes, or null when it is in doubt
 export function carry(o: number, changes: readonly Carried[]): number | null {
   let delta = 0;
   for (const c of changes) {
@@ -125,15 +88,11 @@ export function carry(o: number, changes: readonly Carried[]): number | null {
   return o + delta;
 }
 
-// the operations received since the log was seeded with the text of the authority at a version,
-// each kept as it moves offsets. an operation that cannot follow the last one, e.g. after the
-// whole text was read again, empties the log until it is seeded again
 class Log {
   private epoch = '';
   private n = -1;
   private text: string | null = null;
   private steps: { n: number; changes: Carried[] }[] = [];
-  // the operations received while the log could not take them, replayed at the next seed
   private waiting: AppliedOp[] = [];
 
   seed(text: string, v: Version): void {
@@ -154,7 +113,6 @@ class Log {
     return this.text !== null;
   }
 
-  // true when the log does not reach version v, e.g. of a base read again as a whole text
   behind(v: Version): boolean {
     const at = parseVersion(v);
     return !!at && (at.epoch !== this.epoch || at.n > this.n);
@@ -178,8 +136,6 @@ class Log {
     }
   }
 
-  // o of the text at version from carried to the text at n of the same epoch. null when o is in
-  // doubt, and undefined when the log does not hold every operation between them
   carry(o: number, from: { epoch: string; n: number }, n: number): number | null | undefined {
     if (from.n === n) return o;
     if (from.epoch !== this.epoch || !this.steps.length) return undefined;
@@ -191,7 +147,6 @@ class Log {
   }
 }
 
-// the changes from one text to another, kept for the last pairs of texts asked for
 class Changes {
   private cache: { a: string; b: string; changes: Carried[] }[] = [];
 
@@ -206,21 +161,14 @@ class Changes {
   }
 }
 
-// the state of another page as this page last heard it, with the time of this page at which the
-// page was last seen typing or moving its caret to another element. a page that this page first
-// hears is active when its state says so, since its caret may have rested for long
 type Other = {
   raw: string;
-  // the offsets and their version, whose change reads the elements again
   key: string;
   state: PresenceState;
   activeAt: number;
-  // the time of this page at which the page was last heard typing
   typedAt: number;
   resolved: Resolved | null;
-  // the key under which the elements of resolved were read, which an offset in doubt keeps
   resolvedKey: string;
-  // the state is of a version that this page has not reached yet
   ahead: boolean;
 };
 
@@ -231,7 +179,6 @@ function parseState(raw: unknown): PresenceState | null {
   const s = raw as Record<string, unknown>;
   if (typeof s.v !== 'string' || !parseVersion(s.v)) return null;
   const caret = s.caret as { el?: unknown; at?: unknown; from?: unknown; pre?: unknown; post?: unknown } | null;
-  // the characters next to the caret, i.e. the end of pre and the start of post
   const near = (t: unknown, end: boolean): string => (typeof t !== 'string' ? '' : end ? t.slice(Math.max(0, t.length - NEAR)) : t.slice(0, NEAR));
   const mode = s.mode === 'present' || s.mode === 'history' ? s.mode : 'edit';
   return {
@@ -252,15 +199,12 @@ const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.sele
 
 export class Presence {
   readonly client: Client;
-  // added to performance.now(), e.g. by a test that moves the clock of the holds. the clock of the
-  // machine is not read, since it can be set back
   skew = 0;
   private readonly log = new Log();
   private readonly changes = new Changes();
   private readonly others = new Map<string, Other>();
   private list: Resolved[] = [];
 
-  // what this page sends
   private fields: { following: string | null; mode: PresenceState['mode'] } = { following: null, mode: 'edit' };
   private sentKey: string | null = null;
   private sentV: { epoch: string; n: number } | null = null;
@@ -276,14 +220,10 @@ export class Presence {
   private activeAt = -Infinity;
   private caretHost: Element | null = null;
   private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
-  // the source and the count of the changes of the deck after the last time that the port read the
-  // deck into its source for an offset, and whether it reads it now
   private refreshed: { source: string | null; edits: number } | null = null;
-  // the count of the changes of the deck by the person
   private edits = 0;
   private refreshing = false;
   private seen = new Set<string>();
-  // a page joined since the end of the last drive
   private arrived = false;
 
   constructor(client: Client) {
@@ -302,10 +242,7 @@ export class Presence {
       this.due(false);
     };
     client.on('applied', based);
-    // an apply that changes the deck changes the source as well
     client.port.onChange(() => this.edits++);
-    // the base moved without an apply, e.g. at the broadcast of an operation of this page, which
-    // can carry an offset that this operation put in doubt, or reach a state of another page
     client.on('settled', (moved) => {
       if (moved) based();
       if (!this.arrived) return;
@@ -314,15 +251,10 @@ export class Presence {
       this.due(true);
     });
     client.on('people', () => {
-      // a page that joined cannot carry a state of a version before it, hence it is sent again
-      // after the drive that takes the operations of the same answer
       const ids = new Set(client.people.map((p) => p.client));
       if ([...ids].some((id) => id !== client.client && !this.seen.has(id))) this.arrived = true;
       this.seen = ids;
     });
-    // a page that is not online sends nothing. a page back online sends its state again at once,
-    // since an edit command started again does not know it, and a rejoin is online only once its
-    // hello gave the token that the state is sent with
     let online = false;
     let joined = false;
     client.on('state', () => {
@@ -333,14 +265,11 @@ export class Presence {
         this.sentKey = null;
         this.due(true);
       } else {
-        // the log begins at the text of the join, since a state of another page may be of it, and
-        // the answer of an operation of this page may move the base on before the poll that holds it
         if (!this.log.seeded) this.seedLog();
         this.due(true);
       }
       joined = true;
     });
-    // after the end of the session nothing is held, and no timer runs
     client.on('ended', () => {
       this.others.clear();
       this.caretHost = null;
@@ -351,8 +280,6 @@ export class Presence {
       this.timer = this.restTimer = this.typingTimer = this.idleTimer = 0;
       this.publish();
     });
-    // the selection is read once the code that set it ends, since an apply that moves the slide of
-    // the caret sets the selection at the slide change and puts the caret back only after it
     app.selection.listen(() => queueMicrotask(() => this.moved()));
     app.listen('slide', () => this.due(true));
     document.addEventListener('selectionchange', () => this.moved());
@@ -376,8 +303,6 @@ export class Presence {
     return this.list;
   }
 
-  // the elements that other people hold, i.e. their caret elements while they were active in the
-  // last IDLE ms, read now
   get holds(): ReadonlyMap<Element, Resolved> {
     const t = this.now();
     const holds = new Map<Element, Resolved>();
@@ -388,16 +313,13 @@ export class Presence {
     return holds;
   }
 
-  // the holder of el or of an element that contains el, or with containing, of an element in el
   holderOf(el: Element, containing = true): Resolved | null {
     for (const [at, by] of this.holds) if (at.contains(el) || (containing && el.contains(at))) return by;
     return null;
   }
 
-  // e.g. by the part that follows a person
   set(fields: Partial<{ following: string | null; mode: PresenceState['mode'] }>): void {
     Object.assign(this.fields, fields);
-    // the selection is read now, since its selectionchange comes after this state
     this.moved();
     this.due(true);
   }
@@ -407,8 +329,6 @@ export class Presence {
     if (base) this.log.seed(base.text, base.v);
   }
 
-  // the caret or the selection of this page moved. a new caret element, selection, or slide is sent
-  // at once, and the offset of the caret alone after it rests
   private moved(): void {
     if (this.client.ended) return;
     const { app } = this.client;
@@ -439,14 +359,12 @@ export class Presence {
     this.due(!was);
   }
 
-  // the state is sent again when the person stops being active
   private active(): void {
     this.activeAt = this.now();
     clearTimeout(this.idleTimer);
     this.idleTimer = window.setTimeout(() => this.due(true), IDLE);
   }
 
-  // a state is sent now, or for a change of offsets alone at most every THROTTLE ms
   private due(now: boolean): void {
     if (this.client.ended) return;
     if (now) {
@@ -467,10 +385,6 @@ export class Presence {
     return sel.kind === 'elements' || sel.kind === 'text' ? [...sel.items] : [];
   }
 
-  // a change of the version alone is not sent until the state is BEHIND operations behind, since
-  // every other page carries the offsets through the operations after v. it is sent at once when
-  // the log of this page puts an offset of the last state in doubt or does not reach v, since
-  // another page could then not carry it either, e.g. in the copy of a duplicated slide
   private send(): void {
     if (this.client.gone || this.client.connection !== 'online') return;
     const state = this.build();
@@ -488,9 +402,6 @@ export class Presence {
     this.client.sendPresence(state);
   }
 
-  // the state of this page now, or null before the session began. an element made since the last
-  // apply has no offset yet, and an edit of this page that is not in the source can put an offset
-  // in doubt, e.g. a deletion before it. the port then reads the deck into its source
   private build(): PresenceState | null {
     const { client } = this;
     const { app, port, shell } = client;
@@ -523,8 +434,6 @@ export class Presence {
     };
   }
 
-  // the deck read into the source of the port, once for a source and a deck. an operation of
-  // another page that leaves the deck as it is does not read it again
   private refresh(): void {
     const { client } = this;
     const now = () => ({ source: client.shell.presence.source(), edits: this.edits });
@@ -539,8 +448,6 @@ export class Presence {
     });
   }
 
-  // the states of the other pages after an answer of events, which an answer taken after the end of
-  // the session does not change
   private hear(): void {
     const { client } = this;
     if (client.ended) return;
@@ -548,11 +455,9 @@ export class Presence {
     const present = new Set<string>();
     let changed = false;
     let lost = false;
-    // the other pages of this person, e.g. a second tab, are not drawn
     const mine = new Set(client.people.filter((p) => p.person === client.person).map((p) => p.client));
     for (const p of client.presence) {
       if (p.client === client.client) {
-        // the edit command lost the state of this page, e.g. when it dropped the page for silence
         lost = p.state === null && !!this.sent;
         continue;
       }
@@ -568,17 +473,12 @@ export class Presence {
         o = { raw, key: '', state, activeAt: state.active || state.typing ? t : -Infinity, typedAt: -Infinity, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
-      // the last key of a person who stopped typing is at most TYPING ms older than their state
       if (state.typing || (o.state.typing && state.active)) o.typedAt = o.activeAt = t;
       const caretBefore = o.resolved?.caret?.el ?? null;
       o.raw = raw;
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
       if (known && (o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
-      // a page that first heard the person during a pause holds from its own first hearing, hence
-      // a state that says idle ends the hold. a hold of a key that this page heard lasts its IDLE
-      // ms by the clock of this page, since an older state can reach the edit command after a
-      // newer one
       if (!state.active && !state.typing) o.activeAt = o.typedAt;
       changed = true;
     }
@@ -593,9 +493,6 @@ export class Presence {
     this.due(true);
   }
 
-  // the elements of every state read again after an apply: an element that left the page is read
-  // from the offsets again, and a state of a version that this page had not reached is read now.
-  // with all, every state is read again, after the port read the deck into its source
   private reread(all = false): void {
     let changed = false;
     for (const [id, o] of this.others) {
@@ -603,16 +500,12 @@ export class Presence {
       const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected));
       if (!all && !gone && !o.ahead) continue;
       this.resolve(o, id, r?.name ?? '', r?.color ?? 0);
-      // a hold that this page could not read when it heard of it begins now
       if (!r?.caret && o.resolved?.caret && (o.state.active || o.state.typing)) o.activeAt = this.now();
       changed = true;
     }
     if (changed) this.publish();
   }
 
-  // the elements of the state of o read, or kept from the last read under the same offsets for an
-  // offset in doubt. a state of a version ahead of this page keeps the elements read before, and so
-  // does a state that the log does not reach, e.g. after a resync with the whole text
   private resolve(o: Other, id: string, name: string, color: number): void {
     const { client } = this;
     const s = o.state;
@@ -656,9 +549,6 @@ export class Presence {
     };
   }
 
-  // the elements of this page at offsets of the text of the authority at v, null for an offset in
-  // doubt. 'ahead' when v is a version that this page has not reached, and null when the log does
-  // not reach back to v
   private read(offsets: (number | null)[], v: Version): (Element | null)[] | 'ahead' | null {
     const { client } = this;
     const base = client.base;
@@ -673,8 +563,6 @@ export class Presence {
     const mapped = ups.map((up) => (up === null ? null : carry(up, changes)));
     const found = client.shell.presence.elementsAt(mapped.map((m) => m ?? -1));
     const els = found.map((el, i) => (mapped[i] === null ? null : el));
-    // an edit of this page that is not in the source can put an offset in doubt, e.g. a move of
-    // its element. the port then reads the deck into its source, and the states are read again
     if (source !== base.text && ups.some((up, i) => up !== null && !els[i])) this.refresh();
     return els;
   }

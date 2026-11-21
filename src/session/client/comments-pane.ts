@@ -1,9 +1,3 @@
-// the pane Comments, the third tab of the inspector. it lists the threads in slide order under the
-// filters Open, For You, and Resolved, with On the deck on top, and it holds the draft of a new
-// comment and the list of people at an @. with the focus on a thread, J and K move it to the next
-// and the previous thread, R opens the reply, E resolves or reopens the thread, and U leaves it.
-// every text of a person is written as text, and never as HTML
-
 import { COMMENT_MAX, MENTION, type Comment } from '../protocol.ts';
 import type { Client, Connection } from './client.ts';
 import { Badges } from './comments-badges.ts';
@@ -19,11 +13,8 @@ import { Failure } from './transport.ts';
 const ENDED = 'The session has ended';
 const JOINED = 'Comments can be sent once you have joined';
 const UNSENT: Record<Connection, string> = { online: '', ended: ENDED, joining: JOINED, 'no-host': "Comments can be sent once the host's edit command runs", offline: 'Comments can be sent once you are back online' };
-// the tooltip of a control that sends, which is disabled unless the page is online, in the words of
-// the save state
 const unsent = (c: Client) => (c.connection === 'offline' && c.full ? `The session is full. ${JOINED}` : UNSENT[c.connection]);
 
-// the hit area of every control is 32 px or more, also on a phone
 const CSS = `
 .beeson-comments { display: flex; flex-direction: column; min-height: 0; flex: 1; font: 12px/1.4 var(--ed-font); color: var(--ed-text); }
 .beeson-comments .filters { display: flex; gap: 2px; margin: 4px 12px 8px; padding: 2px; border-radius: 7px; background: var(--ed-hover); }
@@ -70,9 +61,7 @@ const FILTERS: [Filter, string, string][] = [
   ['resolved', 'Resolved', 'No resolved comments.'],
 ];
 
-// a mention picked from the list, as the range of its @name in the field and the id of its person
 type Mark = { start: number; end: number; person: string };
-// the text of a field and its mentions, as kept through a reload of the page
 type Kept = { text: string; marks: Mark[] };
 type Field = { box: HTMLElement; area: HTMLTextAreaElement; send: HTMLButtonElement; error: HTMLElement; kept(): Kept; load(kept: Kept): void; reset(): void };
 
@@ -87,20 +76,16 @@ class Pane {
   private focused: string | null = null;
   private draft: { el: Element | null; slide: Element; box: HTMLElement; label: HTMLElement; field: Field } | null = null;
   private editing: { id: string; reply: string | null; field: Field } | null = null;
-  // the open menu of a thread or of a reply
   private menu: OpenMenu | null = null;
   private nodes = new Map<string, HTMLElement>();
   private signs = new Map<string, string>();
   private replies = new Map<string, Field>();
   private groups = new Map<Element | string, HTMLElement>();
   private order: string[] = [];
-  // each thread and its place as last drawn, read when another person deletes it
   private drawn = new Map<string, { t: Comment; p: Place | null }>();
-  // the replies kept through a reload whose thread is not drawn yet
   private pending = new Map<string, Kept>();
   private saveTimer = 0;
   private savedAt = -Infinity;
-  // the texts are written once those kept before a reload are read
   private restored = false;
 
   private readonly client: Client;
@@ -152,14 +137,11 @@ class Pane {
     return this.filter === 'open' || this.comments.mine(t);
   }
 
-  // a reply being typed or a comment in edit, which keeps its thread in Open when another person
-  // resolves it
   private busy(t: Comment): boolean {
     const f = this.replies.get(t.id);
     return this.editing?.id === t.id || (!!f && (!!f.area.value.trim() || f.box.contains(document.activeElement)));
   }
 
-  // the label of the place of a thread, e.g. On Heading: Low-thrust transfers
   label(t: Comment | null, p: Place | null, el?: Element | null): string {
     if (t?.removed) return t.anchor ? 'On a removed element' : 'On a removed slide';
     const target = el !== undefined ? el : p?.el ?? null;
@@ -172,8 +154,6 @@ class Pane {
     return n === null ? 'On the slide' : `On Slide ${n}`;
   }
 
-  // the threads in slide order, those on the deck first. a slide of a stack shares its number with
-  // the slides of the stack, hence the order is that of the slides in the deck
   private sorted(places: Map<string, Place>): Comment[] {
     const index = new Map([...document.querySelectorAll('.reveal .slides section')].map((s, i) => [s, i]));
     const key = (t: Comment) => {
@@ -195,7 +175,6 @@ class Pane {
     const shown = this.sorted(places).filter((t) => this.visible(t));
     const want: HTMLElement[] = [];
     if (this.draft) want.push(this.draft.box);
-    // a heading per slide, which reads the number of the slide in the status bar
     const groups = new Map<Element | string, HTMLElement>();
     let group: Element | string | null = null;
     for (const t of shown) {
@@ -217,8 +196,6 @@ class Pane {
     const scroll = this.list.scrollTop;
     const keep = new Set(want);
     for (const child of [...this.list.children]) if (!keep.has(child as HTMLElement)) child.remove();
-    // the nodes are put in place one by one around the node of the focus, which keeps its place,
-    // since a node taken out of the page loses the focus
     const put = (nodes: HTMLElement[], at: Element | null) => {
       for (const node of nodes) {
         if (node === at) at = at.nextElementSibling;
@@ -232,7 +209,6 @@ class Pane {
       put(want.slice(pin + 1), want[pin].nextElementSibling);
     }
     if (this.list.scrollTop !== scroll) this.list.scrollTop = scroll;
-    // a focused thread that leaves the list hands the focus to the thread at its place
     const before = this.order;
     this.order = shown.map((t) => t.id);
     if (this.focused && !this.order.includes(this.focused)) {
@@ -259,9 +235,6 @@ class Pane {
     this.updateDraft();
   }
 
-  // a reply being typed in a thread that another person deleted becomes the draft of a new comment
-  // on the same element, or on its slide when the element is gone. a draft with text keeps its
-  // place, and the reply is added under its text. the field to focus is given back
   private salvage(): HTMLElement | null {
     let give: HTMLElement | null = null;
     for (const [id, f] of this.replies) {
@@ -292,8 +265,6 @@ class Pane {
     return give;
   }
 
-  // a draft whose element or slide left the deck, e.g. deleted by another person, moves to its
-  // slide, or to the slide shown, as a reply does in salvage()
   private retarget(): void {
     const d = this.draft;
     if (!d || (d.el?.isConnected !== false && d.slide.isConnected)) return;
@@ -301,7 +272,6 @@ class Pane {
     if (slide) this.drafted(null, slide);
   }
 
-  // the draft and the replies being typed written to sessionStorage, at most once a second
   keep(): void {
     if (this.saveTimer) return;
     this.saveTimer = window.setTimeout(() => this.write(), Math.max(0, this.savedAt + 1000 - performance.now()));
@@ -319,12 +289,9 @@ class Pane {
     const draft = d?.field.area.value.trim() ? { ...d.field.kept(), ...this.comments.spots(d.el, d.slide) } : null;
     try {
       sessionStorage.setItem(TEXTS, draft || Object.keys(replies).length ? JSON.stringify({ draft, replies }) : '');
-    } catch {
-      // kept for this page only
-    }
+    } catch {}
   }
 
-  // the draft and the replies kept before the page loaded again, once the threads are read
   restore(): void {
     this.restored = true;
     let saved: Saved | null = null;
@@ -344,7 +311,6 @@ class Pane {
     }
     const d = saved?.draft;
     if (!d?.text || this.draft?.field.area.value) return;
-    // an element that was changed or removed meanwhile is not found, and neither is its slide
     const el = d.el ? this.comments.spotted(d.el) : null;
     const slide = el?.closest(SLIDES) ?? (d.slide ? this.comments.spotted(d.slide) : null) ?? this.shell.target().slide;
     if (!slide) return;
@@ -370,18 +336,13 @@ class Pane {
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
     const aria = `Thread by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`;
-    // an attribute written with its own value still invalidates the style of the pane
     if (node.getAttribute('aria-label') !== aria) node.setAttribute('aria-label', aria);
-    // a reply being typed stays in a thread that another person resolves
     const answering = !t.resolved || this.busy(t);
     const names = itemsOf(t).map((i) => `${this.nameOf(i.author)}|${this.colorOf(i.author)}`).join(',');
     const known = this.client.known.map((k) => `${k.person}=${k.name}`).join(',');
-    // the offsets of the anchors move with each letter typed before them, and the label stands for
-    // the place in the sign
     const { anchor: _a, slide: _s, ...shown } = t;
     const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), unsent(this.client), answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
-    // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
     this.signs.set(t.id, sign);
     const reply = this.replyField(t);
@@ -414,7 +375,6 @@ class Pane {
     const who = make('span', 'who', name);
     who.dir = 'auto';
     head.append(avatar, who, when);
-    // offline, an action is not sent later, hence its button is disabled
     const offline = (b: HTMLButtonElement) => {
       b.disabled = !online;
       if (!online) b.title = unsent(this.client);
@@ -429,7 +389,6 @@ class Pane {
         { label: 'Edit', run: () => this.edit(t, root ? null : i.id) },
         { label: 'Delete', run: () => void this.remove(t, root ? null : i.id) },
       ];
-      // a second press closes the menu
       const more = this.button('⋯', root ? 'Thread actions' : 'Reply actions', (ev) => {
         if (this.menu) return this.menu.close();
         const m = this.client.shell.menu(items, {
@@ -471,7 +430,6 @@ class Pane {
     return b;
   }
 
-  // the text of a comment, with each mention as @ and the current name of the person
   private text(raw: string): HTMLElement {
     const p = make('p', 'text');
     p.dir = 'auto';
@@ -492,10 +450,8 @@ class Pane {
         this.keep();
         this.nodes.get(t.id)?.focus();
       };
-      // Cancel discards the text, and Esc keeps it, as in a draft
       f = this.field('Reply', 'Reply', async (text) => {
         await this.comments.act(t.id, 'reply', { text });
-        // a reply to a thread that another person resolved while it was typed reopens it
         if (this.comments.threads.get(t.id)?.resolved) await this.comments.act(t.id, 'reopen', {});
         this.comments.markRead(t.id);
       }, () => {
@@ -514,9 +470,6 @@ class Pane {
     return f;
   }
 
-  // a field of a comment, with the list of people at an @, Cancel, and a button that sends it. a
-  // name picked from the list is a mention, kept as a mark on its @name until a change of the text
-  // touches it or a letter follows it, and a name typed by hand is text
   private field(placeholder: string, sendLabel: string, send: (text: string) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }, escape = cancel): Field {
     const box = make('div', 'field');
     const area = make('textarea');
@@ -524,9 +477,7 @@ class Pane {
     area.setAttribute('aria-label', placeholder);
     area.dir = 'auto';
     area.rows = 1;
-    // Mod+Enter sends, and is not Present of the editor here
     area.dataset.ownKeys = 'Mod+Enter';
-    // a mention is longer when it is sent than in the field, and the count is checked in sync()
     area.maxLength = 2 * COMMENT_MAX;
     const people = make('ul', 'people');
     people.id = `beeson-comment-people-${++ids}`;
@@ -553,8 +504,6 @@ class Pane {
     let active = 0;
     let busy = false;
     let over = false;
-    // the text as it is sent, with each mark written as the id of its person, and a word joiner
-    // after each @ typed before a brace, so that only a picked name is a mention
     const sent = () => {
       const plain = (s: string) => s.replace(/@\{/g, '@\u2060{');
       let text = '', at = 0;
@@ -584,7 +533,6 @@ class Pane {
       },
     };
     const fit = () => {
-      // a field out of the page has no height to read
       if (!area.isConnected) return;
       area.style.height = 'auto';
       area.style.height = `${Math.min(160, area.scrollHeight + 2)}px`;
@@ -604,13 +552,10 @@ class Pane {
         error.hidden = true;
       }
     };
-    // a render of the pane fills an open list again, e.g. for a person who became known to the page
     (box as HTMLElement & { sync?: () => void }).sync = () => {
       sync();
       if (!people.hidden) update();
     };
-    // the marks moved by the change from last to the value of the field, and those that the change
-    // touches dropped
     const move = () => {
       const now = area.value;
       let a = 0;
@@ -622,8 +567,6 @@ class Pane {
       marks = marks.filter((m) => !/[\p{L}\p{N}_]/u.test(now[m.end] ?? ''));
       last = now;
     };
-    // a delete that ends at the end of a mark takes out the rest of its @Name as well, since the field
-    // would keep it as plain text. it reads the input event, which a phone keyboard sends too
     const whole = () => {
       const at = area.selectionStart ?? 0;
       const m = marks.find((m) => m.start < at && m.end === at + last.length - area.value.length && area.value.slice(at) === last.slice(m.end));
@@ -641,7 +584,6 @@ class Pane {
       area.removeAttribute('aria-activedescendant');
     };
     const draw = () => {
-      // a list drawn again under the pointer would lose a click on it
       const sign = JSON.stringify([active, choices.map((c) => [c.person, c.name, this.colorOf(c.person), this.client.people.some((p) => p.person === c.person)])]);
       if (sign === drawn) return;
       drawn = sign;
@@ -674,7 +616,6 @@ class Pane {
         .sort((a, b) => Number(here.has(b.person)) - Number(here.has(a.person)) || Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
         .slice(0, 6);
       if (!choices.length) return close();
-      // the highlight stays on its person while this person is in the list
       const at = choices.findIndex((c) => c.person === was);
       active = at < 0 ? Math.min(active, choices.length - 1) : at;
       people.hidden = false;
@@ -715,8 +656,6 @@ class Pane {
       } finally {
         busy = false;
         sync();
-        // a browser moves the focus of the pressed button to the body while the button is disabled.
-        // an empty field would open the keyboard of a phone, hence the thread takes it then
         if (document.activeElement === document.body) (area.value ? area : area.closest('article'))?.focus({ preventScroll: true });
       }
     };
@@ -731,12 +670,10 @@ class Pane {
       this.keep();
     });
     area.addEventListener('click', update);
-    // the field may have the focus again by then, e.g. after a click on a scroll bar
     area.addEventListener('blur', () => setTimeout(() => {
       if (document.activeElement !== area && !people.contains(document.activeElement)) close();
     }, 150));
     area.addEventListener('keydown', (ev) => {
-      // a key of an input method that composes a text is its own
       if (ev.isComposing || ev.keyCode === 229) {
         ev.stopPropagation();
         return;
@@ -776,10 +713,8 @@ class Pane {
     return f;
   }
 
-  // a new comment on el, or on slide when el is null, as a draft at the top of the pane
   startDraft(el: Element | null, slide: Element, focus = true): void {
     if (inHistory()) return;
-    // a comment is an edit, and a person who edits does not follow
     stopFollowing();
     this.shell.tab.set(true);
     if (this.filter === 'resolved') this.filter = 'open';
@@ -788,7 +723,6 @@ class Pane {
     if (focus) this.draft?.field.area.focus();
   }
 
-  // the draft on el or slide, made without a render
   private drafted(el: Element | null, slide: Element): void {
     if (!this.draft) {
       const box = make('div', 'draft');
@@ -799,7 +733,6 @@ class Pane {
         this.render();
       };
       const field = this.field('Comment, or type @ to mention someone', 'Comment', async (text) => {
-        // the tab may be hidden, and render() then did not move the draft
         this.retarget();
         const d = this.draft!;
         const thread = await this.comments.add(d.el, d.slide, text);
@@ -809,7 +742,6 @@ class Pane {
         this.render();
         this.nodes.get(thread.id)?.focus();
       }, discard, undefined, () => {
-        // Esc keeps a draft with text, as it keeps a reply, and Cancel discards it
         if (field.area.value.trim()) field.area.blur();
         else discard();
       });
@@ -829,7 +761,6 @@ class Pane {
   private edit(t: Comment, reply: string | null): void {
     const item = reply ? t.replies.find((r) => r.id === reply) : t;
     if (!item || this.client.connection !== 'online') return;
-    // the mentions of the record, each a mark on the @name of its person
     let text = '';
     const marks: Mark[] = [];
     item.text.split(MENTION).forEach((part, k) => {
@@ -880,11 +811,9 @@ class Pane {
     }
   }
 
-  // the thread of id shown in the pane and framed on its slide
   open(id: string): void {
     const t = this.comments.threads.get(id);
     if (!t || inHistory()) return;
-    // a Show on the slide that following shows changes neither the slide nor the selection
     stopFollowing();
     this.shell.tab.set(true);
     if (!this.visible(t)) this.filter = t.resolved ? 'resolved' : 'open';
@@ -908,14 +837,12 @@ class Pane {
     if (read || this.shell.tab.shown()) this.comments.markRead(id);
   }
 
-  // the comments for the person, from the button Show of a joined toast
   openMine(): void {
     this.filter = 'mine';
     this.shell.tab.set(true);
     this.render();
   }
 
-  // the first open thread on the element or slide target
   openAt(target: Element): void {
     if (inHistory()) return;
     const places = this.comments.places();
@@ -961,11 +888,8 @@ const inHistory = (): boolean => document.documentElement.classList.contains('be
 
 const sentence = (text: string): string => `${text[0].toUpperCase()}${text.slice(1)}${/[.!?]$/.test(text) ? '' : '.'}`;
 
-// a 503 of the edit command gives its reason, e.g. that the comments are read only, and the answer
-// of a proxy is markup
 const told = (e: unknown): e is Failure => e instanceof Failure && e.status === 503 && !!e.message && !e.message.includes('<');
 
-// the message of a failed request for the person, which is not sent later
 function message(e: unknown): string {
   if (e instanceof Failure && e.status === 0) return 'Not sent. The connection to the host was lost.';
   if (told(e)) return `Not sent. ${sentence(e.message)}`;
@@ -974,7 +898,6 @@ function message(e: unknown): string {
   return text ? sentence(text) : 'The request failed.';
 }
 
-// a name isolated from the text around it, e.g. a name written right to left, and the text after it
 const named = (name: string, after: string): Node[] => [bdi(name), document.createTextNode(after)];
 
 const SLIDES = '.reveal .slides section';
@@ -999,9 +922,6 @@ const BUTTON_CSS = `
 .beeson-session-comments[inert] { opacity: 0.45; }
 `;
 
-// the comments of a session: the pane in the inspector, the badges, the commands Comment, Comments,
-// and Comment Badges, the button Comments in the title bar with the count of unread comments, and
-// a toast for a mention of the person
 export function install(client: Client): void {
   const shell = client.shell.comments;
   const comments = new Comments(client);
@@ -1015,7 +935,6 @@ export function install(client: Client): void {
   const count = make('span', 'count');
   button.append(client.shell.icon('comment', 14), count);
   client.shell.bar.append(button);
-  // the mode of Version History shows another version, hence the button is out of reach
   button.addEventListener('click', () => !inHistory() && shell.tab.set(!shell.tab.shown()));
   mountToasts();
 
@@ -1023,7 +942,6 @@ export function install(client: Client): void {
   const draw = () => {
     const n = comments.unreadCount();
     if (count.textContent !== (n ? String(n) : '')) count.textContent = n ? String(n) : '';
-    // a dot in place of the number while only threads outside For You are unread
     const dot = !n && comments.anyUnread();
     count.classList.toggle('dot', dot);
     const label = n ? `Comments, ${n} unread` : dot ? 'Comments, unread threads' : 'Comments';
@@ -1041,7 +959,6 @@ export function install(client: Client): void {
     });
   };
 
-  // the toasts of mentions wait while the mode of Version History is on
   const held: (() => void)[] = [];
   let history = inHistory();
   new MutationObserver(() => {
@@ -1053,15 +970,11 @@ export function install(client: Client): void {
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   button.toggleAttribute('inert', history);
 
-  // a comment is a candidate for a toast once, when the page first receives it. the comments of the
-  // first answer are not toasted, and the toasted ones are kept through a reload of the page
   let received: Set<string> | null = null;
   const toasted = new Set<string>();
   try {
     for (const id of JSON.parse(sessionStorage.getItem(TOASTED) || '[]') as string[]) toasted.add(id);
-  } catch {
-    // a page without storage toasts again after a reload
-  }
+  } catch {}
   const kind: ToastKind = { key: 'comments', many: (n) => ({ text: `${n} new comments`, button: { label: 'Show', run: () => pane.openMine() } }) };
   comments.onChange(() => {
     schedule();
@@ -1089,32 +1002,23 @@ export function install(client: Client): void {
     if (added) {
       try {
         sessionStorage.setItem(TOASTED, JSON.stringify([...toasted].slice(-200)));
-      } catch {
-        // kept for this page only
-      }
+      } catch {}
     }
     if (first) pane.restore();
   });
   for (const e of ['known', 'people', 'state', 'applied', 'me', 'tex'] as const) client.on(e, schedule);
   client.app.onRefresh(['structure', 'content'], () => shell.tab.shown() && schedule());
-  // the pane is shown again when the page loads again, e.g. for a change of the deck that it does
-  // not take
   try {
     if (sessionStorage.getItem(PANE_KEY) === '1') shell.tab.set(true);
-  } catch {
-    // a page without storage opens with the pane closed
-  }
+  } catch {}
   shell.tab.onShown(() => {
     try {
       sessionStorage.setItem(PANE_KEY, shell.tab.shown() ? '1' : '0');
-    } catch {
-      // kept for this page only
-    }
+    } catch {}
     draw();
     badges.schedule();
   });
 
-  // a draft opened offline can be sent once the page is back online
   const live = () => client.connection !== 'ended';
   client.shell.define({
     id: 'insert.comment',
@@ -1127,8 +1031,6 @@ export function install(client: Client): void {
     context: ['element', 'text', 'canvas', 'slide'],
     enabled: live,
     why: () => (live() ? null : ENDED),
-    // a context menu names its element or slide, which may be one that another person holds and
-    // that the selection drops
     run: (_app, arg) => {
       const at = arg as { kind?: string; target?: Element | null } | undefined;
       let { el, slide } = shell.target();

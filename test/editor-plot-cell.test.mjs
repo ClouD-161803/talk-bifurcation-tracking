@@ -1,7 +1,3 @@
-// a table cell that holds a plot in the editor of src/editor/render.ts: the cell is not a text
-// element, hence the elements in it are paired one by one, and the drawn labels of the plot are not
-// read or typed as the text of the cell
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';

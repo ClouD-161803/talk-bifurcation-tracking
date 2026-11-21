@@ -1,7 +1,3 @@
-// theme/session.js, the client of the synchronous editor, loaded by theme/editor.js with session in
-// the address. start() reads the text of the version of the page, begins the session of the
-// port, installs the parts of the client, and joins
-
 import type { Entry, Handover } from './handover.ts';
 import type { Dialog } from '../../editor/ui/dialog.ts';
 import { install as activity } from './activity.ts';
@@ -26,15 +22,10 @@ import { timing } from './toast.ts';
 import { install as zip } from './zip.ts';
 import { mayRetry } from './transport.ts';
 
-// each part reads the Client and its events. the avatars go before the save state, and Share
-// before the parts that follow a person, draw the dots of the slides, and fill the lines of Share
 const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, history, comments, presence, layer, floor, people, share, zip, follow, dots, activity];
 
 let current: Client | null = null;
 
-// the answer for the address of the page, fetched again on the schedule of the reconnect while the
-// fetch throws or its status may change, e.g. a 502 of a relay without the edit command, under a
-// dialog that closes once an answer comes
 async function fetchPage(handover: Handover): Promise<Response> {
   let dialog: Dialog | null = null;
   let wake = () => {};
@@ -64,7 +55,6 @@ async function fetchPage(handover: Handover): Promise<Response> {
   }
 }
 
-// a dialog that the page cannot leave but by Load again
 function loadAgain(handover: Handover, title: string, text: string): Promise<never> {
   const dialog = handover.dialog({ title, text, buttons: [{ label: 'Load again', value: 'reload', primary: true }], dismissable: false, onButton: () => location.reload() });
   void dialog.open('reload');
@@ -72,13 +62,10 @@ function loadAgain(handover: Handover, title: string, text: string): Promise<nev
 }
 
 async function start(given: Handover): Promise<boolean> {
-  // every dialog of the client, also of the Client below, gets the class of dialogClass()
   const handover = { ...given, dialog: withClass(given.dialog) };
   const { app, port } = handover;
   const response = await fetchPage(handover);
-  // the version of the page left the log of the edit command, e.g. after a restart
   if (response.status === 409) {
-    // the edit command sends the address without a version to the current one
     location.replace(pageLink() + location.hash);
     return new Promise(() => {});
   }
@@ -86,7 +73,6 @@ async function start(given: Handover): Promise<boolean> {
   if (!response.ok) return loadAgain(handover, 'This page cannot join the session', `The edit command answered ${response.status}. Load the page again, or open the address that the host shared.`);
   const served = response.headers.has('x-edit-command');
   port.served(served);
-  // e.g. another page of the talk folder, which the edit command serves without a session
   if (!v) {
     const dialog = handover.dialog({
       title: served ? 'This page is not the deck of the session' : 'This page is not served by an edit command',
@@ -111,8 +97,6 @@ async function start(given: Handover): Promise<boolean> {
   return true;
 }
 
-// presence() and follow() are read by the tests, e.g. to move the clock of the holds, and
-// toasts.shown is set by the tests
 const entry: Entry & { client(): Client | null; rename: typeof rename; presence(): ReturnType<typeof presenceOf> | null; follow: typeof followOf; toasts: typeof timing } = {
   start,
   client: () => current,

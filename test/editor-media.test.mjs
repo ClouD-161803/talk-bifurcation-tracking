@@ -1,11 +1,3 @@
-// the image and video files of the editor on both platforms: an image dropped onto an empty figure box
-// with a trusted drop, an image and a video inserted from the file chooser, the file of a figure
-// replaced and the poster of a video captured from the inspector, the new files written into media/
-// at a save through an injected folder or downloaded without the pickers, an undo before the save
-// that leaves nothing on the disk, and a draft restored with its image. each edit is checked byte
-// for byte, after an undo and a redo, against the scope rule, and after a save and an open of the
-// saved text. the files are given to the page over the DevTools protocol, without the clipboard
-
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -31,8 +23,6 @@ const LIGHT = '<img class="for-light" src="../../demo/figure-light.png" alt="A f
 const WHITE_FIGURE = '<img class="white-figure" src="../../demo/figure-light.png" alt="A white raster figure">';
 const CLIP = '<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop></video>';
 
-// a deck whose image, video, and PDF figure are shown in dark mode only, each with a step, without a
-// twin for light mode
 const HIDDEN_DECK = 'test/pages/media-hidden.tmp.html';
 const HIDDEN_IMAGE = '<img class="for-dark fragment fade-up faint" src="../../demo/figure-dark.png" style="width: 400px; rotate: 5deg" data-fragment-index="1" alt="A plot">';
 const HIDDEN_PDF = '<img class="for-dark fragment" src="../../demo/figure-dark.png" data-pdf="figure.pdf" data-page="2" alt="A page">';
@@ -68,7 +58,6 @@ const status = (page) => page.evaluate('window.BeesonEditor.status()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const url = (platform, deck = LAYOUTS, query = '') => `${server.origin}/${deck}?edit&still&edit-platform=${platform}${query}`;
 
-// the storage of the origin emptied: the drafts, the files kept for them, and the private file system
 const CLEAR = `(async () => {
   localStorage.clear();
   await new Promise((done) => { const r = indexedDB.deleteDatabase('beeson-media'); r.onsuccess = r.onerror = r.onblocked = () => done(); });
@@ -77,11 +66,8 @@ const CLEAR = `(async () => {
   return true;
 })()`;
 
-// each path of the files kept in IndexedDB with the size of its file
 const ROWS = `new Promise((done) => { const r = indexedDB.open('beeson-media'); r.onsuccess = () => { const q = r.result.transaction('files').objectStore('files').getAll(); q.onsuccess = () => { done(q.result.map((row) => [row.path, row.blob.size])); r.result.close(); }; }; })`;
 
-// the open of a database answered only once window.__release is called, and the writes to an
-// object store recorded in window.__writes, each done once its transaction is complete
 const HOLD = `(() => {
   const open = IDBFactory.prototype.open;
   let release;
@@ -109,8 +95,6 @@ const HOLD = `(() => {
   }
 })()`;
 
-// with drafts, the page keeps its unsaved edits in the storage of the browser. with hold, the
-// database of the kept files is opened only once window.__release is called
 async function load(platform, { clear = true, drafts = false, hold = false, deck = LAYOUTS, query = '' } = {}) {
   await last?.close().catch(() => {});
   const page = await browser.newPage({ drafts });
@@ -138,10 +122,8 @@ async function mediaPage(platform, n = 0, options = {}) {
   return page;
 }
 
-// the index of the first slide of the deck that has the text
 const slideWith = (text) => readFileSync(LAYOUTS, 'utf8').split('<section').slice(1).findIndex((s) => s.includes(text));
 
-// a new split slide after the first, whose figure box is empty, and the text rendered with it
 async function emptyFigureBox(page) {
   await exec(page, 'slide.new.split');
   await frames(page);
@@ -153,7 +135,6 @@ async function emptyFigureBox(page) {
 const centerOf = (page, selector) =>
   page.evaluate(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// a trusted drag of the files at paths from the Finder, dropped at the point at
 async function dropFiles(page, at, paths) {
   const data = { items: [], files: paths, dragOperationsMask: 1 };
   await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: at.x, y: at.y, data });
@@ -163,7 +144,6 @@ async function dropFiles(page, at, paths) {
   return outline;
 }
 
-// the files at paths given to the open file chooser of the editor, as a person picks them
 async function choose(page, paths) {
   await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
   const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
@@ -183,14 +163,12 @@ async function tap(page, name) {
 
 const waitText = (page, text) => page.waitFor(`window.BeesonEditor.render().includes(${JSON.stringify(text)})`, 30000);
 
-// the scope rule holds for the rendered text
 async function inScope(page) {
   const now = textProblems(await render(page), THEME);
   for (const p of textProblems(page.source, THEME)) now.splice(now.indexOf(p), 1);
   assert.deepEqual(now, []);
 }
 
-// an undo gives back before and a redo gives after, byte for byte
 async function undoRedo(page, before, after) {
   await undo(page);
   assert.equal(await render(page), before);
@@ -198,12 +176,8 @@ async function undoRedo(page, before, after) {
   assert.equal(await render(page), after);
 }
 
-// the page shows each new file named by the file from an object URL, and not from a path that is
-// not on the disk yet
 const shownFrom = (page, selector, attr = 'src') => page.evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map((el) => el.getAttribute(${JSON.stringify(attr)}))`);
 
-// a save into a folder of the private file system, which the stub of showDirectoryPicker gives as
-// the folder that the person chooses. it returns the saved text and the files of its media/
 const SAVE_INTO = (folder) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${JSON.stringify(folder)}, { create: true });
@@ -223,8 +197,6 @@ const SAVE_INTO = (folder) => `(async () => {
   return { text: await (await deck.getFile()).text(), files, picked: window.__picked };
 })()`;
 
-// the deck does not have a favicon, which a browser asks a server for
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 const PNG = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -247,7 +219,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await status(page)).undo, true);
     await undoRedo(page, before, after);
     await inScope(page);
-    // the figure box is selected, and the Image pane shows the file as one that is not saved yet
     await page.evaluate(`window.BeesonEditor.exec('shell.format')`).catch(() => {});
     const saved = await page.evaluate(SAVE_INTO(`drop-${platform}`));
     assert.equal(saved.text, after);
@@ -257,9 +228,8 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(saved.files['figure-light.png'].head, PNG);
     assert.match((await status(page)).message, /1 new file written into media/);
     await reopen(page, saved.text);
-    // a second save does not write the file again, and does not ask for the folder
     assert.equal((await page.evaluate(SAVE_INTO(`drop-${platform}`))).picked, 0);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: an undo before the save leaves nothing on the disk`, async () => {
@@ -274,22 +244,19 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(saved.files, {});
     assert.equal(saved.picked, 0);
     assert.equal(await page.evaluate(`(async () => { const root = await navigator.storage.getDirectory(); const dir = await root.getDirectoryHandle('undo-${platform}'); try { await dir.getDirectoryHandle('media'); return true; } catch { return false; } })()`), false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a video from the file chooser gets a poster of its first frame`, async () => {
     const page = await mediaPage(platform);
     const before = await emptyFigureBox(page);
     if (platform === 'mac') {
-      // ⇧⌘V is Choose File… of Keynote
       await click(page, await centerOf(page, '.reveal section.present > .text-column > h2'));
       await press(page, 'Escape');
       await press(page, 'Mod+Shift+V');
       assert.equal(await page.evaluate(`document.querySelector('input.beeson-media-input')?.accept ?? null`), 'image/*,application/pdf,.pdf,video/*,.mp4,.m4v,.webm,.mov');
       await page.evaluate(`document.querySelector('input.beeson-media-input').dispatchEvent(new Event('cancel'))`);
     }
-    // Choose File… is in the Insert menu, with ⇧⌘V on the Mac and without a key elsewhere, since
-    // Ctrl+Shift+V is Paste and Match Style there
     const row = await page.evaluate(`(() => {
       window.BeesonEditorShell.openMenu(window.BeesonEditorShell.menuItems('Insert'), { x: 200, y: 200 });
       const row = [...document.querySelectorAll('[role^="menuitem"]')].find((r) => r.textContent.includes('Choose File…'));
@@ -315,7 +282,7 @@ for (const platform of PLATFORMS) {
     assert.equal(saved.files['clip-dark.mp4'].size, VIDEO_BYTES);
     assert.deepEqual(saved.files['clip-dark.png'].head, PNG);
     await reopen(page, saved.text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: Replace… and Capture Poster of the inspector change the file of a figure`, async () => {
@@ -336,7 +303,6 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, page.source, after);
     assert.match((await shownFrom(page, `.reveal section.present figure.figure-box > img.${dark ? 'for-dark' : 'for-light'}`))[0], /^blob:/);
     await inScope(page);
-    // the pane names the new file and says that it is not saved yet
     await frames(page);
     const pane = await page.evaluate(`document.querySelector('${PANEL} .ed-well .name')?.textContent ?? null`);
     assert.equal(pane, 'figure-light.png');
@@ -345,7 +311,6 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(Object.keys(saved.files), ['figure-light.png']);
     await reopen(page, saved.text);
 
-    // Capture Poster on the video of the split slide
     await page.evaluate(`Reveal.slide(${slideWith(CLIP)})`);
     await frames(page);
     const base = await render(page);
@@ -361,7 +326,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(Object.keys(again.files).sort(), ['clip-dark.png', 'figure-light.png']);
     assert.deepEqual(again.files['clip-dark.png'].head, PNG);
     await reopen(page, again.text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a video dropped onto an image puts a video in its place`, async () => {
@@ -374,7 +339,7 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, page.source, after);
     await inScope(page);
     assert.match((await shownFrom(page, '.reveal section.present .plate > video', 'poster'))[0], /^blob:/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a save without a press of a key asks for the folder with a dialog`, async () => {
@@ -382,7 +347,6 @@ for (const platform of PLATFORMS) {
     await emptyFigureBox(page);
     await dropFiles(page, await centerOf(page, '.reveal section.present > .figure-box'), [IMAGE]);
     await waitText(page, 'media/figure-light.png');
-    // a picker opened without a press, e.g. at an autosave, is refused by the browser
     await page.evaluate(`(async () => {
       const root = await navigator.storage.getDirectory();
       const dir = await root.getDirectoryHandle('ask-${platform}', { create: true });
@@ -405,7 +369,7 @@ for (const platform of PLATFORMS) {
       return [(await (await media.getFileHandle('figure-light.png')).getFile()).size, window.__calls];
     })()`);
     assert.deepEqual(written, [IMAGE_BYTES, 2]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: without the pickers, the new files are downloaded with the deck`, async () => {
@@ -426,7 +390,7 @@ for (const platform of PLATFORMS) {
     assert.equal(downloads[0].size, IMAGE_BYTES);
     assert.match((await status(page)).message, /Put figure-light\.png into the folder media next to it/);
     assert.notEqual(await render(page), before);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: an image dropped before the kept files are read at the start is kept`, async () => {
@@ -434,11 +398,10 @@ for (const platform of PLATFORMS) {
     await emptyFigureBox(page);
     await dropFiles(page, await centerOf(page, '.reveal section.present > .figure-box'), [IMAGE]);
     await waitText(page, 'media/figure-light.png');
-    // the database is opened only now, for the files of the start and for the image
     await page.evaluate('window.__release()');
     await page.waitFor('window.__writes.length === 2 && window.__writes.every((w) => w.done)');
     assert.deepEqual(await page.evaluate(ROWS), [['media/figure-light.png', IMAGE_BYTES]]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`${platform}: a draft with an image is restored with the image`, async () => {
@@ -447,12 +410,10 @@ for (const platform of PLATFORMS) {
     await dropFiles(page, await centerOf(page, '.reveal section.present > .figure-box'), [IMAGE]);
     await waitText(page, 'media/figure-light.png');
     const edited = await render(page);
-    // the draft is kept a second after the edit, and its file in IndexedDB
     await page.waitFor(`!!Object.keys(localStorage).find((k) => k.startsWith('beeson-draft:'))`);
     await page.waitFor(`${ROWS}.then((rows) => rows.length === 1)`);
     assert.deepEqual(await page.evaluate(ROWS), [['media/figure-light.png', IMAGE_BYTES]]);
 
-    // the tab is closed, and the deck is opened again with the draft offered
     page = await load(platform, { clear: false, drafts: true });
     await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
     await page.waitFor(`!!document.querySelector('dialog.recover[open]')`);
@@ -466,7 +427,6 @@ for (const platform of PLATFORMS) {
       window.BeesonEditor.restoreDraft();
       return true;
     })()`);
-    // the page is loaded again once the file is written
     const reloaded = async () => {
       try {
         return await page.evaluate(`!window.__restoring && document.readyState === 'complete' && !!window.BeesonEditor`);
@@ -491,17 +451,14 @@ for (const platform of PLATFORMS) {
     assert.equal(result.size, IMAGE_BYTES);
     assert.equal(result.draft, 0);
     await page.waitFor(`${ROWS}.then((rows) => rows.length === 0)`);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
-  // the twin added for the mode shown shares every attribute, class, and declaration of the hidden
-  // picture other than its files and its mode, as the twin of a PDF figure does
   test(`${platform}: Replace… on a picture hidden by the mode adds a twin with its step`, async () => {
     writeHiddenDeck();
     const cases = [
       [0, '.plate', IMAGE, HIDDEN_IMAGE, '<img class="for-light fragment fade-up faint" src="media/figure-light.png" style="width: 400px; rotate: 5deg" data-fragment-index="1" alt="A plot">'],
       [1, '.plate', VIDEO, HIDDEN_VIDEO, '<video class="for-light fragment play" src="media/clip-dark.mp4" poster="media/clip-dark.png" muted loop data-fragment-index="1"></video>'],
-      // an image that is not a render of the PDF is not a PDF figure
       [2, '.plate', IMAGE, HIDDEN_PDF, '<img class="for-light fragment" src="media/figure-light.png" alt="A page">'],
     ];
     for (const [n, slot, file, hidden, twin] of cases) {
@@ -520,7 +477,7 @@ for (const platform of PLATFORMS) {
       assert.ok(text.includes(`${hidden}\n`), 'the hidden picture was changed');
       await undoRedo(page, page.source, text);
       await inScope(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     }
   });
 }

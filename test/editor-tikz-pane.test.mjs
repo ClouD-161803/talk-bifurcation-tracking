@@ -1,9 +1,3 @@
-// the TikZ Figure pane of the Format tab in a session: the name of the source, Edit Source…, and the
-// state of the figure, and for a source of From Data the fields of its data, curves, axes, and
-// labels, each of which writes the source again as Apply does. a source that lost the shape of From
-// Data shows the fields turned off, and a source of another shape does not show them. a test that
-// runs TeX is skipped without latex and dvisvgm
-
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -23,7 +17,6 @@ const CSV = 't,x,y pos\n0,1,0\n1,0.5,0.2\n2,0.25,0.3\n3,0.12,0.35\n';
 const DECAY = writeFigure(fromHeader('figures/decay.csv', ['t', 'x', 'y pos']));
 const ORBIT = '\\begin{tikzpicture}\n\\draw[accent] (0,0) circle (1);\n\\end{tikzpicture}\n';
 const LOST = DECAY.replace('\\end{axis}', '\\draw (0,0) -- (1,1);\n\\end{axis}');
-// the figures side by side, each moved up by the height of those before it
 const tag = (name, i) => `<div class="tikz" data-figure="${name}" style="width: 500px; height: 300px; translate: ${600 * i}px ${-300 * i}px"></div>`;
 const DECK = TALK.replace('<p>First slide</p>', `<p>First slide</p>\n  ${tag('decay', 0)}\n  ${tag('orbit', 1)}\n  ${tag('lost', 2)}`);
 const PANEL = '#beeson-edit-panel-format';
@@ -48,7 +41,6 @@ const pane = (page) => page.evaluate(`(() => {
     deletable: [...p.querySelectorAll('.ed-tikz .curve button')].map((b) => !b.disabled),
   };
 })()`);
-// a value set into the field of the pane labeled label, and its change
 const set = (page, label, value) => page.evaluate(`(() => {
   const el = document.querySelector('${PANEL} [aria-label=${JSON.stringify(label)}]');
   if (!el) throw new Error('the pane does not have a field ${label}');
@@ -116,7 +108,6 @@ test('the TikZ Figure pane shows the file and the state of a figure, and writes 
   figure.axes.x.label = 'time in s';
   await written('the label of the x axis to be written');
 
-  // a new curve takes the next column, and the last curve is not deleted
   await press(page, 'Add Curve');
   figure.curves.push({ part: 'x-2', column: 1, kind: 'line', color: 'data3', label: 'x' });
   await written('the new curve to be written');
@@ -130,7 +121,6 @@ test('the TikZ Figure pane shows the file and the state of a figure, and writes 
   await page.waitFor(`document.querySelectorAll('${PANEL} .ed-tikz .curve').length === 1`);
   assert.deepEqual((await pane(page)).deletable, [false]);
 
-  // the data is replaced by a CSV file chosen in the pane
   await page.evaluate(`(() => {
     const input = document.querySelector('${PANEL} input[type=file]');
     const dt = new DataTransfer();
@@ -143,14 +133,12 @@ test('the TikZ Figure pane shows the file and the state of a figure, and writes 
   assert.equal(read('figures/other.csv'), 'time,a,b\n0,1,2\n1,2,3\n');
   await page.waitFor(`document.querySelector('${PANEL} .ed-tikz .path')?.textContent === 'figures/other.csv'`);
 
-  // a source of another shape shows the file alone
   await select('orbit');
   await page.waitFor(`[...document.querySelectorAll('${PANEL} h5')].map((h) => h.textContent).join() === 'File'`);
   shown = await pane(page);
   assert.ok(shown.text.includes('orbit.tex'), shown.text);
   assert.equal(shown.off, null);
 
-  // a source that lost the shape of From Data shows the fields turned off, with a note
   await select('lost');
   await page.waitFor(`document.querySelector('${PANEL} fieldset')?.disabled === true`);
   shown = await pane(page);

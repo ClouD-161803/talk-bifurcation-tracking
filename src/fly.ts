@@ -1,10 +1,3 @@
-// a fly: an element with data-fly-from is moved, when a step shows it going forward, from the box
-// of the elements matched by the selector of data-fly-from, searched in its slide, to its own box.
-// with data-fly-to, the box of the elements matched inside the element is matched to the box of
-// the sources in place of the whole element, e.g. a ring drawn in both. the element is moved and
-// scaled from the center and the width of the source box over data-fly-duration seconds, 1.2 by
-// default, and it is shown at once, without the fade of its step
-
 type Box = { x: number; y: number; w: number };
 
 function box(nodes: Element[]): Box | null {
@@ -20,7 +13,6 @@ function flyIn(slide: Element, el: HTMLElement): void {
   const to = box(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
   const own = el.getBoundingClientRect();
   if (!from || !to || !to.w || !el.offsetWidth) return;
-  // the screen pixels of one pixel of the slide, under the scale of reveal.js
   const k = own.width / el.offsetWidth;
   const seconds = Number(el.dataset.flyDuration ?? 1.2);
   el.style.transition = 'none';
@@ -35,7 +27,6 @@ function flyIn(slide: Element, el: HTMLElement): void {
   }, seconds * 1000 + 50);
 }
 
-/** Flies in the elements with data-fly-from among the fragments shown and inside them. */
 export function fly(slide: Element, shown: Element[]): void {
   for (const f of shown) {
     for (const el of [f, ...f.querySelectorAll('[data-fly-from]')]) {

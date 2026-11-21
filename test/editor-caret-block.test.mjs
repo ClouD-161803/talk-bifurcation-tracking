@@ -1,16 +1,9 @@
-// regression tests: a heading or a paragraph with the caret in it, i.e. clicked into once, is moved
-// by a drag of its handle and resized by a drag of its grips, as a block selected as an object is.
-// the selection of a caret holds the block itself, which pressElement in src/editor/canvas/drag.ts
-// took for a selected object, and the drag then moved nothing. the frame of the block was drawn
-// without grips
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { center, click, clickText, drag, editorPage, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-layouts.html';
-// the slide of DECK with a heading, a paragraph, and a list
 const TEXT = 2;
 
 let browser;
@@ -69,8 +62,6 @@ for (const [slide, selector] of [[0, '.reveal section.present h1'], [TEXT, '.rev
   });
 }
 
-// the frame and every grip of a block stay drawn while one of its grips is dragged, from a block
-// selected by Esc and from a block with the caret in it
 for (const esc of [true, false]) {
   test(`the frame and the grips of a heading are drawn during the drag of its east grip (${esc ? 'selected by Esc' : 'caret'})`, async (t) => {
     const page = await editorPage(browser, { deck: DECK, page: { width: 1600, height: 1000 }, clear: true });

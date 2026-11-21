@@ -1,8 +1,3 @@
-// the holds of a session in Chrome, on the edit command started on a temporary talk folder: a
-// command of one page that would move, delete, or restructure a text element that another page
-// types in is refused with the bubble, also when the command reaches the element from a neighbor,
-// from its table, or from an entry of the history, and typing and formatting in it are not
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
@@ -31,20 +26,17 @@ test('a held table cell refuses Delete Column, Delete Row, and a paste of cells 
   for (const [cell, id, arg] of [['th', 'table.deleteColumn'], ['td:nth-child(2)', 'table.deleteRow'], ['th', 'edit.paste', 'p\tq\nr\ts']]) {
     await unbubble(ben);
     await caretAtEnd(ben, el(0, cell));
-    // the command is offered as before
     assert.ok(await ben.evaluate(`${C}.app.commands.enabled(${JSON.stringify(id)})`), `${id} is enabled`);
     await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}${arg ? `, ${JSON.stringify(arg)}` : ''})`);
     assert.equal(await ben.evaluate(`${el(0, 'table')}.outerHTML`), before, `${id} leaves the table as it was`);
     assert.equal(await ben.evaluate(BUBBLE), REFUSED, id);
   }
-  // the paste of cells by the key, which the code of the table reads from the event of the paste
   await unbubble(ben);
   await caretAtEnd(ben, el(0, 'th'));
   await ben.evaluate(`(() => { const d = new DataTransfer(); d.setData('text/plain', 'p\\tq\\nr\\ts'); document.activeElement.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: d })); })()`);
   await frame(ben);
   assert.equal(await ben.evaluate(`${el(0, 'table')}.outerHTML`), before, 'the paste of cells by the key leaves the table as it was');
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the paste of cells by the key');
-  // a paste of plain text into one cell is taken, as in a paragraph
   await unbubble(ben);
   await caretAtEnd(ben, el(0, 'th'));
   await ben.evaluate(`${C}.app.commands.run('edit.paste', 'word')`);
@@ -70,22 +62,18 @@ test('a held list item refuses Backspace and Delete from the item beside it, and
   await show(ana, 'Two');
   await show(ben, 'Two');
   const item = (n) => el(1, `li:nth-child(${n})`);
-  // each case: the item that Ana is in, where Ben puts the caret, and the key that Ben presses
   const cases = [
     [1, () => caretAtStart(ben, item(2)), 'Backspace'],
     [2, () => caretAtEnd(ben, item(1)), 'Delete'],
     [2, () => caretAtEnd(ben, item(3)), 'Tab'],
   ];
   for (const [held, put, key] of cases) {
-    // the item that Ben left is free on the page of Ana
     await until(() => ana.evaluate(`${P}.holds.size === 0`), 'the items to be free on the page of Ana');
     await front(ana);
     await caretAtEnd(ana, item(held));
     await until(() => ben.evaluate(`${P}.holds.size === 1 && ${HOLDER(item(held))} === 'Ana'`), `the item ${held} that Ana is in to be held on the page of Ben`);
     const before = await listOf(ben);
     await put();
-    // Ana hears the hold of Ben before Ben leaves the item, hence the wait for the free items at the
-    // next case cannot end before this hold arrives
     await until(() => ana.evaluate(`${P}.holds.size === 1`), 'the hold of Ben on the item to reach the page of Ana');
     await unbubble(ben);
     await press(ben, key);
@@ -99,7 +87,6 @@ test('a held list item refuses Backspace and Delete from the item beside it, and
   clean(ben);
 });
 
-// the paragraph of slide Two that Ana types in, after a paragraph that a join reaches
 const INTRO = [['  <p>Second slide</p>', '  <p>Intro</p>\n  <p>Second slide</p>']];
 const SECOND = el(1, 'p:nth-of-type(2)');
 
@@ -112,13 +99,11 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
   await until(async () => (await ben.evaluate(`${HOLDER(p)} === 'Ana' && ${text} === 'Second slide typed'`)), 'the paragraph that Ana types in, with her text, to be held on the page of Ben');
-  // Delete of the paragraph selected as an element
   await unbubble(ben);
   await select(ben, p);
   await ben.evaluate(`${C}.app.commands.run('element.delete')`);
   assert.equal(await ben.evaluate(`${p}?.textContent`), 'Second slide typed', 'element.delete');
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'element.delete');
-  // a command of Arrange and a join of the caret in it
   await caretAtEnd(ben, p);
   await unbubble(ben);
   assert.ok(await ben.evaluate(`${C}.app.commands.enabled('arrange.align.center')`));
@@ -129,12 +114,10 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   await press(ben, 'Backspace');
   assert.equal(await ben.evaluate(text), 'Second slide typed', 'the join leaves the paragraph as it was');
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'text.joinBackward');
-  // a move of a section, whose slides are not read
   await unbubble(ben);
   await ben.evaluate(`${C}.app.commands.run('slide.moveSection', { head: document.querySelectorAll('.reveal .slides > section')[0], gap: 2 })`);
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'slide.moveSection');
   assert.equal(await ben.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Two');
-  // Replace and Bold change its text
   await unbubble(ben);
   await ben.evaluate(`window.BeesonEditor.exec('find.replace', 'Second')`);
   await ben.evaluate(`document.querySelector('.beeson-find .replace input').focus()`);
@@ -148,12 +131,9 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   assert.equal(await ben.evaluate(BUBBLE), null, 'Replace and Bold are not refused');
   let saved = await converge(server, [ana, ben]);
   assert.match(saved, /<p><(b|strong)>Third<\/\1> slide typed<\/p>/);
-  // the paragraph is deleted once Ana leaves it
   await front(ana);
   await leave(ana);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
-  // Ben leaves the text as with Escape, since a page that is shown again keeps the focus in a text,
-  // and Delete then removes the selected word in place of the element
   await leave(ben);
   await select(ben, p);
   await ben.evaluate(`${C}.app.commands.run('element.delete')`);
@@ -169,9 +149,6 @@ test('an undo of typing in a text element that another page types in is taken, a
   await show(ana, 'Two');
   await show(ben, 'Two');
   const p = el(1, 'p');
-  // Ben moves the paragraph to the end of its slide before Ana puts her caret in it. a change of
-  // the paragraph by Ana would take the entry of the move out of the history of Ben, and her typing
-  // in the heading gives the page of Ben a text after the move, from which her caret is read
   await front(ben);
   await ben.evaluate(`(() => { const p = ${p}; return ${C}.app.doc.move(p, p.parentElement, null).then(() => true); })()`);
   assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'move');
@@ -189,14 +166,12 @@ test('an undo of typing in a text element that another page types in is taken, a
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the move');
   assert.equal(await ben.evaluate(last), true, 'the paragraph stays at the end of its slide');
   assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'move', 'the entry of the move is kept');
-  // the redo of the move, undone while Ana is not in the paragraph
   await front(ana);
   await leave(ana);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
   assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken once Ana left the paragraph');
-  // the page of Ana has the undo of the move before she types in the paragraph again
   await converge(server, [ana, ben]);
   await caretAtEnd(ana, p);
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
@@ -206,7 +181,6 @@ test('an undo of typing in a text element that another page types in is taken, a
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the move');
   assert.equal(await ben.evaluate(last), false, 'the paragraph stays where the undo put it');
   assert.equal(await ben.evaluate(`${C}.app.history.canRedo`), true, 'the entry of the redo is kept');
-  // the typing of Ben in the paragraph that Ana types in is undone
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' by Ana');
   await converge(server, [ana, ben]);
@@ -221,7 +195,6 @@ test('an undo of typing in a text element that another page types in is taken, a
   let text = await converge(server, [ana, ben]);
   assert.match(text, /<p>Second slide by Ana<\/p>/);
 
-  // an undo of a command, whose entry is a transaction
   await front(ana);
   await leave(ana);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
@@ -272,7 +245,6 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   await show(ben, 'Two');
   const p = `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2').textContent === 'Two').querySelector('.group p')`;
   const group = `${p}.parentElement`;
-  // the slide that Ana shows may change with the order of the slides
   const enter = async () => {
     await show(ana, 'Two');
     await caretAtEnd(ana, p);
@@ -286,7 +258,6 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
     await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
     await front(ben);
   };
-  // Ben nudges the element around the paragraph and moves its slide before Ana enters it
   await select(ben, group);
   await ben.evaluate(`${C}.app.commands.run('arrange.nudge.right.far')`);
   assert.match(await ben.evaluate(`${group}.getAttribute('style')`), /translate: 10px/);
@@ -316,8 +287,6 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   clean(ben);
 });
 
-// the undo or the redo of the browser at the caret of a page in the text element of expression,
-// e.g. from the Edit menu of the browser or by a shake of an iPhone
 const browserStep = (page, expression, inputType) => page.evaluate(`${expression}.dispatchEvent(new InputEvent('beforeinput', { inputType: '${inputType}', bubbles: true, cancelable: true }))`);
 
 test('an undo or a redo of the browser that would move the element around a held text element is refused, as one of the Edit menu is', { timeout: 300_000 }, async (t) => {
@@ -331,7 +300,6 @@ test('an undo or a redo of the browser that would move the element around a held
   await ben.evaluate(`${C}.app.commands.run('arrange.nudge.right.far')`);
   assert.match(await ben.evaluate(`${group}.getAttribute('style')`), /translate: 10px/);
   await converge(server, [ana, ben]);
-  // Ana holds the paragraph, and Ben has the caret in the heading
   const enter = async () => {
     await front(ana);
     await caretAtEnd(ana, p);
@@ -375,7 +343,6 @@ test('an undo or a redo of a nudge of two elements, the second around a held tex
     await front(ana);
     await caretAtEnd(ana, p);
     await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
-    // the hold is kept until Ana leaves, however long the test takes
     await keep(ben);
     await unbubble(ben);
     await front(ben);
@@ -387,7 +354,6 @@ test('an undo or a redo of a nudge of two elements, the second around a held tex
     await front(ben);
   };
   const places = () => ben.evaluate(`[${box}, ${group}].map((e) => e.style.translate)`);
-  // Ben nudges the box and the element around the paragraph, then deletes another paragraph
   await select(ben, box, group);
   await ben.evaluate(`${C}.app.commands.run('arrange.nudge.right.far')`);
   const nudged = await places();
@@ -425,8 +391,6 @@ test('an undo of typing in a text element that the person left keeps the text th
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' by Ana');
   await converge(server, [ana, ben]);
-  // the typing of Ana in the heading ends her typing in the paragraph, hence the keys of Ben after
-  // it are not added to her entry
   await caretAtEnd(ana, el(1, 'h2'));
   await typeKeys(ana, ' 2');
   await converge(server, [ana, ben]);
@@ -457,10 +421,8 @@ test('the bubble of a refusal for a text element on another slide names the slid
   clean(ben);
 });
 
-// One, a hidden slide Hid, and Two, on whose rows the navigator draws 1, no number, and 2
 const HIDDEN = [['<section>\n  <h2>Two</h2>', '<section data-visibility="hidden">\n  <h2>Hid</h2>\n  <p>Hidden words</p>\n</section>\n\n<section>\n  <h2>Two</h2>']];
 
-// a session of two pages, 140 s, two shows, 30 s, and a wait for the hold, 20 s, at most
 for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
   test(`the bubble of a refusal for a text element on ${heading}, in a deck with a hidden slide, names the slide by the number that the navigator draws, and a hidden slide by none`, { timeout: 240_000 }, async (t) => {
     const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: HIDDEN });
@@ -479,7 +441,6 @@ for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
   });
 }
 
-// the hidden status region of the bubbles, with its text
 const SAID = `(() => {
   const all = document.querySelectorAll('.beeson-bubble-said');
   const r = all[0]?.getBoundingClientRect();
@@ -542,9 +503,6 @@ const tap = async (page, selector) => {
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 };
 
-// a plate without a hold takes a click as a selection of the plate, then of the figure, then of
-// its picture. the plate is refused while a caption in it is held, hence the first click takes the
-// figure
 test('a click and a tap on a figure of a plate select the figure while the caption of another figure of the plate is held, and a second click selects its picture', { timeout: 300_000 }, async (t) => {
   const { pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy'], { edits: [['  <p>First slide</p>', PLATE]], pages: [{}, {}, { width: 844, height: 390, mobile: true }] });
   for (const page of [ana, ben, cy]) await show(page, 'One');
@@ -577,8 +535,6 @@ test('a text element that a page moved, or moved back with Undo, is held on this
   await show(ben, 'Two');
   const p = el(1, 'p');
   const last = `${p}.parentElement.lastElementChild === ${p}`;
-  // the source of the page of Ben does not read as the deck after his move, and a change of another
-  // page, from which his page would read the deck again, does not follow
   await front(ben);
   await ben.evaluate(`(() => { const p = ${p}; return ${C}.app.doc.move(p, p.parentElement, null).then(() => true); })()`);
   await converge(server, [ana, ben]);
@@ -589,7 +545,6 @@ test('a text element that a page moved, or moved back with Undo, is held on this
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the move');
   assert.equal(await ben.evaluate(last), true, 'the paragraph stays at the end of its slide');
   await unbubble(ben);
-  // the same after the undo of the move, taken once Ana left the paragraph
   await front(ana);
   await leave(ana);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
@@ -597,8 +552,6 @@ test('a text element that a page moved, or moved back with Undo, is held on this
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
   assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken');
   await converge(server, [ana, ben]);
-  // the page of Ben last heard of a hold of Ana more than 30 s ago, and the hold that it reads
-  // late begins when it is read
   await ben.evaluate(`(${P}.skew += 31_000, true)`);
   await caretAtEnd(ana, p);
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
@@ -616,7 +569,6 @@ test('a page whose removal of a paragraph is not acknowledged reads the deck int
   await show(ben, 'Two');
   const p = el(1, 'p');
   await ben.evaluate(`(() => { const port = ${C}.port; const rebase = port.rebase.bind(port); window.__rebases = 0; port.rebase = () => (window.__rebases++, rebase()); return true; })()`);
-  // the removal stays in flight, hence the paragraph that Ana types in is missing on the page of Ben
   await front(ben);
   await ben.evaluate(`__net.rule('/.session/op', 'hold')`);
   await ben.evaluate(`(() => { const p = ${p}; return ${C}.app.doc.remove(p).then(() => true); })()`);
@@ -626,7 +578,6 @@ test('a page whose removal of a paragraph is not acknowledged reads the deck int
   for (let i = 1; i <= 10; i++) {
     await typeKeys(ana, 'a');
     await until(() => ben.evaluate(`${C}.base.text.includes('Second slide${'a'.repeat(i)}<')`), 'the key of Ana on the page of Ben');
-    // a state of Ana at the version of her key makes the page of Ben read the paragraph again
     await until(() => ben.evaluate(`${C}.presence.some((p) => p.client !== ${C}.client && p.state?.v === ${C}.base.v)`), 'the state of Ana after her key on the page of Ben');
   }
   assert.equal(await ben.evaluate('window.__rebases'), 1, 'the deck is read into the source once');

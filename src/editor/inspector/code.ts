@@ -1,9 +1,3 @@
-// the Code pane of the Format tab, for a selected code box or a code box with the caret: the
-// language of its code, the numbers of its lines, its line steps, and its size. the steps are
-// typed into a field, e.g. 1-2|3|4-5, or edited in a list of the groups, in which the lines
-// selected in the box are added as a new group and a group is removed. a group pointed at in the
-// list dims the other lines of the box
-
 import type { App } from '../app.ts';
 import { stepAt } from '../shown-steps.ts';
 import { modelOf } from '../steps.ts';
@@ -28,8 +22,6 @@ const STYLE = `
 .beeson-edit-inspector .ed-groups .empty { color: var(--ed-muted); }
 `;
 
-// the menu of the language: Automatic, Plain Text, the common languages, and every language of
-// highlight.js in a submenu
 function languageButton(app: App, run: Run, code: () => Element | null): Control {
   const b = make('button', 'beeson-edit-select ed-lang');
   b.type = 'button';
@@ -71,8 +63,6 @@ function languageButton(app: App, run: Run, code: () => Element | null): Control
   return { el: b, sync };
 }
 
-// the groups of the line steps of the box, each with its lines, when it is lit, and a button that
-// removes it
 function groupList(app: App, run: Run, code: () => Element | null): Control {
   const el = make('ul', 'ed-groups');
   el.setAttribute('aria-label', 'Line steps');
@@ -80,7 +70,6 @@ function groupList(app: App, run: Run, code: () => Element | null): Control {
   const sync = () => {
     const c = code();
     const groups = c ? stepsOf(app, c).groups : [];
-    // a group after the first is lit at its step of the slide, as the Steps tab lists it
     const m = c ? modelOf(app, c.closest('section')) : null;
     const steps = groups.map((_, k) => {
       const i = m ? m.lines.findIndex((l) => l?.code === c && l.group === k) : -1;

@@ -1,11 +1,3 @@
-// lines and arrows of commands/line.ts on both platforms, driven with trusted input: Insert > Arrow
-// writes an svg with a line and a marker before the notes of the slide, a drag in the mode of
-// Insert > Line draws a line, with Shift at a multiple of 45 degrees, a press near a line selects
-// it and shows the Line pane, whose swatches and arrowheads set its tone and its markers, a drag of
-// an end handle moves that end, a drag of the line moves it, and a duplicate points its arrowheads
-// at its own marker. each edit is checked byte for byte, after an undo and a redo, against the
-// scope rule, and after a save and an open of the saved text
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -56,7 +48,6 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function inScope(page) {
   const now = textProblems(await render(page), THEME);
@@ -67,14 +58,12 @@ async function inScope(page) {
   assert.deepEqual(now, []);
 }
 
-// the screen point of a point in slide px
 const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
   return { x: r.left + ${x} * k, y: r.top + ${y} * k };
 })()`);
 
-// the lines of the current slide, with their ends in slide px, classes, and markers
 const lines = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('svg.line')].map((svg) => {
   const l = svg.querySelector('line');
   const [tx, ty] = (svg.style.translate || '0px 0px').split(' ').map((v) => parseFloat(v) || 0);
@@ -83,7 +72,6 @@ const lines = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelecto
     start: l.getAttribute('marker-start'), end: l.getAttribute('marker-end'), stroke: getComputedStyle(l).stroke, width: svg.getBoundingClientRect().width };
 })`);
 
-// the rendered text without the one line inserted into it, and that line
 async function inserted(page) {
   const text = await render(page);
   const m = /\n[ \t]*(<svg class="line[^\n]*<\/svg>)/.exec(text);
@@ -121,11 +109,9 @@ for (const platform of PLATFORMS) {
     const [l] = await lines(page);
     assert.deepEqual(l.ends, [300, 400, 700, 600]);
     assert.equal(l.end, 'url(#line-1)');
-    // stroked in --text, and drawn at the scale of the slide
     const text = await page.evaluate(`(() => { const d = document.createElement('div'); d.style.color = 'var(--text)'; Reveal.getCurrentSlide().append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()`);
     assert.equal(l.stroke, text);
     assert.ok(l.width > 100);
-    // the line is selected and the Line pane is shown
     assert.equal((await state(page, 'line.heads.none')).enabled, true);
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await frames(page);
@@ -137,7 +123,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await inserted(page), svg);
     const { text: saved } = await saveAndReopen(page, `line-${platform}.html`);
     assert.ok(saved.includes(svg));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag in the mode of Insert > Line draws a line, with Shift at 45 degrees, and Esc leaves the mode, on ${platform}`, async () => {
@@ -146,7 +132,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'insert.line')).checked, true);
     const a = await screen(page, 200, 300);
     const b = await screen(page, 600, 330);
-    // the modifier of a move without the snap draws the line where the pointer is
     await drag(page, a, { dx: b.x - a.x, dy: b.y - a.y, modifiers: platform === 'mac' ? 'Meta' : 'Alt' });
     await frames(page);
     let [l] = await lines(page);
@@ -156,7 +141,6 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'insert.line')).checked, null);
     await undo(page);
     await byteExact(page);
-    // with Shift the end is at 45 degrees from the start
     await exec(page, 'insert.line');
     const c = await screen(page, 500, 570);
     await drag(page, a, { dx: c.x - a.x, dy: c.y - a.y, modifiers: 'Shift' });
@@ -165,12 +149,11 @@ for (const platform of PLATFORMS) {
     assert.ok(Math.abs(l.ends[2] - l.ends[0] - (l.ends[3] - l.ends[1])) <= 1 && l.ends[2] - l.ends[0] > 200, `${l.ends}`);
     await undo(page);
     await byteExact(page);
-    // Esc leaves the mode, and a drag then does not draw
     await exec(page, 'insert.arrow');
     await press(page, 'Escape');
     assert.equal((await state(page, 'insert.arrow')).checked, null);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the Line pane sets the tone and the arrowheads, and the end handles and a drag move a line, on ${platform}`, async () => {
@@ -179,7 +162,6 @@ for (const platform of PLATFORMS) {
     await exec(page, 'selection.clear');
     assert.equal((await state(page, 'line.heads.none')).enabled, false);
     await frames(page);
-    // a press within a few pixels of the line selects it
     const m = await screen(page, 550, 500);
     await click(page, { x: m.x, y: m.y + 3 });
     await frames(page);
@@ -208,8 +190,6 @@ for (const platform of PLATFORMS) {
     await redo(page);
     await redo(page);
     const styled = await inserted(page);
-    // a drag of the second end handle moves only that end, by the drag, from a handle drawn past
-    // the arrowhead
     const end = await page.evaluate(`(() => { const r = document.querySelector('.beeson-line-end[data-end="2"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const at = await screen(page, l.ends[2], l.ends[3]);
     const to = await screen(page, 800, 700);
@@ -223,7 +203,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await inserted(page), styled);
     await redo(page);
     const moved = await inserted(page);
-    // a drag of the line moves both ends
     const mid = await screen(page, 550, 600);
     await drag(page, mid, { dx: 0, dy: -100, modifiers: platform === 'mac' ? 'Meta' : 'Alt' });
     await frames(page);
@@ -232,7 +211,6 @@ for (const platform of PLATFORMS) {
     await undo(page);
     assert.equal(await inserted(page), moved);
     await redo(page);
-    // a duplicate points its arrowheads at its own marker
     await press(page, 'Mod+D');
     await frames(page);
     const all = await lines(page);
@@ -242,20 +220,11 @@ for (const platform of PLATFORMS) {
     await inScope(page);
     const { text } = await saveAndReopen(page, `line-pane-${platform}.html`);
     assert.equal((text.match(/<svg class="line/g) ?? []).length, 2);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// tests of R20.3, curved and elbow lines with weights and a dash, on both platforms with trusted
-// input. a curve is a path M x1 y1 Q cx cy x2 y2 and an elbow a path of horizontal and vertical
-// segments in an svg.line, drawn by Curved Arrow and Elbow Arrow of the Insert menu, selected and
-// marqueed by their stroke, bent by a third grip, and switched with the segment Kind of the Line
-// pane. the segment Weight writes weight-2, weight-6, or weight-8 on the svg, and the switch Dashed
-// writes dashed. each edit is checked byte for byte after an undo and a redo, against the scope
-// rule, and after a save and an open of the saved text. the geometry of canvas/stroke.ts is tested
-// under node
 describe('curved and elbow arrows with weights and dashes', async () => {
-  // imported by itself, so that each test fails on its own without the module
   const { bboxOf, bendTo, gripOf, parseStroke, pointsOf, rebend, strokeText, withKind } = await import('../src/editor/canvas/stroke.ts').catch(() => ({}));
 
   const PLATFORMS = ['mac', 'other'];
@@ -264,15 +233,12 @@ describe('curved and elbow arrows with weights and dashes', async () => {
   const PANEL = '#beeson-edit-panel-format';
   const ORIGINAL = readFileSync(DECK, 'utf8').match(/<svg class="line fragment"[^\n]*<\/svg>/)[0];
   const near = (a, b, tol = 1) => Math.abs(a - b) <= tol;
-  // a child element of a line, read by parseStroke as a DOM element is
   const child = (localName, attrs) => ({ localName, getAttribute: (n) => attrs[n] ?? null });
 
   test('the text, the box, the grip, and a moved end of a curve and an elbow in canvas/stroke.ts', () => {
-    // a curve from 100,500 to 500,500 bulging up to its control point at 300,300
     const curve = { kind: 'curve', x1: 100, y1: 500, x2: 500, y2: 500, c: { x: 300, y: 300 } };
     const t = strokeText(curve);
     assert.equal(t.tag, 'path');
-    // the apex is at y 400, halfway to the control point, hence the box is 100 px high
     assert.deepEqual(t.box, { left: 100, top: 400, width: 400, height: 100 });
     assert.equal(t.attrs.d, 'M0 100 Q200 -100 400 100');
     assert.deepEqual(parseStroke(child('path', t.attrs), { x: 100, y: 400 }), curve);
@@ -282,16 +248,11 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     const pts = pointsOf(curve);
     assert.equal(pts.length, 25);
     assert.deepEqual(pts[12], { x: 300, y: 400 });
-    // a moved end keeps the control point in proportion to the chord: a chord twice as long and
-    // turned by 90 degrees puts the control point 400 px to the right of its middle
     const turned = rebend(curve, { x1: 100, y1: 100, x2: 100, y2: 900 });
     assert.ok(near(turned.c.x, 500, 1e-9) && near(turned.c.y, 500, 1e-9), JSON.stringify(turned.c));
-    // the default bend of a new curve is a quarter of the chord to the left of its direction
     assert.deepEqual(withKind({ x1: 100, y1: 500, x2: 500, y2: 500 }, 'curve').c, { x: 300, y: 400 });
-    // a straight line is written as the line element of lineText
     const s = strokeText(withKind({ x1: 700, y1: 600, x2: 300, y2: 400 }, 'straight'));
     assert.deepEqual(s, { box: { left: 300, top: 400, width: 400, height: 200 }, tag: 'line', attrs: { x1: '400', y1: '200', x2: '0', y2: '0' } });
-    // an elbow leaving horizontally, with its middle segment halfway
     const elbow = withKind({ x1: 100, y1: 200, x2: 500, y2: 400 }, 'elbow');
     assert.deepEqual(elbow, { kind: 'elbow', x1: 100, y1: 200, x2: 500, y2: 400, h: true, m: 300 });
     const e = strokeText(elbow);
@@ -300,21 +261,17 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     assert.deepEqual(parseStroke(child('path', e.attrs), { x: 100, y: 200 }), elbow);
     assert.deepEqual(gripOf(elbow), { x: 300, y: 300 });
     assert.deepEqual(pointsOf(elbow), [{ x: 100, y: 200 }, { x: 300, y: 200 }, { x: 300, y: 400 }, { x: 500, y: 400 }]);
-    // the grip moves the middle segment along x only, and past an end the box grows
     const out = bendTo(elbow, { x: 600, y: 999 });
     assert.equal(out.m, 600);
     assert.deepEqual(strokeText(out).box, { left: 100, top: 200, width: 500, height: 200 });
-    // within the tolerance the middle segment lands on the line of an end, written with one bend
     const one = bendTo(elbow, { x: 495, y: 300 }, 8);
     assert.equal(one.m, 500);
     assert.equal(strokeText(one).attrs.d, 'M0 0 H400 V200');
     assert.deepEqual(parseStroke(child('path', { d: 'M0 0 H400 V200' })), { kind: 'elbow', h: true, m: 400, x1: 0, y1: 0, x2: 400, y2: 200 });
     assert.equal(strokeText(bendTo(elbow, { x: 104, y: 0 }, 8)).attrs.d, 'M0 0 V200 H400');
-    // an elbow leaving vertically, and a moved end that keeps the fraction of the middle segment
     const up = withKind({ x1: 100, y1: 100, x2: 200, y2: 500 }, 'elbow');
     assert.equal(strokeText(up).attrs.d, 'M0 0 V200 H100 V400');
     assert.equal(rebend(up, { x1: 100, y1: 100, x2: 200, y2: 900 }).m, 500);
-    // a path that the editor does not write is not read
     assert.equal(parseStroke(child('path', { d: 'M0 0 C10 10 20 20 30 30' })), null);
     assert.equal(parseStroke(child('path', { d: 'M0 0 H10 H20' })), null);
     assert.deepEqual(bboxOf({ kind: 'straight', x1: 10, y1: 5, x2: 10, y2: 5 }), { left: 10, top: 5, width: 1, height: 1 });
@@ -350,7 +307,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.getAttribute('class') ? '.' + e.getAttribute('class').split(' ')[0] : ''))`);
   const grips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-line-end')].filter((g) => !g.hidden).map((g) => { const r = g.getBoundingClientRect(); return { end: g.dataset.end, x: r.left + r.width / 2, y: r.top + r.height / 2, locked: g.classList.contains('locked') }; })`);
   const free = (platform) => (platform === 'mac' ? 'Meta' : 'Alt');
@@ -383,7 +339,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     assert.deepEqual(now, []);
   }
 
-  // the edit undone to the file byte for byte, redone to the same text, and saved and opened again
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     await inScope(page);
@@ -393,19 +348,16 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r20-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
-  // the screen point of a point in slide px
   const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
   return { x: r.left + ${x} * k, y: r.top + ${y} * k };
 })()`);
 
-  // the lines of the current slide: the tag and the attributes of the stroke, its translate, the
-  // classes, and the computed fill, stroke, width, and dash of the stroke
   const lines = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('svg.line')].map((svg) => {
   const l = svg.querySelector(':scope > line, :scope > path');
   const cs = getComputedStyle(l);
@@ -416,7 +368,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     head: svg.querySelector('marker path').getBoundingClientRect().width };
 })`);
 
-  // the rendered text without the one line inserted into it, and that line
   async function inserted(page) {
     const text = await render(page);
     const m = /\n[ \t]*(<svg class="line[^\n]*<\/svg>)/.exec(text);
@@ -425,11 +376,8 @@ describe('curved and elbow arrows with weights and dashes', async () => {
     return m[1];
   }
 
-  // the numbers of the d of a curve, M x1 y1 Q cx cy x2 y2, in slide px
   const curveOf = (l) => l.d.match(/-?\d+/g).map((v, i) => Number(v) + l.t[i % 2]);
   const closeTo = (a, b, tol = 2) => a.length === b.length && a.every((v, i) => near(v, b[i], tol));
-  // a click on the point x, y of the stroke of a line in slide px, which selects it again after an
-  // open of the saved text
   const reselect = async (page, x, y) => {
     await click(page, await screen(page, x, y));
     await frames(page);
@@ -453,7 +401,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.equal(l.stroke, text);
       assert.equal(l.end, `url(#${l.id})`);
       assert.equal(await undoLabel(page), 'Undo Insert Curved Arrow');
-      // the Line pane is shown with Curved checked in its segment Kind
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
       await frames(page);
       assert.ok(await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-tabs button')].some((b) => b.textContent === 'Line')`));
@@ -461,7 +408,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.equal((await state(page, 'line.kind.curve')).checked, true);
       await roundTrip(page);
       page.source = await render(page);
-      // an elbow from a drag of 800 by 200 px leaves horizontally with its middle segment halfway
       await exec(page, 'insert.elbow', { from: { x: 300, y: 700 }, to: { x: 1100, y: 900 } });
       await frames(page);
       [, l] = await lines(page);
@@ -469,7 +415,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.deepEqual(l.t, [300, 700]);
       assert.equal(await undoLabel(page), 'Undo Insert Elbow Arrow');
       await roundTrip(page);
-      // the Shape button and the Insert menu list the two after Arrow
       const shape = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-split:has([data-command="insert.shape.rounded"]) .more').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       await click(page, shape);
       await frames(page);
@@ -503,7 +448,7 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.match(l.d, /^M0 0 V\d+ H\d+ V\d+$/);
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a press, a right-click, and a marquee find a curve by its stroke and not by its chord, on ${platform}`, async (t) => {
@@ -511,7 +456,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await curve(page);
       await exec(page, 'selection.clear');
       await frames(page);
-      // the control point is at 700,400, hence the apex is 100 px above the chord, at y 500
       const chord = await screen(page, 700, 600);
       await click(page, chord);
       await frames(page);
@@ -528,20 +472,18 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await press(page, 'Escape');
       await exec(page, 'selection.clear');
       await frames(page);
-      // a marquee around the apex, away from the chord and the ends
       const from = await screen(page, 650, 470);
       const to = await screen(page, 750, 520);
       await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
       await frames(page);
       assert.deepEqual(await selected(page), ['svg.line'], 'a marquee across the bulge does not select the curve');
       await exec(page, 'selection.clear');
-      // a marquee on the chord inside the bulge selects nothing
       const in1 = await screen(page, 650, 570);
       const in2 = await screen(page, 750, 630);
       await drag(page, in1, { dx: in2.x - in1.x, dy: in2.y - in1.y });
       await frames(page);
       assert.deepEqual(await selected(page), [], 'a marquee on the chord selects the curve');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the grip of the bend moves the control point of a curve, Esc puts it back, and a moved end keeps the arc, on ${platform}`, async (t) => {
@@ -554,7 +496,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       const bend = g[2];
       const apex = await screen(page, 700, 500);
       assert.ok(near(bend.x, apex.x) && near(bend.y, apex.y), `the grip is at ${bend.x},${bend.y}, not on the apex ${apex.x},${apex.y}`);
-      // a drag of the grip to 700,300 puts the control point at 700,0
       const to = await screen(page, 700, 300);
       await drag(page, bend, { dx: to.x - bend.x, dy: to.y - bend.y, modifiers: free(platform), hold: true });
       await press(page, 'Escape');
@@ -571,7 +512,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await roundTrip(page);
       page.source = await render(page);
       await reselect(page, 700, 302);
-      // a drag of the second end to 700,600 halves the chord, and the apex is then 150 px above it
       g = await grips(page);
       const end = g.find((x) => x.end === '2');
       const at = await screen(page, 1100, 600);
@@ -591,7 +531,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await exec(page, 'insert.line', { from: { x: 200, y: 200 }, to: { x: 400, y: 200 } });
       await frames(page);
       page.source = await render(page);
-      // the end is dropped 4 px off the apex of the curve at 700,500, far from its chord
       const end = (await grips(page)).find((x) => x.end === '2');
       const at = await screen(page, 400, 200);
       const to = await screen(page, 704, 497);
@@ -614,7 +553,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       const bend = g.find((x) => x.end === 'bend');
       const was = await screen(page, 700, 500);
       assert.ok(near(bend.x, was.x) && near(bend.y, was.y));
-      // a drag to the right and down moves only x of the middle segment
       const to = await screen(page, 900, 650);
       await drag(page, bend, { dx: to.x - bend.x, dy: to.y - bend.y, modifiers: free(platform) });
       await frames(page);
@@ -624,7 +562,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await roundTrip(page);
       page.source = await render(page);
       await reselect(page, 300 + Number(m[1]), 400);
-      // a drag to 5 px left of the second end lands the segment on its line
       const g2 = (await grips(page)).find((x) => x.end === 'bend');
       const onto = await screen(page, 1095, 500);
       await drag(page, g2, { dx: onto.x - g2.x, dy: onto.y - g2.y });
@@ -637,7 +574,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
 
     test(`the segment Kind takes a grouped arrow at a step to a curve, an elbow, and back to its bytes, on ${platform}`, async (t) => {
       const page = await load(t, platform, 1);
-      // a click on the arrow selects its group, and the commands of Format > Line act on its line
       await click(page, await screen(page, 500, 500));
       await frames(page);
       assert.deepEqual(await selected(page), ['p', 'svg.line']);
@@ -661,12 +597,11 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await frames(page);
       assert.equal(await render(page), page.source);
       assert.deepEqual(await selected(page), ['p', 'svg.line']);
-      // each change of kind is one entry, after the open of the saved curve
       await undo(page);
       assert.equal((await lines(page))[0].tag, 'path');
       await undo(page);
       assert.equal(await render(page), page.source.replace(ORIGINAL, curved));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the segment Weight and the switch Dashed write a class on the svg, and the head grows with the weight, on ${platform}`, async (t) => {
@@ -717,7 +652,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await frames(page);
       page.source = await render(page);
       const before = (await lines(page))[0];
-      // the arrow keys move it by 1 and 10 px
       await press(page, 'ArrowRight');
       await press(page, 'Shift+ArrowDown');
       await frames(page);
@@ -726,7 +660,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.equal(l.d, before.d);
       await undo(page);
       await byteExact(page);
-      // a duplicate and a paste each get a marker of their own, named by their url()
       await press(page, 'Mod+D');
       await frames(page);
       await exec(page, 'edit.copy');
@@ -743,7 +676,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await undo(page);
       await undo(page);
       await byteExact(page);
-      // a group of the curve and the heading is moved together by the arrow keys
       await click(page, await screen(page, 700, 503));
       await click(page, '.reveal section.present h2', { modifiers: 'Shift' });
       await exec(page, 'arrange.group');
@@ -757,7 +689,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       await undo(page);
       await undo(page);
       await byteExact(page);
-      // a lock grays its three grips
       await exec(page, 'selection.clear');
       await click(page, await screen(page, 700, 503));
       await exec(page, 'arrange.lock');
@@ -765,7 +696,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
       assert.deepEqual((await grips(page)).map((x) => [x.end, x.locked]), [['1', true], ['2', true], ['bend', true]]);
       await undo(page);
       await byteExact(page);
-      // the layer order and a turn are offered, and a flip is not, as for a straight line
       for (const [id, on] of [['arrange.order.back', true], ['arrange.setRotation', true], ['arrange.flipHorizontal', false], ['arrange.flipVertical', false]]) {
         assert.equal((await state(page, id)).enabled, on, id);
       }
@@ -783,12 +713,6 @@ describe('curved and elbow arrows with weights and dashes', async () => {
   }
 });
 
-// tests of R27.1 on both platforms, connection lines as the connectors of PowerPoint: an end of a
-// line drawn or dragged onto an element is attached to it, written as data-anchor on the element and
-// data-from or data-to on the svg, and it follows every change of the box of the element in the
-// same entry of the history. a move of the whole line, a delete of the element, and a copy
-// without the element take the attachment off, and a copy with the element attaches the copy to the copies.
-// the Line pane names each attached end. each edit is checked byte for byte after an undo and a redo
 describe('line ends attached to elements', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r27-1.html';
@@ -811,7 +735,6 @@ describe('line ends attached to elements', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -819,12 +742,8 @@ describe('line ends attached to elements', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const free = (platform) => (platform === 'mac' ? 'Meta' : 'Alt');
   const copyKey = (platform) => (platform === 'mac' ? 'Alt' : 'Ctrl');
-  // a function of the page called with the arguments
   const call = (page, fn, ...args) => page.evaluate(`(${fn})(${args.map(js).join(', ')})`);
 
-  // the page loaded before it in the file is closed first. Within 1 s of the last change of a page,
-  // its unsaved edits are kept in the storage of the browser, and they would then be offered on a
-  // dialog over the slide of the next page
   let last = null;
   async function load(t, platform, slide = EMPTY, text = SOURCE) {
     await last?.close().catch(() => {});
@@ -844,7 +763,6 @@ describe('line ends attached to elements', () => {
     return page;
   }
 
-  // the point on the screen of a point in slide px
   function screenOf(p) {
     const s = document.querySelector('.reveal .slides');
     const r = s.getBoundingClientRect();
@@ -854,7 +772,6 @@ describe('line ends attached to elements', () => {
   const screen = (page, x, y) => call(page, screenOf, { x, y });
   const scale = (page) => page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
 
-  // the lines of the current slide: their attachment and their two ends in slide px, rounded
   function linesNow(slide) {
     return [...document.querySelector(slide).querySelectorAll('svg.line')].map((svg) => {
       const [tx, ty] = (svg.style.translate || '0px 0px').split(/\s+/).map((v) => parseFloat(v) || 0);
@@ -873,12 +790,8 @@ describe('line ends attached to elements', () => {
   }
   const lines = (page) => call(page, linesNow, SLIDE);
 
-  // the names of data-anchor on the slide, in document order, with the kind of each element
   const anchors = (page) => page.evaluate(`[...document.querySelector(${js(SLIDE)}).querySelectorAll('[data-anchor]')].map((el) => el.getAttribute('data-anchor') + ' ' + el.localName)`);
 
-  // for each attached end of the current slide, its distance in slide px from its place in the box of
-  // its element, i.e. the box of the style of a shape turned by its rotate, or the box seen of any
-  // other element
   function offsets(slide) {
     const s = document.querySelector('.reveal .slides');
     const r = s.getBoundingClientRect();
@@ -924,7 +837,6 @@ describe('line ends attached to elements', () => {
     assert.ok(d.every((v) => v >= 0 && v <= 1), `a glued end is off its place in the box of its element: ${js(d)}`);
   };
 
-  // an undo gives back the text before, and a redo the text after
   async function undoRedo(page, before, after) {
     await undo(page);
     await frames(page);
@@ -934,12 +846,8 @@ describe('line ends attached to elements', () => {
     assert.equal(await render(page), after, 'a redo does not write the edit again');
   }
 
-  // the start tag of the svg of the first line in a text
   const lineTag = (text) => /<svg class="line"[^>]*>/.exec(text)?.[0];
 
-  // F78. two rounded rectangles, a curved arrow drawn from the right edge of the first to the left edge
-  // of the second, and a nudge of the first by 120 slide px with Shift and the arrow key. the tail of
-  // the arrow stays at the middle of the right edge of the box
   for (const platform of PLATFORMS) {
     test(`F78: a curved arrow drawn between two boxes follows a nudge of the first box (${platform})`, async (t) => {
       const page = await load(t, platform, EMPTY);
@@ -966,19 +874,14 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(moved.ends.slice(2), [1186, 537], 'the head of the arrow is moved');
       await linesOf(page, 2);
       await undoRedo(page, before, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // rule 1. an end drawn onto an element is attached at the pointer, or at the middle of the nearest edge
-  // within 16 slide px of it. a text in the flow, a line, and a drag with the free key do not attach, and
-  // a text moved as a box does. the element under a dragged end is outlined
   for (const platform of PLATFORMS) {
     test(`rule 1: the ends of a drawn line are glued at the pointer or at the middle of an edge (${platform})`, async (t) => {
       const page = await load(t, platform, GLUED);
       const k = await scale(page);
-      // from inside the first box, away from its edges, to 10 px under the middle of the top edge of the
-      // ellipse
       await exec(page, 'insert.arrow');
       const a = await screen(page, 330, 520);
       await drag(page, a, { dx: (1306 - 330) * k, dy: (810 - 520) * k, steps: 12, hold: true });
@@ -1015,13 +918,11 @@ describe('line ends attached to elements', () => {
       await redo(page);
       assert.equal(await render(page), after);
 
-      // with the free key, neither end is attached
       await exec(page, 'insert.line');
       await drag(page, await screen(page, 400, 540), { dx: (1300 - 400) * k, dy: (880 - 540) * k, steps: 12, modifiers: free(platform) });
       await sleep(100);
       const loose = (await lines(page)).at(-1);
       assert.deepEqual([loose.from, loose.to], [null, null], 'an end drawn with the free key is glued');
-      // a text in the flow and another line do not take an attachment, and a text moved as a box does
       await exec(page, 'insert.line');
       await drag(page, await screen(page, 300, 270), { dx: (900 - 300) * k, dy: (950 - 270) * k, steps: 12 });
       await sleep(100);
@@ -1035,16 +936,12 @@ describe('line ends attached to elements', () => {
       const onWords = (await lines(page)).at(-1);
       assert.equal(onWords.from, null);
       assert.match(onWords.to ?? '', /^a4 /, 'a text moved as a box does not take glue');
-      // the moved words come before the shapes in the file
       assert.deepEqual(await anchors(page), ['a4 p', 'a1 div', 'a2 div', 'a3 div']);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // rule 2. the attachment is written into the tags only, as attributes of the editor: a deck without an attachment
-  // and a deck with an attachment are written byte for byte by an open and a save, and the attributes are in
-  // the scope rule
   for (const platform of PLATFORMS) {
     test(`rule 2: an open and a save keep a deck with and without glue byte for byte (${platform})`, async (t) => {
       const page = await load(t, platform, GLUED);
@@ -1058,11 +955,10 @@ describe('line ends attached to elements', () => {
       await undo(bare);
       const saved = await saveAndReopen(bare, 'bare.html');
       assert.equal(saved.text, plain, 'a deck without glue is changed by an open and a save');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // rule 3. whenever an attached element gets another box, its ends follow in the same entry of the history
   const FOLLOW = [
     ['a drag', async (page) => {
       await drag(page, await screen(page, 399, 500), { dx: 90, dy: 60, steps: 10 });
@@ -1092,7 +988,6 @@ describe('line ends attached to elements', () => {
       await click(page, await screen(page, 1306, 880), { modifiers: 'Shift' });
       await exec(page, 'arrange.align.bottom');
     }],
-    // a line attached to the text moved as a box, which Reset Slide puts back into the flow
     ['Reset Slide', async (page) => {
       await exec(page, 'slide.reset');
     }, async (page) => {
@@ -1118,14 +1013,13 @@ describe('line ends attached to elements', () => {
         await linesOf(page, count);
         assert.notDeepEqual((await lines(page)).map((l) => l.ends), was, 'the line does not follow');
         const after = await render(page);
-        // each change of the box is one entry with the line in it
         const steps = name === 'a typed Width and Height' ? 2 : 1;
         for (let i = 0; i < steps; i++) await undo(page);
         assert.equal(await render(page), base, 'the undo does not put the box and the line back');
         for (let i = 0; i < steps; i++) await redo(page);
         assert.equal(await render(page), after, 'the redo does not move the box and the line again');
         await linesOf(page, count);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -1137,18 +1031,14 @@ describe('line ends attached to elements', () => {
       assert.notEqual(await page.evaluate(`document.querySelector(${js(`${SLIDE} > .shape`)}).style.translate`), '200px 400px', 'the group is not moved');
       await linesOf(page, 2);
       await undoRedo(page, SOURCE, await render(page));
-      // and a nudge of the box at the other end
       await click(page, await screen(page, 1300, 460));
       for (let i = 0; i < 3; i++) await press(page, 'ArrowDown');
       await sleep(100);
       await linesOf(page, 2);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // rule 4. a drag of an attached end off its element takes its attachment off, a drop on another element
-  // attaches it there, a move of the whole line takes both off, a delete of the element leaves the line
-  // without its attachment, and a copy keeps the attachment only with the elements
   const endGrip = (page, which) => page.evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-line-end')].find((g) => !g.hidden && g.dataset.end === ${js(which)}); if (!g) return null; const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   for (const platform of PLATFORMS) {
     test(`rule 4: a dragged end is glued off and on, and a moved line is let go (${platform})`, async (t) => {
@@ -1157,7 +1047,6 @@ describe('line ends attached to elements', () => {
       await click(page, await screen(page, 853, 454));
       await frames(page);
       assert.equal((await page.evaluate('window.BeesonEditor.selection()')).length, 1);
-      // the head dragged onto the ellipse, near the middle of its left edge
       let grip = await endGrip(page, '2');
       await drag(page, grip, { dx: (1190 - 1186) * k, dy: (875 - 537) * k, steps: 10 });
       await sleep(100);
@@ -1166,14 +1055,12 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(await anchors(page), ['a1 div', 'a3 div'], 'the name of the box let go is kept, or the ellipse is not named');
       await linesOf(page, 2);
       await undoRedo(page, SOURCE, await render(page));
-      // the head dragged off to the empty slide
       grip = await endGrip(page, '2');
       await drag(page, grip, { dx: -200 * k, dy: 100 * k, steps: 10 });
       await sleep(100);
       [l] = await lines(page);
       assert.equal(l.to, null, 'the head dragged off the ellipse is still glued');
       assert.deepEqual(await anchors(page), ['a1 div']);
-      // with the free key a drop on a box does not attach
       grip = await endGrip(page, '2');
       const target = await screen(page, 1306, 537);
       await drag(page, grip, { dx: target.x - grip.x, dy: target.y - grip.y, steps: 10, modifiers: free(platform) });
@@ -1181,7 +1068,6 @@ describe('line ends attached to elements', () => {
       [l] = await lines(page);
       assert.equal(l.to, null, 'an end dropped with the free key is glued');
 
-      // a move of the whole line by a drag lets both ends go
       const fresh = await load(t, platform, GLUED);
       await drag(fresh, await screen(fresh, 853, 454), { dx: 0, dy: -80 * k, steps: 10 });
       await sleep(100);
@@ -1189,7 +1075,6 @@ describe('line ends attached to elements', () => {
       assert.deepEqual([l.from, l.to], [null, null], 'a dragged line is still glued');
       assert.deepEqual(await anchors(fresh), [], 'the names of the boxes are kept without glue');
       await undoRedo(fresh, SOURCE, await render(fresh));
-      // and by a nudge
       await undo(fresh);
       await click(fresh, await screen(fresh, 853, 454));
       await press(fresh, 'ArrowUp');
@@ -1198,14 +1083,13 @@ describe('line ends attached to elements', () => {
       [l] = await lines(fresh);
       assert.deepEqual([l.from, l.to], [null, null], 'a nudged line is still glued');
       await undoRedo(fresh, SOURCE, await render(fresh));
-      // and by a typed position
       await undo(fresh);
       await exec(fresh, 'arrange.setPosition', { y: 300 });
       [l] = await lines(fresh);
       assert.deepEqual([l.from, l.to], [null, null], 'a line moved by a typed position is still glued');
       await undoRedo(fresh, SOURCE, await render(fresh));
-      assert.deepEqual(errors(page), []);
-      assert.deepEqual(errors(fresh), []);
+      assert.deepEqual(page.errors, []);
+      assert.deepEqual(fresh.errors, []);
     });
 
     test(`rule 4: a delete of a glued box leaves the line, and a copy glues only to copied boxes (${platform})`, async (t) => {
@@ -1220,7 +1104,6 @@ describe('line ends attached to elements', () => {
       await undoRedo(page, SOURCE, await render(page));
       await undo(page);
 
-      // the line copied alone is pasted without an attachment
       await click(page, await screen(page, 853, 454));
       await exec(page, 'edit.copy');
       await exec(page, 'edit.paste');
@@ -1233,7 +1116,6 @@ describe('line ends attached to elements', () => {
       await undo(page);
       assert.equal(await render(page), SOURCE);
 
-      // the two boxes and the line, by Copy and Paste, by Duplicate, and by a drag with the copy key
       for (const route of ['paste', 'duplicate', 'drag']) {
         await click(page, await screen(page, 399, 500));
         await click(page, await screen(page, 1306, 500), { modifiers: 'Shift' });
@@ -1258,7 +1140,6 @@ describe('line ends attached to elements', () => {
         assert.equal(await render(page), SOURCE, `one undo does not take the copies of ${route} off`);
       }
 
-      // Duplicate Slide and a paste of the slide keep the attachment of the copy
       for (const route of ['slide.duplicate', 'slide.paste']) {
         if (route === 'slide.paste') await exec(page, 'slide.copy');
         await exec(page, route);
@@ -1271,11 +1152,10 @@ describe('line ends attached to elements', () => {
         await sleep(100);
         assert.equal(await render(page), SOURCE);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 5. the Line pane names each attached end, with a button that takes its attachment off
   for (const platform of PLATFORMS) {
     test(`item 5: the Line pane names the glued ends and takes the glue off (${platform})`, async (t) => {
       const page = await load(t, platform, GLUED);
@@ -1300,13 +1180,10 @@ describe('line ends attached to elements', () => {
       await frames(page);
       const after = await page.evaluate(`document.querySelector(${js(PANEL)}).innerText`);
       assert.doesNotMatch(after, /End: Rounded Rectangle/, 'the pane names an end let go');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // repairs of R27.1 after its check
-
-  // a new line drawn from a to b in slide px
   async function drawLine(page, a, b) {
     const k = await scale(page);
     await exec(page, 'insert.line');
@@ -1315,9 +1192,6 @@ describe('line ends attached to elements', () => {
     return (await lines(page)).at(-1);
   }
 
-  // rule 1. an end is attached to the element under the pointer, even where the middle of an edge of an
-  // element above it is within reach. the lower box spans y 600 to 720 and is first in the file, and
-  // the upper box spans y 472 to 592
   for (const platform of PLATFORMS) {
     test(`rule 1: an end is glued to the element under the pointer before a nearer middle of another (${platform})`, async (t) => {
       const page = await load(t, platform, STACK);
@@ -1326,7 +1200,6 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(low.ends.slice(2), [450, 600]);
       assert.deepEqual(await anchors(page), ['a1 div']);
       await linesOf(page, 1);
-      // on a fresh slide, since an end snaps to the end of another line
       const fresh = await load(t, platform, STACK);
       const high = await drawLine(fresh, { x: 1200, y: 480 }, { x: 450, y: 590 });
       assert.equal(high.to, 'a1 0.5 1', `the end inside the upper box is not glued to it: ${js(high)}`);
@@ -1334,14 +1207,11 @@ describe('line ends attached to elements', () => {
       assert.deepEqual(await anchors(fresh), ['a1 div']);
       assert.equal(await fresh.evaluate(`document.querySelector(${js(SLIDE)}).querySelector('[data-anchor]').style.translate`), '300px 472px');
       await linesOf(fresh, 1);
-      assert.deepEqual(errors(page), []);
-      assert.deepEqual(errors(fresh), []);
+      assert.deepEqual(page.errors, []);
+      assert.deepEqual(fresh.errors, []);
     });
   }
 
-  // rule 1. a group takes an attachment as one object: an end at the middle of the right edge of the box of the
-  // group, between its two members, is attached to the group, whose members share the name, and it
-  // follows a move of the group. the Line pane names the group
   for (const platform of PLATFORMS) {
     test(`rule 1: a group takes glue as one object at the middle of an edge of its box (${platform})`, async (t) => {
       const page = await load(t, platform, GROUPED);
@@ -1361,11 +1231,10 @@ describe('line ends attached to elements', () => {
       const moved = (await lines(page)).at(-1);
       assert.deepEqual(moved.ends.slice(2), [Math.round(right), Math.round(middle)], 'the end does not follow the box of the group');
       await undoRedo(page, before, await render(page));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // rule 2. a delete or a cut of an attached line takes the names off the elements that it was attached to
   for (const platform of PLATFORMS) {
     test(`rule 2: a delete or a cut of a glued line takes the names off its elements (${platform})`, async (t) => {
       const page = await load(t, platform, GLUED);
@@ -1380,11 +1249,10 @@ describe('line ends attached to elements', () => {
         await undo(page);
         assert.equal(await render(page), SOURCE, `one undo does not put back the line and the names after ${command}`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 5. the row of an end that is not attached is not shown, nor is the section without an attached end
   const shownButtons = (page) => page.evaluate(`[...document.querySelectorAll(${js(`${PANEL} [data-command^="line.detach"]`)})].filter((b) => b.getClientRects().length).map((b) => b.dataset.command)`);
   for (const platform of PLATFORMS) {
     test(`item 5: the Line pane shows a row only for a glued end of one line (${platform})`, async (t) => {
@@ -1396,7 +1264,6 @@ describe('line ends attached to elements', () => {
       await exec(page, 'line.detach.end');
       await frames(page);
       assert.deepEqual(await shownButtons(page), ['line.detach.start'], 'a button is shown for the end let go');
-      // the loose line alone, and the two lines
       await click(page, await screen(page, 900, 950));
       await frames(page);
       await sleep(100);
@@ -1408,21 +1275,13 @@ describe('line ends attached to elements', () => {
       await sleep(100);
       assert.equal((await page.evaluate('window.BeesonEditor.selection()')).length, 2);
       assert.deepEqual(await shownButtons(page), [], 'a button is shown for two selected lines');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// tests of R36.3 on both platforms, a turn of a line with an attached end. as a connection line of
-// Keynote, a line attached at one end or at both is not turned: while every selected element is such a
-// line, the field Angle of the Arrange pane, the quarter turns, and Reset Rotation are dimmed and do
-// nothing, and the field reads "Detach the line to turn it". once each end is detached in the
-// section Connections of the Line pane, the line is turned by the field, and a selection with
-// another element is turned as it was without this rule
 describe('attached lines are not turned until detached', () => {
   const PLATFORMS = ['mac', 'other'];
-  // slide 0 holds a curved arrow attached from a1 to a2, i.e. the two rounded rectangles, and a loose
-  // line under them, and slide 1 the same arrow turned by 20 degrees in the file
   const DECK = 'test/pages/editor-r36-3.html';
   const SOURCE = readFileSync(DECK, 'utf8');
   const [GLUED, TURNED] = [0, 1];
@@ -1446,7 +1305,6 @@ describe('attached lines are not turned until detached', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
@@ -1469,7 +1327,6 @@ describe('attached lines are not turned until detached', () => {
     return page;
   }
 
-  // the point on the screen of a point in slide px
   function screenOf(p) {
     const s = document.querySelector('.reveal .slides');
     const r = s.getBoundingClientRect();
@@ -1477,17 +1334,13 @@ describe('attached lines are not turned until detached', () => {
     return { x: r.left + p.x * k, y: r.top + p.y * k };
   }
   const screen = (page, x, y) => call(page, screenOf, { x, y });
-  // points in slide px on the attached arrow at its middle and at a quarter of its length, away from the
-  // grip of its bend, on the loose line, and on the box a1
   const ON_ARROW = [853, 454];
   const ON_QUARTER = [686, 475];
   const ON_LOOSE = [900, 950];
   const ON_BOX = [399, 500];
 
-  // the attachment and the angle of each line of the slide
   const lines = (page) => page.evaluate(`[...document.querySelector(${js(SLIDE)}).querySelectorAll('svg.line')].map((svg) => ({ from: svg.getAttribute('data-from'), to: svg.getAttribute('data-to'), rotate: svg.style.rotate }))`);
 
-  // a click on the first point and a click with Shift on each other point
   async function select(page, ...points) {
     for (const [i, [x, y]] of points.entries()) await click(page, await screen(page, x, y), { modifiers: i ? 'Shift' : '' });
     await frames(page);
@@ -1495,7 +1348,6 @@ describe('attached lines are not turned until detached', () => {
     assert.equal((await page.evaluate('window.BeesonEditor.selection()')).length, points.length);
   }
 
-  // the pane of a name, through its tab where the selection has more than one pane
   async function showTab(page, name) {
     await page.evaluate(`[...document.querySelectorAll('.ed-tabs button')].find((b) => b.textContent.trim() === ${js(name)})?.click()`);
     await frames(page);
@@ -1505,14 +1357,12 @@ describe('attached lines are not turned until detached', () => {
     await page.waitFor(`document.querySelector(${js(ANGLE)}) !== null`);
   }
 
-  // the field Angle: whether its input is disabled and its control dimmed, its title, and its value
   const angleField = (page) => page.evaluate(`(() => {
   const input = document.querySelector(${js(ANGLE)});
   const box = input.closest('.ed-num');
   return { disabled: input.disabled, dimmed: box.classList.contains('off'), title: box.title, value: input.value };
 })()`);
 
-  // an angle typed into the field and entered with Tab
   async function typeAngle(page, deg) {
     await click(page, ANGLE);
     await page.evaluate(`document.querySelector(${js(ANGLE)}).select()`);
@@ -1521,7 +1371,6 @@ describe('attached lines are not turned until detached', () => {
     await sleep(150);
   }
 
-  // the quarter turns in the menu of the element at x, y in slide px, each with whether it is dimmed
   async function menuTurns(page, x, y) {
     await click(page, await screen(page, x, y), { button: 'right' });
     await sleep(100);
@@ -1530,10 +1379,6 @@ describe('attached lines are not turned until detached', () => {
     return Object.fromEntries(items.filter(([label]) => /^Rotate (Left|Right) 90°$/.test(label)));
   }
 
-  // every turn of the selected attached line refused: the commands, the field with its reason, and the
-  // items of the menu of the line at the point at dimmed, no handle of a turn shown, and the file
-  // untouched after each command and after a typed angle, without an entry of the history. the Tab
-  // after the typed angle reaches the canvas, which selects the next object
   async function refused(page, at = ON_QUARTER) {
     for (const id of TURNS) assert.equal((await state(page, id)).enabled, false, `${id} is enabled on a glued line`);
     const field = await angleField(page);
@@ -1554,7 +1399,6 @@ describe('attached lines are not turned until detached', () => {
     assert.equal((await state(page, 'edit.undo')).enabled, undoable, 'a refused turn made an entry of the history');
   }
 
-  // items 1, 2, and 4. a line attached at both ends, also turned in the file, and a line attached at one end
   for (const platform of PLATFORMS) {
     test(`item 2: the turns of a line glued at both ends are dimmed and leave the file untouched (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -1566,12 +1410,11 @@ describe('attached lines are not turned until detached', () => {
       await select(page, ON_ARROW);
       await showTab(page, 'Line');
       assert.match(await page.evaluate(`document.querySelector(${js(PANEL)}).innerText`), /Connections/, 'the section Connections is gone');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`item 2: Reset Rotation of a turned line glued at both ends is dimmed (${platform})`, async (t) => {
       const page = await load(t, platform, TURNED);
-      // a marquee around the middle of the turned arrow, clear of the two boxes
       const from = await screen(page, 700, 300);
       const to = await screen(page, 1000, 620);
       await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y, steps: 10 });
@@ -1582,7 +1425,7 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await lines(page))[0].rotate, '20deg');
       await refused(page, null);
       assert.equal(await render(page), SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`item 2: the turns of a line glued at one end are dimmed, and the line is turned after Detach (${platform})`, async (t) => {
@@ -1593,7 +1436,6 @@ describe('attached lines are not turned until detached', () => {
       assert.deepEqual((await lines(page))[0], { from: 'a1 1 0.5', to: null, rotate: '' });
       await arrangeTab(page);
       await refused(page);
-      // Detach of the start leaves a loose line, which the field turns in one entry
       await select(page, ON_ARROW);
       await arrangeTab(page);
       await exec(page, 'line.detach.start');
@@ -1616,12 +1458,10 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await state(page, 'arrange.resetRotation')).enabled, true);
       const { text } = await saveAndReopen(page, `r36-3-${platform}.html`);
       assert.equal(text, turned);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // items 2 and 4. an attached line selected with a box or with a loose line is turned by the field as
-  // it was without this rule
   for (const platform of PLATFORMS) {
     for (const [name, other] of [['a box', ON_BOX], ['a loose line', ON_LOOSE]]) {
       test(`item 2: a glued line selected with ${name} is turned as before (${platform})`, async (t) => {
@@ -1640,13 +1480,11 @@ describe('attached lines are not turned until detached', () => {
         assert.equal(await render(page), SOURCE, 'one undo does not take the turn back');
         await redo(page);
         assert.equal(await render(page), turned, 'a redo does not turn the selection again');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // item 3. a drag of the whole attached line still takes the attachment of both ends off, after which the
-  // field turns the line
   for (const platform of PLATFORMS) {
     test(`item 3: a glued line dragged whole is let go and turned by the field (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -1658,7 +1496,7 @@ describe('attached lines are not turned until detached', () => {
       assert.equal((await angleField(page)).disabled, false);
       await typeAngle(page, 15);
       assert.equal((await lines(page))[0].rotate, '15deg');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

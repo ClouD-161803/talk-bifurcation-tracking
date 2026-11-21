@@ -1,6 +1,3 @@
-// a figure resized by each of its grips, with its frame drawn around its picture and its caption,
-// also for a turned figure and a turned group
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,13 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { byteExact, center, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R9.1 on both platforms and in both modes, with trusted input. a resize of a
-// figure by each of its grips draws the frame around the picture and its caption at their new size,
-// with the grip at the pointer, the side across from it in place, and the caption under the picture
-// by the layout. a turned figure with its caption is framed turned with both, a turned group keeps
-// its frame turned with its grips on it, and its W and H fields scale it, and a turn of a group turns
-// the image of each mode. after each edit the file is checked byte for byte after an undo and the
-// edit again after a redo, and a saved text is opened again without problems
 describe('a figure resized by each of its grips', () => {
   const PLATFORMS = ['mac', 'other'];
   const MODES = ['dark', 'light'];
@@ -32,14 +22,9 @@ describe('a figure resized by each of its grips', () => {
   const UNION = '.beeson-overlay > .beeson-frame.union';
   const PANEL = '#beeson-edit-panel-format';
   const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-  // the side of the frame that each grip moves on each axis, -1 at the left or top
   const SIGN = { nw: [-1, -1], n: [0, -1], ne: [1, -1], e: [1, 0], se: [1, 1], s: [0, 1], sw: [-1, 1], w: [-1, 0] };
-  // the modifier that turns the snap off, held in every drag so that the pointer alone sets the size
   const FREE = { mac: 'Meta', other: 'Alt' };
-  // the gap of the theme between a picture and its caption in a figure box, in slide px
   const GAP = 16;
-  // the screen px by which the frame of a figure with a caption stands outside it, clear of the text
-  // of its caption, as the frame of a text box in Keynote stands off its text (K58)
   const INSET = 8;
   const TOL = 1.5;
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
@@ -62,7 +47,6 @@ describe('a figure resized by each of its grips', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const near = (a, b, by = TOL) => Math.abs(a - b) <= by;
   const show = (b) => (b ? `${Math.round(b.left)}, ${Math.round(b.top)}, ${Math.round(b.width)} × ${Math.round(b.height)}` : 'nothing');
   const right = (b) => b.left + b.width;
@@ -76,14 +60,11 @@ describe('a figure resized by each of its grips', () => {
   };
   const reach = (points) => union(...points.map((p) => ({ left: p.x, top: p.y, width: 0, height: 0 })));
   const grow = (b, by) => ({ left: b.left - by, top: b.top - by, width: b.width + 2 * by, height: b.height + 2 * by });
-  // the frame drawn around the box pic of a picture and the caption of now
   const framed = (pic, now) => (now.cap ? grow(union(pic, now.cap), INSET) : pic);
-  // the point x, y turned by deg about the center of box
   const turned = (box, deg, x, y) => {
     const a = (deg * Math.PI) / 180, c = { x: cx(box), y: cy(box) };
     return { x: c.x + (x - c.x) * Math.cos(a) - (y - c.y) * Math.sin(a), y: c.y + (x - c.x) * Math.sin(a) + (y - c.y) * Math.cos(a) };
   };
-  // the place of grip h on box turned by deg
   const gripOn = (box, deg, h) => {
     const [sx, sy] = SIGN[h];
     return turned(box, deg, sx < 0 ? box.left : sx > 0 ? right(box) : cx(box), sy < 0 ? box.top : sy > 0 ? bottom(box) : cy(box));
@@ -91,10 +72,6 @@ describe('a figure resized by each of its grips', () => {
 
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...[...el.classList].filter((c) => /^(figure-box|plate|caption|for-dark|for-light)$/.test(c))].join('.'))`);
 
-  // what is drawn, in screen px: the scale of the slide, the corners of the picture of each shown
-  // image, fitted by object-fit and turned by its rotate, the box of the image without its rotate,
-  // the caption that a figure box holds with the angle of the figure box, the frame of the selection with its
-  // size without its rotate, the frame of a group with its angle, and the grips
   const LOOK = `(() => {
   const s = document.querySelector('.reveal .slides');
   const k = s.getBoundingClientRect().width / s.offsetWidth;
@@ -136,7 +113,6 @@ describe('a figure resized by each of its grips', () => {
 })()`;
   async function look(page) {
     const out = await page.evaluate(LOOK);
-    // the box of the first picture, upright around its corners
     out.pic = out.pictures.length ? reach(out.pictures[0].corners) : null;
     return out;
   }
@@ -161,7 +137,6 @@ describe('a figure resized by each of its grips', () => {
     return page;
   }
 
-  // the figure selected by a click on its picture, or the picture by a second click
   async function pick(page, from) {
     await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
     for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
@@ -175,7 +150,6 @@ describe('a figure resized by each of its grips', () => {
     } else assert.deepEqual(await selected(page), [page.figure], 'the figure is not selected by a click on its picture');
   }
 
-  // the edit is in the scope rule wherever the text before it is
   function inScope(edited, source) {
     const now = textProblems(edited, THEME);
     for (const p of textProblems(source, THEME)) {
@@ -185,8 +159,6 @@ describe('a figure resized by each of its grips', () => {
     assert.deepEqual(now, [], 'the edit writes outside the scope rule');
   }
 
-  // the edit, the file byte for byte after an undo, the edit again after a redo, and the file again
-  // after a second undo, from which the next edit starts
   async function roundTrip(page, edited) {
     assert.notEqual(edited, page.source, 'the edit does not change the file');
     inScope(edited, page.source);
@@ -201,17 +173,15 @@ describe('a figure resized by each of its grips', () => {
     await byteExact(page);
   }
 
-  // the last edit made again, saved, and the saved text opened again without problems
   async function saved(page, edited, name) {
     await redo(page);
     await frames(page);
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, name);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
-  // the lines of the file that an edit changes, trimmed
   function changedLines(source, edited) {
     const a = source.split('\n'), b = edited.split('\n');
     assert.equal(b.length, a.length, 'the edit adds or removes a line');
@@ -240,15 +210,11 @@ describe('a figure resized by each of its grips', () => {
 
   const release = (page, at) => page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1 });
 
-  // the side or corner of box b across from grip h, or the center of b on an axis that h does not move
   const anchorOf = (b, h) => {
     const [sx, sy] = SIGN[h];
     return { x: sx > 0 ? b.left : sx < 0 ? right(b) : cx(b), y: sy > 0 ? b.top : sy < 0 ? bottom(b) : cy(b) };
   };
 
-  // grip h at the pointer ptr: on the axis that an edge grip moves, and for a corner grip at the
-  // corner nearest to the pointer that keeps the aspect a of the picture, i.e. with the offset from
-  // the grip to the pointer at a right angle to the diagonal of a box of aspect a
   function atPointer(g, ptr, h, a, where) {
     const [sx, sy] = SIGN[h];
     assert.ok(g, `${where}: the grip ${h} is not drawn`);
@@ -261,7 +227,6 @@ describe('a figure resized by each of its grips', () => {
     }
   }
 
-  // the caption of a figure box under the box of the shown image, as wide as it, at the gap of the theme
   function captionUnder(now, where) {
     if (!now.cap) return;
     const lay = now.pictures[0].layout;
@@ -269,8 +234,6 @@ describe('a figure resized by each of its grips', () => {
     assert.equal(now.capDeg, 0, `${where}: the caption is turned`);
   }
 
-  // in a drag held by grip h, the frame and all of its grips are drawn on box, the frame that the
-  // release draws, and they follow the resized box
   function gripHeld(now, h, box, where) {
     assert.ok(sameBox(now.frame, box), `${where}: the frame is at ${show(now.frame)}, not around ${show(box)}`);
     assert.ok(Object.keys(now.grips).length > 1 && h in now.grips, `${where}: the grips ${js(Object.keys(now.grips))} are drawn`);
@@ -278,8 +241,6 @@ describe('a figure resized by each of its grips', () => {
     assert.ok(near(g.x, want.x) && near(g.y, want.y), `${where}: the grip ${h} is at ${js(g)}, not on the frame ${show(box)} at ${js(want)}`);
   }
 
-  // the box of the picture and its caption of a resize by grip h from the figure or from the picture,
-  // with the frame and the grips drawn in the drag and after it
   function resized(now, rest, h, ptr, from, where, held = false) {
     const box = from === 'figure' ? framed(now.pic, now) : now.pic;
     if (held) gripHeld(now, h, box, where);
@@ -290,8 +251,6 @@ describe('a figure resized by each of its grips', () => {
     atPointer(now.grips[h], ptr, h, now.pic.width / now.pic.height, where);
   }
 
-  // what the overlay draws: the frames of the selection and of a group, the grips, the rotate handle
-  // and its stem, and the readout
   const OVERLAY = `(() => {
   const v = (e) => !e.closest('[hidden]') && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
   const n = (s) => [...document.querySelectorAll(s)].filter(v).length;
@@ -300,10 +259,8 @@ describe('a figure resized by each of its grips', () => {
   const overlay = (page) => page.evaluate(OVERLAY);
   const centerOf = (page, sel) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(sel)})].find((e) => !e.hidden && e.getBoundingClientRect().width).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-  // the pointer offset of a drag of grip h inward, in screen px
   const inward = (h, by = 40) => ({ dx: -SIGN[h][0] * by, dy: -SIGN[h][1] * by });
 
-  // the group of two pairs, selected by a click on a member
   async function pickGroup(t, platform, mode) {
     const page = await load(t, platform, mode, 0, GROUP_DECK);
     page.figure = 'figure.figure-box';
@@ -313,8 +270,6 @@ describe('a figure resized by each of its grips', () => {
     return page;
   }
 
-  // a drag of the rotate handle of the group with the frame box that turns it by deg, held at the
-  // point that it ends at, which is returned
   async function turnGroup(page, box, deg) {
     assert.ok(box, 'the frame of the group is not drawn');
     const rotor = await page.evaluate(`(() => { const r = document.querySelector('.beeson-rotor').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -369,8 +324,6 @@ describe('a figure resized by each of its grips', () => {
             const t0 = now.text;
             assert.ok(t0 && t0.width > 0, `${at}: the caption has no text`);
             assert.ok(sameBox(now.frame, framed(now.pic, now)), `${at}: the frame is at ${show(now.frame)}, not ${INSET} px outside the picture and the caption at ${show(union(now.pic, now.cap))}`);
-            // the line of the frame, 2 px wide, and each grip, 12 px wide with its shadow of 1 px,
-            // are clear of the text of the caption
             const inner = grow(now.frame, -2);
             assert.ok(inner.left < t0.left && inner.top < t0.top && right(inner) > right(t0) && bottom(inner) > bottom(t0), `${at}: the frame at ${show(now.frame)} runs on the text of the caption at ${show(t0)}`);
             for (const [h, g] of Object.entries(now.grips)) {
@@ -378,7 +331,6 @@ describe('a figure resized by each of its grips', () => {
               const over = box.left < right(t0) && right(box) > t0.left && box.top < bottom(t0) && bottom(box) > t0.top;
               assert.ok(!over, `${at}: the grip ${h} at ${js(g)} is on the text of the caption at ${show(t0)}`);
             }
-            // X and Y give the corner of the picture and its caption, without the inset of the frame
             const fig = union(now.pic, now.cap);
             const x = (fig.left - now.origin.left) / now.k, y = (fig.top - now.origin.top) / now.k;
             assert.ok(near(await fieldValue(page, 'x'), x, 1) && near(await fieldValue(page, 'y'), y, 1), `${at}: X and Y read ${await fieldValue(page, 'x')}, ${await fieldValue(page, 'y')}, not the corner ${Math.round(x)}, ${Math.round(y)} of the figure`);
@@ -391,8 +343,6 @@ describe('a figure resized by each of its grips', () => {
             await redo(page);
             await frames(page);
           }
-          // the draft of an edited page left open may reach the storage after the next load clears it,
-          // and its dialog then makes the page inert
           await page.close();
         }
       });
@@ -407,8 +357,6 @@ describe('a figure resized by each of its grips', () => {
           await frames(page);
           page.source = await render(page);
           const rest = await look(page);
-          // the figure is turned as one object with its caption, about the center of its frame, and
-          // the frame is turned with it at the size of the upright frame
           assert.ok(rest.figDeg === 30 && rest.pictures[0].deg === 0 && rest.capDeg === 0, `${where}: the figure is turned by ${rest.figDeg}°, its picture by ${rest.pictures[0].deg}°`);
           const q = turned(upright.frame, 30, cx(upright.cap), cy(upright.cap));
           assert.ok(near(cx(rest.cap), q.x) && near(cy(rest.cap), q.y), `${where}: the caption at ${show(rest.cap)} is not carried with the picture to ${js(q)}`);
@@ -418,8 +366,6 @@ describe('a figure resized by each of its grips', () => {
             const want = gripOn(upright.frame, 30, h), g = rest.grips[h];
             assert.ok(g && near(g.x, want.x) && near(g.y, want.y), `${where}: the grip ${h} is at ${js(g)}, not at ${js(want)}`);
           }
-          // a corner grip dragged inward along the turned diagonal scales the figure, which stays
-          // turned, with the corner across from the grip in place
           const d = inward('se'), a = Math.PI / 6, dx = d.dx * Math.cos(a) - d.dy * Math.sin(a), dy = d.dx * Math.sin(a) + d.dy * Math.cos(a);
           const g = rest.grips.se, ptr = { x: g.x + dx, y: g.y + dy };
           await drag(page, g, { dx, dy, modifiers: FREE[platform], hold: true });
@@ -432,7 +378,6 @@ describe('a figure resized by each of its grips', () => {
             const at = `${where}, a drag of the grip se ${stage}`;
             assert.ok(now.figDeg === 30 && now.pictures[0].deg === 0, `${at}: the figure is not turned`);
             assert.ok(now.pictures[0].width < rest.pictures[0].width - 20, `${at}: the picture is ${now.pictures[0].width} px wide, from ${rest.pictures[0].width} px`);
-            // the frame is drawn turned with every grip in the drag too, and follows the resize
             assert.equal(now.frameDeg, 30, `${at}: the frame is turned by ${now.frameDeg}°`);
             assert.deepEqual(Object.keys(now.grips).sort(), [...HANDLES].sort(), `${at}: the grips ${js(Object.keys(now.grips))} are drawn`);
             assert.ok(near(now.grips.nw.x, rest.grips.nw.x) && near(now.grips.nw.y, rest.grips.nw.y), `${at}: the corner across from the grip moves from ${js(rest.grips.nw)} to ${js(now.grips.nw)}`);
@@ -441,8 +386,6 @@ describe('a figure resized by each of its grips', () => {
           for (const l of changedLines(page.source, edited)) assert.match(l, /^<(figure class="figure-box"|img )/, `${where}: the resize writes ${l}`);
           await roundTrip(page, edited);
           await saved(page, edited, `r9-1-turned-${n}.html`);
-          // the draft of an edited page left open may reach the storage after the next load clears it,
-          // and its dialog then makes the page inert
           await page.close();
         }
       });
@@ -452,8 +395,6 @@ describe('a figure resized by each of its grips', () => {
         const page = await pickGroup(t, platform, mode);
         const rest = await look(page);
 
-        // W and H are typed fields that scale the group about its upper left corner, as one entry of
-        // the history each, and with Constrain Proportions off a typed W stretches the pictures
         assert.equal(await fieldEnabled(page, 'width'), true, `${where}: the field W is dimmed`);
         assert.equal(await fieldEnabled(page, 'height'), true, `${where}: the field H is dimmed`);
         const w0 = await fieldValue(page, 'width'), h0 = await fieldValue(page, 'height');
@@ -476,8 +417,6 @@ describe('a figure resized by each of its grips', () => {
         assert.match(stretched, /style="width: \d+px; height: \d+px"/, `${where}: a typed W with Constrain Proportions off does not stretch the pictures`);
         await exec(page, 'arrange.constrainProportions');
 
-        // after a turn by the rotate handle, the frame of the group stays turned by the angle of its
-        // first member, around every member, with the grips on it, and W and H give its size
         const to = await turnGroup(page, rest.group, 30);
         await release(page, to);
         await frames(page);
@@ -502,8 +441,6 @@ describe('a figure resized by each of its grips', () => {
         await frames(page);
         page.source = turnedText;
 
-        // a typed W scales the turned group with the upper left corner of its frame without its
-        // rotation kept, i.e. its X and Y, as for a turned figure
         const before = await look(page);
         const corner = { x: await fieldValue(page, 'x'), y: await fieldValue(page, 'y') };
         const w2 = Math.round((before.group.width / before.k) * 0.8);
@@ -529,8 +466,6 @@ describe('a figure resized by each of its grips', () => {
           }
           const all = await overlay(page);
           assert.ok(all.frames === 1 && all.grips.length === 8 && all.rotor === 1, `${where}: the selection draws ${js(all)}`);
-          // a resize by the grip se, held, and a turn by the rotate handle, held, each released and
-          // checked in the file
           for (const handle of ['se', 'rotor']) {
             const from = await centerOf(page, handle === 'rotor' ? '.beeson-rotor' : '.beeson-grip[data-handle="se"]');
             const by = handle === 'rotor' ? { dx: 90, dy: 20 } : { dx: -40, dy: -40 };
@@ -553,10 +488,8 @@ describe('a figure resized by each of its grips', () => {
       });
 
       test(`the readouts of a move, a nudge, a resize, and a turn give labels and units, for an element, a line, and a group, on ${platform} in ${mode} mode`, async (t) => {
-        // as Keynote reads 'x: 530 pt  y: 100 pt' and 'w: 744 pt  h: 762 pt' (K63, K77), in slide px
         const XY = /^x: -?\d+ px {2}y: -?\d+ px$/, WH = /^w: \d+ px {2}h: \d+ px$/, DEG = /^\d+°$/;
         const readout = async (page) => (await overlay(page)).readout.join('|');
-        // a drag held from the point from by the offset by, read and released, then checked in the file
         const held = async (page, from, by, want, what, modifiers) => {
           await drag(page, from, { ...by, modifiers, hold: true });
           await frames(page);
@@ -579,7 +512,6 @@ describe('a figure resized by each of its grips', () => {
         await press(page, 'ArrowRight');
         await frames(page);
         assert.match(await readout(page), XY, `the nudge of a QR code ${where} reads ${js(await readout(page))}`);
-        // a line drawn on the slide, selected by a press next to it, and moved
         await exec(page, 'insert.line', { from: { x: 300, y: 700 }, to: { x: 800, y: 700 } });
         await exec(page, 'selection.clear');
         await frames(page);
@@ -588,14 +520,12 @@ describe('a figure resized by each of its grips', () => {
         await click(page, on);
         await frames(page);
         await held(page, on, { dx: 40, dy: -50 }, XY, `the move of a line ${where}`, FREE[platform]);
-        // a group, resized by its grip se
         page = await pickGroup(t, platform, mode);
         await held(page, await centerOf(page, '.beeson-grip[data-group="1"][data-handle="se"]'), { dx: -40, dy: -30 }, WH, `the resize of a group ${where}`, FREE[platform]);
       });
 
       test(`a drag held at the edge of a zoomed canvas scrolls it, with the element or line under the pointer, on ${platform} in ${mode} mode`, async (t) => {
         const where = `on ${platform} in ${mode} mode`;
-        // the closing slide, whose QR code theme/beeson.css places in the lower right corner
         const page = await load(t, platform, mode, 15, LAYOUTS);
         await exec(page, 'insert.line', { from: { x: 300, y: 700 }, to: { x: 800, y: 700 } });
         await exec(page, 'selection.clear');
@@ -604,8 +534,6 @@ describe('a figure resized by each of its grips', () => {
         await frames(page);
         const canvas = () => page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-canvas'), v = window.BeesonEditorShell.stage.viewport; return { x: c.scrollLeft, y: c.scrollTop, zoomed: c.classList.contains('zoomed'), left: v.left, top: v.top, height: v.height }; })()`);
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        // the point of the slide in slide px on the screen, with the canvas scrolled to put it at 300 px
-        // right of the left edge of the canvas and in the middle of its height
         const reveal = (x, y) => page.evaluate(`(() => {
         const c = document.querySelector('.beeson-edit-canvas'), v = window.BeesonEditorShell.stage.viewport;
         const at = () => window.BeesonEditorShell.stage.toScreen({ x: ${x}, y: ${y} });
@@ -616,7 +544,6 @@ describe('a figure resized by each of its grips', () => {
       })()`);
         for (const kind of ['QR code', 'line']) {
           const what = `a ${kind} ${where}`;
-          // the center of the QR code, and the middle of the line, 3 px under it
           const q = await page.evaluate(`(() => { const r = document.querySelector(${js(QR)}).getBoundingClientRect(); return window.BeesonEditorShell.stage.toSlide({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
           const at = kind === 'line' ? await reveal(550, 700) : await reveal(q.x, q.y);
           if (kind === 'line') at.y += 3;
@@ -628,7 +555,6 @@ describe('a figure resized by each of its grips', () => {
           const c0 = await centerAt();
           const before = await canvas();
           assert.ok(before.zoomed, `${what}: the canvas is not zoomed at Actual Size`);
-          // the drag to 4 px from the left edge of the canvas, held there for a second with small moves
           const edge = before.left + 4;
           await drag(page, at, { dx: edge - at.x, dy: 0, modifiers: FREE[platform], hold: true });
           for (let i = 0; i < 10; i++) {
@@ -639,7 +565,6 @@ describe('a figure resized by each of its grips', () => {
           await frames(page);
           const held = await canvas();
           assert.ok(held.x < before.x - 50, `${what}: the canvas is scrolled from ${before.x} to ${held.x} while the drag is held at its left edge`);
-          // the element stays at the pointer while the slide scrolls under it
           const c1 = await centerAt();
           assert.ok(near(c1.x - c0.x, edge - at.x, 2) && near(c1.y, c0.y, 2), `${what}: the center moves from ${js(c0)} to ${js(c1)}, and the pointer by ${Math.round(edge - at.x)}`);
           await release(page, { x: edge, y: at.y });

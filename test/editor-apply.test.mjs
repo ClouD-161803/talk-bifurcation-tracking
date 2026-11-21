@@ -1,8 +1,3 @@
-// the apply of the synchronous editor, see src/editor/session/apply.ts. a person edits the deck on
-// one page, and after each edit the text of this page is applied to a second page, which must then
-// render as the text with zero problems, without unsaved changes or entries of the history, and
-// look as a third page opened fresh on the text
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,8 +13,6 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// a copy of the repository in a temporary folder, with the deck at text, from which a fresh page
-// is opened on the text of an apply
 function freshDeck(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-apply-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -29,8 +22,6 @@ function freshDeck(t, text) {
   return file;
 }
 
-// the slides of page b look as those of a fresh page opened on text: their text, their elements,
-// and the classes and the styles of the file, apart from what the theme and reveal.js add
 async function looksFresh(t, b, text) {
   const c = await editorPage(browser, { deck: freshDeck(t, text), text });
   try {
@@ -44,7 +35,6 @@ async function looksFresh(t, b, text) {
   }
 }
 
-// each edit of the person on page a, run by its function, and a label
 const EDITS = [
   ['typing', async (a) => {
     await showSlide(a, 'Show your steps');
@@ -153,7 +143,6 @@ test('each edit of a person on one page is applied to a second page, which reads
   for (const [label, edit] of EDITS) {
     await front(a);
     await edit(a);
-    // the text is read once the change of the person on page a is told through onChange
     await a.waitFor(`window.__changes > ${changes}`).catch((e) => assert.fail(`${label}: onChange was not called. ${e.message}`));
     await frame(a);
     changes = await a.evaluate('window.__changes');
@@ -170,7 +159,6 @@ test('each edit of a person on one page is applied to a second page, which reads
   assert.deepEqual(b.errors, []);
 });
 
-// a generator of numbers in [0, 1) from seed, by mulberry32
 function random(seed) {
   let a = seed >>> 0;
   return () => {
@@ -182,8 +170,6 @@ function random(seed) {
   };
 }
 
-// the paragraphs, items, and headings of the slides written on one line, outside code and scripts
-// and without math, each with its line and its tag
 function oneLine(lines) {
   const out = [];
   let slides = false;
@@ -200,7 +186,6 @@ function oneLine(lines) {
   return out;
 }
 
-// the ranges of the lines of the slides, from the line of the start tag to that of the end tag
 function slideRanges(lines) {
   const out = [];
   for (const [i, l] of lines.entries()) {
@@ -211,7 +196,6 @@ function slideRanges(lines) {
 }
 
 const WORDS = ['orbit', 'halo', 'family', 'Moon', 'step', 'slide'];
-// each change of the text, by its label and its function of the lines and of a pick from a list
 const MUTATIONS = [
   ['a word', (lines, pick) => {
     const { i } = pick(oneLine(lines));

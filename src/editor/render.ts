@@ -1,9 +1,3 @@
-// the pairing of the text elements in the file with their elements on the page, and the text of
-// the file with the edits of the page written into it. a text element is an element whose content is
-// edited in place, e.g. a heading, a paragraph, a list item, a cell, a caption, or the notes, and
-// the outermost such element is paired, since the elements inside it are written with it. every
-// byte outside an edited text element is copied from the file
-
 import { RAW_TEXT, type Range } from './tokens.ts';
 import { VOID, contentRange, elementRange, isFragmentRoot, lastEnd, rawRange, type Piece, type Source, type SrcComment, type SrcEl, type SrcNode, type SrcText } from './source.ts';
 import type { MathInfo, MathLookup } from './math.ts';
@@ -14,8 +8,6 @@ import { textStyle } from './model/templates.ts';
 
 export type LivePiece = { kind: 'text'; text: string; node: Text } | ({ kind: 'math'; node: Element } & MathInfo);
 
-// a child of an element on the page as it was in the file: the text nodes and formulas between
-// two elements are one text item, since MathJax splits a text node at each formula
 export type Item =
   | { kind: 'text'; text: string; pieces: LivePiece[] }
   | { kind: 'element'; el: Element }
@@ -27,7 +19,6 @@ export function virtualChildren(el: Element, math: MathLookup): Item[] {
   const flush = () => {
     if (!pending) return;
     const text = pending.map((p) => (p.kind === 'text' ? p.text : p.open + p.tex + p.close)).join('');
-    // an empty text node is left on the page by an edit, and the parser never makes one
     if (text !== '') items.push({ kind: 'text', text, pieces: pending });
     pending = null;
   };
@@ -54,10 +45,6 @@ export function virtualChildren(el: Element, math: MathLookup): Item[] {
 const TEXT_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'dt', 'dd', 'figcaption', 'caption', 'blockquote', 'pre', 'aside', 'summary', 'label']);
 const INLINE_TAGS = new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'dfn', 'em', 'i', 'img', 'kbd', 'mark', 'q', 's', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var', 'wbr']);
 
-// a div or a span is a text element when its own text is not only white space and its children are
-// inline, e.g. div.foot, div.caption, div.math, and span.label of the theme. a cell or another
-// element of TEXT_TAGS is not a text element when its own text is only white space and it holds a
-// div that is not one, e.g. the box of a plot, hence the elements in it are paired one by one
 export function isTextElement(s: SrcEl): boolean {
   const own = s.children.some((c) => c.kind === 'text' && /\S/.test(c.decoded));
   if (TEXT_TAGS.has(s.tag)) return own || !s.children.some((c) => c.kind === 'element' && c.tag === 'div' && !isTextElement(c));
@@ -66,15 +53,11 @@ export function isTextElement(s: SrcEl): boolean {
 }
 
 const sameTag = (el: Element, s: SrcEl) => el.localName.toLowerCase() === s.tag.toLowerCase();
-// a space typed at the end of a line is a no-break space on the page, and it is written as a plain
-// space unless the file has no-break spaces in the same text
 const shown = (live: string, src: string) => (src.includes('\u00a0') ? live : live.replace(/\u00a0/g, ' '));
 const short = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}…` : s).replace(/\n/g, '\\n');
 
 export type TextElement = { src: SrcEl; live: Element; slide: Element | null };
 export type Problem = { slide: Element | null; tag: string; reason: string };
-// elements maps every element of the page that was found in the file, text element or not, to its bytes,
-// inner maps the elements inside the text elements, and root is the div.slides of the page
 export type Pairing = {
   texts: TextElement[];
   byLive: Map<Element, TextElement>;
@@ -85,10 +68,6 @@ export type Pairing = {
   root: Element | null;
 };
 
-// pairs the text elements of the file with the page. outside a text element, the elements of the file are found
-// on the page in order, and an element added on the page, e.g. a canvas of a backdrop or an item of
-// the outline, is passed over. inside a text element, the page must read as the file, else the text element is a
-// problem and is not edited
 export function pair(source: Source, liveSlides: Element, math: MathLookup): Pairing {
   const out: Pairing = { texts: [], byLive: new Map(), elements: new Map(), inner: new Map(), sections: [], problems: [], root: liveSlides };
   out.elements.set(liveSlides, source.slides);
@@ -101,7 +80,6 @@ function textElementsWithin(s: SrcEl): SrcEl[] {
   return s.children.flatMap((c) => (c.kind === 'element' ? textElementsWithin(c) : []));
 }
 
-// an element made at run time, e.g. a running head of chrome.ts, which is never in the file
 const generated = (el: Element) => el.hasAttribute('data-generated');
 
 function pairChildren(src: SrcEl, live: Element, slide: Element | null, math: MathLookup, out: Pairing): void {
@@ -120,7 +98,6 @@ function pairChildren(src: SrcEl, live: Element, slide: Element | null, math: Ma
   }
 }
 
-// pairs s with el and the elements inside them. slide is the slide around el, if any
 export function pairElement(s: SrcEl, el: Element, slide: Element | null, math: MathLookup, out: Pairing): void {
   out.elements.set(el, s);
   const here = s.tag === 'section' ? el : slide;
@@ -136,12 +113,9 @@ export function pairElement(s: SrcEl, el: Element, slide: Element | null, math: 
   } else pairChildren(s, el, here, math, out);
 }
 
-// checks that el reads as s, part for part, and records on each text node of s how the page
-// splits it into text and formulas
 function verify(s: SrcEl, el: Element, math: MathLookup, inner?: Map<Element, SrcEl>): string | null {
   const items = virtualChildren(el, math);
   const kids = s.children;
-  // an empty item or paragraph of the file reads as the same one emptied in the editor, see contentOf
   if (!kids.length && EMPTIED.has(s.tag.toLowerCase()) && items.length === 1 && items[0].kind === 'element' && items[0].el.localName === 'br') return null;
   if (items.length !== kids.length) return `the ${s.tag} has ${kids.length} parts in the file and ${items.length} on the page`;
   for (let i = 0; i < kids.length; i++) {
@@ -175,7 +149,6 @@ function piecesOf(live: LivePiece[]): Piece[] {
   });
 }
 
-// the range of the content of s in the file
 export function innerRange(s: SrcEl): Range | null {
   if (!s.open) return null;
   const start = s.open.end;
@@ -185,14 +158,10 @@ export function innerRange(s: SrcEl): Range | null {
 
 export function escape(source: Source, text: string, keepNbsp: boolean): string {
   let s = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  // a no-break space is typed by the browser at the end of a line, and it is kept only where the
-  // file had one
   s = keepNbsp ? s.replace(/ /g, '&nbsp;') : s.replace(/ /g, ' ');
   return source.crlf ? s.replace(/\n/g, '\r\n') : s;
 }
 
-// an element that is not in the file, e.g. a br inserted on the page, or a copy of a span split
-// by a format, without its runtime classes
 function serializeNew(source: Source, el: Element, math: MathLookup): string {
   const tag = el.localName;
   const attrs = [...el.attributes]
@@ -211,8 +180,6 @@ export function serializeNewChildren(source: Source, el: Element, math: MathLook
     .join('');
 }
 
-// a text node: copied from the file when unchanged, else piece by piece when the page still splits
-// it as the file was paired, else written whole
 function serializeText(source: Source, s: SrcText, it: Item & { kind: 'text' }): string {
   const text = source.text;
   if (shown(it.text, s.decoded) === s.decoded) return text.slice(s.range.start, s.range.end);
@@ -238,8 +205,6 @@ function serializeText(source: Source, s: SrcText, it: Item & { kind: 'text' }):
   return lead + escape(source, it.text, keepNbsp);
 }
 
-// the content of el as it is written into the file. each child of el is matched to the next child
-// of s of its kind, and a matched child is copied from the file where it is unchanged
 function serializeChildren(source: Source, s: SrcEl, el: Element, math: MathLookup, tags: Map<Element, TagEdit>): string {
   const text = source.text;
   const items = virtualChildren(el, math);
@@ -256,7 +221,6 @@ function serializeChildren(source: Source, s: SrcEl, el: Element, math: MathLook
       } else parts.push(serializeNew(source, it.el, math));
       continue;
     }
-    // a text or a comment is matched to the next one of its kind before the next element of the file
     let k = c;
     while (k < kids.length && kids[k].kind !== it.kind && kids[k].kind !== 'element') k++;
     const hit = k < kids.length && kids[k].kind === it.kind ? kids[k] : null;
@@ -267,32 +231,20 @@ function serializeChildren(source: Source, s: SrcEl, el: Element, math: MathLook
   return parts.join('');
 }
 
-// the classes put on an element at run time by the editor, reveal.js, and the theme, e.g. hl-target
-// and the tone on a span colored at a step (see src/steps.ts), which are not written into the file.
-// another class that starts with hl-, e.g. the one named in data-highlight, is the author's
 const RUNTIME_PREFIX = /^(beeson-|plot-)/;
 export const RUNTIME_CLASSES = new Set(['visible', 'current-fragment', 'present', 'past', 'future', 'disabled', 'enabled', 'stack', 'hl-target', 'hl-accent', 'hl-violet', 'hl-blue', 'hl-red']);
 export const isRuntimeClass = (c: string): boolean => RUNTIME_PREFIX.test(c) || RUNTIME_CLASSES.has(c);
-// the attributes that the theme writes at run time on a theorem and on a citation, see
-// src/theorems.ts and src/citations.ts
 const RUNTIME_ATTRS: Record<string, string[]> = { p: ['data-head', 'data-style', 'data-missing'], cite: ['data-n', 'data-missing'] };
 const numbered = (el: Element): boolean => el.localName === 'cite' || el.matches('p.theorem');
 export const isRuntimeAttr = (el: Element, name: string): boolean => numbered(el) && RUNTIME_ATTRS[el.localName].includes(name);
-// these attributes taken off a copy of the page, whose HTML is then written as the file has it
 export function stripRuntime(root: ParentNode): void {
   for (const el of root.querySelectorAll('cite, p.theorem')) for (const name of RUNTIME_ATTRS[el.localName]) el.removeAttribute(name);
 }
-// the declarations and the attributes of an element inside a text element that are compared with the
-// file, i.e. those that the editor writes under the scope rule
 const LIVE_STYLE = ['translate', 'rotate', 'width', 'font-size', 'text-align'];
-// data-key is the papers of a citation, changed in its pane
 const LIVE_ATTRS = ['alt', 'src', 'poster', 'href', 'muted', 'loop', 'colspan', 'rowspan', 'data-key'];
 
 let probe: HTMLElement | null = null;
 
-// the changes of an element inside a text element on the page, against its start tag in the file. the
-// declarations of the file are read by the browser as those of the page are, so that a value is
-// compared in one spelling
 function liveEdit(s: SrcEl, el: Element): TagEdit {
   const file = stateOf(s.attrs);
   const edit: TagEdit = {};
@@ -321,8 +273,6 @@ function liveEdit(s: SrcEl, el: Element): TagEdit {
   return edit;
 }
 
-// an element inside a text element, with its start tag written again when it was changed on the page or
-// by a tag edit, which is applied here since the text element is one splice of the file
 function serializeElement(source: Source, s: SrcEl, el: Element, math: MathLookup, tags: Map<Element, TagEdit>): string {
   const text = source.text;
   let open = s.open ? text.slice(s.open.start, s.open.end) : '';
@@ -336,10 +286,6 @@ function serializeElement(source: Source, s: SrcEl, el: Element, math: MathLooku
   return open + contentOf(source, s, el, math, tags) + close;
 }
 
-// the content of an element. the line breaks that the browser leaves in an item or a paragraph
-// emptied in the editor, also a nested item, are not written, so that the theme draws it as empty,
-// e.g. an item without its mark. a text element of only line breaks in the file, e.g. <p><br></p>, keeps
-// them. other tags keep them, since the theme gives the height of a line only to these two
 const EMPTIED = new Set(['li', 'p']);
 const BREAKS = /^(?:\s*<br\s*\/?>)+\s*$/i;
 function contentOf(source: Source, s: SrcEl, el: Element, math: MathLookup, tags: Map<Element, TagEdit>): string {
@@ -354,20 +300,14 @@ export function renderTextElement(source: Source, textEl: TextElement, math: Mat
 }
 
 export type Edit = { start: number; end: number; text: string };
-// places are the offsets of text at which the page put an element that the file does not have
-// there, or the element after one that the page took off. a session places its changes there, see
-// placed() of src/session/patch.ts
 export type Rendered = { text: string; edits: Edit[]; changed: TextElement[]; warnings: string[]; places: number[] };
 
-// the elements taken off the page by the document model, see model/doc.ts, whose units are left out
-// of the file. an element taken off the page otherwise, e.g. by a script of the theme, is kept
 export const detached = new WeakSet<Element>();
 
 export const leadsBack = new WeakMap<Element, { parent: Element; lead: string }>();
 
 type Kid = { child: Child; node: SrcNode };
 
-// the children of s with their ranges, without an element that has no bytes in the file
 function kidsOf(s: SrcEl): Kid[] {
   const out: Kid[] = [];
   for (const c of s.children) {
@@ -377,24 +317,19 @@ function kidsOf(s: SrcEl): Kid[] {
   return out;
 }
 
-// the units of the content of s, with the element of each
 export function unitsWithin(s: SrcEl): { units: (Unit & { el: SrcEl })[]; tail: Range } | null {
   const range = contentRange(s);
   if (!range) return null;
   const kids = kidsOf(s);
-  const { units, tail } = unitsOf(s.source.text, kids.map((k) => k.child), range);
+  const { units, tail } = unitsOf(kids.map((k) => k.child), range);
   return { units: units.map((u) => ({ ...u, el: kids[u.child].node as SrcEl })), tail };
 }
 
-// the unit of s in its parent, i.e. its lead, its range, and the end of its marker pair
 export function unitOf(s: SrcEl): Unit | null {
   if (!s.parent) return null;
   return unitsWithin(s.parent)?.units.find((u) => u.el === s) ?? null;
 }
 
-// the white space before a unit placed into s: that of the first unit of s, else a line break and
-// the indentation of s with one step more. the white space before the first unit of an element
-// without a start tag, e.g. the first row of a table without a tbody tag, is in its parent
 export function childSpace(s: SrcEl, eol: string, step: string): string {
   const first = unitsWithin(s)?.units[0];
   if (!first) return eol + (s.open ? indentAt(s.source.text, s.open.start) : '') + step;
@@ -404,12 +339,6 @@ export function childSpace(s: SrcEl, eol: string, step: string): string {
   return spaceOf(text.slice(start, first.range.start));
 }
 
-// the file written again from the page. each element of the file is written as its units, in the
-// order of its children on the page: a unit of the file with its lead, a unit moved in from another
-// element or inserted on the page with the white space of this one, and a unit taken off the page
-// left out. an element of the file that is not on the page is kept where it was, an element made
-// at run time is passed over, and a text element is written by serializeChildren. every other byte is
-// copied, hence the text of an unchanged page is the file byte for byte
 class Renderer {
   readonly edits: Edit[] = [];
   readonly changed: TextElement[] = [];
@@ -432,7 +361,6 @@ class Renderer {
     this.eol = source.crlf ? '\r\n' : '\n';
   }
 
-  // at is the offset of the output at which the text of s begins, or -1 when it is not known
   element(s: SrcEl, live: Element | undefined, at = -1): string {
     const text = s.source.text;
     const range = elementRange(s);
@@ -453,7 +381,6 @@ class Renderer {
       }
       return open + content + close;
     }
-    // a text element that the page does not read as the file is copied
     if (isTextElement(s)) return open + verbatim + close;
     return open + this.content(s, live, at < 0 ? -1 : at + open.length) + close;
   }
@@ -468,14 +395,11 @@ class Renderer {
     return tag;
   }
 
-  // a unit is left out when its element was taken off the page by the document model, moved into
-  // another element, also one taken off the page, or is a text element deleted on the page
   private dropped(s: SrcEl, node: Element): boolean {
     if (detached.has(node) || node.parentNode) return true;
     return this.pairing.byLive.get(node)?.src === s;
   }
 
-  // the indentation of the line of the start tag of s, and one step of the file
   private indent(s: SrcEl): string {
     return s.open ? indentAt(s.source.text, s.open.start) : '';
   }
@@ -493,9 +417,7 @@ class Renderer {
     const within = unitsWithin(s);
     const units = within?.units ?? [];
     const own = new Map(units.map((u) => [u.el, u]));
-    // a unit of the file that is not on the page is kept after the unit of the file before it
     const kept = new Map<SrcEl | null, (Unit & { el: SrcEl })[]>();
-    // the units of the file that follow one taken off the page
     const afterDropped = new Set<SrcEl>();
     let anchor: SrcEl | null = null;
     let changed = false;
@@ -511,9 +433,6 @@ class Renderer {
     }
     const parts: string[] = [];
     let length = 0;
-    // the white space before the first unit of an element without a start tag is in its parent,
-    // hence the first unit written is written without it, and a unit after it with it. body gets
-    // the offset of the output at which it begins
     const bare = !s.open;
     const put = (lead: string, body: (start: number) => string, place = false) => {
       if (bare) lead = parts.length ? lead || this.space(s) : lead.slice(spaceOf(lead).length);
@@ -524,7 +443,7 @@ class Renderer {
       length += lead.length + rest.length;
     };
     const keep = (key: SrcEl | null) => {
-      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), () => text.slice(u.range.start, u.end), afterDropped.has(u.el));
+      for (const u of kept.get(key) ?? []) put(text.slice(u.lead.start, u.range.start), () => text.slice(u.range.start, u.range.end), afterDropped.has(u.el));
     };
     keep(null);
     const notes: Element[] = [];
@@ -539,7 +458,7 @@ class Renderer {
       if (u) {
         if (units.indexOf(u) < order) changed = true;
         order = units.indexOf(u);
-        put(text.slice(u.lead.start, u.range.start), (start) => this.element(m, c, start) + text.slice(u.range.end, u.end), afterDropped.has(u.el));
+        put(text.slice(u.lead.start, u.range.start), (start) => this.element(m, c, start), afterDropped.has(u.el));
         keep(m);
         continue;
       }
@@ -550,7 +469,7 @@ class Renderer {
       const lead = mt.slice(home.lead.start, home.range.start);
       const inPlace = isFragmentRoot(m) && m.source.fragment?.home === live;
       const back = leadsBack.get(c);
-      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start) + mt.slice(home.range.end, home.end), true);
+      put(back?.parent === live ? back.lead : inPlace ? lead : placeLead(lead, this.space(s), this.eol), (start) => this.element(m, c, start), true);
     }
     let tail = within ? text.slice(within.tail.start, within.tail.end) : '';
     if (!units.length && !tail && parts.length) tail = this.eol + this.indent(s);
@@ -571,8 +490,6 @@ class Renderer {
   }
 }
 
-// the text of the file with the edits of the page: the content of the text elements, the start tags in
-// tags, the notes added to a slide, and the slides and elements inserted, removed, and moved
 export function renderDeck(source: Source, pairing: Pairing, math: MathLookup, tags: Map<Element, TagEdit> = new Map()): Rendered {
   const r = new Renderer(source, pairing, math, tags);
   const range = elementRange(source.slides);
@@ -581,14 +498,12 @@ export function renderDeck(source: Source, pairing: Pairing, math: MathLookup, t
   return { text, edits: r.edits, changed: r.changed, warnings: r.warnings, places: r.places };
 }
 
-// the text of one element of the page with its edits, and the lead and the end of the marker pair
-// of its unit in the text that it was read from
-export function renderUnit(pairing: Pairing, math: MathLookup, tags: Map<Element, TagEdit>, el: Element, source: Source): { lead: string; body: string; trail: string } | null {
+export function renderUnit(pairing: Pairing, math: MathLookup, tags: Map<Element, TagEdit>, el: Element, source: Source): { lead: string; body: string } | null {
   const s = pairing.elements.get(el);
   if (!s) return null;
   const u = unitOf(s);
   const text = s.source.text;
   const body = new Renderer(source, pairing, math, tags).element(s, el);
-  if (!u) return { lead: '', body, trail: '' };
-  return { lead: text.slice(u.lead.start, u.range.start), body, trail: text.slice(u.range.end, u.end) };
+  if (!u) return { lead: '', body };
+  return { lead: text.slice(u.lead.start, u.range.start), body };
 }

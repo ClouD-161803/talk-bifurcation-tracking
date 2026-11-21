@@ -1,6 +1,3 @@
-// the keys listed in the menus, the context menus, and the sheet of keyboard shortcuts on the Mac
-// and on Windows and Linux, each printed only where it runs its command
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,14 +5,9 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, captured, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R8.4 on both platforms with trusted input, from the laptop tests on Windows
-// and Linux and the juror of round 3. a poster is captured at the time of the slider after a slow
-// seek. after each edit the text is checked byte for byte, after an undo and a redo, and after a
-// save and an open
 describe('keys listed in context menus and the sheet', () => {
   const PLATFORMS = ['mac', 'other'];
   const PANEL = '#beeson-edit-panel-format';
-  // the slide "Embedding videos" of the demo deck
   const VIDEOS = 10;
 
   let browser;
@@ -34,12 +26,9 @@ describe('keys listed in context menus and the sheet', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   let saves = 0;
 
-  // the editor on the slide n of a deck served over HTTP, in a window of size, with the Format tab
-  // shown unless format is false, and in the mode of the slides given, or else of the system
   async function load(t, platform, { deck = 'test-deck.html', n = 0, size = { width: 1440, height: 900 }, format = true, mode = null, query = '' } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -60,8 +49,6 @@ describe('keys listed in context menus and the sheet', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -71,7 +58,7 @@ describe('keys listed in context menus and the sheet', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r8-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
@@ -83,9 +70,6 @@ describe('keys listed in context menus and the sheet', () => {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
 })()`);
 
-  // finding 1: the poster was captured 500 ms after the seek was asked, before a slow seek had ended,
-  // hence it was the first frame of the video. SLOW_SEEK starts the seek of a video that is not on
-  // the page, i.e. of the video of the capture, 900 ms after it is asked, as a slow machine does
   const SLOW_SEEK = `(() => {
   const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
   Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
@@ -122,14 +106,12 @@ describe('keys listed in context menus and the sheet', () => {
     });
   }
 
-  // the rows of the menu opened last, each with its command, its label, and its keys as shown
   const ROWS = `[...([...document.querySelectorAll('.beeson-edit-menu')].at(-1)?.querySelectorAll('.item') ?? [])].map((el) => ({
   command: el.dataset.command ?? null,
   label: el.querySelector('.label')?.firstChild?.textContent ?? '',
   keys: el.querySelector('.keys')?.textContent ?? '',
 }))`;
 
-  // every command row of the menus of the menu bar and of their submenus, each menu opened by itself
   const menuBarRows = (page) => page.evaluate(`(() => {
   const shell = window.BeesonEditorShell;
   const out = [];
@@ -143,8 +125,6 @@ describe('keys listed in context menus and the sheet', () => {
   return out;
 })()`);
 
-  // the rows of a context menu whose keys differ from the keys of the same command, or else of a
-  // command of the same label, in the menu bar
   function differences(bar, rows, where) {
     const out = [];
     for (const r of rows.filter((r) => r.command)) {
@@ -155,8 +135,6 @@ describe('keys listed in context menus and the sheet', () => {
     return out;
   }
 
-  // finding 2: Unlock of the context menu of a locked element was listed without the keys that
-  // Arrange > Unlock lists
   for (const platform of PLATFORMS) {
     test(`every item of every context menu is listed with the keys of the menu bar (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4 });
@@ -180,8 +158,6 @@ describe('keys listed in context menus and the sheet', () => {
       const locked = await context(IMAGE, 'a locked element');
       assert.ok(locked.some((r) => r.label === 'Unlock'), 'the menu of a locked element does not list Unlock');
       await context('.reveal section.present > p', 'a text');
-      // a menu lists a key where it runs its command, hence the menus of the navigator are compared
-      // with the menu bar opened in the navigator, where Delete Slide takes its key
       await click(page, '.beeson-edit-nav .row');
       await frames(page);
       const navBar = await menuBarRows(page);
@@ -193,16 +169,13 @@ describe('keys listed in context menus and the sheet', () => {
       found.push(...differences(navBar, await page.evaluate(ROWS), 'the navigator'));
       await press(page, 'Escape');
       assert.deepEqual(found, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the names of the keys and of the modifiers of Windows and Linux, as PowerPoint for Windows writes
-  // them, and the word drag of the rows of the mouse
   const KEY_NAMES = new Set(['Ctrl', 'Shift', 'Alt', 'Meta', 'Esc', 'Enter', 'Tab', 'Backspace', 'Delete', 'Spacebar', 'Menu', 'Up Arrow', 'Down Arrow', 'Left Arrow', 'Right Arrow', 'Home', 'End', 'Page Up', 'Page Down', 'drag', ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`)]);
   const ODD_PARTS = (label) => label.split(', ').flatMap((key) => key.split(/\+(?!$)/)).filter((part) => !(/^[\x21-\x7E]$/.test(part) || KEY_NAMES.has(part)));
 
-  // finding 5: Zoom Out was listed as Ctrl with a minus sign, where the key bears a hyphen-minus
   test('every key of the keyboard sheet and the menus of Windows and Linux is written with ASCII characters and the names of the keys', async (t) => {
     const page = await load(t, 'other', { n: 1 });
     const menus = (await menuBarRows(page)).filter((r) => r.keys).map((r) => [r.label, r.keys]);
@@ -213,11 +186,9 @@ describe('keys listed in context menus and the sheet', () => {
     const odd = [...menus, ...sheet].filter(([, keys]) => ODD_PARTS(keys).length || !/^[\x20-\x7E]+$/.test(keys)).map(([label, keys]) => `${label}: ${keys}`);
     assert.deepEqual([...new Set(odd)], []);
     assert.ok(sheet.some(([label, keys]) => label === 'Zoom Out' && keys.split(', ').includes('Ctrl+-')), 'Zoom Out is not listed as Ctrl+-');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
-  // the trusted key events of the key of Insert > Formula on the platform, followed by those of text,
-  // all sent before the first one is handled, as keys typed back to back
   function formulaThenType(page, platform, text) {
     const key = (type, base, modifiers = 0) => page.send('Input.dispatchKeyEvent', { type, modifiers, ...base });
     const sent = [];
@@ -232,8 +203,6 @@ describe('keys listed in context menus and the sheet', () => {
     return Promise.all(sent);
   }
 
-  // finding 7: the keys typed while Insert > Formula opens the TeX field of an inline formula in a
-  // text were typed into the text, and the TeX field was empty
   for (const platform of PLATFORMS) {
     test(`every key typed back to back after Insert > Formula in a text reaches the TeX field of its inline formula (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 4, format: false });
@@ -255,15 +224,11 @@ describe('keys listed in context menus and the sheet', () => {
     });
   }
 
-  // the deck with an image pair directly in a slide, and a slide with more words than a text column holds
   const PAIR_DECK = 'test/pages/editor-r8-4.html';
 
-  // the start tags of the images of the slide in the text, by their mode
   const imageTags = (text) => Object.fromEntries(['dark', 'light'].map((m) => [m, text.match(new RegExp(`<img class="for-${m}[^>]*>`))[0]]));
   const indexOf = (tag) => tag.match(/data-fragment-index="(\d+)"/)?.[1] ?? null;
 
-  // finding 6: the images of a pair directly in a slide were two items of the Steps pane, and a plan
-  // that gave them two steps wrote each step on both images, one over the other
   for (const platform of PLATFORMS) {
     for (const mode of ['dark', 'light']) {
       test(`an image pair in a slide is one item of the Steps pane, and its step is written on both images in ${mode} mode (${platform})`, async (t) => {
@@ -287,15 +252,11 @@ describe('keys listed in context menus and the sheet', () => {
     }
   }
 
-  // the keys that Arrange > Lock, Arrange > Unlock, and View > Rulers list, in the browser of the
-  // URL parameter edit-browser, or else in the headless Chrome of the tests
   const LISTED = {
     mac: { chrome: { Lock: '⌘L', Unlock: '⌥⌘L', Rulers: '⌘R' }, safari: { Lock: '⌃⌘L', Unlock: '⌃⌥⌘L', Rulers: '⌃⌘R' } },
     other: { chrome: { Lock: 'Ctrl+L', Unlock: 'Ctrl+Shift+L', Rulers: 'Alt+Shift+R' }, safari: { Lock: 'Ctrl+L', Unlock: 'Ctrl+Shift+L', Rulers: 'Alt+Shift+R' } },
   };
 
-  // finding 8: Lock was listed with the fallback of Safari, Ctrl+Cmd+L, in a browser that passes the
-  // Cmd+L of Keynote to the page, and so was Rulers with Ctrl+Cmd+R
   for (const platform of PLATFORMS) {
     for (const browserName of ['chrome', 'safari']) {
       test(`Lock, Unlock, and Rulers list the key of Keynote first where the browser passes it to the page, in ${browserName} (${platform})`, async (t) => {
@@ -305,7 +266,6 @@ describe('keys listed in context menus and the sheet', () => {
         const want = LISTED[platform][browserName];
         assert.deepEqual({ Lock: keysOf('arrange.lock'), Unlock: keysOf('arrange.unlock'), Rulers: keysOf('view.rulers') }, want);
         if (platform !== 'mac') return;
-        // the keys of Keynote and the fallbacks of Safari both reach the page in the headless Chrome
         const IMAGE = '.reveal section.present figure.figure-box > img';
         const locks = browserName === 'safari' ? [['Ctrl+Mod+L', 'Ctrl+Mod+Alt+L'], ['Mod+L', 'Mod+Alt+L']] : [['Mod+L', 'Mod+Alt+L'], ['Ctrl+Mod+L', 'Ctrl+Mod+Alt+L']];
         for (const [lock, unlock] of locks) {
@@ -324,23 +284,17 @@ describe('keys listed in context menus and the sheet', () => {
           await frames(page);
           assert.equal((await state(page, 'view.rulers')).checked, !shown, `${key} does not toggle the rulers`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the start tags of the long paragraph, the note in the style Small, and the list of the slide of
-  // the fixture deck with more words than a text column holds
   const fitTags = (text) => ({
     para: text.match(/<p[^>]*>The stable and the unstable/)[0],
     note: text.match(/<p[^>]*>A note in the style Small/)[0],
     list: text.match(/<ul[^>]*>/)[0],
   });
 
-  // finding 9: Change Layout to Split set the paragraphs and the lists of an overflowing text column in the
-  // style Small, and a change of layout away from Split left them small. the blocks shrunk by the
-  // fit are written without the class, also after an undo and a redo of the change to Split, and a
-  // block that was in the style Small before the change to Split keeps it
   for (const platform of PLATFORMS) {
     test(`a change of layout away from Split takes the style Small off the blocks that the fit of the panel shrank (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: PAIR_DECK, n: 1 });
@@ -359,7 +313,6 @@ describe('keys listed in context menus and the sheet', () => {
       assert.doesNotMatch(content.para, /small/, `the paragraph fitted to the panel is still small after the change to Content: ${content.para}`);
       assert.doesNotMatch(content.list, /small/, `the list fitted to the panel is still small after the change to Content: ${content.list}`);
       assert.equal(content.note, '<p class="small">A note in the style Small', 'the note in the style Small before the change to Split lost its style');
-      // Split and then Content give back the file byte for byte, and the undo gives back the fit
       await byteExact(page);
       await page.evaluate('window.BeesonEditor.undo()');
       assert.match(fitTags(await render(page)).para, /class="small"/, 'the undo of the change to Content does not give back the fit');
@@ -367,19 +320,14 @@ describe('keys listed in context menus and the sheet', () => {
       await byteExact(page);
       const { text } = await saveAndReopen(page, `r8-4-${++saves}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the TeX fields shown in the window, by the popover or the pane that shows each, and their text
   const texFields = (page) => page.evaluate(`[...document.querySelectorAll('textarea')]
   .filter((f) => f.getClientRects().length && (f.closest('.beeson-math') || f.name === 'tex'))
   .map((f) => [f.closest('.beeson-math') ? 'popover' : 'pane', f.value])`);
 
-  // finding 10: the TeX field of a new formula was shown twice, in its popover and in the Formula pane
-  // of the inspector. while the popover is open, its field is the only one, and once it is closed the
-  // Formula pane shows the TeX of a display. a display is written on a slide, and an inline formula
-  // in a text
   for (const platform of PLATFORMS) {
     for (const where of ['slide', 'text']) {
       test(`one TeX field is shown while the popover of a new formula in a ${where} is open (${platform})`, async (t) => {
@@ -401,17 +349,13 @@ describe('keys listed in context menus and the sheet', () => {
         await page.waitFor(`!document.querySelector('.beeson-math')`);
         await sleep(300);
         await frames(page);
-        // the display stays selected, while the caret of a text is put after its inline formula
         if (where === 'slide') assert.deepEqual(await texFields(page), [['pane', 'x^2']], 'the Formula pane does not show the TeX of the formula once the popover is closed');
         assert.match(await render(page), where === 'slide' ? /\\\[x\^2\\\]/ : /\\\(x\^2\\\)/);
-        // a display is inserted empty and then given its TeX, two entries of the history
         await roundTrip(page, where === 'slide' ? 2 : 1);
       });
     }
   }
 
-  // the row of Layout in the menu opened last, and the layout chooser with its box, its marked tile,
-  // and its focused tile
   const layoutRow = (page) => page.evaluate(`(() => {
   const menu = [...document.querySelectorAll('.beeson-edit-menu')].at(-1);
   const el = menu && [...menu.querySelectorAll('.item')].find((i) => i.querySelector('.label')?.firstChild?.textContent === 'Layout');
@@ -426,8 +370,6 @@ describe('keys listed in context menus and the sheet', () => {
   return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, marked: [...d.querySelectorAll('.tile[aria-selected="true"]')].map((t) => t.dataset.layout), focused: document.activeElement?.dataset?.layout ?? null };
 })()`);
 
-  // opens the menu of from, i.e. Slide of the menu bar or the menu of the current thumbnail of the
-  // navigator, and clicks its item Layout, which is returned
   async function openLayouts(page, from) {
     if (from === 'menu bar') await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((x) => x.textContent === 'Slide'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     else await click(page, '.beeson-edit-nav .row[aria-current="true"]', { button: 'right' });
@@ -441,9 +383,6 @@ describe('keys listed in context menus and the sheet', () => {
     return row;
   }
 
-  // finding 3: Slide > Layout was a submenu of text items, and the tile chooser was opened only from
-  // the Format pane. Layout of Slide in the menu bar and of the menu of a thumbnail opens the tiles
-  // beside its item, with the layout of the slide marked, and the arrows, Enter, and Esc work in it
   for (const platform of PLATFORMS) {
     for (const from of ['menu bar', 'thumbnail']) {
       test(`Layout in the menu of the ${from} opens the layout tiles beside it (${platform})`, async (t) => {
@@ -473,8 +412,6 @@ describe('keys listed in context menus and the sheet', () => {
     }
   }
 
-  // the boxes of the navigator, the canvas, the inspector, the slide, and the Format button of the
-  // toolbar, each null while it is not shown
   const shellBoxes = (page) => page.evaluate(`(() => {
   const box = (sel) => {
     const el = [...document.querySelectorAll(sel)].find((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
@@ -485,10 +422,6 @@ describe('keys listed in context menus and the sheet', () => {
   return { nav: box('body > .beeson-edit-nav'), canvas: box('.beeson-edit-canvas'), inspector: box('body > .beeson-edit-inspector'), slide: box('.reveal:not(.beeson-peek) .slides > section.present'), format: box('.beeson-edit-header [data-command="shell.format"]') };
 })()`);
 
-  // finding 4: at a window width of 760 px the canvas was 258 px wide, between the navigator and the
-  // inspector. the canvas is at least half of the window down to 760 px: the navigator is narrowed
-  // to its smallest width first, and then hidden while the inspector is open, which stays docked
-  // beside the canvas and is opened and closed by the Format button of the toolbar
   for (const platform of PLATFORMS) {
     test(`the canvas is at least half of a window of 1440, 1024, 900, and 760 px (${platform})`, async (t) => {
       const narrow = [];
@@ -519,7 +452,7 @@ describe('keys listed in context menus and the sheet', () => {
           await frames(page);
           assert.ok((await shellBoxes(page)).inspector, 'the Format button does not open the inspector');
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
       assert.deepEqual(narrow, []);
@@ -527,13 +460,8 @@ describe('keys listed in context menus and the sheet', () => {
   }
 });
 
-// the work of R15.7 on both platforms with trusted input: a menu lists the key of an item in every
-// region, and the key runs the item, in a text and on a framed formula, apart from Delete Slide,
-// which is without a key. the entry of a slide deleted by Edit > Delete in the navigator, the check
-// of View > Navigator in a narrow window, and File > Export To > PowerPoint…
 describe('the key of each menu item runs it', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const PLATFORMS = ['mac', 'other'];
 
@@ -553,7 +481,6 @@ describe('the key of each menu item runs it', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, size = { width: 1600, height: 1000 }) {
     const page = await browser.newPage(size);
@@ -571,8 +498,6 @@ describe('the key of each menu item runs it', () => {
     return page;
   }
 
-  // an undo gives the text before and a redo the edited text byte for byte, and the saved text is
-  // opened again without problems
   async function checkEdit(page, name, before = page.source) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -599,8 +524,6 @@ describe('the key of each menu item runs it', () => {
     await settle(page);
   }
 
-  // the key printed and the dimmed state of each item of labels in the menu bar named bar, read from
-  // the open menu, which is then closed
   async function itemsIn(page, bar, labels) {
     await openBar(page, bar);
     const out = await page.evaluate(`Object.fromEntries(${js(labels)}.map((l) => { const i = (${findItem})(l); return [l, i ? { keys: i.querySelector('.keys')?.textContent ?? '', dimmed: i.getAttribute('aria-disabled') === 'true' } : null]; }))`);
@@ -608,7 +531,6 @@ describe('the key of each menu item runs it', () => {
     return out;
   }
 
-  // the middle of a word of the first paragraph of the current slide
   const wordAt = (page, word) => page.evaluate(`(() => {
   const el = Reveal.getCurrentSlide().querySelector(':scope > p');
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -632,11 +554,8 @@ describe('the key of each menu item runs it', () => {
   };
 })()`);
 
-  // a point of the canvas under the slide
   const below = (page) => page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return { x: Math.round(r.left + 6), y: Math.round(r.bottom + 12) }; })()`);
 
-  // Insert > Formula with its TeX typed, closed by a click on the canvas under the slide, which keeps
-  // the formula framed with the focus on its div.math, as in state 286 of round 6
   async function newFormula(page) {
     await choose(page, 'Insert', 'Formula');
     await type(page, 'x^2 + y^2');
@@ -645,8 +564,6 @@ describe('the key of each menu item runs it', () => {
     await settle(page);
   }
 
-  // whether the last keydown of key reached the page with its default prevented, i.e. was kept from
-  // the browser, e.g. ⌘D from the bookmarks of Chrome
   const watchKeys = (page) => page.evaluate(`(() => { window.__keys = {}; addEventListener('keydown', (ev) => { window.__keys[ev.key.toLowerCase()] = ev.defaultPrevented; }, true); return true; })()`);
   const prevented = (page, key) => page.evaluate(`window.__keys[${js(key)}] ?? null`);
 
@@ -662,9 +579,6 @@ describe('the key of each menu item runs it', () => {
   for (const platform of PLATFORMS) {
     const K = KEYS[platform];
 
-    // item 1a: Edit > Duplicate and Edit > Deselect are enabled at a caret in a text, and their keys
-    // run them there and are listed. Duplicate leaves the text and duplicates its block, as Esc and
-    // Duplicate do, and Deselect leaves the text with nothing selected
     test(`Mod+D and Mod+Shift+A run Duplicate and Deselect at a caret in a text, and the Edit menu lists them (${platform})`, async (t) => {
       const page = await load(t, platform);
       await watchKeys(page);
@@ -673,7 +587,6 @@ describe('the key of each menu item runs it', () => {
         await settle(page);
         assert.equal((await state(page)).focus, 'p editable');
       };
-      // the block duplicated by Esc and Duplicate
       await caret();
       await press(page, 'Escape');
       await press(page, 'Mod+D');
@@ -707,17 +620,14 @@ describe('the key of each menu item runs it', () => {
       await caret();
       await choose(page, 'Edit', 'Deselect');
       assert.deepEqual(await state(page), { slides: 13, children: 7, selected: [], focus: 'body', words: '' });
-      // Esc in a text still selects its block
       await caret();
       await press(page, 'Escape');
       await settle(page);
       assert.deepEqual((await state(page)).selected, ['p']);
       assert.equal(await render(page), copied);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // item 1b: ⌫ deletes the words selected in a text, as Edit > Delete does, hence the menu lists
-    // it. Delete Slide is without a key
     test(`Edit > Delete lists the key that deletes the words selected in a text (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, await wordAt(page, 'matplotlib'), { count: 2 });
@@ -733,10 +643,9 @@ describe('the key of each menu item runs it', () => {
       assert.equal(s.slides, 13);
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector(':scope > p').textContent.includes('matplotlib')`), false);
       await checkEdit(page, `r15-7-delete-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // item 1c: a new display framed after its TeX field is closed takes the keys of the slide
     test(`Mod+D duplicates a framed formula after Insert > Formula, and the Edit menu lists its keys (${platform})`, async (t) => {
       const page = await load(t, platform);
       await watchKeys(page);
@@ -755,7 +664,7 @@ describe('the key of each menu item runs it', () => {
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll(':scope > div.math').length`), 2);
       assert.equal(await prevented(page, 'd'), true);
       await checkEdit(page, `r15-7-formula-${platform}.html`, inserted);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Mod+Shift+A and the Delete key act on a framed formula after Insert > Formula (${platform})`, async (t) => {
@@ -777,7 +686,7 @@ describe('the key of each menu item runs it', () => {
       await undo(page);
       await settle(page);
       assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll(':scope > div.math').length`), 1);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -788,7 +697,6 @@ describe('the key of each menu item runs it', () => {
     return label;
   };
 
-  // the key and the dimmed state of each item of labels in the open menu at the top
   const openItems = (page, labels) => page.evaluate(`Object.fromEntries(${js(labels)}.map((l) => { const i = (${findItem})(l); return [l, i ? { keys: i.querySelector('.keys')?.textContent ?? '', dimmed: i.getAttribute('aria-disabled') === 'true' } : null]; }))`);
   const cell = (page) => rect(page, `Reveal.getCurrentSlide().querySelector('table').rows[1].cells[1]`);
   const size = (page) => page.evaluate(`(() => { const t = Reveal.getCurrentSlide().querySelector('table'); return [t.rows.length, t.rows[0].cells.length]; })()`);
@@ -797,9 +705,6 @@ describe('the key of each menu item runs it', () => {
   for (const platform of PLATFORMS) {
     const K = KEYS[platform];
 
-    // item 1, the exception: Delete Slide and Duplicate Slide list the keys of Edit > Delete and Edit >
-    // Duplicate only where the keys act on the slide, i.e. in the navigator, and Mod+D also with
-    // nothing selected on the canvas
     test(`Delete Slide and Duplicate Slide list their keys only where the keys run them, and Edit > Delete and Edit > Duplicate list their keys in the navigator (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await below(page));
@@ -825,11 +730,9 @@ describe('the key of each menu item runs it', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // item 1d: the cell menu lists the Option arrows at its Add items with the caret in a cell, where
-    // the text takes the keys, and with the cell selected, where the keys add a row or a column
     test(`the cell menu lists the keys of its Add items with the caret in a cell and with the cell selected (${platform})`, async (t) => {
       const page = await load(t, platform);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
@@ -849,14 +752,11 @@ describe('the key of each menu item runs it', () => {
         assert.deepEqual(await openItems(page, ADD), listed, `with the ${how}`);
         await closeMenus(page);
       }
-      // with the caret in the cell, the text takes the keys on a Mac, where Option with an arrow moves
-      // the caret, and the key adds a row on Windows and Linux (R17.10)
       await clickText(page, await cell(page));
       await settle(page);
       await press(page, 'Alt+ArrowUp');
       await settle(page);
       assert.deepEqual(await size(page), platform === 'mac' ? [3, 3] : [4, 3]);
-      // the undo puts the caret back into the cell (R19.3)
       if (platform !== 'mac') await undo(page);
       await settle(page);
       assert.equal(await render(page), inserted);
@@ -864,17 +764,14 @@ describe('the key of each menu item runs it', () => {
       await press(page, 'Alt+ArrowUp');
       await settle(page);
       assert.deepEqual(await size(page), [4, 3]);
-      // Duplicate is dimmed with the caret in a cell, since Esc selects the cell, and keeps its key
       await clickText(page, await cell(page));
       await settle(page);
       assert.deepEqual(await itemsIn(page, 'Edit', ['Duplicate']), { Duplicate: { keys: K.duplicate, dimmed: true } });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
   for (const platform of PLATFORMS) {
-    // item 2: Edit > Delete on a row of the navigator hands its run to Delete Slide, which names the
-    // entry, as in Keynote. a figure deleted on the canvas is still Delete
     test(`Edit > Delete of a slide in the navigator is the entry Delete Slide (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, await rect(page, `document.querySelectorAll('.beeson-edit-nav .row')[3]`));
@@ -896,18 +793,15 @@ describe('the key of each menu item runs it', () => {
       await undo(page);
       await settle(page);
       assert.equal(await render(page), page.source);
-      // Edit > Duplicate with nothing selected on the canvas hands its run to Duplicate Slide too
       await clickText(page, await below(page));
       await settle(page);
       await choose(page, 'Edit', 'Duplicate');
       assert.equal((await state(page)).slides, 14);
       assert.equal(await undoLabel(page), 'Undo Duplicate Slide');
       await checkEdit(page, `r15-7-duplicate-slide-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // item 3: the check of View > Navigator follows the navigator drawn, as Slide Only does, and the
-    // item shows the navigator in place of the inspector in a window too narrow for both
     test(`View > Navigator is checked only while the navigator is drawn (${platform})`, async (t) => {
       const page = await load(t, platform, { width: 800, height: 900 });
       const checks = async () => {
@@ -925,14 +819,13 @@ describe('the key of each menu item runs it', () => {
       await choose(page, 'View', 'Slide Only');
       assert.deepEqual(await checks(), { navigator: 'true', slideOnly: 'false', drawn: true });
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
   const card = (page, name) => page.evaluate(`(() => { const d = document.querySelector('dialog.beeson-edit-dialog.${name}'); return d && !d.hidden && d.open ? { text: d.textContent, code: d.querySelector('code')?.textContent ?? null, buttons: [...d.querySelectorAll('.row button')].map((b) => b.textContent) } : null; })()`);
   const cardButton = (page, name, label) => rect(page, `[...document.querySelectorAll('dialog.beeson-edit-dialog.${name} .row button')].find((b) => b.textContent === ${js(label)})`);
 
-  // File > Export To > PowerPoint… opens the item of the submenu Export To of the File menu
   async function exportPowerPoint(page) {
     await openBar(page, 'File');
     await clickText(page, await rect(page, `(${findItem})('Export To')`));
@@ -945,7 +838,6 @@ describe('the key of each menu item runs it', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // item 6: a page cannot write the PowerPoint file, hence the item shows the command that writes it
     test(`File > Export To > PowerPoint… shows the command that writes the file, and copies it (${platform})`, async (t) => {
       const page = await load(t, platform);
       await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
@@ -968,7 +860,7 @@ describe('the key of each menu item runs it', () => {
       await settle(page);
       assert.equal(await card(page, 'pptx'), null);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Export To > PowerPoint… with unsaved changes asks to save first, as Present does (${platform})`, async (t) => {
@@ -995,14 +887,11 @@ describe('the key of each menu item runs it', () => {
       await press(page, 'Escape');
       await settle(page);
       assert.equal(await render(page), edited, 'the edits are not kept');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression test of R31.3 on both platforms with trusted input. a skeptic of R27.2: with the caret
-// in a cell of a table, the Slide menu printed the key of Edit > Duplicate beside Duplicate Slide,
-// where the key does not do anything, since Duplicate is dimmed in a cell
 describe('no Duplicate key printed in a cell', () => {
   const PLATFORMS = ['mac', 'other'];
   const ROWS = 'test/pages/editor-r27-2.html';
@@ -1021,7 +910,6 @@ describe('no Duplicate key printed in a cell', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const count = (page) => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1037,7 +925,6 @@ describe('no Duplicate key printed in a cell', () => {
     return page;
   }
 
-  // the key printed beside the item of label in the menu bar of bar
   async function keyIn(page, bar, label) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${i + 1})`);
@@ -1059,7 +946,7 @@ describe('no Duplicate key printed in a cell', () => {
       await click(page, 'section.present td');
       await frames(page);
       assert.equal(await keyIn(page, 'Slide', 'Duplicate Slide'), '', 'the Slide menu prints a key beside Duplicate Slide that does not run it');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

@@ -1,15 +1,3 @@
-// the other people on each slide, in the navigator and the Slide Sorter, as in UI.md section 4. a
-// row of the navigator gets a dot of 10 px per person on its slide, at most three, then +N, and a
-// person who shares a tone with someone else in the session gets a chip with initials. a tile of
-// the Slide Sorter gets circles of 16 px with initials. a person with a page on two slides is drawn
-// on both, and the pages of this person are not drawn. the dots are drawn at most once per frame,
-// without a read of layout.
-//
-// a slide that another person changed since this page last showed it gets the violet dot of
-// .row.changed of the navigator, with the name of the person as its tooltip. the slides of an
-// operation are read from the pairing of the editor, by the ranges of its patches carried to the
-// source of the port, without a parse of the deck. the navigator takes the mark off by its own rule
-
 import type { Edit } from '../../editor/merge.ts';
 import { shiftOffset } from '../patch.ts';
 import { parseVersion, type AppliedOp, type Patch } from '../protocol.ts';
@@ -34,7 +22,6 @@ const CSS = `
 
 type On = { person: string; name: string; color: number };
 
-// the patches of a text as one, without the characters that both ends of the two texts share
 function between(a: string, b: string): Patch[] {
   if (a === b) return [];
   const n = Math.min(a.length, b.length);
@@ -51,9 +38,7 @@ export function install(client: Client): void {
   style('dots', CSS);
   let frame = 0;
   let ids = 0;
-  // the frames of the rows and the tiles drawn, with the key of what they show
   const drawn = new Map<HTMLElement, string>();
-  // the person who last changed each slide marked as changed
   const by = new Map<Element, string>();
 
   const sentence = (slide: Element): string => {
@@ -118,7 +103,6 @@ export function install(client: Client): void {
       on.set(r.slide, list);
     }
     for (const list of on.values()) list.sort((a, b) => (order.get(a.person) ?? 0) - (order.get(b.person) ?? 0));
-    // a mark that the navigator took off loses its author
     if (by.size) {
       const slides = [...app.slides().querySelectorAll(':scope > section')];
       const marked = new Set(hooks.marked().map((n) => slides[n - 1]));
@@ -141,7 +125,6 @@ export function install(client: Client): void {
       put(tile, list, shared, true, '');
       seen.add(tile.querySelector<HTMLElement>(':scope > .frame')!);
     }
-    // the rows and tiles of slides that nobody is on any more
     for (const el of [...drawn.keys()]) {
       if (seen.has(el)) continue;
       const owner = el.parentElement;
@@ -156,7 +139,6 @@ export function install(client: Client): void {
     if (!frame) frame = requestAnimationFrame(draw);
   };
 
-  // the operations of others received and not applied yet
   let pending: AppliedOp[] = [];
   client.on('ops', (ops) => void pending.push(...ops));
   client.on('applied', () => {
@@ -174,9 +156,6 @@ export function install(client: Client): void {
     });
     if (!done.some((op) => op.author !== client.person)) return;
     done.sort((a, b) => parseVersion(a.v)!.n - parseVersion(b.v)!.n);
-    // the ranges that each operation of another person wrote, carried through the operations after
-    // it to the text of base, and on to the source of the port, which holds the edits of this page
-    // that the authority has not taken yet
     const local = between(base.text, source);
     const ranges = new Map<string, Edit[]>();
     done.forEach((op, i) => {
@@ -193,8 +172,6 @@ export function install(client: Client): void {
           r.end = Math.max(r.start, shiftOffset(r.end, later, true));
         }
       }
-      // the author of the last operation on a slide is kept, hence an author goes after the others
-      // once more
       ranges.delete(op.author);
       ranges.set(op.author, own);
     });
@@ -213,7 +190,6 @@ export function install(client: Client): void {
         }
       }
     }
-    // a mark refreshes the navigator, which calls schedule
     if (add.length) hooks.mark(add);
     schedule();
   });

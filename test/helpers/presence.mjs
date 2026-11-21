@@ -1,7 +1,3 @@
-// helpers of the browser tests of presence and the holds, test/session-floor.test.mjs and
-// test/session-layer.test.mjs: a session of pages on the edit command, the elements of its deck,
-// what the layer of presence draws, and the bubble of a refusal
-
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { launch } from '../../scripts/chrome.mjs';
@@ -10,18 +6,11 @@ import { C, converge, open, sessionUrl, talk } from './client.mjs';
 import { until } from './session.mjs';
 
 export const P = 'window.BeesonSession.presence()';
-// the element of selector on the slide at index
 export const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
 export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
 export const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
-// the name of the person who holds the element of expression, or null
 export const HOLDER = (expression) => `(${P}.holderOf(${expression})?.name ?? null)`;
-/**
- * The holds on page kept however long a test takes: the time at which page last heard each person
- * active no longer changes, hence a person holds the text element of their caret until the caret
- * leaves it, and neither the clock of page nor a state of the person ends the hold.
- */
 export async function keep(page) {
   const kept = await page.evaluate(`(() => {
     let n = 0;
@@ -34,10 +23,8 @@ export async function keep(page) {
   })()`);
   assert.ok(kept > 0, 'the page heard a person whose holds are kept');
 }
-// the bubble of page cleared, so that the next one can be told from it
 export const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 
-/** A session of a page per name on the edit command, with each pair [from, to] of edits replaced in its index.html first. */
 export async function session(t, names = ['Ana', 'Ben'], { edits = [], pages: options = [] } = {}) {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -54,7 +41,6 @@ export async function session(t, names = ['Ana', 'Ben'], { edits = [], pages: op
   return { browser, server, pages };
 }
 
-/** The elements of expressions selected on page. */
 export async function select(page, ...expressions) {
   await front(page);
   const ok = await page.evaluate(`(() => {
@@ -66,8 +52,6 @@ export async function select(page, ...expressions) {
   assert.ok(ok, `${expressions.join(', ')} are on the page`);
 }
 
-// what the layer of page draws: each frame and caret bar by its box on the screen, and each flag
-// with its text, its client, whether it is a chip, and its box
 const DRAWN = `(() => {
   const box = (n) => { const r = n.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   const layer = document.querySelector('.beeson-presence');
@@ -85,10 +69,8 @@ export const drawn = async (page) => {
   return page.evaluate(DRAWN);
 };
 
-/** The box of the element of expression on the screen. */
 export const boxOf = (page, expression) => page.evaluate(`(() => { const r = ${expression}.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
 
-/** Waits until the layer of page draws what holds for, and returns it. */
 export async function untilDrawn(page, holds, what) {
   return until(async () => {
     const d = await drawn(page);
@@ -96,5 +78,4 @@ export async function untilDrawn(page, holds, what) {
   }, what);
 }
 
-// the caret of page taken out of every text
 export const leave = (page) => page.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);

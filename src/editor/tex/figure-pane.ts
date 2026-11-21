@@ -1,9 +1,3 @@
-// the TikZ Figure pane of the Format tab in theme/editor-tex.js: the file of a figure with Edit
-// Source… and the state of its compile, and for a source of From Data the fields of its data,
-// curves, axes, and labels. a change of a field writes the source again as Apply does, over the
-// text that the pane read. a source that starts as From Data but lost its shape shows the fields
-// turned off with a note, and a source of another shape shows the file alone
-
 import { make, injectStyle } from '../ui/dom.ts';
 import { errorLine, failure, post, sourceOf } from './figures.ts';
 import { COLORS, csvOf, curveFor, fromHeader, headerOf, MARK, readFigure, texText, writeFigure, type DataFigure, type Kind, type Labels } from './from-data.ts';
@@ -23,17 +17,14 @@ const CSS = `
 
 const KINDS: [Kind, string][] = [['line', 'Line'], ['points', 'Points'], ['both', 'Line and Points']];
 const LABELS: [Labels, string][] = [['curves', 'At the Curves'], ['legend', 'Legend'], ['none', 'None']];
-// the name of a tone of the style, e.g. Data 3 for data3
 const toneName = (c: string): string => c.replace(/^data(\d)$/, 'Data $1').replace(/^\w/, (l) => l.toUpperCase());
 const time = (t: number): string => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-/** The text of path, a file of the talk folder that the edit command serves, or null. */
 async function textOf(path: string): Promise<string | null> {
   const r = await fetch(new URL(path, location.href), { cache: 'no-store' }).catch(() => null);
   return r?.ok ? r.text() : null;
 }
 
-/** Fills el with the pane of the TikZ figure figure, and returns its sync. */
 export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement): () => void {
   injectStyle('tikz-pane', CSS);
   const app = host.app;
@@ -75,7 +66,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
     return i;
   };
 
-  // the file of the figure and the state of its compile
   const state = make('div', 'ed-note');
   const edit = button('Edit Source…', () => app.commands.run('format.tikzSource'));
   const said = make('div', 'ed-note warn');
@@ -87,8 +77,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
   };
   say('');
 
-  // the source as the pane read it, undefined before it is read, its figure of From Data, the last
-  // such figure, and the columns of its CSV file
   let base: string | null | undefined;
   let shape: DataFigure | null = null;
   let last: DataFigure | null = null;
@@ -112,7 +100,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       say('');
       base = source;
     }).catch((e: unknown) => say(e instanceof Error ? e.message : String(e))));
-  // a change of a field, written at once, and drawn again when it changes the fields
   const change = (fn: (f: DataFigure) => void, redraw = false): void => {
     if (!shape) return;
     fn(shape);
@@ -147,7 +134,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       picker.value = '';
       if (file) void replace(file).catch((e: unknown) => say(String(e)));
     });
-    // the columns after x by their index, with the column of a curve that the file does not have
     const options = (c: number): [string, string][] => [...new Set([...columns.keys()].slice(1).concat(c))].map((k) => [String(k), columns[k] || `Column ${k + 1}`]);
     const curves = f.curves.map((c, i) => {
       const one = make('div', 'curve');
@@ -159,7 +145,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
         row('Color', choice(`Color of curve ${n}`, COLORS.map((t) => [t, toneName(t)] as [string, string]), c.color, (v) => change((g) => (g.curves[i].color = v)))),
         row('Label', text(`Label of curve ${n}`, c.label, (v) => change((g) => (g.curves[i].label = v)))),
       );
-      // a figure keeps one curve, which holds the path of its data
       const remove = button('Delete Curve', () => change((g) => g.curves.splice(i, 1), true), `Delete curve ${n}`);
       remove.disabled = f.curves.length < 2;
       one.append(row(null, remove));
@@ -191,7 +176,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       const b = make('button', '', t);
       b.type = 'button';
       b.setAttribute('aria-pressed', String(f.labels === v));
-      // a label is not written without labels, hence it is named after its column again
       b.addEventListener('click', () => change((g) => {
         g.labels = v;
         for (const c of g.curves) c.label ||= texText(columns[c.column] ?? '');
@@ -235,11 +219,9 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
     else if (s.errors[name]?.length) [t, warn] = [errorLine(name, s.errors[name][0]), true];
     else if (!s.outputs[name]) [t, warn] = ['Not compiled', true];
     else t = s.compiled[name] ? `Compiled at ${time(s.compiled[name])}` : 'Compiled';
-    // the reason why the page does not change the figure, e.g. a guest or TeX not found, before its state
     if (link && s && no) [t, warn] = [`${no}. ${t}`, true];
     state.textContent = t;
     state.classList.toggle('warn', warn);
-    // the source is read again once the figure is compiled again, e.g. after Edit Source
     const now = s ? JSON.stringify([s.outputs[name], s.compiled[name], s.errors[name]?.length]) : '';
     if (link && now !== seen) {
       seen = now;

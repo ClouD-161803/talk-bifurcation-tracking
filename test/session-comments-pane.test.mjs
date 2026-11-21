@@ -1,10 +1,3 @@
-// the pane Comments, its badges, and its toasts in Chrome, on pages of one edit command: a comment
-// on a held element and on the target of a context menu, the headings of the slides, the text of a
-// reply kept through a delete, a resolve, a move, and a reload, the offline state, the mentions, the
-// count of the text, the mode of Version History, the keys, the times, the toasts, the direction of
-// a text, the badge of a selected element, the contrast, the accessibility tree, the initials, and
-// a phone of 390 px
-
 import assert from 'node:assert/strict';
 import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -17,7 +10,6 @@ import { NET } from './helpers/net.mjs';
 import { copied, goOffline, ROWS, tab } from './helpers/offline.mjs';
 import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
-// the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
@@ -30,15 +22,11 @@ const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-// the name of the person who holds the element of expression, or null
 const HOLDER = (expression) => `(window.BeesonSession.presence().holderOf(${expression})?.name ?? null)`;
-// the id of the thread of the focus, or the tag of the focused element outside a thread
 const ACTIVE = `document.activeElement?.closest('article')?.dataset.id ?? document.activeElement?.localName ?? null`;
 const DRAFT = `${PANE} .draft textarea`;
 const ARTICLE = (id) => `${PANE} article[data-id="${id}"]`;
 
-// the controls of selector that are shown and take a tap on less than 32 by 32 px, counting a
-// pseudo-element ::after placed around a control, or that are not inside the window
 const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((b) => b.getClientRects().length).map((b) => {
   const r = b.getBoundingClientRect();
   const a = getComputedStyle(b, '::after');
@@ -46,8 +34,6 @@ const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selec
   return { name: b.getAttribute('aria-label') || b.textContent.trim() || b.localName, w: Math.round(r.width + out(a.left) + out(a.right)), h: Math.round(r.height + out(a.top) + out(a.bottom)), inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight };
 }).filter((b) => b.w < 32 || b.h < 32 || !b.inside)`;
 
-// waits until expression reads as want on page, in front so that it draws frames, and fails with
-// the last value read
 async function sees(page, expression, want, what = expression, timeout = 15_000) {
   await front(page);
   let got;
@@ -67,7 +53,6 @@ async function openPane(page) {
   await page.waitFor(`!!document.querySelector('${PANE}:not([hidden])')`);
 }
 
-// a click on the item labeled label of the open menu, e.g. a context menu or the menu of a thread
 async function menu(page, label) {
   const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].find((i) => (i.querySelector('.label') ?? i).textContent === ${JSON.stringify(label)})`;
   await page.waitFor(`!!${item}`);
@@ -75,9 +60,6 @@ async function menu(page, label) {
   await click(page, at);
 }
 
-// a tap of a finger at the center of the element of selector, on the page brought to the front,
-// since a page behind does not take a touch. it fails after 10 s rather than after the limit of
-// the browser
 async function touch(page, selector) {
   await front(page);
   const { x, y } = await center(page, selector);
@@ -88,8 +70,6 @@ async function touch(page, selector) {
   }
 }
 
-// a new comment of text on what the Comment command targets now, sent from the draft of the pane,
-// and the label of its place
 async function comment(page, text) {
   await front(page);
   await press(page, COMMENT_KEY);
@@ -101,8 +81,6 @@ async function comment(page, text) {
   return label;
 }
 
-// a comment of text on the slide at index, sent by the page with the transport of the client, with
-// each @Name of a person who joined written as a mention, and the id of its thread
 const post = (page, slide, text) => page.evaluate(`(async () => {
   const c = ${C};
   const t = c.base.text;
@@ -119,10 +97,8 @@ const post = (page, slide, text) => page.evaluate(`(async () => {
   return thread.id;
 })()`);
 
-// a request route on the thread id sent by page, e.g. resolve, delete, or reply
 const act = (page, id, route, body = {}) => page.evaluate(`${C}.transport.post('comments/${id}/${route}', { token: ${C}.token, ...${JSON.stringify(body)} }).then(() => true)`);
 
-// the comments as the edit command keeps them
 const stored = (page) => page.evaluate(`${C}.transport.comments(${C}.token).then((a) => a.comments.map((t) => ({ text: t.text, mentions: t.mentions, replies: t.replies.map((r) => r.text) })))`);
 
 async function pair(t, names = ['Ann', 'Ben']) {
@@ -135,8 +111,6 @@ async function pair(t, names = ['Ann', 'Ben']) {
   return { browser, server, pages };
 }
 
-// a talk folder with the slides of slides in place of those of TALK, and with tex next to it as
-// tex.js, which the deck loads, when it is given, and the edit command on it
 async function talkWith(t, slides, tex = null) {
   const deck = TALK.replace(/<section>[\s\S]*<\/section>\n/, slides);
   const folder = talkFolder(t, tex === null ? deck : deck.replace('<script src="theme/beeson.js">', '<script src="tex.js"></script>\n<script src="theme/beeson.js">'));
@@ -151,8 +125,6 @@ async function talkWith(t, slides, tex = null) {
   return server;
 }
 
-// the node of the first element of selector in the accessibility tree of Chrome, with its role,
-// name, description, properties, and the roles of its children that are not ignored, or null
 async function ax(page, selector) {
   await page.send('Accessibility.enable', {});
   const { root } = await page.send('DOM.getDocument', { depth: 0 });
@@ -168,8 +140,6 @@ async function ax(page, selector) {
   return { role: n.role?.value, ignored: !!n.ignored, name: n.name?.value ?? '', description: n.description?.value ?? '', props, children };
 }
 
-// waits until the node of selector in the accessibility tree holds every field of want, since
-// Chrome updates this tree some time after a change of the page
 async function axIs(page, selector, want, what = selector) {
   let got = null;
   const holds = () => got && Object.entries(want).every(([k, v]) => JSON.stringify(k === 'props' ? Object.fromEntries(Object.keys(v).map((p) => [p, got.props[p]])) : got[k]) === JSON.stringify(v));
@@ -183,7 +153,6 @@ async function axIs(page, selector, want, what = selector) {
   }
 }
 
-// the texts of the toasts of page from now on, one entry per toast shown, in window.__toasts
 const recordToasts = (page) => page.evaluate(`(() => {
   window.__toasts = [];
   let last = '';
@@ -197,11 +166,8 @@ const recordToasts = (page) => page.evaluate(`(() => {
   return true;
 })()`);
 
-// the time in ms that page shows a toast, set to ms through the option toasts of the client where
-// it has one, and the time in effect
 const toastTime = (page, ms) => page.evaluate(`(() => { const o = window.BeesonSession.toasts; if (o) o.shown = ${ms}; return o ? o.shown : 6000; })()`);
 
-// waits until the clock of page has run ms past now
 const elapse = (page, ms) => page.evaluate(`(() => { window.__until = performance.now() + ${ms}; return true; })()`).then(() => page.waitFor('performance.now() > window.__until', ms + 15_000));
 
 test('a held text element takes a comment from the context menu, and its thread opens with the element selected and without a bubble', { timeout: 300_000 }, async (t) => {
@@ -214,7 +180,6 @@ test('a held text element takes a comment from the context menu, and its thread 
   await a.evaluate(`${C}.app.selection.clear()`);
 
   await show(b, 'One');
-  // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
   await until(async () => (await b.evaluate(HOLDER(p))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await caretAtEnd(b, p);
   await until(async () => (await a.evaluate(HOLDER(p))) === 'Ben', 'the hold of Ben on the paragraph to reach the page of Ann');
@@ -258,7 +223,6 @@ test('a person who opens a draft of a comment stops following', { timeout: 300_0
   const ann = await a.evaluate(`${C}.person`);
   await b.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(ann)})`);
   await b.waitFor(`window.BeesonSession.follow().target === ${JSON.stringify(ann)}`);
-  // the command on the slide shown, which leaves the selection as it is
   await b.evaluate(`window.BeesonEditor.exec('insert.comment')`);
   await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
   await sees(b, `window.BeesonSession.follow().target`, null);
@@ -272,8 +236,6 @@ test('while the comments are read only, a draft and a reply stay in their fields
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'Before');
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
-  // from now on the edit command answers each new comment and reply as it does while comments.json
-  // can be neither read nor set aside
   const reason = 'the comments could not be read at the start, hence they are read only until the edit command is started again';
   const told = `Not sent. ${reason[0].toUpperCase()}${reason.slice(1)}.`;
   await a.evaluate(`(() => {
@@ -312,7 +274,6 @@ test('while the comments are read only, a draft and a reply stay in their fields
   clean(a, [/status of 503/]);
 });
 
-// the pressed button is disabled while its request runs, and Chrome then moves its focus to the body
 test('after a press of Reply or Comment, the focus is on the thread of a saved reply and in the field of a refused text', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   await show(a, 'One');
@@ -336,8 +297,6 @@ test('after a press of Reply or Comment, the focus is on the thread of a saved r
     window.fetch = function (input, init) {
       const url = typeof input === 'string' ? input : input.url;
       if (!(init?.method === 'POST' && /\\/\\.session\\/comments(\\/[^/]+\\/reply)?$/.test(url))) return fetched.call(this, input, init);
-      // the answer comes after two frames, as one of a network does, i.e. after the browser has
-      // moved the focus of the disabled button
       return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(new Response(JSON.stringify({ error: 'the comments are read only' }), { status: 503, headers: { 'Content-Type': 'application/json' } })))));
     };
   })()`);
@@ -450,8 +409,6 @@ test('a live update that moves the thread of a reply being typed keeps its node,
   await click(a, `${ARTICLE(id)} .reply textarea`);
   await type(a, 'typing a reply');
   await a.evaluate(`document.querySelector('${ARTICLE(id)}').__mark = 1`);
-  // reveal.js blurs the focus when a page is shown again, as each flip of the page in front in this
-  // test does, whereas a person on another machine does not show the page of Ann again
   await a.evaluate(`Object.defineProperty(document, 'hidden', { configurable: true, get: () => undefined })`);
   await front(b);
   await click(b, '.beeson-edit-nav .row:nth-of-type(2)');
@@ -476,8 +433,6 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   await comment(a, 'Before the stop');
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
   const one = await post(a, 1, 'Resolved before the stop');
-  // the page hears of the thread and of its resolve before the stop, since the edit command writes
-  // comments.json before it answers
   await sees(a, `!!document.querySelector('${ARTICLE(one)}')`, true);
   await act(a, one, 'resolve');
   await sees(a, `!!document.querySelector('${ARTICLE(one)}')`, false);
@@ -493,20 +448,17 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="resolved"]').click()`);
   await sees(a, CONTROLS(one), [['Reopen', true, OFFLINE], ['Thread actions', true, OFFLINE]]);
   await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
-  // the key E on a thread does nothing while offline
   await a.evaluate(`document.querySelector('${ARTICLE(id)}').focus()`);
   await recordToasts(a);
   await press(a, 'E');
   assert.equal(await a.evaluate(`document.querySelector('${ARTICLE(id)} .reply textarea').value`), 'Typed before the stop');
 
   await server.start(['--port', String(port)]);
-  // a toast of a request that the key sent and that failed has come by the restart of the edit command
   assert.deepEqual(await a.evaluate('window.__toasts'), [], 'the toasts after the key E');
   await front(a);
   await click(a, '.beeson-session-action');
   await a.waitFor(ONLINE);
   await sees(a, CONTROLS(id), [['Resolve', false, 'Resolve'], ['Thread actions', false, 'Thread actions'], ['Reply', false, '']]);
-  // a request resolve that fails as on a network error
   await a.evaluate(`(() => {
     const fetched = window.fetch;
     window.fetch = function (input, init) {
@@ -527,7 +479,6 @@ test('a draft and a reply being typed are kept through a reload of the page, and
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'A thread');
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
-  // the times of the writes of the typed texts into sessionStorage
   await a.evaluate(`(() => {
     window.__writes = [];
     const set = Storage.prototype.setItem;
@@ -556,7 +507,6 @@ test('a draft and a reply being typed are kept through a reload of the page, and
 
   await click(a, `${ARTICLE(id)} .reply .actions .primary`);
   await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['A thread', 'Half a reply'] }]);
-  // Cancel discards a draft with text, which Esc keeps
   await click(a, `${PANE} .draft .actions button:not(.primary)`);
   await a.waitFor(`!document.querySelector('${PANE} .draft')`);
   await sees(a, `Object.keys(sessionStorage).filter((k) => /comment/.test(k) && /Half/.test(sessionStorage.getItem(k)))`, []);
@@ -564,11 +514,8 @@ test('a draft and a reply being typed are kept through a reload of the page, and
   clean(a);
 });
 
-// the label and the text of the draft of the pane, or null
 const DRAFTED = `(() => { const d = document.querySelector('${PANE} .draft'); return d && { label: d.querySelector('.anchor').textContent, text: d.querySelector('textarea').value }; })()`;
 
-// page leaves, change is made, which has reads in index.html, and page loads again, as a tab does
-// that a phone drops in the background. others are the pages that stay
 async function left(server, page, others, change, has) {
   const url = await page.evaluate('location.href');
   await page.goto('about:blank');
@@ -581,7 +528,6 @@ async function left(server, page, others, change, has) {
   await converge(server, [page, ...others]);
 }
 
-// a draft with the text Half a draft on target, of kind element or slide, and its label and text
 async function drafted(page, target, kind = 'element') {
   await front(page);
   await page.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: '${kind}', target: ${target} })`);
@@ -594,7 +540,6 @@ test('a draft stays on its element when an element before it is removed or inser
   const { server, pages: [a, b] } = await pair(t);
   const state = DRAFTED;
   const away = (change, has) => left(server, a, [b], change, has);
-  // the draft of Ann is on the first item of the list, which another item follows
   await show(a, 'Two');
   await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: ${el(1, 'li')} })`);
   await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
@@ -602,7 +547,6 @@ test('a draft stays on its element when an element before it is removed or inser
   const first = await a.evaluate(state);
   assert.deepEqual(first, { label: 'On Item: Alpha', text: 'Half a draft' });
 
-  // Ben removes the paragraph above the list, hence each item is one element earlier in its slide
   await away(async () => {
     await show(b, 'Two');
     await clickText(b, '.reveal section.present > p');
@@ -611,15 +555,12 @@ test('a draft stays on its element when an element before it is removed or inser
   }, (text) => !text.includes('Second slide'));
   await sees(a, state, first, 'the draft after a removal');
 
-  // an item written before the first one, outside the editor
   await away(() => writeFileSync(server.file, server.read().replace('<li>Alpha</li>', '<li>Omega</li>\n    <li>Alpha</li>')), (text) => text.includes('Omega'));
   await sees(a, state, first, 'the draft after an insertion');
 
-  // the text of the item itself is changed, and the draft falls back to the slide
   await away(() => writeFileSync(server.file, server.read().replace('<li>Alpha</li>', '<li>Alpha, changed</li>')), (text) => text.includes('Alpha, changed'));
   await sees(a, state, { label: 'On Slide 2', text: 'Half a draft' }, 'the draft after a change of its element');
 
-  // a slide written before the slide of the draft
   await away(() => writeFileSync(server.file, server.read().replace('<section>\n  <h2>Two</h2>', '<section>\n  <h2>Between</h2>\n</section>\n\n<section>\n  <h2>Two</h2>')), (text) => text.includes('Between'));
   await sees(a, state, { label: 'On Slide 3', text: 'Half a draft' }, 'the draft after an insertion of a slide');
   await click(a, `${PANE} .draft .actions .primary`);
@@ -656,7 +597,6 @@ test('a draft stays on its element when its page leaves with an edit before it t
   await show(a, 'Two');
   const first = await drafted(a, el(1, 'li'));
   assert.deepEqual(first, { label: 'On Item: Alpha', text: 'Half a draft' });
-  // the operations of the page are held, as on a network that does not answer
   await a.evaluate(`(() => {
     const fetched = window.fetch;
     window.fetch = function (input, init) {
@@ -664,17 +604,13 @@ test('a draft stays on its element when its page leaves with an edit before it t
       return url.includes('/.session/op') ? new Promise(() => {}) : fetched.call(this, input, init);
     };
   })()`);
-  // a paragraph inserted before the list
   await caretAtEnd(a, el(1, 'p'));
   await press(a, 'Enter');
   await typeKeys(a, 'Inserted');
-  // a reread of the deck, as places() and add() of comments.ts make, puts the paragraph into the
-  // source and not into the base
   await a.evaluate(`${C}.port.rebase().then(() => true)`);
   await a.waitFor(`${C}.app.source.text.includes('Inserted') && !${C}.acked()`, 30_000);
   await a.send('Page.enable', {});
   const count = await loads(a);
-  // the page asks before it leaves while the copy in the browser does not hold its edit yet
   const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
   accept.unref();
   await a.evaluate('location.reload()').catch(() => {});
@@ -689,8 +625,6 @@ test('a draft stays on its element when its page leaves without its own edit of 
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // IndexedDB fails, as in a private window, hence the edits that wait are not kept, and the draft
-  // is found only by the start tag of its element in the base
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `IDBFactory.prototype.open = function () { throw new DOMException('refused by the test', 'SecurityError'); };` });
   await converge(server, [a]);
   await show(a, 'Two');
@@ -708,7 +642,6 @@ test('a draft stays on its element when its page leaves without its own edit of 
   await a.evaluate(`${C}.port.rebase().then(() => true)`);
   await a.waitFor(`${C}.app.source.text.includes('Alpha typed') && !${C}.acked()`, 30_000);
   const count = await loads(a);
-  // the page asks before it leaves with an edit that it cannot keep
   const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
   accept.unref();
   await a.evaluate('location.reload()').catch(() => {});
@@ -754,8 +687,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   };
   await show(a, 'Two');
 
-  // a paragraph written above the table moves the three cells that read 0 by more than a row, and
-  // the draft stays on the cell of row c
   const cell = { label: 'On Table cell: 0', text: 'Half a draft' };
   assert.deepEqual(await drafted(a, el(1, 'tr:nth-child(3) td:nth-child(2)')), cell);
   await away((text) => text.replace('  <table>', '  <p>A paragraph written above the table while the page was away</p>\n  <table>'), (text) => text.includes('written above'));
@@ -766,14 +697,12 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   const sent = await a.evaluate(`${C}.transport.comments(${C}.token).then((x) => x.comments.map((c) => c.anchor.start))`);
   assert.deepEqual(sent.map((start) => server.read().slice(start - 10, start + 10)), ['<td>c</td><td>0</td>'], 'the comment is on the cell of row c');
 
-  // the item of the draft is removed, and the item of slide Two that reads the same is not taken
   await show(a, 'One');
   assert.deepEqual(await drafted(a, el(0, 'li')), { label: 'On Item: TBD', text: 'Half a draft' });
   await away((text) => text.replace('    <li>TBD</li>\n', ''), (text) => text.split('<li>TBD</li>').length === 2);
   await sees(a, DRAFTED, { label: 'On Slide 1', text: 'Half a draft' }, 'the draft after a removal of its item, which read as an item of another slide');
   await cancel();
 
-  // the cell of the draft is changed, and a cell of another row that reads as it did is not taken
   await show(a, 'Two');
   assert.deepEqual(await drafted(a, el(1, 'tr:nth-child(1) td:nth-child(2)')), cell);
   await away((text) => text.replace('<td>a</td><td>0</td>', '<td>a</td><td>7</td>'), (text) => text.includes('<td>7</td>'));
@@ -782,8 +711,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   clean(b);
 });
 
-// the draft of page sent, and the newest comment as the 20 characters around its anchor and the
-// heading of its slide in index.html
 async function sentAt(page, server) {
   const SENT = `${C}.transport.comments(${C}.token).then((x) => x.comments.map((c) => ({ id: c.id, at: c.anchor.start, slide: c.slide.start })))`;
   const before = new Set((await page.evaluate(SENT)).map((c) => c.id));
@@ -793,7 +720,6 @@ async function sentAt(page, server) {
   return (await page.evaluate(SENT)).filter((c) => !before.has(c.id)).map((c) => ({ near: text.slice(c.at - 10, c.at + 10), slide: /<h2>([^<]*)/.exec(text.slice(c.slide, c.slide + 40))?.[1] }));
 }
 
-// slides with items TBD on One and Two, and a table with three cells that read 0 on Three
 const TWINS = `<section>
   <h2>One</h2>
   <ul>
@@ -831,8 +757,6 @@ test('a draft stays on its element when an element that reads the same before it
   await converge(server, [a, b]);
   const away = (change, has) => left(server, a, [b], () => writeFileSync(server.file, change(server.read())), has);
 
-  // the item TBD of slide One is removed, and one is added on slide Three, hence the draft on the
-  // item of slide Two is the second of two items again
   await show(a, 'Two');
   const item = { label: 'On Item: TBD', text: 'Half a draft' };
   assert.deepEqual(await drafted(a, el(1, 'li')), item);
@@ -840,7 +764,6 @@ test('a draft stays on its element when an element that reads the same before it
   await sees(a, DRAFTED, item, 'the draft after its twins moved');
   assert.deepEqual(await sentAt(a, server), [{ near: ' <ul>\n    <li>TBD</l', slide: 'Two' }], 'the comment is on the item of slide Two');
 
-  // row a is removed and row d is added, hence the draft on the cell of row b is the first of three
   await show(a, 'Three');
   const cell = { label: 'On Table cell: 0', text: 'Half a draft' };
   assert.deepEqual(await drafted(a, el(2, 'tr:nth-child(2) td:nth-child(2)')), cell);
@@ -904,7 +827,6 @@ test('a draft stays on the second of two elements that read the same, with the s
   await show(a, 'Two');
   const item = { label: 'On Item: TBD', text: 'Half a draft' };
   assert.deepEqual(await drafted(a, el(1, 'li')), item);
-  // the item of slide One is then the nearest to the old offset of the item of the draft
   await left(server, a, [b], () => writeFileSync(server.file, server.read().replace('<section>\n  <h2>One', '<section>\n  <h2>Zero</h2>\n  <p>A slide written before the others while the page was away</p>\n</section>\n\n<section>\n  <h2>One')), (text) => text.includes('<h2>Zero</h2>'));
   await sees(a, DRAFTED, item, 'the draft after a slide added before it');
   assert.deepEqual(await sentAt(a, server), [{ near: ' <ul>\n    <li>TBD</l', slide: 'Two' }], 'the comment is on the item of slide Two');
@@ -912,7 +834,6 @@ test('a draft stays on the second of two elements that read the same, with the s
   clean(b);
 });
 
-// the draft kept by the page in sessionStorage, as its text and the fields of the spot of its element
 const KEPT = `(() => { const d = JSON.parse(sessionStorage.getItem('beeson-session-comment-texts:' + location.pathname) || 'null')?.draft; return d && { text: d.text, fields: Object.keys(d.el ?? {}).sort() }; })()`;
 
 test('a draft that a browser kept without the text before its element is found by its index among the elements that read the same', { timeout: 660_000 }, async (t) => {
@@ -927,7 +848,6 @@ test('a draft that a browser kept without the text before its element is found b
   assert.deepEqual(await drafted(a, el(1, 'li')), item);
   await a.waitFor(`${KEPT}?.text === 'Half a draft'`);
   assert.ok((await a.evaluate(KEPT)).fields.includes('left'), 'the page keeps the text before the element');
-  // from now on the page keeps its draft as a client before the field left did
   await a.evaluate(`(() => {
     const set = Storage.prototype.setItem;
     Storage.prototype.setItem = function (k, v) {
@@ -943,7 +863,6 @@ test('a draft that a browser kept without the text before its element is found b
   await typeKeys(a, '!');
   await a.waitFor(`${KEPT}?.text === 'Half a draft!'`);
   assert.ok(!(await a.evaluate(KEPT)).fields.includes('left'), 'the page keeps its draft without the text before the element');
-  // a paragraph above the list changes the text before the item of the draft, and keeps its index
   await left(server, a, [b], () => writeFileSync(server.file, server.read().replace('<h2>Two</h2>\n  <ul>\n', '<h2>Two</h2>\n  <p>Above</p>\n  <ul>\n')), (text) => text.includes('<p>Above</p>'));
   await sees(a, DRAFTED, { ...item, text: 'Half a draft!' }, 'the draft kept without the text before its element');
   assert.deepEqual(await sentAt(a, server), [{ near: ' <ul>\n    <li>TBD</l', slide: 'Two' }], 'the comment is on the item of slide Two');
@@ -982,7 +901,6 @@ test('a draft on a slide that reads as another slide, and a draft on a stack, st
   const away = (change, has) => left(server, a, [b], () => writeFileSync(server.file, change(server.read())), has);
   const slide = (i) => `document.querySelectorAll('.reveal .slides > section')[${i}]`;
 
-  // the second of two slides that read the same is renamed
   await a.evaluate('Reveal.slide(2)');
   assert.deepEqual(await drafted(a, slide(2), 'slide'), { label: 'On Slide 3', text: 'Half a draft' });
   await away((text) => {
@@ -993,7 +911,6 @@ test('a draft on a slide that reads as another slide, and a draft on a stack, st
   await click(a, `${PANE} .draft .actions button:not(.primary)`);
   await a.waitFor(`!document.querySelector('${PANE} .draft')`);
 
-  // a stack, as a right-click on its row in the navigator targets it, with a change inside it
   await a.evaluate('Reveal.slide(3, 0)');
   assert.deepEqual(await drafted(a, slide(3), 'slide'), { label: 'On the slide', text: 'Half a draft' });
   await away((text) => text.replace('Upper slide', 'Upper slide, changed'), (text) => text.includes('Upper slide, changed'));
@@ -1009,8 +926,6 @@ test('a draft stays on its element when its page leaves with an edit of this ele
   const a = await tab(browser, sessionUrl(server.edit));
   await show(a, 'Two');
   assert.deepEqual(await drafted(a, el(1, 'li:nth-child(2)')), { label: 'On Item: Beta', text: 'Half a draft' });
-  // the operations of the page fail, and its edit is kept in the copy of the browser, which is
-  // merged once the page has loaded again
   await a.evaluate('window.__blockOps = true');
   await caretAtEnd(a, el(1, 'li:nth-child(2)'));
   await type(a, ' typed');
@@ -1031,9 +946,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   await show(a, 'Two');
   const item = { label: 'On Item: TBD', text: 'Half a draft' };
   assert.deepEqual(await drafted(a, el(1, 'li')), item);
-  // the operations of the page fail, and its edits are kept in the copy of the browser, which is
-  // merged once the page has loaded again: the item TBD of slide One becomes TB, and the item TB of
-  // slide Three becomes TBD
   await a.evaluate('window.__blockOps = true');
   await show(a, 'One');
   await caretAtEnd(a, el(0, 'li:nth-child(2)'));
@@ -1044,8 +956,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   const three = '<h2>Three</h2>\n  <ul>\n    <li>TBD</li>';
   await a.waitFor(`(${ROWS}).then((rows) => rows.some((r) => r.mine.includes(${JSON.stringify(three)}) && r.mine.includes('<li>Done</li>\\n    <li>TB</li>')))`, 15_000);
   await a.waitFor(`!${C}.asking`);
-  // a key in the draft writes it again, with the item of the draft as the first of two in the text
-  // with the edits of the page
   await show(a, 'Two');
   await a.evaluate(`(() => { const x = document.querySelector('${DRAFT}'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); return true; })()`);
   await typeKeys(a, '!');
@@ -1056,8 +966,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   await a.waitFor('window.BeesonEditor.ready.then(() => true)');
   await a.waitFor(ONLINE);
   await until(() => server.read().includes(three), 'the copy to reach index.html');
-  // the item is the first of two in the text with the edits of the page, and the second in the base,
-  // and the page cannot tell whether its edits were merged again
   await front(a);
   await a.waitFor(`${DRAFTED}?.text === 'Half a draft!'`);
   const after = await a.evaluate(DRAFTED);
@@ -1069,7 +977,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talkWith(t, TWINS.replace('<li>Later</li>', '<li>TB</li>'));
-  // IndexedDB fails, as in a private window, hence the edits that wait are lost at the reload
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `IDBFactory.prototype.open = function () { throw new DOMException('refused by the test', 'SecurityError'); };` });
   await converge(server, [a]);
   await show(a, 'Two');
@@ -1093,7 +1000,6 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   const OWN = `JSON.parse(sessionStorage.getItem('beeson-session-comment-texts:' + location.pathname) || 'null')?.draft?.el?.own?.twin`;
   await a.waitFor(`JSON.stringify(${OWN}) === '[0,2]'`);
   const count = await loads(a);
-  // the page asks before it leaves with edits that it cannot keep
   const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
   accept.unref();
   await a.evaluate('location.reload()').catch(() => {});
@@ -1141,7 +1047,6 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   await typeKeys(b, '@An');
   await sees(b, `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => li.children[1].textContent)`, ['Ann', 'Annabel']);
   await press(b, 'Enter');
-  // a mention as it is sent, typed by hand, is text as well
   const annabel = await b.evaluate(`${C}.known.find((p) => p.name === 'Annabel').person`);
   await typeKeys(b, `@{${annabel}} and @Annabel`);
   await press(b, 'Escape');
@@ -1158,7 +1063,6 @@ test('an open list of people at an @ is filled again when the people known to th
   const { pages: [a, b] } = await pair(t, ['Ann', 'Ben', 'Annabel']);
   const LIST = `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => li.children[1].textContent)`;
   const PICKED = `document.querySelector('${PANE} .draft .people li[aria-selected="true"]')?.children[1].textContent ?? null`;
-  // the page of Ben knows only the people not named here, until all of them are known again
   const without = (name) => b.evaluate(`(() => { const c = ${C}; window.__known ??= c.known; c.known = window.__known.filter((p) => p.name !== ${JSON.stringify(name)}); c.emit('known'); return true; })()`);
   const all = () => b.evaluate(`(() => { const c = ${C}; c.known = window.__known; c.emit('known'); return true; })()`);
   await show(b, 'One');
@@ -1166,13 +1070,11 @@ test('an open list of people at an @ is filled again when the people known to th
   await press(b, COMMENT_KEY);
   await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
   await b.waitFor(`${C}.known.some((p) => p.name === 'Annabel')`);
-  // as when Annabel is named to the page of Ben only after the keys
   await without('Annabel');
   await typeKeys(b, '@An');
   await sees(b, LIST, ['Ann']);
   await all();
   await sees(b, LIST, ['Ann', 'Annabel']);
-  // the highlight stays on its person when the list changes under it
   await press(b, 'ArrowDown');
   await sees(b, PICKED, 'Annabel');
   await without('Ann');
@@ -1195,7 +1097,6 @@ test('the list of people at an @ stays open while the field loses the focus and 
   await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
   await typeKeys(b, '@An');
   await sees(b, LIST, true);
-  // as at a click on a scroll bar, or when the window loses the focus and has it again
   await b.evaluate(`(() => { const d = document.querySelector('${DRAFT}'); d.blur(); d.focus(); return true; })()`);
   await elapse(b, 1000);
   assert.deepEqual(await b.evaluate(`[${LIST}, document.activeElement?.matches('${DRAFT}')]`), [true, true], 'the list and the focus after the field had the focus again');
@@ -1207,7 +1108,6 @@ test('the list of people at an @ stays open while the field loses the focus and 
 
 test('an edit of a comment keeps two mentions with one shown name apart', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
-  // two people that never joined, whose names are thus shown as Someone
   const twins = ['A'.repeat(22), 'B'.repeat(22)];
   const id = await a.evaluate(`(async () => {
     const c = ${C};
@@ -1237,7 +1137,6 @@ test('the field counts the text as it is sent, with each mention as the id of it
   await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
   await press(a, 'Enter');
   await type(a, 'x'.repeat(3985));
-  // the field reads @Ben and 3985 x, 3990 characters, and sends a mention of 25 characters
   const SEND = `(() => { const d = document.querySelector('${DRAFT}'); return [d.value.length, document.querySelector('${PANE} .draft .actions .primary').disabled, document.querySelector('${PANE} .draft .error').hidden]; })()`;
   await sees(a, SEND, [3990, true, false]);
   await a.evaluate(`document.querySelector('${DRAFT}').select()`);
@@ -1268,7 +1167,6 @@ test('while the mode of Version History is on, the badges and the button Comment
   await press(a, 'Escape');
   await a.waitFor(`!document.documentElement.classList.contains('beeson-history')`);
   await sees(a, TOASTS, ['Ben mentioned you on slide 1']);
-  // the badge of the paragraph and the badge of the slide, which the comment of Ben is on
   await sees(a, `[...document.querySelectorAll('.beeson-comment-badge')].filter((b) => b.getClientRects().length).length`, 2);
   assert.equal(await a.evaluate(`!!document.querySelector('.beeson-session-comments').closest('[inert]')`), false);
   clean(a);
@@ -1309,7 +1207,6 @@ test('the times of the pane follow the locale of the browser, as those of Versio
   await sees(a, `!!document.querySelector('${PANE} article .time')`, true);
   const [shown, want] = await a.evaluate(`[document.querySelector('${PANE} article .time').textContent, new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })]`);
   assert.match(shown, /^\d{1,2}:\d{2}$/);
-  // the minutes of the day, which differ by 1 also across an hour and midnight
   const minutes = (hm) => hm.split(':').reduce((h, m) => Number(h) * 60 + Number(m));
   assert.ok([0, 1, 1439].includes((minutes(want) - minutes(shown) + 1440) % 1440), `${shown} is the time in de-DE, ${want}`);
   clean(a);
@@ -1320,7 +1217,6 @@ test('more toasts than three in a row are joined into one, and each toast has a 
   await recordToasts(a);
   await toastTime(a, 1000);
   await Promise.all([1, 2, 3, 4, 5].map((n) => post(b, 0, `Look ${n}, @Ann`)));
-  // the pointer over the first toast holds it until every mention has arrived
   await a.waitFor(`!!document.querySelector('.beeson-session-toast > span')`);
   await a.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center(a, '.beeson-session-toast > span')) });
   await sees(a, COUNT, 'Comments, 5 unread');
@@ -1408,12 +1304,10 @@ test('the badge of a selected element is clear of the grips of its frame', { tim
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'On the paragraph');
-  // a press on a text element puts the caret in it, and Escape then selects the element
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await press(a, 'Escape');
   await sees(a, `${C}.app.selection.kind === 'elements' && ${C}.app.selection.has(${el(0, 'p')})`, true);
   await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 1);
-  // each grip of the frame is the element at its center, rather than the badge
   await sees(a, `[...document.querySelectorAll('.beeson-grip')].filter((g) => g.getClientRects().length).map((g) => {
     const r = g.getBoundingClientRect();
     const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -1477,7 +1371,6 @@ test('the accessibility tree of Chrome holds the field of a mention as a combobo
   await openPane(a);
   await sees(a, `!!document.querySelector('${ARTICLE(id)}')`, true);
   await axIs(a, ARTICLE(id), { name: 'Thread by Ben, unread', description: 'Described by its text' }, 'the thread');
-  // a div without a role, which Chrome reads as generic or leaves out of the tree
   await until(async () => ['generic', 'none'].includes((await ax(a, `${PANE} .list`))?.role), 'the list of threads to be without a role', 5000);
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) p');
@@ -1514,8 +1407,6 @@ for (const scheme of ['dark', 'light']) {
     await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
     await openPane(a);
     await sees(a, `!!document.querySelector('${ARTICLE(open)}')`, true);
-    // the buttons of the head of each thread, as their names, whether they are disabled, and how
-    // they are drawn
     const look = async () => {
       const read = (id) => a.evaluate(`[...document.querySelectorAll('${ARTICLE(id)} .head button')].map((b) => { const s = getComputedStyle(b); return [b.getAttribute('aria-label') || b.textContent, b.disabled, s.color, s.opacity]; })`);
       const out = await read(open);
@@ -1554,7 +1445,6 @@ test('the initials and the tone of a person in the pane are those of the avatar'
 test('a page that is not mentioned gets no toast for a new comment', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(b);
-  // the toasts are read from their record, since a toast may be gone before a read on a slow runner
   await toastTime(b, 1);
   await openPane(b);
   await post(a, 0, 'Nobody is mentioned');
@@ -1621,7 +1511,6 @@ test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or mo
 test('Mod+Enter in the field of a comment or of a reply sends it, and in another field starts the slide show', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   const SHOW = `!!document.querySelector('.beeson-edit-show')`;
-  // the field sends with the other modifier too, i.e. Control on a Mac and Meta elsewhere
   const OTHER = process.platform === 'darwin' ? 'Ctrl+Enter' : 'Meta+Enter';
   await show(a, 'One');
   const sent = [];
@@ -1638,7 +1527,6 @@ test('Mod+Enter in the field of a comment or of a reply sends it, and in another
 
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
   for (const [k, key] of ['Mod+Enter', OTHER].entries()) {
-    // a reply is drawn a frame after its field is emptied, and moves the field down
     await a.waitFor(`document.querySelectorAll('${ARTICLE(id)} .item').length === ${k + 1}`);
     await click(a, `${ARTICLE(id)} .reply textarea`);
     await type(a, `A reply by ${key}`);
@@ -1647,16 +1535,12 @@ test('Mod+Enter in the field of a comment or of a reply sends it, and in another
   }
   assert.deepEqual((await stored(a)).map((c) => c.replies).flat(), ['A reply by Mod+Enter', `A reply by ${OTHER}`]);
 
-  // the field of Go to Slide
   for (const key of ['Mod+Enter', OTHER]) {
     await click(a, '.reveal .slides > section:nth-child(1)');
     await press(a, 'Escape');
     await press(a, 'G');
     await a.waitFor(`document.activeElement?.matches('.beeson-edit-goto input')`);
     await press(a, key);
-    // Esc ends the show once the deck in its frame has its key bindings, which it adds when reveal.js
-    // announces that it is ready and marks its wrapper. reveal.js answers isReady() a timer earlier,
-    // and an Esc in between opens its overview. the frame is of the origin of the page
     await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentDocument?.querySelector('.reveal.ready')`, 30_000);
     await press(a, 'Escape');
     await a.waitFor(`!${SHOW}`);
@@ -1714,7 +1598,6 @@ test('a draft whose element another person deletes moves to its slide and is sen
   await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
   await type(a, 'Draft on the paragraph');
   assert.deepEqual(await a.evaluate(state), { label: 'On Paragraph: Second slide', text: 'Draft on the paragraph' });
-  // Ann leaves the paragraph, which ends her hold on it
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) > p');
   await press(a, 'Escape');
@@ -1759,7 +1642,6 @@ test('the badge of the text element of the caret is clear of its grips, and its 
 test('a draft on a theorem is labeled by its kind, on a cell as a table cell, and on a citation by its number or else its key', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // tex.js has the paper of the first citation, which is thus numbered, and not the one of the second
   const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p class="theorem" data-kind="lemma">Every orbit is closed.</p>
@@ -1797,7 +1679,6 @@ test('one Backspace behind a picked mention takes out the whole mention, also fr
   await sees(a, field, ['Hi @Ben', 7]);
   await press(a, 'Backspace');
   await sees(a, field, ['Hi ', 3]);
-  // a phone keyboard sends only the input events of a delete, as execCommand does
   await typeKeys(a, '@Be');
   await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
   await press(a, 'Enter');
@@ -1839,7 +1720,6 @@ test('a thread read offline is read on another page of the person once the page 
 
 test('Show on the toast of a mention on the slide that following shows stops following', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
-  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
   await toastTime(a, 3_600_000);
   const ben = await b.evaluate(`${C}.person`);
   await show(b, 'Two');
@@ -1856,7 +1736,6 @@ test('Show on the toast of a mention on the slide that following shows stops fol
 
 test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
-  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
   await toastTime(a, 3_600_000);
   await a.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
   await sees(a, `window.BeesonEditor.state('view.lightTable').checked`, true);
@@ -1869,7 +1748,6 @@ test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_00
   clean(b);
 });
 
-// a comment on the nth start tag of tag on the slide at index, sent by page, and the id of its thread
 const postOn = (page, slide, tag, n, text) => page.evaluate(`(async () => {
   const c = ${C};
   const t = c.base.text;
@@ -1891,7 +1769,6 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
 </section>
 `);
     const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
-    // a phone shows the slide without the Format inspector, which takes most of its width
     if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
     await show(a, 'One');
     for (const n of [0, 1]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
@@ -1902,7 +1779,6 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
   });
 }
 
-// the badges as rectangles of the window
 const BADGE_RECTS = `[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON())`;
 const meets = (x, y) => x.left < y.right && y.left < x.right && x.top < y.bottom && y.top < x.bottom;
 
@@ -1921,8 +1797,6 @@ ${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}p
     await show(a, 'One');
     for (const k of angles.keys()) await postOn(a, 0, 'p', k, `On paragraph ${k + 1}`);
     await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, angles.length);
-    // for each paragraph, the badge nearest to its own upper right corner, the distance of this
-    // corner to the badge, and whether the badge meets the text of the paragraph
     const got = await a.evaluate(`(() => {
       const s = ${C}.app.stage.scale;
       const badges = ${BADGE_RECTS};
@@ -1963,7 +1837,6 @@ ${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: 
   await post(a, 0, 'On the slide');
   await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, places.length + 1);
   const boxes = await a.evaluate(BADGE_RECTS);
-  // the area of each badge that takes a tap, i.e. its pseudo-element ::after placed around it
   const taps = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => {
     const r = b.getBoundingClientRect();
     const s = getComputedStyle(b, '::after');
@@ -1999,8 +1872,6 @@ test('a letter typed by another person before the anchors of many threads does n
     return true;
   })()`);
   await show(b, 'Slide 1');
-  // the changes of the pane over ten operations of one letter each, typed by Ben on the first slide,
-  // each drawn by the page of Ann in front. a page brought behind loses its caret
   const changes = async () => {
     const was = await a.evaluate('window.__changes');
     for (let k = 0; k < 10; k++) {
@@ -2044,7 +1915,6 @@ test('the label of a thread on a citation shows its new number as soon as the ci
   await type(a, 'On the paper of Gomez');
   await click(a, `${PANE} .draft .actions .primary`);
   await sees(a, THREADS, [{ anchor: 'On Citation: 2', texts: ['On the paper of Gomez'] }]);
-  // another person cites a paper before it, after which the edit command writes tex.js again
   const bo = (await request(edit.port, `${edit.base}.session/hello`, { name: 'Bo' })).json();
   const at = bo.text.indexOf('<p>A heteroclinic') + 3;
   assert.equal((await request(edit.port, `${edit.base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: 'First<cite data-key="szebehely1967"></cite> ' }] })).status, 200);
@@ -2073,8 +1943,6 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     if (!(await a.evaluate(`window.BeesonEditor.state('view.navigator').checked`))) await a.evaluate(`window.BeesonEditor.exec('view.navigator')`);
     await post(a, 0, 'A thread');
     const frame = `document.querySelector('.beeson-edit-nav .row .frame')`;
-    // the rectangles of the count, of each dot of a person, of each dot of the steps, of the mark of
-    // the transition to the next slide, and of the number of the slide
     const rects = `(() => {
       const f = ${frame};
       const r = (e) => e.getBoundingClientRect().toJSON();

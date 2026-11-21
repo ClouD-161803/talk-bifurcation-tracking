@@ -1,9 +1,3 @@
-// the commands of a figure, in Format > Image and in the Image, Video, and QR panes of the
-// inspector: the alt text of an image, the classes white-figure and invert, the mode in which an image or
-// a video is shown, the switches of a video, and the text of a QR code. each is a change of the
-// start tag through app.doc, as one entry of the history. the QR code is drawn again after every
-// change of its data-qr, also at an undo
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { CONTAINER, pictureSize, twinOf } from '../canvas/hit.ts';
@@ -12,13 +6,10 @@ import type { TagEdit } from '../tags.ts';
 import { placeCaret } from '../text/typing.ts';
 import { startOnClick } from './steps.ts';
 
-// the longest text of a QR code, in bytes of UTF-8, as src/qr.ts encodes it at level M
 export const QR_MAX = 2331;
 
 const shown = (el: Element) => el.getBoundingClientRect().width > 0;
 
-// the one element of tag that the selection is or holds in a figure, a figure box, or a plate. of a pair
-// for the two modes, it is the one shown in the mode of the slide
 function mediaOf(app: App, tag: string): HTMLElement | null {
   const el = app.selection.only();
   if (!el) return null;
@@ -31,9 +22,6 @@ function mediaOf(app: App, tag: string): HTMLElement | null {
 
 export const imageOf = (app: App) => mediaOf(app, 'img') as HTMLImageElement | null;
 
-// the one image or video of the figure of the selection that the mode of the slide hides and that
-// does not have a twin, e.g. after Dark on an image in light mode. its pane is kept, so that Shown
-// in and the file for the other mode stay in reach
 export function hiddenOf(app: App): HTMLImageElement | HTMLVideoElement | null {
   const el = app.selection.only();
   if (!el?.matches(CONTAINER)) return null;
@@ -42,7 +30,6 @@ export function hiddenOf(app: App): HTMLImageElement | HTMLVideoElement | null {
   return m && !shown(m) && modeOf(m) !== 'both' && !twinOf(app, m) ? m : null;
 }
 
-// the image and the video of the pane of the selection, also when the mode of the slide hides it
 const hiddenTag = (app: App, tag: string) => {
   const h = hiddenOf(app);
   return h?.localName === tag ? h : null;
@@ -51,11 +38,9 @@ export const paneImageOf = (app: App) => imageOf(app) ?? (hiddenTag(app, 'img') 
 export const paneVideoOf = (app: App) => videoOf(app) ?? (hiddenTag(app, 'video') as HTMLVideoElement | null);
 export const videoOf = (app: App) => mediaOf(app, 'video') as HTMLVideoElement | null;
 export const viewerOf = (app: App) => mediaOf(app, 'tycho-viewer');
-// the video or the tycho viewer that Start on a Click starts at its step
 const playedOf = (app: App) => videoOf(app) ?? viewerOf(app);
 export const qrOf = (app: App) => mediaOf(app, '.qr');
 
-// the target given by a field of the inspector as arg.el, else the one of the selection
 const given = (arg: unknown): Element | null => {
   const el = (arg as { el?: Element } | undefined)?.el;
   return el?.isConnected ? el : null;
@@ -72,28 +57,22 @@ export const modeOf = (el: Element): Mode => (el.classList.contains('for-dark') 
 
 export const bytesOf = (text: string) => new TextEncoder().encode(text).length;
 
-// a request of the Image pane to show its alt text field, made by Edit Alt Text… without a text
 let altRequest: (() => void) | null = null;
 export function onAltRequest(fn: () => void): void {
   altRequest = fn;
 }
 
-// the empty caption of commands/insert.ts, which the first input writes into the file
 let captionBox: { begin(host: Element): void; drop(): void } | null = null;
 export function onCaptionBox(box: { begin(host: Element): void; drop(): void }): void {
   captionBox = box;
 }
 
-// the caption last taken off each figure or figure box in the session, put back by Caption on
 const takenCaption = new WeakMap<Element, string>();
 
 function setTag(app: App, el: Element, edit: TagEdit, label: string): void {
   app.doc.setTag(el, edit, label);
 }
 
-// the width of the picture that el draws smaller than its box under object-fit contain, written on
-// el and its twin with the corner of the picture kept in its place, so that the box of el is the
-// picture. a picture with a width, a crop, or a fit of its own is drawn as its box already
 function fitToPicture(app: App, el: Element): void {
   const style = app.doc.tagState(el).style;
   if (placeOf(el).width !== null || style['clip-path'] || style.scale || getComputedStyle(el).objectFit !== 'contain') return;
@@ -125,8 +104,6 @@ function switchOf(id: string, label: string, target: (app: App) => Element | nul
   };
 }
 
-// the image that Invert in Dark Mode acts on: an image shown in dark mode, or the dark twin of a
-// light image, since the theme inverts an image only in dark mode
 function invertible(app: App, el: Element | null): Element | null {
   if (!el || !el.classList.contains('for-light') || el.classList.contains('invert')) return el;
   return twinOf(app, el);
@@ -134,7 +111,6 @@ function invertible(app: App, el: Element | null): Element | null {
 
 const imageMenu = (order: number): Command['menu'] => ({ bar: 'Format', group: 'image', order, submenu: 'Image' });
 const has = (name: string) => (el: Element) => el.hasAttribute(name);
-// a video or a tycho viewer that is, or is in, a step of the style play, which the theme starts at its step
 const onClick = (el: Element) => !!el.closest('.fragment.play');
 const flag = (name: string) => (on: boolean): TagEdit => ({ attrs: { [name]: on ? '' : null } });
 const visual = (app: App) => imageOf(app) ?? videoOf(app) ?? hiddenOf(app);
@@ -142,13 +118,8 @@ const visual = (app: App) => imageOf(app) ?? videoOf(app) ?? hiddenOf(app);
 const modeClasses = (m: Mode) => ({ 'for-dark': m === 'dark', 'for-light': m === 'light' });
 const otherMode = (m: Mode): Mode => (m === 'dark' ? 'light' : 'dark');
 
-// the unit text of the twin that Both took off an image or a video, with the mode of the image
-// then, so that Dark or Light on the image puts the pair back
 const takenTwin = new WeakMap<Element, { text: string; mode: Mode; after: boolean }>();
 
-// the mode of el set so that each mode of the slide shows one picture. of a pair, Both keeps el
-// alone, and Dark or Light swaps the modes of el and its twin. Dark or Light on an image whose
-// twin Both took off puts the twin back with the other mode
 async function setMode(app: App, el: Element, mode: Mode): Promise<void> {
   const twin = twinOf(app, el);
   if (twin && mode === 'both') {
@@ -158,7 +129,6 @@ async function setMode(app: App, el: Element, mode: Mode): Promise<void> {
   setTag(app, el, { classes: modeClasses(mode) }, 'mode');
   if (twin && mode !== 'both') {
     setTag(app, twin, { classes: modeClasses(otherMode(mode)) }, 'mode');
-    // a picture selected by itself gives way to its twin, which is the one shown now
     if (app.selection.only() === el && !shown(el)) app.selection.set('elements', [twin]);
   }
   const back = takenTwin.get(el);
@@ -167,8 +137,6 @@ async function setMode(app: App, el: Element, mode: Mode): Promise<void> {
   if (mode !== back.mode) setTag(app, node, { classes: modeClasses(otherMode(mode)) }, 'mode');
 }
 
-// the figure or the figure box of the picture of the selection, or of the caption that the caret is in,
-// which takes a caption under the picture
 function captionHost(app: App): Element | null {
   const typed = app.selection.kind === 'text' ? app.selection.items[0]?.closest('figcaption, .caption') : null;
   const host = typed ? typed.parentElement : visual(app)?.parentElement;
@@ -179,9 +147,6 @@ const captionOf = (host: Element) => host.querySelector(':scope > figcaption, :s
 export function commands(): Command[] {
   const list: Command[] = [
     {
-      // a caption under the picture, as Caption in the Style tab of Keynote: a figcaption in a
-      // figure and a caption paragraph in a figure box, with the caret in it. the caption taken off is
-      // put back with its text, and a new one is written into the file at its first input
       id: 'figure.caption',
       label: 'Caption',
       menu: imageMenu(12),
@@ -208,8 +173,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // with a text as arg, e.g. from the field of the Image pane, the alt is written. without one,
-      // the Image pane is shown with the field focused, as Alt Text in the context menu of PowerPoint
       id: 'figure.alt',
       label: 'Edit Alt Text…',
       menu: imageMenu(10),
@@ -221,13 +184,10 @@ export function commands(): Command[] {
         const text = valueOf(arg);
         if (!el) return;
         if (text === null) return void altRequest?.();
-        // an empty text takes the alt off, and Decorative writes the empty alt
         const alt = text === '' ? null : text;
         if (el.getAttribute('alt') !== alt) setTag(app, el, { attrs: { alt } }, 'alt text');
       },
     },
-    // a decorative image has an empty alt, which a screen reader skips, written on both images of
-    // a pair
     {
       ...switchOf('figure.decorative', 'Decorative', imageOf, (el) => el.getAttribute('alt') === '', () => ({}), imageMenu(11)),
       run: (app, arg) => {
@@ -238,8 +198,6 @@ export function commands(): Command[] {
       },
     },
     switchOf('figure.whiteFigure', 'White Figure', imageOf, (el) => el.classList.contains('white-figure'), (on) => ({ classes: { 'white-figure': on } }), imageMenu(20)),
-    // an oval picture is clipped to its ellipse, and the inset of its crop is rounded with it, on both
-    // images of a pair
     {
       ...switchOf('figure.oval', 'Oval', imageOf, (el) => el.classList.contains('oval'), () => ({}), imageMenu(22)),
       run: (app, arg) => {
@@ -257,8 +215,6 @@ export function commands(): Command[] {
       },
     },
     switchOf('figure.invert', 'Invert in Dark Mode', (app) => invertible(app, imageOf(app)), (el) => el.classList.contains('invert'), (on) => ({ classes: { invert: on } }), imageMenu(21)),
-    // a video started on a click is not played with its slide, hence Play Automatically is dimmed
-    // and off while Start on a Click is on
     {
       ...switchOf('figure.autoplay', 'Play Automatically', videoOf, (el) => has('data-autoplay')(el) && !onClick(el), flag('data-autoplay')),
       enabled: (app) => {
@@ -270,8 +226,6 @@ export function commands(): Command[] {
         return el && onClick(el) ? 'The video is started on a click, at its step' : null;
       },
     },
-    // a video or a tycho viewer started at its step, as Start Movie on Click of Keynote and the
-    // animation Play of PowerPoint, i.e. a step with the effect Play of the Steps pane
     {
       id: 'figure.startOnClick',
       label: 'Start on a Click',
@@ -326,8 +280,6 @@ export function commands(): Command[] {
 
 type Page = { Beeson?: { mount?(root: Element): void } };
 
-// the svg of a QR code is drawn by the theme once, hence it is drawn again from its new text. the
-// theme draws the codes under the root it is given, which is thus the parent of the code
 function redrawQr(el: Element): void {
   for (const old of el.querySelectorAll(':scope > svg, :scope > .qr-error, :scope > .qr-logo')) old.remove();
   if (el.parentElement) (window as unknown as Page).Beeson?.mount?.(el.parentElement);

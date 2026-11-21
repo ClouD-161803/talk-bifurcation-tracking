@@ -1,6 +1,3 @@
-// checks of the backdrops drawn from a file of polylines: the parse, the select and color
-// attributes, and the fit under type stripping, and a missing or malformed file in Chrome
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,17 +21,13 @@ import {
   trajectoriesOf,
 } from '../src/trajectories.ts';
 
-// the sample of the demo deck is a JSON object wrapped in Beeson.trajectories( and );
 const text = readFileSync(new URL('../demo/broucke-sample.js', import.meta.url), 'utf8');
 const sample = parse(JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))));
-// the trajectories of a selection by family and then by e, since the order of the sample is free, and
-// a selection keeps the order of the file
 const keys = (fileTrajectories) => {
   const all = sample.families;
   assert.ok(fileTrajectories.every((r, i) => i === 0 || all.indexOf(r) > all.indexOf(fileTrajectories[i - 1])), 'a selection is not in the order of the file');
   return [...fileTrajectories].sort((a, b) => a.family - b.family || a.e - b.e).map((r) => `${r.family} ${r.frame} ${r.e}`);
 };
-// the fraction of each trajectory along its ramp or shade, by family and then by e
 const alongE = (trajectories, fileTrajectories) =>
   fileTrajectories.map((r, i) => [r.family, r.e, trajectories[i]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , s]) => [s.ink.pair, +s.ink.at.toFixed(3), s.ink.shade]);
 
@@ -49,7 +42,6 @@ test('the sample is parsed into the members of families 7 and 11 in four frames,
     assert.equal(r.points.length, r.t.length);
     assert.equal(r.theta, undefined);
   }
-  // one entry per member, and the members of 7A at e = 0.975 in two frames are one member
   assert.equal(sample.bodies.length, 35);
 });
 
@@ -144,8 +136,6 @@ test('a trajectory is colored by the pair of its family and the ramp along e', (
     assert.equal(s.times[0], 0);
     assert.equal(s.T, s.times[s.times.length - 1]);
   }
-  // the pair of a family is set in the order of the file, hence family 11 keeps the second pair
-  // when it is drawn alone
   const chosen = select(sample.families, 'family=11,frame=pulsating');
   const eleven = trajectoriesOf(sample, chosen, 'family', 'e');
   assert.deepEqual(
@@ -171,15 +161,12 @@ test('a trajectory is drawn in a shade of the first color of its pair along e, l
       [0, 0.143, 0.287, 0.43, 0.574, 0.717, 0.861, 1].map((at) => [1, at, true]),
     ),
   );
-  // the middle shade is the color itself, and the ends differ in OKLCH lightness alone
   assert.equal(shadeOf('#3d8bff', 0.5), '#3d8bff');
   assert.equal(shadeOf('#3d8bff', 0), '#70bfff');
   assert.equal(shadeOf('#3d8bff', 1), '#0058c8');
   assert.equal(shadeOf('red', 0), null);
 });
 
-// the WCAG contrast against bg of a color drawn over it at the opacity alpha, by default the 0.6 of a
-// trajectory colored from the palette, blended as on a canvas
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
 const linear = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const luminance = (c) => c.map(linear).reduce((sum, v, i) => sum + [0.2126, 0.7152, 0.0722][i] * v, 0);
@@ -187,7 +174,6 @@ const contrast = (color, bg, alpha = 0.6) => {
   const a = luminance(rgb(color).map((v, i) => alpha * v + (1 - alpha) * rgb(bg)[i])), b = luminance(rgb(bg));
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 };
-// the custom property name of a mode in theme/beeson.css, as #rrggbb
 const css = readFileSync(new URL('../theme/beeson.css', import.meta.url), 'utf8');
 const token = (mode, name) =>
   css
@@ -206,14 +192,12 @@ test('each color of the palette, of its ramps, and of its shades keeps a contras
         assert.ok(contrast(shade, bg) >= 2.5, `${mode}: the shade of --trajectory-${p + 1} at ${k / 20} is ${shade}, at ${contrast(shade, bg).toFixed(2)}:1`);
         shades.push(luminance(rgb(shade)));
       }
-      // the shades are moved away from the background as a whole, hence they keep their order
       assert.ok(shades.every((v, k) => k === 0 || v < shades[k - 1]), `${mode}: the shades of --trajectory-${p + 1} are not ordered from lighter to darker`);
     }
   }
 });
 
 test('each color of a colormap between its ends keeps a contrast of 3:1 against the background as drawn, in both modes', () => {
-  // a colormap trajectory is drawn opaque, as in the matplotlib figures, hence the 3:1 of its ends holds on the slide
   assert.equal(MAP_ALPHA, 1);
   for (const mode of ['dark', 'light']) {
     const bg = token(mode, 'bg');
@@ -226,8 +210,6 @@ test('each color of a colormap between its ends keeps a contrast of 3:1 against 
   }
 });
 
-// the distance of two colors in OKLab times 100, by the matrices of Björn Ottosson, where 1 is about
-// the smallest difference that is seen
 const oklab = (h) => {
   const [r, g, b] = rgb(h).map(linear);
   const [l, m, s] = [
@@ -243,7 +225,6 @@ const oklab = (h) => {
 };
 const distance = (a, b) => 100 * Math.hypot(...oklab(a).map((v, i) => v - oklab(b)[i]));
 
-// colors of matplotlib's own colormaps, printed by matplotlib.colormaps[name](x)
 const MATPLOTLIB = {
   viridis: { 0: '#440154', 0.25: '#3b528b', 0.29: '#365d8d', 0.5: '#21918c', 0.57: '#1fa188', 0.85: '#9bd93c', 1: '#fde725' },
   plasma: { 0: '#0d0887', 0.25: '#7e03a8', 0.35: '#a11b9b', 0.5: '#cc4778', 0.62: '#e56a5d', 0.85: '#feba2c', 1: '#f0f921' },
@@ -275,14 +256,12 @@ test('a colormap is named alone or with its lower and upper ends, and a malforme
 
 test('an end of a colormap short of 3:1 against the background is moved toward the other end in steps of 0.01', () => {
   const ends = (spec, bg) => colormapEnds(colormapOf(spec), bg);
-  // the lower ends on the dark background are those of matplotlib, which the figures of the slides use
   assert.deepEqual(ends('viridis', '#050505'), [0.29, 0.85]);
   assert.deepEqual(ends('plasma', '#050505'), [0.35, 0.85]);
   assert.deepEqual(ends('Blues_r', '#050505'), [0.17, 0.683]);
   assert.deepEqual(ends('viridis', '#faf8f3'), [0, 0.57]);
   assert.deepEqual(ends('plasma', '#faf8f3'), [0, 0.62]);
   assert.deepEqual(ends('Blues_r', '#faf8f3'), [0, 0.393]);
-  // ends that keep 3:1 are kept, and without a background both are kept
   assert.deepEqual(ends('viridis 0.4 0.55', '#050505'), [0.4, 0.55]);
   assert.deepEqual(ends('viridis 0.4 0.55', '#faf8f3'), [0.4, 0.55]);
   assert.deepEqual(ends('viridis'), [0, 0.85]);
@@ -293,7 +272,6 @@ test('an end of a colormap short of 3:1 against the background is moved toward t
 test('a trajectory is colored from a colormap along e within the group of its family, or of the whole drawing', () => {
   const chosen = select(sample.families, 'frame=pulsating'),
     viridis = colormapOf('viridis');
-  // a shade is ignored with a colormap
   const grouped = trajectoriesOf(sample, chosen, 'family', 'e', 'e', viridis);
   assert.deepEqual(
     alongE(grouped, chosen),
@@ -302,7 +280,6 @@ test('a trajectory is colored from a colormap along e within the group of its fa
     ),
   );
   assert.ok(grouped.every((s) => s.ink.map === viridis && s.alpha === MAP_ALPHA));
-  // without data-trajectories-color, e is ranged over both families, from 0 to 0.5
   const whole = trajectoriesOf(sample, chosen, undefined, 'e', undefined, viridis);
   assert.deepEqual(
     alongE(whole, chosen),
@@ -318,7 +295,6 @@ test('a record with craft set to true is the path of a spacecraft', () => {
   );
 });
 
-// the look of a trajectory: its tone, color, opacity, weight, head, start, fade, and glow, as on the title slide
 const looked = {
   families: [
     { piece: 'tube', tone: 'violet', color: ['#c184f0', '#7617bf'], alpha: 0.35, weight: 0.5, head: 0, start: 0, fade: 4, points: [[0, 0], [1, 0], [2, 0]], t: [0, 3, 6] },
@@ -331,17 +307,13 @@ test('the tone, color, opacity, weight, head, start, fade, and glow of a record 
   const [tube, spiral, arc] = trajectoriesOf(parse(looked), looked.families);
   assert.deepEqual([tube.tone, tube.alpha, tube.weight, tube.head, tube.fade, tube.glow], ['violet', 0.35, 0.5, 0, 4, undefined]);
   assert.equal(spiral.fade, undefined);
-  // a color is a CSS color or a pair of them for the dark and the light mode, kept as given
   assert.deepEqual([tube.color, spiral.color, arc.color], [['#c184f0', '#7617bf'], undefined, '#ee5cf4']);
-  // a clock is moved by the start of its trajectory, and T is the clock of the last point
   assert.deepEqual([...tube.times], [0, 3, 6]);
   assert.deepEqual([...spiral.times], [6, 8]);
   assert.equal(spiral.T, 8);
   assert.deepEqual([spiral.tone, spiral.alpha, spiral.weight, spiral.head], ['orange', undefined, undefined, 2.2]);
-  // without a clock, the trajectory is traced along its length from its start
   assert.deepEqual([...arc.times], [8, 9]);
   assert.deepEqual([arc.weight, arc.glow, arc.head], [1.4, true, undefined]);
-  // the opacity of a trajectory wins over the one of its ink
   const inked = trajectoriesOf(parse(looked), looked.families, 'piece');
   assert.equal(inked[0].alpha, 0.35);
   assert.ok(inked[1].alpha > 0 && inked[1].alpha < 1);
@@ -368,15 +340,12 @@ test('colors are mixed in OKLCH along the shorter arc of hue', () => {
   assert.equal(mix('#000', 'rgb(255, 255, 255)', 1), '#ffffff');
   assert.equal(mix('rgba(255, 0, 0, 0.5)', '#ff0000', 0.5), '#ff0000');
   assert.equal(mix('red', '#ff0000', 0.5), null);
-  // from red to blue through magenta, not through green
   const [r, g, b] = mix('#ff0000', '#0000ff', 0.5)
     .match(/[0-9a-f]{2}/g)
     .map((v) => parseInt(v, 16));
   assert.ok(g < r && g < b, `${r} ${g} ${b}`);
 });
 
-// the share of the segments, weighted equally per trajectory, whose midpoints are in the window, and the
-// smallest and largest x of the drawing in slide pixels
 function measure(trajectories, box, view) {
   const scale = box.height / 2 / view.half;
   let held = 0,
@@ -407,7 +376,6 @@ test('a fitted window holds the fill of tubes, and keeps the drawing clear of an
   const full = measure(trajectories, plate, fitView(trajectories, plate, slide));
   assert.ok(Math.abs(full.held - FILL) < 0.01, `held ${full.held}`);
 
-  // the box of a section slide has its left side inside the slide
   const section = { left: 1040, top: 0, width: 880, height: 1080 };
   const right = measure(trajectories, section, fitView(trajectories, section, slide));
   assert.ok(right.x0 >= section.left + 40 - 1e-6, `x0 ${right.x0}`);
@@ -420,15 +388,11 @@ test('the bodies are drawn only when every chosen member puts them at the same p
   const at = (spec) => bodiesOf(sample, select(sample.families, spec)).map((d) => `${d.x} ${d.mass}`);
   assert.deepEqual(at('family=7,frame=pulsating'), ['-0.0122 0.987845', '0.9878 0.012155']);
   assert.deepEqual(at('family=11,frame=pulsating'), ['-0.5 0.5', '0.5 0.5']);
-  // the members of two mass ratios disagree on the bodies, and the bodies move in the inertial frames
   assert.deepEqual(at('frame=pulsating'), []);
   assert.deepEqual(at('frame=inertial'), []);
   assert.deepEqual(at('family=7,frame=inertial-m2'), []);
-  // in the rotating frame the separation of the bodies is set by the start of each member, hence one
-  // member has its bodies and the members together do not
   assert.deepEqual(at('family=7,branch=apoapsis,frame=rotating,e=0.5575'), ['-0.0188 0.987845', '1.5284 0.012155']);
   assert.deepEqual(at('family=7,branch=apoapsis,frame=rotating'), []);
-  // positions within 1e-4 are one position, and a member without bodies disagrees with one that has them
   const file = (bodies) => ({ families: [], bodies });
   const fileTrajectories = [{ points: [], family: 1 }, { points: [], family: 2 }];
   const near = file([{ family: 1, mu: 0.5, m1: [-0.5, 0], m2: [0.5, 0] }, { family: 2, mu: 0.5, m1: [-0.50005, 0], m2: [0.5, 0.00005] }]);
@@ -440,9 +404,6 @@ test('the bodies are drawn only when every chosen member puts them at the same p
   assert.deepEqual(bodiesOf(file([]), fileTrajectories), []);
 });
 
-// a missing, malformed, or unreadable file and a selection without a match are each reported in one
-// warning, and their backdrops are left empty without an exception. a colormap of another name and a
-// shade beside a colormap are each reported in one warning, and their backdrops are drawn
 test('a backdrop of a missing or malformed file is left empty after one warning', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -457,7 +418,6 @@ test('a backdrop of a missing or malformed file is left empty after one warning'
     seen.counts.map((n) => n > 0),
     [true, false, false, false, false, false, true, true, true],
   );
-  // the files are read at once, hence the warnings come in any order
   const reasons = [
     /missing\.js is not drawn, since it was not found/,
     /trajectories-malformed\.js is not drawn, since it does not have a list "families"/,
@@ -471,7 +431,6 @@ test('a backdrop of a missing or malformed file is left empty after one warning'
   const thrown = page.errors.filter((e) => !/Failed to load resource/.test(e));
   assert.deepEqual(thrown, []);
 
-  // the backdrop of the sample is painted
   const painted = await page.evaluate(`(() => {
     const { base } = Beeson.backdrops[0];
     return base.getContext('2d').getImageData(0, 0, base.width, base.height).data.some(Boolean);
@@ -479,8 +438,6 @@ test('a backdrop of a missing or malformed file is left empty after one warning'
   assert.ok(painted);
 });
 
-// the colors given to the trajectories of a backdrop of the page by its colormap, read in the current mode
-// and after a flip to the light mode, and the colormap and shade of each trajectory
 const painted = (spec) => `(async () => {
   const b = Beeson.backdrops.find((o) => o.el.dataset.trajectoriesColormap === '${spec}');
   const { h, v } = Reveal.getIndices(b.el.closest('section'));
@@ -508,15 +465,12 @@ test('a colormap is painted for the background of each mode, and a colormap of a
   assert.deepEqual(viridis.dark, expected(token('dark', 'bg')));
   assert.deepEqual(viridis.light, expected(token('light', 'bg')));
   const magma = await page.evaluate(painted('magma'));
-  // a value undefined in the page is returned as null
   assert.ok(magma.maps.every((name) => name === null));
   assert.ok(magma.dark.every((ink) => /^#[0-9a-f]{6}$/.test(ink)));
   const plasma = await page.evaluate(painted('plasma'));
   assert.ok(plasma.maps.every((name) => name === 'plasma') && plasma.shades.every((shade) => shade === null));
 });
 
-// the centers of the heads painted on the head canvas of the first backdrop at two frames, read from
-// the calls of arc on its context
 const loopHeads = `(async () => {
   const b = Beeson.backdrops[0];
   await b.ready;
@@ -540,8 +494,6 @@ const loopHeads = `(async () => {
 test('a backdrop of a file with data-loop loops a head on each of its trajectories', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  // without reduced motion, which is the setting of the Windows runner of GitHub, and under which
-  // a backdrop is drawn complete
   const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test/pages/trajectories-loop.html'));
   await page.waitFor('document.readyState === "complete"');
@@ -551,11 +503,9 @@ test('a backdrop of a file with data-loop loops a head on each of its trajectori
   const seen = await page.evaluate(loopHeads);
   assert.equal(seen.trajectories, 8);
   assert.ok(seen.tracing);
-  // one head per trajectory at a frame, each drawn once
   const heads = (calls) => new Set(calls.slice(-seen.trajectories).map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`)).size;
   assert.ok(seen.first.length >= seen.trajectories && seen.first.length % seen.trajectories === 0, `${seen.first.length} heads`);
   assert.equal(heads(seen.first), seen.trajectories);
-  // the heads move along their trajectories
   assert.notDeepEqual(seen.later.slice(-seen.trajectories), seen.first.slice(-seen.trajectories));
   assert.deepEqual(page.errors.filter((e) => !/Failed to load resource/.test(e)), []);
 });

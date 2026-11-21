@@ -1,7 +1,3 @@
-// the keys after a click on a control: a press on the slide gives the keys to the canvas after a
-// click on a tab, a button, or a field, with the attributes written on both images of a pair and
-// the step index of an indent
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -9,16 +5,8 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { byteExact, click, clickText, drag, press, saveAndReopen, selectPicture } from './helpers/editor.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 
-// regression tests of R7.10 on both platforms with trusted input. a group and a lock of the image
-// of a figure are written on the figure, and every other attribute that the editor sets on an
-// image of a dark and light pair is written on both images.
-// a press on the slide gives the keys to the canvas after a click on a tab, a button, or a field of
-// the inspector or the status bar. an indent of a list item writes the step index of the file and
-// not the one that reveal.js renumbered on the page. after each edit the text is checked byte for
-// byte, after an undo and a redo, and after a save and an open
 describe('the keys after a click on a control', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the slides of the demo deck with the stepped list and with the figure of a dark and light pair
   const STEPS = 2;
   const FIGURE = 4;
   const IMG = '.reveal section.present figure.figure-box > img';
@@ -42,19 +30,14 @@ describe('the keys after a click on a control', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   let saves = 0;
 
-  // the selected elements, each named by its tag and its classes of the deck
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...el.classList].filter((c) => !c.startsWith('beeson-') && c !== 'visible' && c !== 'current-fragment').join('.'))`);
-  // the element that has the keys, named by its tag, its classes, and its text
   const focused = (page) => page.evaluate(`(() => {
   const a = document.activeElement;
   return a && a !== document.body ? [a.localName, ...a.classList].join('.') + ' ' + JSON.stringify((a.textContent ?? '').trim().slice(0, 20)) : 'body';
 })()`);
 
-  // the editor on the slide n of a deck served over HTTP, in a window of 1600 by 1000 px as in the
-  // shoot of the council, with the Format tab shown
   async function load(t, platform, { deck = 'test-deck.html', n = FIGURE } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -73,8 +56,6 @@ describe('the keys after a click on a control', () => {
     return page;
   }
 
-  // roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-  // and an open of the saved edit without problems, which is the text before the next check
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -84,13 +65,11 @@ describe('the keys after a click on a control', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r7-10-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
 
-  // the center of a control of the chrome found by its text, its title, or its aria label, in the
-  // right part of the window or in the status bar at its bottom
   const controlAt = (page, name, where = 'inspector') => page.evaluate(`(() => {
   const right = (r) => r.left > innerWidth * 0.7;
   const bottom = (r) => r.top > innerHeight - 60;
@@ -102,8 +81,6 @@ describe('the keys after a click on a control', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // items 2 and 3 of the list of the steps slide indented one after the other into item 1, each with
-  // its step index of the file
   const FIRST = '    <li class="fragment" data-fragment-index="1">Each step is a reveal.js "fragment", i.e.<code> class="fragment"</code>, with a <code>data-fragment-index</code> of appearance';
   const SECOND = '<li class="fragment" data-fragment-index="2">Two elements with the same index are shown together.</li>\n';
   const THIRD = '<li class="fragment" data-fragment-index="3">When exporting to PDF or PPTX, you will get one slide per step.</li>\n';
@@ -115,7 +92,6 @@ describe('the keys after a click on a control', () => {
     for (const how of ['Tab', 'button']) {
       test(`the first indent of a stepped list item writes the step index of the file, by ${how} (${platform})`, async (t) => {
         const page = await load(t, platform, { n: STEPS });
-        // reveal.js numbers the steps of the page from 0, hence item 2 of index 2 in the file is 1 here
         const pageIndex = await page.evaluate(`document.querySelectorAll('.reveal section.present li')[1].dataset.fragmentIndex`);
         assert.equal(pageIndex, '1', 'reveal.js does not renumber the steps of the page as this test assumes');
         const indent = async (item) => {
@@ -139,10 +115,6 @@ describe('the keys after a click on a control', () => {
     }
   }
 
-  // the controls of the chrome that may keep the keys after a click: the tabs Format and Steps at
-  // the head of the inspector, the tabs of the panes of an image, a check box of the Image pane, and
-  // the buttons and the zoom slider of the status bar. each is found by a test of its element b and
-  // its box r in the window, with the image selected first where image is set
   const CONTROLS = [
     { name: 'the tab Format', find: "b.textContent.trim() === 'Format' && r.left > innerWidth * 0.7 && r.top > 80" },
     { name: 'the tab Steps', find: "b.textContent.trim() === 'Steps' && r.left > innerWidth * 0.7 && r.top > 80" },
@@ -162,7 +134,6 @@ describe('the keys after a click on a control', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // the declaration translate of the start tag of the figure of the pair in the text of the editor
   const figureTranslate = async (page) => (await render(page)).match(/<figure class="figure-box"[^>]*>/)?.[0].match(/translate: ([^;"]+)/)?.[1] ?? null;
 
   for (const platform of PLATFORMS) {
@@ -177,7 +148,6 @@ describe('the keys after a click on a control', () => {
         assert.ok(at, `the window does not show ${control.name}`);
         await clickText(page, at);
         await frames(page);
-        // the slide of the image again after Next slide, and the mode of the deck after the flip
         if (control.back) await page.evaluate(`Reveal.slide(${FIGURE})`);
         if (control.undo) await clickText(page, at);
         if (control.image && control.find.includes('checkbox')) await page.evaluate('window.BeesonEditor.undo()');
@@ -185,16 +155,13 @@ describe('the keys after a click on a control', () => {
         const chrome = await focused(page);
         await clickText(page, IMG);
         await frames(page);
-        // the click selects the figure, or the image alone where the figure was selected before it
         assert.deepEqual(await selected(page), [control.image ? 'img.for-dark' : 'figure.figure-box']);
-        // ArrowRight nudges the figure by one slide pixel, also from its image
         await press(page, 'ArrowRight');
         await frames(page);
         assert.equal(await figureTranslate(page), '1px 0px', `ArrowRight does not nudge the figure, with the keys on ${chrome}`);
         assert.equal(await focused(page), 'body', `the keys stay on ${chrome} after a click on the image`);
         await page.evaluate('window.BeesonEditor.undo()');
         await byteExact(page);
-        // Esc selects the figure of the image, and Backspace deletes it
         if (control.image) {
           await press(page, 'Escape');
           await frames(page);
@@ -208,8 +175,6 @@ describe('the keys after a click on a control', () => {
     }
   }
 
-  // a press on a line or on the grip of its end, which the line module takes before the presses of
-  // the canvas, gives the keys to the slide as well
   const LINE = '.reveal section.present svg.line';
   const lineState = (page) => page.evaluate(`(() => {
   const svg = document.querySelector(${js(LINE)});
@@ -252,14 +217,12 @@ describe('the keys after a click on a control', () => {
     }
   }
 
-  // the start tags of the paragraph and of the pair of images of the figure slide
   const P_TAG = '<p>Export your matplotlib figure';
   const FIG_TAG = '<figure class="figure-box">';
   const DARK_TAG = '<img class="for-dark" src="demo/figure-dark.png" alt="Zero-velocity curves of the Earth–Moon system, dark version">';
   const LIGHT_TAG = '<img class="for-light" src="demo/figure-light.png" alt="Zero-velocity curves of the Earth–Moon system, light version">';
   const withAttr = (tag, attr) => tag.replace(/>$/, ` ${attr}>`);
   const theme = (page) => page.evaluate('document.documentElement.dataset.theme');
-  // the mode of the deck flipped by the button of the status bar
   async function flipMode(page) {
     const was = await theme(page);
     await clickText(page, await controlOf(page, CONTROLS.find((c) => c.undo).find));
@@ -279,8 +242,6 @@ describe('the keys after a click on a control', () => {
       await frames(page);
       await byteExact(page, [[P_TAG, '<p data-group="g1">Export your matplotlib figure'], [FIG_TAG, withAttr(FIG_TAG, 'data-group="g1"')]]);
       await roundTrip(page);
-      // in light mode a click on the picture selects the group with the figure, and a drag moves
-      // the paragraph and the figure
       await page.evaluate(`Reveal.slide(${FIGURE})`);
       await flipMode(page);
       await clickText(page, IMG);
@@ -312,7 +273,6 @@ describe('the keys after a click on a control', () => {
       await press(page, 'ArrowLeft');
       await frames(page);
       await byteExact(page);
-      // the unlock in light mode takes the lock off the figure
       await exec(page, 'arrange.unlock');
       await frames(page);
       assert.ok(!(await render(page)).includes('data-locked'), 'the unlock in light mode leaves a lock in the file');
@@ -327,7 +287,6 @@ describe('the keys after a click on a control', () => {
       await frames(page);
       await byteExact(page, [[DARK_TAG, DARK_TAG.replace('>', ' style="scale: -1 1">')], [LIGHT_TAG, LIGHT_TAG.replace('>', ' style="scale: -1 1">')]]);
       await roundTrip(page);
-      // the alt, the mode, and White Figure of the dark image are its own
       await page.evaluate(`Reveal.slide(${FIGURE})`);
       await clickText(page, IMG);
       await frames(page);
@@ -337,14 +296,11 @@ describe('the keys after a click on a control', () => {
       const text = await render(page);
       assert.ok(text.includes('<img class="for-light" src="demo/figure-light.png" alt="Zero-velocity curves of the Earth–Moon system, light version" style="scale: -1 1">'), 'the alt or Paper of the dark image is written on the light image');
       assert.ok(text.includes('<img class="for-dark white-figure" src="demo/figure-dark.png" alt="Curves of the dark version" style="scale: -1 1">'));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // Delete and Cut of the image selected in its figure take the figure off, with both images of the
-  // pair and the caption, as Keynote takes off an image with its caption
   for (const platform of PLATFORMS) {
-    // Cut is run as a command, since its key is left to the clipboard event of the browser
     for (const key of ['Backspace', 'edit.cut']) {
       test(`${key === 'Backspace' ? 'Delete' : 'Cut'} of the image of a figure takes the figure off with both images of the pair (${platform})`, async (t) => {
         const page = await load(t, platform);

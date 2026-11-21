@@ -1,7 +1,3 @@
-// a seeded run of 200 random edits of the document model on the demo deck, with a save about every
-// 25 edits, i.e. the text written and opened again in place. each save pairs with zero problems,
-// and after every edit is undone the text is the file byte for byte
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -10,7 +6,6 @@ import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 const SEED = 20261110;
 const EDITS = 200;
 
-// the run, in the page. the random numbers are those of mulberry32 from the seed
 const run = (seed, edits) => `(async () => {
   const E = window.BeesonEditor;
   const doc = E.doc;
@@ -114,7 +109,7 @@ test('a seeded run of 200 edits with saves is the file again after every edit is
 test('an element at column 0 after an indented sibling, moved to another slide and saved, is written back at column 0 by the undo', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const text = readFileSync('test-deck.html', 'utf8').replace(/ *<!-- tycho-viewer start[^\n]*\n/, '').replace(/\n<!-- tycho-viewer end -->/, '');
+  const text = readFileSync('test-deck.html', 'utf8');
   assert.match(text, /<\/ul>\n<tycho-viewer /);
   const page = await browser.newPage();
   await page.goto(deckUrl('test-deck.html', 'edit&still'));

@@ -1,11 +1,3 @@
-// the rulers of canvas/rulers.ts, the guides of canvas/guides.ts, and the grid of canvas/grid.ts on
-// both platforms, driven with trusted input: View > Rulers leaves room for the rulers, a drag out
-// of the top ruler places a guide with its place shown during the drag, a figure snaps to it, a
-// drag back onto the ruler removes it, the guides are copied and pasted between slides, cleared,
-// hidden, and kept in the draft of the file over a reload, and View > Gridlines and Snap to Grid draw
-// the grid and snap a figure to it at the spacing of Grid Settings. the file is checked byte for
-// byte after each of them, with the guides of a slide in data-guides on its section
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -22,7 +14,6 @@ const PLATFORMS = ['mac', 'other'];
 const SECTIONS = [...readFileSync(LAYOUTS, 'utf8').matchAll(/<section[\s\S]*?<\/section>/g)].map((m) => m[0]);
 const MATH = SECTIONS.findIndex((s) => s.includes('<h2>Math, an ordered list, and a zone</h2>'));
 const FIGURE_BOX = '.reveal .slides section.present figure.figure-box';
-// the section tag of the slide of the math, and the same tag with the guides of text
 const MATH_TAG = '<section>\n  <h2>Math, an ordered list, and a zone</h2>';
 const mathGuides = (text) => [MATH_TAG, MATH_TAG.replace('<section>', `<section data-guides="${text}">`)];
 const SLIDE = { width: 1920, height: 1080 };
@@ -40,8 +31,6 @@ after(async () => {
 
 let last = null;
 
-// the editor on slide n of the deck of layouts, or of text, with the storage of the browser
-// cleared unless keep is set. with drafts, the page keeps its unsaved edits in this storage
 async function guidesPage(platform, n = MATH, keep = false, text = readFileSync(LAYOUTS, 'utf8'), drafts = keep) {
   await last?.close().catch(() => {});
   const page = await browser.newPage({ drafts });
@@ -66,7 +55,6 @@ const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.s
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)})`);
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const box = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect(); return r && !document.querySelector(${JSON.stringify(selector)}).hidden ? { left: r.left, top: r.top, width: r.width, height: r.height } : null; })()`);
 const scale = (page) => page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
 const screen = (page, x, y) => page.evaluate(`(() => {
@@ -74,12 +62,10 @@ const screen = (page, x, y) => page.evaluate(`(() => {
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
   return { x: r.left + ${x} * k, y: r.top + ${y} * k };
 })()`);
-// the guides drawn on the canvas, as [axis, place in slide px]
 const guides = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-hand-guide')].filter((g) => !g.hidden && !g.classList.contains('off')).map((g) => [g.dataset.axis, Number(g.dataset.at)])`);
 const translateOf = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).style.translate`);
 const free = (platform) => (platform === 'mac' ? 'Meta' : 'Alt');
 
-// a trusted press of Cmd or Ctrl with the key of the quote, which press() does not know
 async function pressQuote(page, platform) {
   const base = { key: "'", code: 'Quote', windowsVirtualKeyCode: 222, modifiers: platform === 'mac' ? 4 : 2 };
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
@@ -94,22 +80,17 @@ test('the steps of a ruler, the merge of guides, the spacing of the grid, and th
   assert.equal(spacingOf(' 40 '), 40);
   assert.equal(spacingOf('2'), null);
   assert.equal(spacingOf('x'), null);
-  // a guide placed by hand is a line of the snap, as a guide of the kind guide
   const targets = { boxes: [], slide: SLIDE, layout: LAYOUT_GUIDES, guides: { x: [517], y: [] }, grid: null };
   const s = snapMove({ left: 512, top: 300, width: 100, height: 50 }, targets, 8);
   assert.equal(s.dx, 5);
   assert.ok(s.guides.some((g) => g.kind === 'guide' && g.at === 517));
-  // the grid snaps an edge to a multiple of its spacing, and is not drawn as a guide
   const g = snapMove({ left: 233, top: 287, width: 80, height: 40 }, { boxes: [], slide: SLIDE, guides: { x: [], y: [] }, grid: 40 }, 8);
   assert.deepEqual([g.dx, g.dy], [7, -7]);
   assert.ok(g.guides.every((line) => line.kind !== 'grid'));
-  // a point snaps to the nearest line on each axis
   const p = snapPoint({ x: 515, y: 997 }, { boxes: [], slide: SLIDE, guides: { x: [517], y: [] }, grid: 40 }, 8);
   assert.deepEqual([p.dx, p.dy], [2, 3]);
 });
 
-// the angle of a rotate drag from its raw absolute angle: held at a multiple of 45 within 4
-// degrees, in steps of 15 with Shift, and to the whole degree with the free modifier
 test('the angle of a rotate drag is held at the multiples of 45 degrees', () => {
   const free = { steps: false, free: false };
   const cases = [
@@ -132,7 +113,6 @@ for (const platform of PLATFORMS) {
     const top = await box(page, '.beeson-ruler[data-axis="x"]');
     const left = await box(page, '.beeson-ruler[data-axis="y"]');
     assert.deepEqual([top.top, top.height, left.left, left.width], [cell.top, 18, cell.left, 18]);
-    // Cmd+R of Keynote on a Mac, which does not reload the page
     if (platform === 'mac') {
       await page.evaluate('window.beesonMark = 1');
       await press(page, 'Mod+R');
@@ -143,7 +123,6 @@ for (const platform of PLATFORMS) {
       assert.equal(await page.evaluate('window.beesonMark'), 1);
       assert.equal((await state(page, 'view.rulers')).checked, true);
     }
-    // a guide dragged out of the left ruler, with its place shown during the drag
     const k = await scale(page);
     const at = await screen(page, 1013, 0);
     const from = { x: left.left + 9, y: left.top + 300 };
@@ -161,8 +140,6 @@ for (const platform of PLATFORMS) {
     await page.evaluate('window.BeesonEditor.redo()');
     await frames(page);
     assert.deepEqual(await guides(page), [['x', 1013]]);
-    // the left edge of the figure box, at 1200, snaps to the guide when it is dragged near it, once the
-    // figure is selected apart from its image
     await selectFigure(page, `${FIGURE_BOX} > img`);
     const figureBox = await box(page, FIGURE_BOX);
     await drag(page, { x: figureBox.left + figureBox.width / 2, y: figureBox.top + figureBox.height / 2 }, { dx: -183 * k, dy: 0, modifiers: 'Shift' });
@@ -170,18 +147,16 @@ for (const platform of PLATFORMS) {
     assert.equal(await translateOf(page, FIGURE_BOX), '-187px');
     await undo(page);
     await byteExact(page, [mathGuides('x1013')]);
-    // a drag of the guide back onto the ruler removes it
     const g = await box(page, '.beeson-hand-guide[data-axis="x"]');
     await drag(page, { x: g.left, y: g.top + 30 }, { dx: left.left + 9 - g.left, dy: 0 });
     await frames(page);
     assert.deepEqual(await guides(page), []);
     await byteExact(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`guides are copied, pasted, cleared, hidden, and kept over a reload, on ${platform}`, async () => {
     let page = await guidesPage(platform, MATH, false, undefined, true);
-    // the guides are shown with the rulers
     await exec(page, 'view.rulers');
     await exec(page, 'view.guides.add', { x: [400], y: [300, 700] });
     await frames(page);
@@ -198,7 +173,6 @@ for (const platform of PLATFORMS) {
     await exec(page, 'view.guides.clear');
     await frames(page);
     assert.deepEqual(await guides(page), []);
-    // hidden rulers hide them
     await page.evaluate(`Reveal.slide(${MATH})`);
     await frames(page);
     await exec(page, 'view.rulers');
@@ -208,9 +182,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.deepEqual((await guides(page)).sort(), [['x', 400], ['y', 300], ['y', 700]]);
     await byteExact(page, [mathGuides('x400 y300 y700')]);
-    // the guides are in the draft of the unsaved edits, which a reload offers, and not in the
-    // storage of the browser
-    assert.equal(await page.evaluate(`localStorage.getItem('beeson-edit-guides:' + location.pathname)`), null);
     await page.evaluate('new Promise((done) => setTimeout(done, 1500))');
     page = await guidesPage(platform, MATH, true);
     assert.equal((await page.evaluate('window.BeesonEditor.status()')).recover, true);
@@ -219,7 +190,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`Reveal.slide(${MATH + 1})`);
     await frames(page);
     assert.deepEqual(await guides(page), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`View > Gridlines draws the grid, and Snap to Grid snaps a figure at the spacing of Grid Settings, on ${platform}`, async () => {
@@ -235,7 +206,6 @@ for (const platform of PLATFORMS) {
     const size = await page.evaluate(`getComputedStyle(document.querySelector('.beeson-grid')).backgroundSize`);
     assert.ok(Math.abs(parseFloat(size) - 40 * k) < 0.01);
     await byteExact(page);
-    // with Snap to Grid, a drag of the figure box by 33 slide px is snapped to 40
     await exec(page, 'view.grid.snap');
     assert.equal((await state(page, 'view.grid.snap')).checked, true);
     await selectFigure(page, `${FIGURE_BOX} > img`);
@@ -245,7 +215,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await translateOf(page, FIGURE_BOX), '40px');
     await undo(page);
     await byteExact(page);
-    // Grid Settings sets the spacing in its sheet
     await exec(page, 'view.grid.settings');
     await page.waitFor(`!!document.querySelector('dialog.beeson-grid-sheet[open] input[name="spacing"]')`);
     await page.evaluate(`(() => { const i = document.querySelector('dialog.beeson-grid-sheet input[name="spacing"]'); i.value = '60'; })()`);
@@ -257,7 +226,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.equal(await translateOf(page, FIGURE_BOX), '60px');
     await undo(page);
-    // the free modifier moves the figure box without the snap
     await drag(page, { x: again.left + again.width / 2, y: again.top + again.height / 2 }, { dx: 33 * k, dy: 0, modifiers: `Shift+${free(platform)}` });
     await frames(page);
     assert.ok(Math.abs(parseFloat(await translateOf(page, FIGURE_BOX)) - 33) <= 1);
@@ -266,6 +234,6 @@ for (const platform of PLATFORMS) {
     await pressQuote(page, platform);
     await frames(page);
     assert.equal(await box(page, '.beeson-grid'), null);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

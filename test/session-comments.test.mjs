@@ -1,10 +1,3 @@
-// the comments of a session in Chrome, on two or three pages of one edit command: a comment on an
-// element, on the text element of the caret, and on a slide, seen on the other page with its badge,
-// the anchors kept on their element through the edits of another person and the unsent edits of
-// the page itself, a removed element, the actions on a thread and the rights of its author, the
-// filters, a mention, a changed name, a page that joins later or loads again, the offline state,
-// the three tabs of the inspector, text that looks like HTML, and a phone
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -14,19 +7,14 @@ import { center, click, clickText, press, type, typeKeys } from './helpers/edito
 import { ANSWERS, NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
-// the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const slideEl = (slide) => `document.querySelectorAll('.reveal .slides > section')[${slide}]`;
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
-// the key of the tab n of the inspector, as PANE_KEYS of src/editor/commands/view.ts binds it
 const TAB_KEY = (n) => (process.platform === 'darwin' ? `Ctrl+Mod+${n}` : `Ctrl+Shift+${n}`);
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments can be sent once you are back online';
 const ENDED = 'The session has ended';
 
-// the text of the badge of the element of expression, found at its place 4 px outside the upper
-// right corner of the element, or 18 px while the element is selected, or inside the upper right
-// corner of a slide, with * when it is filled for an unread thread, or null
 const badgeOf = (expression, slide = false) => `(() => {
   const el = ${expression};
   if (!el) return null;
@@ -38,10 +26,8 @@ const badgeOf = (expression, slide = false) => `(() => {
   return b ? b.textContent + (b.classList.contains('unread') ? '*' : '') : null;
 })()`;
 
-// the element of selector on the slide whose heading starts with heading, or this slide
 const on = (heading, selector = null) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.startsWith(${JSON.stringify(heading)}))${selector ? `?.querySelector(${JSON.stringify(selector)})` : ''}`;
 
-// the threads in the pane, each as the label of its place and the texts of its comment and replies
 const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
   anchor: a.querySelector('.anchor')?.textContent ?? null,
   texts: [...a.querySelectorAll('.item .text')].map((p) => p.textContent),
@@ -54,8 +40,6 @@ const TABS = `[...document.querySelectorAll('.beeson-edit-inspector .tabs button
 const TAB = `document.querySelector('.beeson-edit-inspector .tabs button[aria-selected="true"]')?.textContent ?? null`;
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 
-// the controls of selector that are shown and take a tap on less than 32 by 32 px, counting a
-// pseudo-element ::after placed around a control
 const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((b) => b.getClientRects().length).map((b) => {
   const r = b.getBoundingClientRect();
   const a = getComputedStyle(b, '::after');
@@ -63,10 +47,8 @@ const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selec
   return { name: b.getAttribute('aria-label') || b.textContent.trim() || b.localName, w: Math.round(r.width + out(a.left) + out(a.right)), h: Math.round(r.height + out(a.top) + out(a.bottom)) };
 }).filter((b) => b.w < 32 || b.h < 32)`;
 
-// the time in ms that page shows a toast
 const toastTime = (page, ms) => page.evaluate(`((window.BeesonSession.toasts.shown = ${ms}), true)`);
 
-// the operations of the page held until window.__go()
 const HOLD = `(() => {
   const fetched = window.fetch;
   window.__held = [];
@@ -81,8 +63,6 @@ const HOLD = `(() => {
   };
 })()`;
 
-// waits until expression reads as want on page, in front so that it draws frames, and fails with
-// the last value read
 async function sees(page, expression, want, what = expression) {
   await front(page);
   let got;
@@ -96,7 +76,6 @@ async function sees(page, expression, want, what = expression) {
   }
 }
 
-// the badge of the element of selector on the slide of heading, or of this slide when selector is null
 async function badge(page, heading, selector, want) {
   await show(page, heading);
   await sees(page, badgeOf(on(heading, selector), !selector), want, `the badge on ${selector ?? 'the slide'} of ${heading}`);
@@ -108,7 +87,6 @@ async function openPane(page) {
   await page.waitFor(`!!document.querySelector('${PANE}:not([hidden])')`);
 }
 
-// a click on the item labeled label of the open menu
 async function menu(page, label) {
   const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].find((i) => (i.querySelector('.label') ?? i).textContent === ${JSON.stringify(label)})`;
   await page.waitFor(`!!${item}`);
@@ -116,9 +94,6 @@ async function menu(page, label) {
   await click(page, at);
 }
 
-// a tap of a finger at the center of the element of selector, on the page brought to the front,
-// since a page behind does not take a touch. it fails after 10 s rather than after the limit of
-// the browser
 async function touch(page, selector) {
   await front(page);
   const { x, y } = await center(page, selector);
@@ -129,7 +104,6 @@ async function touch(page, selector) {
   }
 }
 
-// a new comment of text on what the Comment command targets now, sent from the draft of the pane
 async function comment(page, text, how = 'key') {
   await front(page);
   if (how === 'key') await press(page, COMMENT_KEY);
@@ -170,11 +144,9 @@ test('a comment on an element, on the text element of the caret, and on a slide 
 
   await click(a, '.beeson-edit-nav .row:nth-of-type(2)');
   assert.equal(await comment(a, 'On the slide', 'toolbar'), 'On Slide 2');
-  // a page behind other windows does not draw frames, and the badges are drawn in one
   await front(b);
   await b.waitFor(`${badgeOf(slideEl(1), true)} === '1*'`);
 
-  // nothing of a comment reaches index.html
   assert.equal(await converge(server, [a, b]), TALK);
   clean(a);
   clean(b);
@@ -245,7 +217,6 @@ test('a thread stays on its element through the edits of another person and the 
     await type(a, ' held');
     await clickText(a, '.reveal section.present li:last-child');
     const sent = comment(a, 'On Beta');
-    // the comment waits for the edits of the page, which are held
     await a.waitFor(`window.__held.length > 0 && !!document.querySelector('${PANE} .draft')`);
     await a.evaluate('window.__go()');
     assert.match(await sent, /Beta/);
@@ -269,7 +240,6 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   const before = await converge(server, [a, b]);
   const thread = (anchor) => [{ anchor, texts: ['On the paragraph'] }];
 
-  // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
   await until(() => b.evaluate(`!window.BeesonSession.presence().holderOf(document.querySelector('.reveal .slides > section:nth-child(2) > p'))`), 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
   await clickText(b, '.reveal section.present > p');
@@ -307,8 +277,6 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   clean(b);
 });
 
-// the deck of a talk with two equal paragraphs on lines of their own on slide Two, and two on one
-// line without white space between them on slide One
 const TWINS = TALK.replace('  <p>Second slide</p>\n', '  <p>Same</p>\n  <p>Same</p>\n').replace('  <p>First slide</p>\n', '  <p>Twin</p><p>Twin</p>\n');
 
 test('a thread on the second of two equal elements stays on it, and the page of the thread removes the first, when another person removes the first, on lines of their own and on one line', { timeout: 300_000 }, async (t) => {
@@ -391,8 +359,6 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   });
 
   await t.test('a mention reaches the person with a toast and a count, which a look at the thread clears', async () => {
-    // the toast of the mention stays until its button is pressed, since the steps before the press
-    // may take more than its 6 s on a slow runner
     await toastTime(a, 3_600_000);
     await show(b, 'Two');
     await click(b, '.reveal section.present > p');
@@ -414,7 +380,6 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
     await sees(a, `[...document.querySelectorAll('${PANE} .mention')].map((m) => m.textContent)`, ['@Ann']);
     await badge(a, 'Two', 'p', '1*');
 
-    // For You holds the threads that a person wrote, replied to, or is mentioned in
     await click(a, `${PANE} .filters [data-filter="mine"]`);
     await sees(a, THREADS, [first(['The first comment, edited']), look]);
     await front(b);
@@ -432,7 +397,6 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   });
 
   await t.test('a changed name is shown on the comments and the mentions of the person', async () => {
-    // as Change Name of the menu of the avatar does
     await a.evaluate(`(async () => {
       const c = ${C};
       const answer = await c.transport.name(c.token, 'Annabel');
@@ -450,7 +414,6 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
     await sees(c, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
     await badge(c, 'One', 'p', '1*');
     await badge(c, 'Two', 'p', '1*');
-    // both threads are unread and neither is for Cy, hence the dot
     await sees(c, COUNT, 'Comments, unread threads');
 
     const count = await loads(a);
@@ -468,7 +431,6 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
 
   assert.equal(await converge(server, [a, b]), TALK);
   clean(a);
-  // the refused edit and delete of a comment of another person
   clean(b, [/status of 403/]);
 });
 
@@ -478,7 +440,6 @@ test('offline, the Comment command opens a draft, which is kept until the page i
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'Before the stop');
-  // the edit command writes a comment before it answers it, hence the kill below does not lose it
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await a.waitFor(`/^Offline/.test(${STATE})`);
@@ -492,8 +453,6 @@ test('offline, the Comment command opens a draft, which is kept until the page i
 
   await server.start(['--port', String(port)]);
   await front(a);
-  // the page may be online by its own retry before a click on Try now on a slow runner, hence it
-  // is reconnected through the client. the first test of session-client-offline clicks Try now
   await a.evaluate(`${C}.tryNow()`);
   await a.waitFor(ONLINE);
   await sees(a, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
@@ -505,14 +464,8 @@ test('offline, the Comment command opens a draft, which is kept until the page i
   clean(a, REFUSED);
 });
 
-// the send button of the draft, and Resolve, Thread actions, and the send button of Reply of the
-// thread, each as its label, whether it is disabled, and its tooltip
 const DRAFT = `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`;
 
-// the hello held while the page joins, and let through even when it is sent after the release, the
-// requests of the session answered with 502 by a proxy whose host has stopped, and the hello refused
-// since the session is full. the page is online in each of them, hence the send button does not say
-// offline
 for (const [state, script, cut, back, why, ...refused] of [
   ['joining', `__net.rule('/.session/hello', 'hold');`, '', `__net.clear() && __net.release('/.session/hello')`, 'Comments can be sent once you have joined'],
   ['no-host', '', `__net.rule('/.session/', 'answer', { status: 502 }) && __net.drop('/.session/')`, `__net.clear() && (${C}.tryNow(), true)`, "Comments can be sent once the host's edit command runs", ...REFUSED],
@@ -559,12 +512,9 @@ for (const from of ['online', 'offline']) {
     }
     await a.evaluate(`window.__before = window.__answers, window.__polls = __net.count('/.session/events'), ${C}.leave(), true`);
     await a.waitFor(`${C}.connection === 'ended'`);
-    // online, the poll in flight is answered after the bye
     if (from === 'online') await a.waitFor(`window.__answers > window.__before`);
     assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
     await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
-    // a poll that the page sent just before its bye may reach the edit command after it, and is
-    // then answered 404, but no poll is sent after it
     assert.equal(await a.evaluate(`__net.count('/.session/events') - window.__polls`), 0, 'the page polled after it left');
     clean(a, from === 'offline' ? REFUSED : [/status of 404 .*\/\.session\/events\?/]);
   });
@@ -648,7 +598,6 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
       return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
     })()`), { inside: true, hit: true });
     await sees(c, HITS('.beeson-session-comments'), []);
-    // the thread of Ann is unread and not of For You, hence a dot is drawn inside the narrow title bar
     await sees(c, `(() => {
       const b = document.querySelector('.beeson-session-comments');
       const r = b.querySelector('.count').getBoundingClientRect();

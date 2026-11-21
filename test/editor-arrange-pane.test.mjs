@@ -1,6 +1,3 @@
-// the fields X, Y, Width, and Height of the Arrange pane for a figure with a caption, where a typed
-// value reads back as typed and a value typed back gives the file back
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -8,14 +5,8 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// the work of R13.2 on both platforms: the box of a figure with a caption in the fields, Align, a
-// typed Height, and the snap of a drag, a corner resize of a figure that keeps the corner across
-// from its grip, the readout of a drag kept inside the canvas, View > Slide Only in a narrow window,
-// the selection after an undo of a list style, and the keys listed in the Slide menu. each edit of
-// the file is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('a figure with a caption in the fields', () => {
   const DECK = 'test-deck.html';
-  // the index of the figures slide in index.html
   const FIGURES = 4;
   const PLATFORMS = ['mac', 'other'];
 
@@ -36,7 +27,6 @@ describe('a figure with a caption in the fields', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
 
   const PANEL = '#beeson-edit-panel-format';
@@ -52,8 +42,6 @@ describe('a figure with a caption in the fields', () => {
     await press(page, 'Enter');
     await frames(page);
   }
-  // the boxes in slide pixels of the drawn picture of the figure of the current slide, fitted into
-  // its image box, of its caption, and of the selection frame drawn on the canvas
   const geometry = (page) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides').getBoundingClientRect(), k = s.width / 1920;
   const to = (b) => ({ left: (b.left - s.left) / k, top: (b.top - s.top) / k, width: (b.right - b.left) / k, height: (b.bottom - b.top) / k });
@@ -82,8 +70,6 @@ describe('a figure with a caption in the fields', () => {
     return page;
   }
 
-  // an undo gives the text before and a redo the edited text byte for byte, and the saved text is
-  // opened again without problems
   async function checkEdit(page, name, before = page.source) {
     const edited = await render(page);
     assert.notEqual(edited, before);
@@ -105,7 +91,7 @@ describe('a figure with a caption in the fields', () => {
         assert.ok(near(await fieldValue(page, id), v, 1), `${id} reads ${await fieldValue(page, id)} against ${v}: ${js(g)}`);
       }
       assert.ok(g.frame.top <= g.picture.top + 1, `the top line of the frame is above the picture: ${js(g)}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Align Top and a typed Y of 0 put the visible top of a figure on the edge of the slide (${platform})`, async (t) => {
@@ -123,7 +109,7 @@ describe('a figure with a caption in the fields', () => {
       g = await geometry(page);
       assert.ok(near(g.picture.top, 0, 1), `a typed Y of 0 puts the picture at ${g.picture.top}`);
       await checkEdit(page, `r13-2-typed-y-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a figure keeps the aspect of its picture and its caption on the slide (${platform})`, async (t) => {
@@ -141,7 +127,7 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(near(await fieldValue(page, 'height'), h, 3) && near(await fieldValue(page, 'y'), y, 1));
       assert.ok(near(await fieldValue(page, 'width'), g.picture.width, 1));
       await checkEdit(page, `r13-2-typed-height-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a drag of a figure snaps the visible top of its picture to the edge of the slide (${platform})`, async (t) => {
@@ -150,7 +136,6 @@ describe('a figure with a caption in the fields', () => {
       const g0 = await geometry(page);
       const k = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().width / 1920`);
       const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector('figure img.for-light').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-      // a drag that leaves the picture 4 slide px under the edge, inside the reach of the snap
       const dy = -(g0.picture.top - 4) * k;
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
       await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
@@ -162,11 +147,10 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(near(g.picture.top, 0, 1), `the drag puts the picture at ${g.picture.top}`);
       assert.ok(near(await fieldValue(page, 'y'), 0, 1));
       await checkEdit(page, `r13-2-snap-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the box in slide pixels of the picture with its caption, i.e. the frame of the figure
   const outer = (g) => {
     const left = Math.min(g.picture.left, g.caption.left), top = Math.min(g.picture.top, g.caption.top);
     const right = Math.max(g.picture.left + g.picture.width, g.caption.left + g.caption.width), bottom = Math.max(g.picture.top + g.picture.height, g.caption.top + g.caption.height);
@@ -183,7 +167,6 @@ describe('a figure with a caption in the fields', () => {
         const k = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().width / 1920`);
         const at = await grip(page, handle);
         const sx = handle.includes('e') ? 1 : -1, sy = handle.includes('s') ? 1 : -1;
-        // outward by 180 slide px along each axis, past the height of the slide
         const dx = sx * 180 * k, dy = sy * 180 * k;
         await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
         await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
@@ -194,11 +177,9 @@ describe('a figure with a caption in the fields', () => {
         await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + dx, y: at.y + dy, button: 'left', buttons: 0, clickCount: 1 });
         await frames(page);
         const info = js({ f0, f, g, readout });
-        // the corner across from the grip stays in place
         assert.ok(near(sx > 0 ? f.left : f.right, sx > 0 ? f0.left : f0.right, 2), `x across: ${info}`);
         assert.ok(near(sy > 0 ? f.top : f.bottom, sy > 0 ? f0.top : f0.bottom, 2), `y across: ${info}`);
         assert.ok(near(g.drawn, g.aspect, 0.01) && f.width > f0.width + 40, `the picture grew at its aspect: ${info}`);
-        // the readout gives the size drawn
         const [, w, h] = readout.match(/w: (\d+) px\s+h: (\d+) px/) ?? [];
         assert.ok(near(Number(w), f.width, 2) && near(Number(h), f.height, 2), `the readout: ${info}`);
         const g1 = await geometry(page), f1 = outer(g1);
@@ -209,13 +190,11 @@ describe('a figure with a caption in the fields', () => {
         const width = Number((await page.evaluate(`Reveal.getCurrentSlide().querySelector('figure img.for-light').getAttribute('style')`)).match(/width:\s*([\d.]+)px/)[1]);
         assert.ok(near(width, g1.picture.width, 1), `the file holds width ${width} against the drawn ${g1.picture.width}`);
         await checkEdit(page, `r13-2-corner-${handle}-${scale}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the box on the screen of the visible part of the canvas, without its scroll bars and rulers, and
-  // the box of the readout of a drag
   const canvasBox = (page) => page.evaluate(`(() => {
   const c = document.querySelector('.beeson-edit-canvas'), r = c.getBoundingClientRect();
   let left = r.left + c.clientLeft, top = r.top + c.clientTop;
@@ -235,7 +214,6 @@ describe('a figure with a caption in the fields', () => {
         const page = await load(t, platform, FIGURES);
         await exec(page, 'view.rulers');
         await clickText(page, 'section.present figure img.for-light');
-        // zoomed in about the figure, whose drag then reaches past the canvas
         if (zoom) await exec(page, 'zoom.selection');
         await frames(page);
         const c = await canvasBox(page);
@@ -253,14 +231,13 @@ describe('a figure with a caption in the fields', () => {
         }
         await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at2.x, y: at2.y, button: 'left', buttons: 0, clickCount: 1 });
         await frames(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const seen = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); return !!e && e.getClientRects().length > 0 && e.getBoundingClientRect().width > 0; })()`);
-  // the item label of the menu bar named bar chosen by trusted clicks
   async function choose(page, bar, label) {
     await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
@@ -295,19 +272,16 @@ describe('a figure with a caption in the fields', () => {
         assert.equal(await agree('after Slide Only'), !first, 'Slide Only changes what is shown');
         await choose(page, 'View', 'Slide Only');
         assert.equal(await agree('after Slide Only twice'), first, 'a second Slide Only gives back what was shown');
-        // with the inspector opened again, the narrow window hides the navigator
         if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
         await frames(page);
         await agree('with the inspector open');
         await choose(page, 'View', 'Slide Only');
         await agree('after a third Slide Only');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the client point of the middle of the character at offset k of needle in the first shown
-  // element of selector whose text holds needle
   const pointOf = (page, selector, needle, k = 0) => page.evaluate(`(() => {
   const el = [...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}));
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -321,15 +295,12 @@ describe('a figure with a caption in the fields', () => {
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   }
 })()`);
-  // the selected text of the window, the tag of the block that holds it, and whether it is in a text
   const selected = (page) => page.evaluate(`(() => {
   const s = getSelection();
   const el = s.focusNode && (s.focusNode.nodeType === 1 ? s.focusNode : s.focusNode.parentElement);
   return { text: s.toString(), block: el?.closest('p, li, h2')?.localName ?? null, editing: !!el?.closest('[contenteditable="true"]') };
 })()`);
 
-  // the same without the white space at the end of the text, since a double-click on Windows selects
-  // a word with the space after it
   const word = async (page) => {
     const s = await selected(page);
     return { ...s, text: s.text.trimEnd() };
@@ -351,7 +322,7 @@ describe('a figure with a caption in the fields', () => {
         await frames(page);
         assert.deepEqual(await word(page), { text: 'styles', block, editing: true }, 'the redo selects the word again');
         await checkEdit(page, `r13-2-list-${id}-${platform}.html`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -370,11 +341,10 @@ describe('a figure with a caption in the fields', () => {
       await frames(page);
       assert.equal((await selected(page)).text, all, 'the redo selects the items again');
       await checkEdit(page, `r13-2-list-items-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the keys printed beside the items of the menu bar named bar, by their labels
   async function menuKeys(page, bar) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${i + 1})`);
@@ -387,7 +357,6 @@ describe('a figure with a caption in the fields', () => {
   for (const platform of PLATFORMS) {
     test(`the Slide menu lists Delete Slide without a key and Duplicate Slide with Mod+D, which duplicates the slide, with nothing selected on the canvas (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
-      // a click on the pasteboard leaves nothing selected on the canvas
       const c = await canvasBox(page);
       await clickText(page, { x: c.left + 8, y: c.bottom - 8 });
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().length'), 0);
@@ -395,12 +364,10 @@ describe('a figure with a caption in the fields', () => {
       const count = () => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
       assert.equal(keys['Delete Slide'], '');
       assert.equal(keys['Duplicate Slide'], platform === 'mac' ? '⌘D' : 'Ctrl+D');
-      // the key of Edit > Delete does not delete the slide while the canvas has the focus
       const before = await count();
       await press(page, platform === 'mac' ? 'Backspace' : 'Delete');
       await frames(page);
       assert.equal(await count(), before);
-      // the key of Edit > Duplicate, which lists it, duplicates the slide
       assert.ok((await menuKeys(page, 'Edit')).Duplicate);
       await clickText(page, { x: c.left + 8, y: c.bottom - 8 });
       await press(page, 'Mod+D');
@@ -409,11 +376,10 @@ describe('a figure with a caption in the fields', () => {
       assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Duplicate Slide');
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the fields W, H, and Angle of the Arrange pane
   const sizeFields = async (page) => ({ w: await fieldValue(page, 'width'), h: await fieldValue(page, 'height'), angle: await fieldValue(page, 'angle') });
 
   for (const platform of PLATFORMS) {
@@ -426,7 +392,6 @@ describe('a figure with a caption in the fields', () => {
         await typeField(page, 'angle', deg);
         assert.deepEqual(await sizeFields(page), { ...rest, angle: deg }, `at ${deg} degrees`);
       }
-      // the rotate handle dragged to the right
       const rotor = await page.evaluate(`(() => { const r = document.querySelector('.beeson-rotor'); const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rotor.x, y: rotor.y });
       await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rotor.x, y: rotor.y, button: 'left', buttons: 1, clickCount: 1 });
@@ -437,7 +402,7 @@ describe('a figure with a caption in the fields', () => {
       assert.ok(turned.angle > 5, `the handle turned the figure: ${js(turned)}`);
       assert.deepEqual({ w: turned.w, h: turned.h }, { w: rest.w, h: rest.h }, `after the rotate handle: ${js(turned)}`);
       await checkEdit(page, `r13-2-turned-${platform}.html`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a turned figure comes back as typed and gives the same size at Angle 0 (${platform})`, async (t) => {
@@ -445,7 +410,6 @@ describe('a figure with a caption in the fields', () => {
       await clickText(page, 'section.present figure img.for-light');
       await typeField(page, 'angle', 29);
       const turned = await render(page);
-      // the Height that the figure has changes nothing
       await typeField(page, 'height', 875);
       assert.deepEqual(await sizeFields(page), { w: 600, h: 875, angle: 29 });
       assert.equal(await render(page), turned, 'a typed Height of 875 changes the file');
@@ -457,7 +421,7 @@ describe('a figure with a caption in the fields', () => {
       const at0 = await sizeFields(page);
       assert.ok(near(at0.h, 700, 2) && near(at0.w, at29.w, 1), `at Angle 0 the size is ${js(at0)} against ${js(at29)}`);
       await checkEdit(page, `r13-2-turned-height-${platform}.html`, typed);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`an undo of a typed Height gives back Width and Height in their fields (${platform})`, async (t) => {
@@ -469,20 +433,13 @@ describe('a figure with a caption in the fields', () => {
       await frames(page);
       assert.equal(await render(page), page.source);
       assert.deepEqual({ w: Number(await page.evaluate(`document.querySelector('#beeson-edit-num-width').value`)), h: Number(await page.evaluate(`document.querySelector('#beeson-edit-num-height').value`)) }, { w: 600, h: 875 });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R27.2 on both platforms with trusted input. finding 81 of the judge qwen3 in
-// round 9: a height typed into the size field of a figure with a caption reads back as typed, a
-// height typed back gives the file back, and a value equal to the shown one is not an entry of the
-// history. the second half of finding 83: Resize Row to Fit Content takes the written height off the
-// rows, from the cell menu, the Table pane, and Format > Table. a nit of the same report: the Slide
-// menu prints the keys of Duplicate Slide and Delete Slide where the keys run them
 describe('Height typed into the Arrange pane', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the index of the figures slide in index.html, i.e. slide 5
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const ROWS = 'test/pages/editor-r27-2.html';
@@ -506,7 +463,6 @@ describe('Height typed into the Arrange pane', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck = 'test-deck.html', slide = FIGURES) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -538,20 +494,15 @@ describe('Height typed into the Arrange pane', () => {
   }
   const size = async (page) => ({ w: await fieldValue(page, 'width'), h: await fieldValue(page, 'height') });
 
-  // the aspect of the drawn picture of the image of the figure: the picture fitted into the image box
-  // by object-fit, else the image box
   const pictureAspect = (page) => page.evaluate(`(() => {
   const img = document.querySelector(${js(`.reveal ${IMG}`)});
   const r = img.getBoundingClientRect();
   const k = getComputedStyle(img).objectFit === 'contain' ? Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight) : 0;
   return k ? img.naturalWidth / img.naturalHeight : r.width / r.height;
 })()`);
-  // the aspect of demo/figure-light.png, 1200 by 1440 px
   const NATURAL = 1200 / 1440;
 
   for (const platform of PLATFORMS) {
-    // finding 81: a Height of 700 and then of 875 left 633 by 875, and a typed Width of 600 then
-    // moved the caption by 80 px
     test(`a typed Height of 700 and then of 875 gives back 600 by 875 and the file byte for byte (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, `.reveal ${IMG}`);
@@ -563,7 +514,6 @@ describe('Height typed into the Arrange pane', () => {
       await typeField(page, 'height', 875);
       assert.deepEqual(await size(page), { w: 600, h: 875 });
       assert.equal(await render(page), page.source, 'the height typed back did not give the file back');
-      // a Width typed as the field shows it changes nothing and is not an entry of the history
       await typeField(page, 'width', 600);
       assert.deepEqual(await size(page), { w: 600, h: 875 });
       await byteExact(page);
@@ -576,22 +526,18 @@ describe('Height typed into the Arrange pane', () => {
       await redo(page);
       await byteExact(page);
       assert.deepEqual(await size(page), { w: 600, h: 875 });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of a figure with a caption reads back as typed, with the aspect of the picture kept (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, `.reveal ${IMG}`);
-      // the box of the picture keeps its letterbox, hence a width 1 px wider adds 1.2 px to the
-      // picture and 0.07 px to the letterbox under it. each height is given by a whole width, also
-      // 820, which the width 517 px gives
       for (const [h, off] of [[610, 0], [700, 0], [820, 0], [900, 0], [600, 0]]) {
         await typeField(page, 'height', h);
         const read = await fieldValue(page, 'height');
         assert.ok(Math.abs(read - h) <= off, `a typed Height of ${h} reads ${read}`);
         assert.ok(Math.abs((await pictureAspect(page)) - NATURAL) < 0.01, `a typed Height of ${h} did not keep the aspect of the picture`);
       }
-      // a Height typed after a Width is solved with the caption at the width that the solve reaches
       await typeField(page, 'width', 500);
       assert.equal(await fieldValue(page, 'width'), 500);
       assert.ok(Math.abs((await pictureAspect(page)) - NATURAL) < 0.01, 'a typed Width did not keep the aspect of the picture');
@@ -600,13 +546,9 @@ describe('Height typed into the Arrange pane', () => {
       const edited = await render(page);
       const { text } = await saveAndReopen(page, `r27-2-height-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the repair of R27.2: the solve stayed on the wrap of the caption where it started, and a height
-    // that a whole px of width gives on another wrap read 1 px off, e.g. a typed 750 read 751 at
-    // width 488, where width 529 gave 750. the box of the picture keeps its letterbox since R36.2,
-    // which gives each width another height
     test(`a typed Height that a whole px of width gives reads back as typed, also on another wrap of the caption (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, `.reveal ${IMG}`);
@@ -622,7 +564,7 @@ describe('Height typed into the Arrange pane', () => {
         await undo(page);
         await byteExact(page);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a value typed as a size field shows it is not an entry of the history (${platform})`, async (t) => {
@@ -641,18 +583,16 @@ describe('Height typed into the Arrange pane', () => {
       await undo(page);
       await byteExact(page);
       assert.equal((await state(page, 'edit.undo')).enabled, false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the height of each row of the table of the slide, in slide px
   const rows = (page) => page.evaluate(`(() => {
   const k = Reveal.getScale();
   return [...document.querySelectorAll('.reveal section.present table tr')].map((tr) => Math.round(tr.getBoundingClientRect().height / k));
 })()`);
   const cell = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
 
-  // the labels of the items of the open cell menu, and the point and the state of one of them
   const cellMenu = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.cell .item .label')].map((l) => l.textContent)`);
   const itemOf = (page, menu, label) => page.evaluate(`(() => {
   const b = [...document.querySelectorAll('.beeson-edit-menu${menu} .item')].find((b) => b.getClientRects().length && b.querySelector('.label')?.textContent === ${js(label)});
@@ -665,8 +605,6 @@ describe('Height typed into the Arrange pane', () => {
   const FIT_EUROPA = ['<td style="height: 140px">Europa</td>', '<td>Europa</td>'];
 
   for (const platform of PLATFORMS) {
-    // finding 83, its second half: the cell menu had Resize Column to Fit Content and not the row
-    // command of Keynote
     test(`Resize Row to Fit Content of the cell menu fits the row of the caret to its content (${platform})`, async (t) => {
       const page = await load(t, platform, ROWS, 0);
       const before = await rows(page);
@@ -695,7 +633,7 @@ describe('Height typed into the Arrange pane', () => {
       const edited = await render(page);
       const { text } = await saveAndReopen(page, `r27-2-row-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the menu of a row bar has Resize Row to Fit Content, as the menu of a column bar has the column command (${platform})`, async (t) => {
@@ -709,7 +647,7 @@ describe('Height typed into the Arrange pane', () => {
       await click(page, item);
       await sleep(150);
       await byteExact(page, [FIT_MOON]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Row to Fit Content of the Table pane fits the rows of a range, as one entry of the history (${platform})`, async (t) => {
@@ -730,7 +668,7 @@ describe('Height typed into the Arrange pane', () => {
       await undo(page);
       await byteExact(page);
       assert.equal((await state(page, 'edit.undo')).enabled, false, 'the fit is more than one entry of the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Format > Table has Resize Row to Fit Content, dimmed on a row without a written height (${platform})`, async (t) => {
@@ -752,11 +690,10 @@ describe('Height typed into the Arrange pane', () => {
       await click(page, item);
       await sleep(150);
       await byteExact(page, [FIT_EUROPA]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the keys printed beside the items of labels in the menu bar of bar
   async function keysIn(page, bar, labels) {
     const i = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === ${js(bar)})`);
     await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${i + 1})`);
@@ -767,8 +704,6 @@ describe('Height typed into the Arrange pane', () => {
   const count = (page) => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
 
   for (const platform of PLATFORMS) {
-    // a nit of qwen3 in round 9: with the focus on a row of the navigator, the Slide menu printed no
-    // key beside Duplicate Slide and Delete Slide, which the keys run there
     test(`the Slide menu prints the keys of Duplicate Slide and Delete Slide where the keys run them (${platform})`, async (t) => {
       const page = await load(t, platform);
       const mac = platform === 'mac';
@@ -787,19 +722,13 @@ describe('Height typed into the Arrange pane', () => {
       await press(page, mac ? 'Backspace' : 'Delete');
       await sleep(200);
       assert.equal(await count(page), n, 'the key did not delete the slide');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R31.2 on both platforms with trusted input. item 5 of the check of R27.2: a
-// Height typed into the Arrange pane for a figure with a caption, which no whole width gives, reads
-// the nearest height that a width gives. items 1 and 2 of the same check: Format > Table lists the
-// fit commands in the order of the cell menu, and Resize Column to Fit Content fits every column of
-// a table selected as an object, as Keynote does
 describe('a Height that no whole width gives', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the index of the figures slide in index.html, i.e. slide 5
   const FIGURES = 4;
   const IMG = '.reveal section.present figure img.for-light';
   const DECK = 'test/pages/editor-r31-2.html';
@@ -824,7 +753,6 @@ describe('a Height that no whole width gives', () => {
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : ', ' + js(arg)})).then(() => true)`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, slide) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -856,12 +784,6 @@ describe('a Height that no whole width gives', () => {
   }
   const size = async (page) => ({ w: await fieldValue(page, 'width'), h: await fieldValue(page, 'height') });
 
-  // the height that the field Height reads at each whole width from 1 to most px of the images of the
-  // figure of img: the height of the picture with the height that its caption adds, as the editor
-  // measures them, where the picture of an image with object-fit contain is fitted into its box. a
-  // picture drawn smaller than its box keeps the ratio of the box, written as a height with
-  // object-fit contain, and the letterbox under the picture is added. the first entry tells whether
-  // the box is kept. the widths written in the page are put back
   const heightsAt = (page, img, most) => page.evaluate(`(() => {
   const i = document.querySelector(${js(img)});
   const f = i.closest('figure');
@@ -887,8 +809,6 @@ describe('a Height that no whole width gives', () => {
   return out;
 })()`);
 
-  // the nearest height to h that a whole width gives, and the smallest width that gives it. a kept
-  // box may be 2 px higher or lower than its ratio gives, which reaches 1 px either side
   function nearest(map, h) {
     let best = null;
     for (let w = 1; w < map.length; w++) {
@@ -898,8 +818,6 @@ describe('a Height that no whole width gives', () => {
     return best;
   }
 
-  // the decks of the item, with the slide of the figure, its image, the typed heights, and the width
-  // and height that the brief gives where no width gives the typed height
   const FIGURE_CASES = [
     ['test-deck.html', FIGURES, IMG, [[200, { w: 159, h: 564 }], [422, { w: 159, h: 564 }], [496, { w: 159, h: 564 }], [437], [570]]],
     [DECK, 0, '.reveal section.present figure img', [[200, { w: 116, h: 410 }], [311], [385], [422]]],
@@ -907,8 +825,6 @@ describe('a Height that no whole width gives', () => {
 
   for (const platform of PLATFORMS) {
     for (const [deck, slide, img, cases] of FIGURE_CASES) {
-      // item 5 of the check of R27.2: the search tried only a few widths, hence a typed 200 read 562
-      // at width 165 on slide 5, where width 200 gives 554
       test(`a typed Height that no width gives reads the nearest height, at the smaller width of two (${deck}, ${platform})`, async (t) => {
         const page = await load(t, platform, deck, slide);
         await click(page, img);
@@ -919,7 +835,6 @@ describe('a Height that no whole width gives', () => {
           await typeField(page, 'height', h);
           const read = await size(page);
           assert.equal(Math.abs(read.h - h), near.d, `a typed Height of ${h} reads ${read.w} by ${read.h}, where width ${near.w} gives ${near.h}`);
-          // within 1 px, since the caption is 1 px lower with the text layout of Linux
           if (want) assert.ok(Math.abs(read.w - want.w) <= 1 && Math.abs(read.h - want.h) <= 1, `a typed Height of ${h} reads ${read.w} by ${read.h}, not ${want.w} by ${want.h}`);
           if (near.d > 0) assert.equal(read.w, near.w, `a typed Height of ${h} reads ${read.w} by ${read.h}, where the smaller width ${near.w} gives ${near.h}`);
           assert.equal((await state(page, 'edit.undo')).label, 'Undo Size');
@@ -927,7 +842,7 @@ describe('a Height that no whole width gives', () => {
           await byteExact(page);
           assert.equal((await state(page, 'edit.undo')).enabled, false, `a typed Height of ${h} is more than one entry of the history`);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -951,17 +866,15 @@ describe('a Height that no whole width gives', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r31-2-height-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
   const cell = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
   const FIT = /distribute|fit/i;
-  // the commands of the fit and distribute items of Format > Table, and of the open cell menu
   const formatTable = (page) => page.evaluate(`window.BeesonEditorShell.menuItems('Format', 'Table').map((i) => i.command).filter((c) => c && ${FIT}.test(c))`);
   const cellMenu = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.cell .item .label')].map((l) => l.textContent).filter((l) => ${FIT}.test(l))`);
 
-  // the table of the slide selected as an object, from a cell, with Esc twice
   async function selectTable(page) {
     await click(page, cell(1, 0));
     await sleep(100);
@@ -971,9 +884,7 @@ describe('a Height that no whole width gives', () => {
     await sleep(100);
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((e) => e.localName)'), ['table']);
   }
-  // the width written in the style of each cell of the first row of the table of slide n of text
   const widths = (text, n) => [...text.split('<section')[n + 1].split('</tr>')[0].matchAll(/<t[hd][^>]*>/g)].map((m) => /width: (\d+)px/.exec(m[0])?.[1] ?? null).map((w) => (w ? Number(w) : null));
-  // the lines of the words of each cell of the second row of the table of the slide
   const lines = (page) => page.evaluate(`[...document.querySelectorAll(${js(cell(1, 0).replace(':nth-child(1)', '*'))})].map((c) => {
   const r = document.createRange();
   r.selectNodeContents(c);
@@ -981,8 +892,6 @@ describe('a Height that no whole width gives', () => {
 })`);
 
   for (const platform of PLATFORMS) {
-    // item 2 of the check of R27.2: Format > Table listed Resize Column before Resize Row, and the
-    // cell menu Resize Row before Resize Column
     test(`Format > Table lists the fit commands in the order of the cell menu (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, 1);
       await click(page, cell(1, 0));
@@ -992,11 +901,9 @@ describe('a Height that no whole width gives', () => {
       assert.deepEqual(await cellMenu(page), ['Distribute Rows Evenly', 'Distribute Columns Evenly', 'Resize Row to Fit Content', 'Resize Column to Fit Content']);
       await press(page, 'Escape');
       assert.deepEqual(await formatTable(page), ['table.distributeRows', 'table.distributeColumns', 'table.fitRow', 'table.fitColumn']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the same check: with the table selected as an object, Resize Column to Fit Content was dimmed,
-    // where Keynote resizes every column of the table
     test(`Resize Column to Fit Content fits every column of a table selected as an object, as one entry of the history (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, 1);
       assert.ok((await lines(page)).some((n) => n > 1), 'a cell of the second row is on one line before the fit');
@@ -1021,11 +928,9 @@ describe('a Height that no whole width gives', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r31-2-fit-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // found with the test above: the width of the widest text was written rounded to the nearest px,
-    // and a px less wrapped Distant retrograde onto two lines
     test(`Resize Column to Fit Content sets the widest text of the column of the caret on one line (${platform})`, async (t) => {
       const page = await load(t, platform, DECK, 1);
       await click(page, cell(1, 0));
@@ -1036,7 +941,7 @@ describe('a Height that no whole width gives', () => {
       assert.equal(widths(await render(page), 1)[1], 90, 'another column changed');
       await undo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Resize Column to Fit Content of Format > Table fits every column of a table selected as an object, and is dimmed on a table without a column to fit (${platform})`, async (t) => {
@@ -1054,19 +959,13 @@ describe('a Height that no whole width gives', () => {
       await frames(page);
       await selectTable(page);
       assert.equal((await state(page, 'table.fitColumn')).enabled, false, 'the command is not dimmed on a table whose first row is one merged cell');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R36.2 on both platforms with trusted input. finding 67 of the judge glm and
-// finding 3 of the judge opus in round 10: a Width or Height typed into the Arrange pane and then
-// typed back gives the figure back, in its fields, its boxes, its place, and the file. a typed
-// value with the ratio kept scales the box of the figure as it is drawn, hence the letterboxed
-// picture of slide 5 keeps its letterbox
 describe('Width or Height typed and typed back', () => {
   const PLATFORMS = ['mac', 'other'];
-  // the index of the figures slide in index.html, i.e. slide 5
   const FIGURES = 4;
   const IMG = 'section.present figure img.for-light';
   const DECK = 'test/pages/editor-r36-2.html';
@@ -1089,7 +988,6 @@ describe('Width or Height typed and typed back', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, { deck = 'test-deck.html', slide = FIGURES } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1122,9 +1020,6 @@ describe('Width or Height typed and typed back', () => {
   }
   const fields = async (page) => ({ w: await fieldValue(page, 'width'), h: await fieldValue(page, 'height'), x: await fieldValue(page, 'x'), y: await fieldValue(page, 'y') });
 
-  // the boxes of the object at selector in slide px: its layout box, the box of its image, and the
-  // picture that object-fit contain draws in the image box. a box is given by its size before its
-  // turn and by its center on the slide, which a turn does not move
   const boxes = (page, selector) => page.evaluate(`(() => {
   const el = document.querySelector(${js(`.reveal ${selector}`)});
   const s = document.querySelector('.reveal section.present').getBoundingClientRect();
@@ -1149,8 +1044,6 @@ describe('Width or Height typed and typed back', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // finding 67 of glm: a typed Width of 601 gave 601 by 836 with the picture at its own aspect, and
-    // 600 then gave 600 by 835 with translate: 0px 40px written on the figure
     test(`a typed Width of 601 scales the box of the figure of slide 5 to 601 by 801, and 600 gives it back (${platform})`, async (t) => {
       const page = await load(t, platform);
       await click(page, `.reveal ${IMG}`);
@@ -1180,7 +1073,7 @@ describe('Width or Height typed and typed back', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r36-2-width-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a typed Height of the figure of slide 5 keeps its letterbox, and the old Height typed back gives the file back (${platform})`, async (t) => {
@@ -1204,11 +1097,9 @@ describe('Width or Height typed and typed back', () => {
       await redo(page);
       await redo(page);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the second residue of R27.2: a Height of 744 and back to 707 read 541 by 707, on slide 6 of
-    // test/pages/editor-r8-5.html, whose images have a width of 500 px written
     test(`a figure of 500 by 707 typed to a Height of 744 and back to 707 reads 500 by 707 (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-r8-5.html', slide: 5 });
       await click(page, `.reveal ${IMG}`);
@@ -1231,10 +1122,9 @@ describe('Width or Height typed and typed back', () => {
       await byteExact(page);
       const { text } = await saveAndReopen(page, `r36-2-707-${platform}.html`);
       assert.equal(text, page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // a Width and a Height, each typed and typed back, on each kind of object
     const KINDS = [
       ['a figure with a caption and a width written', 0, 'section.present figure'],
       ['a figure without a caption', 1, 'section.present figure'],
@@ -1268,14 +1158,11 @@ describe('Width or Height typed and typed back', () => {
           assert.equal(await render(page), edited);
           const { text } = await saveAndReopen(page, `r36-2-${slide}-${id}-${platform}.html`);
           assert.equal(text, edited);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
         });
       }
     }
 
-    // the check of R36.2: on slide 6 of the deck, the picture is pillarboxed in its image box and the
-    // caption spans this box, hence the field X reads the left edge of the caption. a typed Width of
-    // 614 read X 890 with translate: 10px 0px written on the figure, and a Height of 933 read X 869
     for (const [id, value] of [['width', 614], ['height', 933]]) {
       test(`a typed ${id === 'width' ? 'Width' : 'Height'} of a pillarboxed figure with a caption keeps X and Y, and the old value gives it back (${platform})`, async (t) => {
         const page = await load(t, platform, { deck: DECK, slide: 5 });
@@ -1302,21 +1189,15 @@ describe('Width or Height typed and typed back', () => {
         assert.equal(await render(page), edited);
         const { text } = await saveAndReopen(page, `r36-2-split-${id}-${platform}.html`);
         assert.equal(text, edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 });
 
-// regression tests of R36.5 on both platforms with trusted input. finding 84 of the judge qwen3 in
-// round 10: a typed Height of a figure with a caption was read at a collapsed width, e.g. 110 by
-// 752 for the figure of 600 by 875 of slide 5, where the caption is wrapped to many lines and is
-// higher than the picture. a typed Height scales the figure, hence a smaller Height gives a
-// narrower figure at about the same ratio, and the field reads the typed value within 1 px
 describe('a typed Height read at a collapsed width', () => {
   const PLATFORMS = ['mac', 'other'];
   const PANEL = '#beeson-edit-panel-format';
-  // the deck, the index of the slide, and the heights typed, as differences from the Height at the start
   const FIGURES = [
     ['the figure of slide 5 of index.html', 'test-deck.html', 4, [-175, -143, -139, -131, -129, -123, -119, -60, 76]],
     ['a figure with a caption and a written width', 'test/pages/editor-r36-2.html', 0, [-200, -160, -123, -119, -80, -40, 40]],
@@ -1336,7 +1217,6 @@ describe('a typed Height read at a collapsed width', () => {
   const js = (v) => JSON.stringify(v);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
   async function load(t, platform, deck, slide) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -1367,7 +1247,6 @@ describe('a typed Height read at a collapsed width', () => {
     await press(page, 'Enter');
     await frames(page);
   }
-  // the heights of the picture as drawn and of the caption of the figure shown, in slide px
   const parts = (page) => page.evaluate(`(() => {
   const fig = document.querySelector('.reveal section.present figure');
   const img = [...fig.querySelectorAll('img')].find((i) => i.offsetWidth);
@@ -1391,13 +1270,12 @@ describe('a typed Height read at a collapsed width', () => {
           read.push(`${h}: ${now.w} by ${now.h}`);
           if (Math.abs(now.h - h) > 1) wrong.push(`a typed Height of ${h} reads ${now.h}`);
           if (p.caption > p.picture) wrong.push(`a typed Height of ${h} gives ${now.w} by ${now.h}, with a caption of ${p.caption} px on a picture of ${Math.round(p.picture)} px`);
-          // a smaller figure is a narrower one, and a larger one a wider one
           if (d < 0 ? now.w >= start.w : now.w <= start.w) wrong.push(`a typed Height of ${h} gives a Width of ${now.w}, from ${start.w} by ${start.h}`);
           await undo(page);
           await byteExact(page);
         }
         assert.deepEqual(wrong, [], `the sizes read: ${read.join(', ')}`);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

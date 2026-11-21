@@ -1,14 +1,8 @@
-// the table of the authority in .session/applied.json: the seq of the last operation of each client
-// id in index.html, as [client, seq] pairs, oldest first. it is written after each write of
-// index.html, hence a kill between the two writes leaves a table older than the file, and a page then
-// repeats an operation rather than losing it
-
 import { randomBytes } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
-// the pairs of the file, without those that are malformed, or none when the file is missing
 export function readApplied(file: string): [string, number][] {
   try {
     const value = JSON.parse(readFileSync(file, 'utf8'));
@@ -19,7 +13,6 @@ export function readApplied(file: string): [string, number][] {
   }
 }
 
-// written at once by a temporary file and a rename, at the stop, right before the exit
 function writeApplied(file: string, table: [string, number][], log: (message: string) => void): void {
   const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
   try {
@@ -33,8 +26,6 @@ function writeApplied(file: string, table: [string, number][], log: (message: st
   }
 }
 
-// the table written by a temporary file and a rename, one write at a time, so that a rename that is
-// tried again does not hold the pages, and the newest table written once the write in flight ends
 export class AppliedTable {
   private next: [string, number][] | null = null;
   private saving: Promise<void> | null = null;
@@ -52,8 +43,6 @@ export class AppliedTable {
     if (!this.saving && !this.stopped) this.saving = this.flush();
   }
 
-  // at the stop, after the last write of index.html. the write in flight ends first, since its
-  // older table would otherwise replace the newest one
   async stop(): Promise<void> {
     this.stopped = true;
     await this.saving;
