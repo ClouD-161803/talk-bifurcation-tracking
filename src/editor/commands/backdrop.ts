@@ -321,7 +321,7 @@ const CSS = `
 .beeson-backdrop-gallery .tile canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .beeson-backdrop-gallery .name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .beeson-backdrop-gallery .reason { margin-top: -4px; font-size: 11px; }
-.beeson-backdrop-cuts { position: fixed; inset: 0; z-index: 51; pointer-events: none; }
+.beeson-backdrop-cuts { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
 html.beeson-masking .beeson-backdrop-cuts { display: none; }
 `;
 
@@ -725,17 +725,24 @@ function cuts(app: App): void {
   const layer = make('div', 'beeson-backdrop-cuts');
   document.body.append(layer);
   let marks: HTMLElement[] = [];
+  const HANDLE: Record<string, string> = { left: 'w', right: 'e', top: 'n', bottom: 's' };
+  const grips = () => {
+    const cut = new Set(marks.map((m) => HANDLE[m.dataset.edge ?? '']));
+    for (const g of document.querySelectorAll<HTMLElement>('.beeson-overlay .beeson-grip')) g.classList.toggle('cut', cut.has(g.dataset.handle ?? ''));
+  };
   const draw = () => {
     const el = selectedBackdrop(app);
     const o = liveOf(el);
     if (!el || !o || editing()) {
       for (const m of marks) m.remove();
       marks = [];
+      grips();
       return;
     }
     const v = app.stage?.viewport;
     if (v) layer.style.clipPath = `inset(${v.top}px ${innerWidth - v.right}px ${innerHeight - v.bottom}px ${v.left}px)`;
     marks = markCuts(app, el, o.view, o.extent, layer, marks);
+    grips();
   };
   app.selection.listen(draw);
   app.onRefresh(['layout', 'slide', 'content'], draw);
