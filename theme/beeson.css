@@ -211,7 +211,7 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal pre.code-wrapper, .reveal pre:has(> code[class*="language-"]) { font-size: 22px; line-height: 1.25; }
 .reveal pre.code-wrapper { position: relative; padding: 0; background: none; transition: opacity 400ms ease-out; }
 .reveal .slides pre.code-wrapper code.hljs { padding: 24px; font-size: inherit; white-space: pre; word-wrap: normal; word-break: normal; max-height: none; color: var(--text); background: color-mix(in srgb, var(--line) 45%, var(--bg)); }
-.reveal pre code table.hljs-ln { margin: 0; font-size: inherit; line-height: inherit; }
+.reveal pre code table.hljs-ln { margin: 0; border: 0; font-size: inherit; line-height: inherit; }
 .reveal pre code .hljs-ln td { padding: 0; border: 0; vertical-align: top; }
 .reveal pre code .hljs-ln td.hljs-ln-numbers { padding-right: 1em; text-align: right; opacity: 1; user-select: none; }
 .reveal pre code .hljs-ln-n { color: var(--muted); }
@@ -227,12 +227,11 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal .hljs-comment { color: var(--muted); font-style: italic; }
 .reveal .hljs-operator { color: var(--subtle); }
 
-.reveal table { margin: 24px 0 0; border-collapse: collapse; font-size: 36px; line-height: 1.4; }
+.reveal table { margin: 24px 0 0; border-collapse: collapse; font-size: 36px; line-height: 1.4; border-top: 3px solid var(--text); border-bottom: 3px solid var(--text); }
 .reveal .slides section > table, .reveal .slides section > .col > table, .reveal .slides section > :where(.r-stack) > * > table { position: relative; z-index: 1; background: var(--bg); }
-.reveal th, .reveal td { padding: 10px 40px 10px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); font-weight: inherit; font-variant-numeric: lining-nums tabular-nums; }
+.reveal th, .reveal td { padding: 10px 40px 10px 0; text-align: left; vertical-align: top; font-weight: inherit; font-variant-numeric: lining-nums tabular-nums; }
 .reveal th { color: var(--subtle); font-style: italic; }
-.reveal tr:first-child > th { vertical-align: bottom; border-bottom-color: var(--stroke); }
-.reveal tr:last-child td { border-bottom: 0; }
+.reveal tr:first-child > th { vertical-align: bottom; border-bottom: 1.5px solid var(--text); }
 
 .reveal .run { left: 120px; top: 44px; font-size: 22px; font-style: italic; color: var(--muted); }
 .reveal .foot, .reveal .refs { left: 120px; bottom: 50px; max-width: 1100px; font-size: 28px; line-height: 1.4; color: var(--muted); }
