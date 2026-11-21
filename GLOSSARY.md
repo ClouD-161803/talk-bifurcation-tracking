@@ -318,6 +318,12 @@ The text from which an output is compiled: `figures/name.tex` for a TikZ figure,
 
 Avoid "Edit TeX…" for Edit Source….
 
+## Stack
+
+A `div` with the class `r-stack` of reveal.js, whose children are drawn in one place and shown one at a time, each from its step until the step of the next child, as the `overprint` of Beamer. In the editor, each child is shown alone under its own tab at the slide, as if it were a separate slide.
+
+Avoid "pane", "layer", "panel", and "tab" for a child of a stack. Avoid "stack" for the vertical slides of reveal.js.
+
 ## Step
 
 The click of the talk at which an element appears, is dimmed, or is hidden, written as a reveal.js fragment.

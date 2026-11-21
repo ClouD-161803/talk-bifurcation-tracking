@@ -22,6 +22,24 @@ A step can be shown by itself after a delay, as a step that starts After Previou
 
 You flip the mode with the key `d` or with the button at the upper right. The change is drawn as a circle at the button or at the point of the click, grown on a flip to light and shrunk on a flip to dark. During a flip, a backdrop that is being traced is drawn on in both modes. A viewer of tycho, a surface, a plot, or a video is held still in the old mode for up to 450 ms, until the new mode is shown over it. The mode is kept per browser in local storage. To fix it for a venue, add the URL parameter `?theme=light`. To draw every backdrop complete at once for a screenshot, add `?still`.
 
+## Stacks
+
+Write content that replaces other content in the same place, e.g. the next form of an equation, as a stack: a `div` with the class `r-stack` of reveal.js, with one child `div` for each version. Give each child but the first the class `fragment` and a `data-fragment-index`, in increasing steps. A child is shown from its step until the step of the next child, and a first child without `fragment` is shown from the start. Keep the elements shown with every child, e.g. the heading and a closing remark, outside the stack.
+
+```html
+<section class="wide">
+  <h2>CR3BP dynamics</h2>
+  <div class="r-stack">
+    <div><p>…</p><div class="math">…</div></div>
+    <div class="fragment" data-fragment-index="2"><p>…</p><div class="math">…</div></div>
+    <div class="fragment" data-fragment-index="3"><p>…</p><div class="math">…</div></div>
+  </div>
+  <p class="small fragment" data-fragment-index="2">…</p>
+</section>
+```
+
+A stack is laid out in the flow of its slide, with every child at the upper left of the same place. The stack is as tall as its tallest child, and an element after it is laid out below it. Each child is as wide as the content of the slide, and its elements are laid out as on a slide of the same layout, e.g. `wide` or `narrow`. A child with a later child shown is hidden, and a child is not dimmed when a later step is shown, although the steps inside it are. In the print view and in the PowerPoint file, each step is drawn with the child shown at this step. Do not write `current-visible`, `fade-out`, or `fade-in-then-out` on elements that are replaced in place. A stack can be put in the text column of a split slide as well.
+
 ## The editor
 
 You can change the words, the formulas, the speaker notes, the steps, and the places of the figures of a deck on the slides themselves, without opening `index.html` in a text editor. The editor is loaded only when the parameter `?edit` is in the address of the deck, and a deck without it does not load any of it. The page is laid out like the normal view of PowerPoint. The title bar at the top is made of the menus, the name of the file with its state after it in a muted color, and the Autosave switch. In a window too narrow for this row, the name of the file and its state are cut first, and Which? and Autosave are then drawn without their names. Under it is the toolbar, with the buttons View, Zoom, Undo, Redo, Delete, Add Slide, Table, Text, Formula, Shape, Media, Preview, Present, Save, Format, and Steps. In a window too narrow for the toolbar, its groups are folded from the right into the button More, apart from the first group and the group of Format, and their buttons are listed in the menu of More. A folded button with a list, i.e. Shape, Media, Preview, or View in a customized toolbar, is a submenu of More with the items of its arrow. Open the submenu with a hover or the right arrow, and close it with the left arrow or Esc. Navigator is the first item of the submenu of View, before a rule, and while a preview plays, Play Slide in the submenu of Preview is named Stop. Trace Backdrop and Play Steps are thus reached with the keyboard in a window 760 px wide as well. The list of the slides is at the left, the slide in the middle, a pane for the notes under it, and a pane for the steps at the right. The status bar at the bottom is made of the slide number, the buttons Slides, Steps, and Notes, and the zoom. Drag the zoom slider, pinch, or turn the wheel with Ctrl to scale the slide, and the backdrops are drawn sharp again once the gesture ends. The slide is zoomed by the whole movement of a pinch, also of a slow one, and the grabbed point of a drag is kept under the pointer through a pinch. In a window narrower than 760 px, the zoom slider of the status bar is hidden.

@@ -227,7 +227,7 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal .hljs-operator { color: var(--subtle); }
 
 .reveal table { margin: 24px 0 0; border-collapse: collapse; font-size: 36px; line-height: 1.4; }
-.reveal .slides section > table, .reveal .slides section > .col > table { position: relative; z-index: 1; background: var(--bg); }
+.reveal .slides section > table, .reveal .slides section > .col > table, .reveal .slides section > :where(.r-stack) > * > table { position: relative; z-index: 1; background: var(--bg); }
 .reveal th, .reveal td { padding: 10px 40px 10px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); font-weight: inherit; }
 .reveal th { color: var(--subtle); font-style: italic; }
 .reveal tr:last-child td { border-bottom: 0; }
@@ -297,8 +297,20 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section > table,
 .reveal .slides section > pre,
 .reveal .slides section > .math,
-.reveal .slides section > .col { max-width: 1000px; }
+.reveal .slides section > .col,
+.reveal .slides section > :where(.r-stack) > * > p,
+.reveal .slides section > :where(.r-stack) > * > ul,
+.reveal .slides section > :where(.r-stack) > * > ol,
+.reveal .slides section > :where(.r-stack) > * > table,
+.reveal .slides section > :where(.r-stack) > * > pre,
+.reveal .slides section > :where(.r-stack) > * > .math { max-width: 1000px; }
 .reveal .slides section > .col { margin: 0; }
+.reveal .slides section .r-stack { grid-template-rows: none; grid-template-columns: minmax(0, 1fr); }
+.reveal .slides section .r-stack > * { margin: 0; min-width: 0; align-self: start; justify-self: stretch; }
+.reveal .slides section .r-stack > * > :first-child { margin-top: 0; }
+.reveal .slides section .r-stack > * > p:last-child { margin-bottom: 24px; }
+.reveal .slides section .r-stack > :has(~ .fragment.visible) { visibility: hidden; }
+.reveal .slides section:not([data-complete]) .r-stack > .fragment.visible:not(.current-fragment) { opacity: 1; }
 .reveal .slides section .figure-box { left: 1200px; top: 120px; width: 600px; height: 800px; }
 .reveal .slides section .backdrop { left: 1200px; top: 0; width: 720px; height: 1080px; }
 .reveal .slides section.narrow .backdrop { left: 920px; width: 1000px; }
@@ -321,7 +333,12 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section.narrow > ol,
 .reveal .slides section.narrow > table,
 .reveal .slides section.narrow > .math,
-.reveal .slides section.narrow > .col { max-width: 760px; width: auto; }
+.reveal .slides section.narrow > .col,
+.reveal .slides section.narrow > :where(.r-stack) > * > p,
+.reveal .slides section.narrow > :where(.r-stack) > * > ul,
+.reveal .slides section.narrow > :where(.r-stack) > * > ol,
+.reveal .slides section.narrow > :where(.r-stack) > * > table,
+.reveal .slides section.narrow > :where(.r-stack) > * > .math { max-width: 760px; width: auto; }
 .reveal .slides section.wide > h2,
 .reveal .slides section.wide > p,
 .reveal .slides section.wide > ul,
@@ -329,8 +346,15 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section.wide > table,
 .reveal .slides section.wide > .math,
 .reveal .slides section.wide > pre,
-.reveal .slides section.wide > .col { max-width: 1680px; width: auto; }
-.reveal .slides section > :is(h2, p, ul, ol, .math)[style*="width:"] { max-width: none; }
+.reveal .slides section.wide > .col,
+.reveal .slides section.wide > :where(.r-stack) > * > p,
+.reveal .slides section.wide > :where(.r-stack) > * > ul,
+.reveal .slides section.wide > :where(.r-stack) > * > ol,
+.reveal .slides section.wide > :where(.r-stack) > * > table,
+.reveal .slides section.wide > :where(.r-stack) > * > .math,
+.reveal .slides section.wide > :where(.r-stack) > * > pre { max-width: 1680px; width: auto; }
+.reveal .slides section > :is(h2, p, ul, ol, .math)[style*="width:"],
+.reveal .slides section > :where(.r-stack) > * > :is(h2, p, ul, ol, .math)[style*="width:"] { max-width: none; }
 
 .reveal .slides section.title,
 .reveal .slides section.closing,
