@@ -1609,17 +1609,30 @@ describe('a table selected as an object', () => {
     await isObject(page, 'after a tap on Select Table');
     const was = (await page.evaluate(TABLE)).box;
     const at = await center(page, cellOf(2, 1));
-    const hit = await page.evaluate(`(() => { const e = document.elementFromPoint(${at.x}, ${at.y}); return e ? [e.localName, ...e.classList].join('.') + (e.title ? \`[\${e.title}]\` : '') : null; })()`);
-    await page.evaluate(`window.__seen = []; for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchend', 'mousedown', 'mouseup', 'focusin', 'click', 'scroll']) addEventListener(t, (e) => { let q = e.target; const ch = []; while (q && ch.length < 9) { ch.push([q.localName, ...(q.classList ?? [])].join('.') + (q === e.target && 'clientX' in e ? '@' + e.clientX + ',' + e.clientY + (e.defaultPrevented ? '!' : '') : '')); q = q.parentElement; } const k = e.type + ':' + (e.type === 'click' || e.type === 'focusin' || e.type === 'mousedown' || e.type === 'mouseup' ? ch.join('<') : (e.target?.localName ?? 'doc')); if (window.__seen.at(-1) !== k) window.__seen.push(k); }, true)`);
     const touch = (k) => [{ x: at.x + 3 * k, y: at.y + 2 * k, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(0) });
     for (let k = 1; k <= 10; k++) await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(k) });
     await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await frames(page);
-    const seen = await page.evaluate(`window.__seen.join(' ') + ' | undo ' + window.BeesonEditor.state('edit.undo').label + ' | active ' + document.activeElement?.localName + ' | scroll ' + scrollY`);
-    const s = await isObject(page, `after a touch drag on a cell that starts on ${hit} at ${Math.round(at.x)}, ${Math.round(at.y)}, with ${seen}`);
+    const s = await isObject(page, 'after a touch drag on a cell');
     assert.ok(Math.abs(s.box.left - was.left - 30) < 10 && Math.abs(s.box.top - was.top - 20) < 10, `a touch drag of (30, 20) moves the table by (${s.box.left - was.left}, ${s.box.top - was.top})`);
     assert.match(await render(page), /<table style="translate: [-\d.]+px [-\d.]+px">/);
+    assert.deepEqual(page.errors, []);
+  });
+
+  test('a drag of a table selected as an object that ends beside a formula of a cell keeps the table selected', async (t) => {
+    const page = await load(t, 'other', { deck: 'test/pages/editor-tables.html', n: 1 });
+    await click(page, cellOf(2, 0));
+    await press(page, 'Escape');
+    await press(page, 'Escape');
+    await frames(page);
+    const was = (await isObject(page, 'after a click on a cell and two Esc')).box;
+    const at = await page.evaluate(`(() => { const r = document.querySelector(${js(cellOf(1, 1))} + ' mjx-container').getBoundingClientRect(); return { x: r.right + 24, y: (r.top + r.bottom) / 2 }; })()`);
+    assert.equal(await page.evaluate(`document.elementFromPoint(${at.x}, ${at.y})?.matches(${js(cellOf(1, 1))})`), true, 'the drag does not start on the cell beside its formula');
+    await drag(page, at, { dx: 30, dy: 20 });
+    await frames(page);
+    const s = await isObject(page, 'after a drag that ends beside a formula');
+    assert.ok(Math.abs(s.box.left - was.left - 30) < 10 && Math.abs(s.box.top - was.top - 20) < 10, `a drag of (30, 20) moves the table by (${s.box.left - was.left}, ${s.box.top - was.top})`);
     assert.deepEqual(page.errors, []);
   });
 

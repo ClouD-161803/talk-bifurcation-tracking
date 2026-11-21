@@ -449,7 +449,7 @@ export function install(app: App): void {
   });
   document.addEventListener('click', (ev) => {
     const host = app.hostOf(ev.target);
-    if (!host || !getSelection()?.isCollapsed || mathAt(ev.target as Node)) return;
+    if (ev.defaultPrevented || !host || !getSelection()?.isCollapsed || mathAt(ev.target as Node)) return;
     const at = fromPoint(ev.clientX, ev.clientY);
     const math = mathAt(at?.[0]) ?? nextMath(true) ?? nextMath(false);
     if (!math || !host.contains(math)) return;
