@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>Poincaré sections and invariant tori</title>
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css" />
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css" />
+    <link rel="stylesheet" href="../../theme/beeson.css" />
+    <script>
+      window.warnings = [];
+      const warn = console.warn.bind(console);
+      console.warn = (...args) => {
+        window.warnings.push(args.join(' '));
+        warn(...args);
+      };
+    </script>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h2>The section of the Earth–Moon L2</h2>
+          <div class="backdrop" data-backdrop="poincare" data-live data-duration="0.5"></div>
+        </section>
+        <section>
+          <h2>The section of the Sun–Earth L1 in a window</h2>
+          <div class="backdrop" data-backdrop="poincare" data-system="sun-earth-l1" data-cx="0.1" data-cy="0" data-half="2"></div>
+        </section>
+        <section>
+          <h2>All tori</h2>
+          <div class="backdrop" data-backdrop="tori" data-live></div>
+        </section>
+        <section>
+          <h2>One torus in the plane x, z</h2>
+          <div class="backdrop" data-backdrop="tori" data-tori="0.18" data-plane="xz" data-duration="22.2"></div>
+        </section>
+        <section>
+          <h2>Two tori, one of which is not in the file</h2>
+          <div class="backdrop" data-backdrop="tori" data-tori="0.5 0.04"></div>
+        </section>
+        <section>
+          <h2>No torus</h2>
+          <div class="backdrop" data-backdrop="tori" data-tori="none"></div>
+        </section>
+      </div>
+    </div>
+    <script src="../../theme/vendor/reveal/reveal.js"></script>
+    <script src="../../theme/beeson.js"></script>
+    <script>
+      Beeson.start({});
+    </script>
+  </body>
+</html>
