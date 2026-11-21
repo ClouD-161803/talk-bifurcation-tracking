@@ -1322,3 +1322,36 @@ test('the answer of a poll that arrives after Leave Session is not taken', { tim
   clean(ann);
   clean(ben);
 });
+
+test('an edit of this page that a live merge drops to keep the tags in order is set aside, and the person is told so', { timeout: 180_000 }, async (t) => {
+  const list = (items) => `  <ul>\n${items.map((i) => `    <li>${i}</li>\n`).join('')}  </ul>\n`;
+  const deck = TALK.replace(/<section>[\s\S]*<\/section>\n/, `<section>\n  <h2>One</h2>\n  <p>Same words 11</p>\n</section>\n<section>\n  <h2>Intro 2</h2>\n${list(['Method 22'])}</section>\n<section>\n  <h2>Method 3</h2>\n${list([''])}  <p>Intro 31</p>\n</section>\n`);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { deck });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await ann.evaluate(`(() => {
+    window.__toasts = [];
+    new MutationObserver((rs) => { for (const r of rs) for (const n of r.addedNodes) if (n.localName === 'span' && r.target.matches?.('.beeson-session-toast')) window.__toasts.push(n.textContent); }).observe(document.body, { childList: true, subtree: true });
+    return __net.rule('/.session/op', 'hold');
+  })()`);
+  const move = (page, slide) => page.evaluate(`(async () => { await ${C}.app.doc.move(${el(slide, 'ul')}, ${el(0, 'p')}.parentElement, null); return true; })()`);
+  await move(ann, 1);
+  await ann.waitFor(`__net.held.length === 1`);
+  await move(ann, 2);
+  await show(ann, 'Intro 2');
+  await caretAtEnd(ann, el(1, 'h2'));
+  await type(ann, 'x');
+  await ann.waitFor(`/Intro 2x[\\s\\S]*<h2>Method 3<\\/h2>\\n  <p>/.test(${TEXT})`);
+  await move(ben, 1);
+  await until(() => !/<h2>Intro 2<\/h2>\n  <ul>/.test(server.read()) || null, 'the move of Ben in index.html');
+  const moved = server.read();
+  await ann.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await ann.waitFor(`window.__toasts.length > 0`);
+  assert.deepEqual(await ann.evaluate('window.__toasts'), ['Your edit clashed with an edit of another person, and was dropped. It is kept under Set aside in Version History.']);
+  assert.equal(await converge(server, [ann, ben]), moved);
+  clean(ann);
+  clean(ben);
+});
