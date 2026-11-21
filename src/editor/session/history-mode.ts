@@ -1,5 +1,6 @@
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
+import { script } from '../ui/script.ts';
 import type { HistoryShell } from '../../session/client/handover.ts';
 
 let on = false;
@@ -46,5 +47,6 @@ export function historyShell(app: App): HistoryShell {
       app.relayout();
     },
     canvas: () => (q('.beeson-edit-canvas') ?? document.body).getBoundingClientRect(),
+    load: () => script('session-history.js'),
   };
 }

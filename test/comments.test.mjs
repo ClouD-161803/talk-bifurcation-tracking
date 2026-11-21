@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { commentsOf, docstrings, hashComments, markupComments, scriptComments, styleComments, texComments } from './helpers/comments.mjs';
 
 const root = join(import.meta.dirname, '..');
-const BUNDLES = /^theme\/(?:beeson|editor|editor-tex|editor-pdf|editor-session|session)\.js$|^theme\/edit\.mjs$/;
+const BUNDLES = /^theme\/(?:beeson|editor|editor-tex|editor-pdf|editor-session|session|session-history)\.js$|^theme\/edit\.mjs$/;
 
 const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
   .split('\0')
