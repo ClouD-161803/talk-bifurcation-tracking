@@ -786,7 +786,7 @@ export class Steps {
       chip.setAttribute('aria-expanded', 'false');
       chip.setAttribute('aria-label', `Step of the ${kind.toLowerCase()}${text ? `: ${text}` : ''}`);
       const how = step < 0 ? 'With the slide' : [final ? 'Last' : startLabel(start, delay), effects[i]].join(' · ');
-      chip.title = line ? `Step ${step + 1}, the ${kind.toLowerCase()} of the code box, set in its Code pane. Click to play the steps from it` : locked ? `Step ${step + 1}, set in its text element` : step < 0 ? 'Shown with the slide. Click to choose a step' : `Step ${step + 1}, ${final ? 'last' : startLabel(start, delay)}. Click to change its step, start, or effect`;
+      chip.title = line ? `Step ${step + 1}, the ${kind.toLowerCase()} of the code box, set in its Code pane. Click to play the steps from it` : el.matches(CHILD) ? `${step < 0 ? 'Shown with the slide' : `Step ${step + 1}`}, set by the tabs at the slide. Click to play the steps from it` : locked ? `Step ${step + 1}, set in its text element` : step < 0 ? 'Shown with the slide. Click to choose a step' : `Step ${step + 1}, ${final ? 'last' : startLabel(start, delay)}. Click to change its step, start, or effect`;
       chip.disabled = locked;
       const mark = step < 0 || final ? null : start === 'with' ? startGlyph('with') : start === 'after' ? startGlyph('after') : null;
       if (mark) chip.append(mark);
@@ -985,7 +985,7 @@ export class Steps {
     const m = this.model;
     const app = this.app;
     if (!m || !app) return [];
-    return this.rows.filter((r) => r.row.classList.contains('selected') && !m.lines[r.i]).map((r) => {
+    return this.rows.filter((r) => r.row.classList.contains('selected') && !m.lines[r.i] && !r.el.matches(CHILD)).map((r) => {
       const { start, delay } = startAt(app, m, r.i);
       return { el: r.el, stepped: stepAt(m.plan, r.i) >= 0, start, delay, effect: effectOf(classesOf(app, r.el)), final: m.plan.finals.includes(r.i) };
     });
@@ -1050,7 +1050,7 @@ export class Steps {
     const { plan } = m;
     const at = stepAt(plan, r.i);
     const play: MenuItem = { label: at < 0 ? 'Play From Step' : `Play From Step ${at + 1}`, disabled: at < 0, run: () => void app.commands.run('steps.playFrom', { step: at }).catch((e) => app.fail(e)) };
-    if (m.lines[r.i]) {
+    if (m.lines[r.i] || r.el.matches(CHILD)) {
       const menu = openMenu(app, [play], { anchor: rowAnchor(r.chip, r.row), placement: 'below', owner: r.chip, keyboard, label: 'Step', className: 'select steps' }).el;
       popover(menu, r.row);
       if (!keyboard) follow(menu, r.row);

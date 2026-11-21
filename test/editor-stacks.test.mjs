@@ -191,6 +191,31 @@ test('a row of a tab in the Steps pane shows its tab', { timeout: 120000 }, asyn
   assert.deepEqual(page.errors, []);
 });
 
+test('a row of a tab in the Steps pane cannot be given a step, a start, or an effect', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  await run(page, 'view.steps');
+  const row = `[...document.querySelectorAll('.beeson-edit-side .rows .row.tab')].find((r) => r.textContent.includes('second form'))`;
+  await page.waitFor(`!!${row}?.getBoundingClientRect().width`);
+  await click(page, await boxOf(page, `${row}.querySelector('.chip')`));
+  await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => i.querySelector('.label').textContent)`), ['Play From Step 2']);
+  await press(page, 'Escape');
+  await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
+  await click(page, await boxOf(page, `${row}.querySelector('.body')`));
+  await page.waitFor(`${row}.classList.contains('selected')`);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-side .detail').classList.contains('off')`), true);
+  assert.equal(await page.evaluate(`window.BeesonEditor.state('steps.earlier').enabled`), false);
+  assert.equal(await page.evaluate(`window.BeesonEditor.state('steps.later').enabled`), false);
+  const child = `document.querySelector('.present .r-stack').children[1]`;
+  for (const [id, arg] of [['steps.set', '{ to: null }'], ['steps.set', '{ to: 0 }'], ['steps.start', "{ start: 'with' }"], ['steps.effect', "{ effect: 'out' }"], ['steps.final', '{ on: true }'], ['steps.earlier', '{}'], ['steps.later', '{}'], ['steps.move', '{ gap: 0 }']]) {
+    await page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}, { el: ${child}, ...${arg} })`);
+  }
+  await page.evaluate(`${row}.focus()`);
+  await press(page, 'Delete');
+  assert.equal(await rendered(page), page.source);
+  assert.deepEqual(page.errors, []);
+});
+
 test('Insert > Stack wraps the selection in a stack in place, and Show on Every Tab takes it out again', { timeout: 120000 }, async (t) => {
   const page = await open(t);
   await page.evaluate('Reveal.slide(2)');
