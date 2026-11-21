@@ -3,7 +3,7 @@ import type { Entry } from './history.ts';
 import type { Pairing } from './render.ts';
 import type { TagEdit, TagState } from './tags.ts';
 import { stepViewers } from '../viewers.ts';
-import { OFF, fragmentIndex, fragmentsOf, type ShownSteps, itemsOf, planOf, remapKeep, showRange, shownAt, startOf, stepAt, type Item, type Plan, type Start } from './shown-steps.ts';
+import { OFF, childrenOf, fragmentIndex, fragmentsOf, type ShownSteps, itemsOf, planOf, remapKeep, showRange, shownAt, startOf, stepAt, type Item, type Plan, type Start } from './shown-steps.ts';
 import { setPreview } from './canvas/frames.ts';
 import { twinOf } from './canvas/hit.ts';
 import { media as store } from './media/store.ts';
@@ -508,7 +508,7 @@ html.beeson-editing .reveal .beeson-hover { outline: 2px solid var(--ed-guide, #
 html.beeson-previewing .beeson-badges, html.beeson-previewing .beeson-overlay, html.beeson-previewing .beeson-frame, html.beeson-previewing .beeson-handle { visibility: hidden !important; }
 html.beeson-editing.beeson-previewing .reveal .slides section .fragment { transition: opacity 400ms ease-out !important; }
 html.beeson-editing.beeson-previewing .reveal .slides section .fragment.beeson-pv-dim { opacity: 0.45 !important; }
-html.beeson-editing.beeson-previewing .reveal .slides section .fragment.beeson-pv-off { opacity: 0 !important; }
+html.beeson-editing.beeson-previewing .reveal .slides section :is(.fragment, .r-stack > *).beeson-pv-off { opacity: 0 !important; }
 html.beeson-editing.beeson-previewing .reveal .slides section .fragment.beeson-pv-ghost { opacity: 0.25 !important; }
 @media (prefers-reduced-motion: reduce) { html.beeson-editing.beeson-previewing .reveal .slides section .fragment { transition: none !important; } }
 `;
@@ -1241,11 +1241,17 @@ export class Steps {
     const raw = fragmentsOf(slide);
     const m = this.app ? modelOf(this.app, slide) : null;
     const at = raw.map((f) => {
+      if (!f.el.classList.contains('fragment')) return f.step;
       const i = m ? indexIn(m, f.el) : -1;
       return m && i >= 0 && stepAt(m.plan, i) >= 0 ? stepAt(m.plan, i) + 1 : null;
     });
     const byModel = !!m && at.every((k) => k !== null);
-    const frags = byModel ? raw.map((f, j) => ({ ...f, step: at[j] as number })) : raw;
+    const stepped = byModel ? raw.map((f, j) => ({ ...f, step: at[j] as number })) : raw;
+    const nextOf = (el: Element) => {
+      const kin = childrenOf(el.parentElement as Element);
+      return kin[kin.indexOf(el) + 1];
+    };
+    const frags = stepped.map((f) => (f.kind === 'span' && f.end !== Infinity ? { ...f, end: stepped.find((g) => g.el === nextOf(f.el))?.step ?? f.end } : f));
     const lines = byModel && m ? m.lines.flatMap((l, i) => (l ? [{ ...l, step: stepAt(m.plan, i) + 1 }] : [])) : [];
     if (!frags.length && !lines.length) return Promise.resolve();
     const html = document.documentElement;

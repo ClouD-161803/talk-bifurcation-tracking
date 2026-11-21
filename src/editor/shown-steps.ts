@@ -1,11 +1,13 @@
 import { injectStyle } from './ui/dom.ts';
 
 export type StepRange = { from: number; to: number };
-export type Fragment = { el: Element; step: number; kind: 'in' | 'out' | 'only' };
+export type Fragment = { el: Element; step: number; kind: 'in' | 'out' | 'only' | 'span'; end: number };
 
 const OUT = '.fade-out';
 const ONLY = '.current-visible, .fade-in-then-out';
 export const OFF = 'beeson-off';
+export const STACK = 'r-stack';
+export const CHILD = '.r-stack > *';
 
 let readIndex = (el: Element): string | null => el.getAttribute('data-fragment-index');
 export function setIndexReader(read: (el: Element) => string | null): void {
@@ -26,13 +28,31 @@ export function fileIndexes(live: Element[], copies: Element[]): void {
   });
 }
 
+const own = (slide: Element, el: Element): boolean => !el.closest('aside.notes') && el.closest('section') === slide;
+
+export const stacksOf = (slide: Element): Element[] => [...slide.querySelectorAll(`.${STACK}`)].filter((s) => own(slide, s));
+
+export const childrenOf = (stack: Element): Element[] => [...stack.children].filter((c) => !c.hasAttribute('data-generated'));
+
 export function fragmentsOf(slide: Element): Fragment[] {
-  const els = [...slide.querySelectorAll('.fragment')].filter((el) => !el.closest('aside.notes'));
-  const given = els.map((el) => parseFloat(readIndex(el) ?? ''));
+  const kids = new Set(stacksOf(slide).flatMap(childrenOf));
+  const els = [...slide.querySelectorAll('*')].filter((el) => (el.classList.contains('fragment') || kids.has(el)) && own(slide, el));
+  const steps = els.filter((el) => el.classList.contains('fragment'));
+  const given = steps.map((el) => parseFloat(readIndex(el) ?? ''));
   let next = Math.max(0, ...given.filter((i) => !Number.isNaN(i))) + 1;
   const index = given.map((i) => (Number.isNaN(i) ? next++ : i));
   const order = [...new Set(index)].sort((a, b) => a - b);
-  return els.map((el, i) => ({ el, step: order.indexOf(index[i]) + 1, kind: el.matches(OUT) ? 'out' : el.matches(ONLY) ? 'only' : 'in' }));
+  const stepOf = (el: Element) => {
+    const i = steps.indexOf(el);
+    return i < 0 ? 0 : order.indexOf(index[i]) + 1;
+  };
+  return els.map((el) => {
+    const step = stepOf(el);
+    if (!kids.has(el)) return { el, step, kind: el.matches(OUT) ? 'out' : el.matches(ONLY) ? 'only' : 'in', end: Infinity };
+    const kin = childrenOf(el.parentElement as Element);
+    const later = kin[kin.indexOf(el) + 1];
+    return { el, step, kind: 'span', end: later ? stepOf(later) : Infinity };
+  });
 }
 
 export function rangesOf(slide: Element): StepRange[] {
@@ -40,21 +60,24 @@ export function rangesOf(slide: Element): StepRange[] {
   const last = Math.max(0, ...fragments.map((f) => f.step));
   const cuts = new Set<number>();
   for (const f of fragments) {
-    const at = f.kind === 'out' ? f.step : f.kind === 'only' ? f.step + 1 : 0;
+    const at = f.kind === 'out' ? f.step : f.kind === 'only' ? f.step + 1 : f.kind === 'span' ? f.end : 0;
     if (at > 0 && at <= last) cuts.add(at);
   }
   const starts = [0, ...[...cuts].sort((a, b) => a - b)];
   return starts.map((from, i) => ({ from, to: i + 1 < starts.length ? starts[i + 1] - 1 : last }));
 }
 
-export const shownAt = (f: Fragment, step: number): boolean => (f.kind === 'in' ? f.step <= step : f.kind === 'out' ? step < f.step : step === f.step);
+export const shownAt = (f: Fragment, step: number): boolean =>
+  f.kind === 'in' ? f.step <= step : f.kind === 'out' ? step < f.step : f.kind === 'span' ? f.step <= step && step < f.end : step === f.step;
 
 export function showRange(slide: Element, range: StepRange | null): void {
   for (const f of fragmentsOf(slide)) {
-    const up = f.el.parentElement?.closest('.fragment');
+    const up = f.el.parentElement?.closest(`.fragment, ${CHILD}`);
     f.el.classList.toggle(OFF, !!range && (!shownAt(f, range.to) || (!!up && up.classList.contains(OFF))));
   }
 }
+
+export const shownChild = (slide: Element): Element | null => stacksOf(slide).flatMap(childrenOf).find((c) => !c.classList.contains(OFF)) ?? null;
 
 export function label(range: StepRange, last: boolean): string {
   if (range.from === 0) return range.to === 0 ? 'Before step 1' : `Up to step ${range.to}`;
@@ -72,12 +95,14 @@ const CSS = `
 `;
 const GAP = 4;
 
+export type Pick = { child: Element | null; i: number };
+
 export class ShownSteps {
   readonly box = document.createElement('span');
   readonly tabs = document.createElement('div');
   private readonly slide: () => Element | null;
   private readonly onChange: () => void;
-  private readonly chosen = new WeakMap<Element, number>();
+  private readonly chosen = new WeakMap<Element, Pick>();
   private key = '';
 
   constructor(slide: () => Element | null, onChange: () => void) {
@@ -94,11 +119,19 @@ export class ShownSteps {
     document.body.append(this.tabs);
   }
 
+  private at(slide: Element, ranges: StepRange[]): number {
+    const { child, i } = this.chosen.get(slide) ?? { child: null, i: 0 };
+    const f = child && slide.contains(child) ? fragmentsOf(slide).find((x) => x.el === child) : undefined;
+    if (!f) return Math.min(i, ranges.length - 1);
+    const fits = ranges.flatMap((r, k) => (shownAt(f, r.to) ? [k] : []));
+    return fits.includes(i) ? i : (fits[0] ?? 0);
+  }
+
   refresh(): void {
     if (document.documentElement.classList.contains('beeson-previewing')) return;
     const slide = this.slide();
     const ranges = slide ? rangesOf(slide) : [];
-    if (!slide || ranges.length < 2) {
+    if (!slide || (ranges.length < 2 && !stacksOf(slide).length)) {
       if (slide) showRange(slide, null);
       for (const el of [this.box, this.tabs]) {
         el.hidden = true;
@@ -107,7 +140,7 @@ export class ShownSteps {
       this.key = '';
       return;
     }
-    const at = Math.min(this.chosen.get(slide) ?? 0, ranges.length - 1);
+    const at = this.at(slide, ranges);
     showRange(slide, ranges[at]);
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
     this.box.hidden = this.tabs.hidden = false;
@@ -157,8 +190,19 @@ export class ShownSteps {
     else this.refresh();
   }
 
+  shown(slide: Element): Pick {
+    return this.chosen.get(slide) ?? { child: null, i: 0 };
+  }
+
+  show(slide: Element, pick: Pick): void {
+    this.chosen.set(slide, pick);
+    if (slide === this.slide()) this.refresh();
+  }
+
   private choose(slide: Element, i: number): void {
-    this.chosen.set(slide, i);
+    const ranges = rangesOf(slide);
+    showRange(slide, ranges[i] ?? null);
+    this.chosen.set(slide, { child: shownChild(slide), i });
     this.refresh();
     this.onChange();
   }

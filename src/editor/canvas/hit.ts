@@ -233,19 +233,22 @@ export function pickOf(app: App, target: Element | null): Element | null {
   return only && only !== el && !!el?.contains(only) && !!target && only.contains(target) ? only : el;
 }
 
-export function movablesOf(app: App): Element[] {
+export const HIDDEN = '.beeson-off';
+export const STACKED_AWAY = '.r-stack > .beeson-off';
+
+export function movablesOf(app: App, hidden = HIDDEN): Element[] {
   const slide = app.current();
   if (!slide) return [];
-  return [...slide.querySelectorAll(MOVABLE)].filter((el) => movableOf(app, el) === el && el.getBoundingClientRect().width > 0);
+  return [...slide.querySelectorAll(MOVABLE)].filter((el) => movableOf(app, el) === el && !el.closest(hidden) && el.getBoundingClientRect().width > 0);
 }
 
 export const LINE = 'svg.line';
 export const strokeOf = (svg: Element): Element | null => svg.querySelector(':scope > line, :scope > path');
 
-export function linesOf(app: App): Element[] {
+export function linesOf(app: App, hidden = HIDDEN): Element[] {
   const slide = app.current();
   if (!slide) return [];
-  return [...slide.querySelectorAll(LINE)].filter((svg) => !!app.pairing?.elements.get(svg)?.open && svg.getClientRects().length > 0 && !svg.closest(OUTSIDE));
+  return [...slide.querySelectorAll(LINE)].filter((svg) => !!app.pairing?.elements.get(svg)?.open && svg.getClientRects().length > 0 && !svg.closest(OUTSIDE) && !svg.closest(hidden));
 }
 
 export function lineStroke(svg: Element): { pts: Point[]; mid: Point } {
