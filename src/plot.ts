@@ -641,7 +641,11 @@ export class PlotView {
 
   private panelsNow(): Panel[] {
     const patches = this.plot.tabs[this.tab].panels;
-    return this.panels.map((p) => written({ ...p, ...patches[p.id] }, WRITTEN.get(patches[p.id]?.title === undefined ? p : patches[p.id])!));
+    return this.panels.map((p) => {
+      const merged = { ...p, ...patches[p.id] };
+      const at = WRITTEN.get(patches[p.id]?.title === undefined ? p : patches[p.id]);
+      return at === undefined ? merged : written(merged, at);
+    });
   }
 
   private layout(): void {

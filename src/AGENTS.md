@@ -22,6 +22,8 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - pdf.js is vendored from its legacy build. Its default build calls methods that are missing in the Safari version before the current one.
 - In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
+- The engine of the Poincaré sections and of the tori, in `src/dots.ts`, `src/poincare.ts`, and `src/tori.ts`, was written for a talk of the group, not ported from DyLAN code. The files of `theme/backdrops/` hold data computed by DyLAN, which is allowed.
+- Load the file of a drawing of `theme/backdrops/` only in a deck that draws it. `theme/beeson.js` is loaded by every deck, hence keep the data of a drawing out of it.
 - `realpathSync` of Node keeps the short names of Windows, e.g. `RUNNER~1`. `realpathSync.native` and `realpath` of `fs/promises` resolve them.
 - On Windows, another program may hold `index.html` open for a moment. A rename over it is therefore tried again.
 - `node:zlib` has `crc32` only since Node 20.15. The CRC-32 of a zip entry is read from the trailer of gzip.
@@ -58,6 +60,15 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
   uv run --with matplotlib,numpy,scipy python demo/figures.py .
   uv run --project ../tycho/code python demo/broucke.py
   uv run --with pytycho==0.3.0,scipy python demo/tycho-scene.py index.html
+  ```
+- The files of `theme/backdrops/` are written by `demo/poincare.py` and `demo/tori.py` from files of sections and of orbits computed by DyLAN. These inputs and the scripts that call DyLAN are not in the repository, since nothing here may be derived from DyLAN code. An input is an `npz` file of NumPy with the keys read in `section` of `demo/poincare.py` and in `tori` of `demo/tori.py`, and `demo/poincare.py` takes one file per system.
+
+  ```sh
+  uv run --with numpy python demo/poincare.py earth-moon-l2 sections-earth-moon-l2.npz
+  uv run --with numpy python demo/poincare.py sun-earth-l1 sections-sun-earth-l1.npz
+  uv run --with numpy python demo/poincare.py bicircular-l1-horizontal sections-bicircular-l1-horizontal.npz
+  uv run --with numpy python demo/poincare.py bicircular-l1-vertical sections-bicircular-l1-vertical.npz
+  uv run --with numpy python demo/tori.py tori.npz
   ```
 - The clips of the demo deck are exported with tycho, as described in its CONTRIBUTING.md.
 

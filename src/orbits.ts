@@ -465,7 +465,11 @@ export class Orbits {
     return { cx: this.cx, cy: this.cy, half: this.half };
   }
 
-  get fittedToTrajectories(): boolean {
+  get fitsItself(): boolean {
+    return this.el.dataset.trajectories !== undefined;
+  }
+
+  get fittedToDrawing(): boolean {
     return this.fitted;
   }
 
@@ -943,8 +947,3 @@ export class Orbits {
   }
 }
 
-export function mount(root: ParentNode): Orbits[] {
-  const out: Orbits[] = [];
-  for (const el of root.querySelectorAll<HTMLElement>('.backdrop')) out.push(CACHE.get(el) ?? new Orbits(el));
-  return out;
-}

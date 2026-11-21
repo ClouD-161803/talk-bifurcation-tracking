@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { apply, changes, charEdits, clash, edits, merge, mergeEdits, moves, revert } from '../src/editor/merge.ts';
-import { apply as applyPatches, conflict, diff, mergePatches, mergeTexts, shift } from '../src/session/patch.ts';
+import { apply as applyPatches, checksum, conflict, diff, mergePatches, mergeTexts, shift } from '../src/session/patch.ts';
+import { Replica } from '../src/session/replica.ts';
 import { mergeRun } from '../src/session/run.ts';
 import { tokenize } from '../src/editor/tokens.ts';
 
@@ -1026,12 +1027,18 @@ test('mergeRun() drops every letter that the side that loses types in a word tha
   assert.deepEqual(mergeRun('a word b', 'a <em>wo</em>rd b', 'a deck b', false, 'theirs'), { text: 'a <em>wo</em>rd b', conflicted: true });
 });
 
-test('a list that two people move into the slide before, also one of them with a list of the next slide and a typo in a heading, keeps each end tag on the element opened last, in both orders', () => {
+const moved = (() => {
   const s = (h, ls) => `<section>\n  <h2>${h}</h2>\n${ls.map((l) => `  ${l}\n`).join('')}</section>\n`;
   const ul = ['<ul>', '  <li>Method 22</li>', '</ul>'], three = ['<ul>', '  <li></li>', '</ul>'];
-  const base = s('One', ['<p>Same words 11</p>']) + s('Intro 2', ul) + s('Method 3', [...three, '<p>Intro 31</p>']);
-  const one = s('One', ['<p>Same words 11</p>', ...ul]) + s('Intro 2', []) + s('Method 3', [...three, '<p>Intro 31</p>']);
-  const two = s('One', ['<p>Same words 11</p>', ...ul, ...three]) + s('Into 2', []) + s('Method 3', ['<p>Intro 31</p>']);
+  return {
+    base: s('One', ['<p>Same words 11</p>']) + s('Intro 2', ul) + s('Method 3', [...three, '<p>Intro 31</p>']),
+    one: s('One', ['<p>Same words 11</p>', ...ul]) + s('Intro 2', []) + s('Method 3', [...three, '<p>Intro 31</p>']),
+    two: s('One', ['<p>Same words 11</p>', ...ul, ...three]) + s('Into 2', []) + s('Method 3', ['<p>Intro 31</p>']),
+  };
+})();
+
+test('a list that two people move into the slide before, also one of them with a list of the next slide and a typo in a heading, keeps each end tag on the element opened last, in both orders', () => {
+  const { base, one, two } = moved;
   const nested = (text) => {
     const open = [];
     return !text.match(/<\/?(section|ul)>/g).some((t) => (t[1] === '/' ? open.pop() !== t.slice(2, -1) : !open.push(t.slice(1, -1)))) && !open.length;
@@ -1040,4 +1047,19 @@ test('a list that two people move into the slide before, also one of them with a
     const text = mergeTexts(base, x, y);
     assert.ok(nested(text), text);
   }
+});
+
+test('a live merge that drops the edits of this page to keep the tags in order reports them as dropped, and an ordinary live merge reports none', () => {
+  const { base, one, two } = moved;
+  const live = (mine, theirs) => {
+    const r = new Replica('me', base, 'E.0');
+    r.edit(mine);
+    const dropped = [];
+    r.receiveAll([{ client: 'other', seq: 1, v: 'E.1', patches: diff(base, theirs), sum: checksum(theirs) }], dropped);
+    return { text: r.mine, dropped };
+  };
+  const lost = live(two, one);
+  assert.equal(lost.text, one);
+  assert.ok(lost.dropped.length > 0);
+  assert.deepEqual(live(base.replace('Same words', 'Some words'), base.replace('Same words', 'Sane words')).dropped, []);
 });

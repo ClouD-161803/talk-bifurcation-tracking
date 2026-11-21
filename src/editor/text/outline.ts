@@ -3,9 +3,9 @@ import { contentWithTex } from '../math.ts';
 import { injectStyle } from '../ui/dom.ts';
 import { OUTLINE } from './elements.ts';
 
-injectStyle('outline-field', `
+const FIELD_CSS = `
 .beeson-outline-field { position: fixed; z-index: 60; box-sizing: border-box; margin: 0; padding: 0 6px; border: 2px solid var(--ed-select); border-radius: 4px; background: var(--ed-panel); color: var(--ed-text); outline: none; }
-`);
+`;
 
 const sectionsOf = (app: App): Element[] => [...app.slides().querySelectorAll('section.section:not(:has(> section))')];
 const headingOf = (slide: Element): Element | null => slide.querySelector('h2') ?? slide.querySelector('h1');
@@ -44,6 +44,7 @@ export function editItem(app: App, li: HTMLElement): void {
   const heading = headingAt(app, li);
   const list = li.parentElement;
   if (!heading || !app.pairing?.elements.has(heading)) return;
+  injectStyle('outline-field', FIELD_CSS);
   document.querySelector('.beeson-outline-field')?.remove();
   const r = li.getBoundingClientRect();
   const s = getComputedStyle(li);

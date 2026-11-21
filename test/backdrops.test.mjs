@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { builtIn } from '../src/backdrops.ts';
+import { systemOf } from '../src/poincare.ts';
+import { ALPHAS, planeOf, shownTori, toriSpec } from '../src/tori.ts';
 
 const boxes = `[...document.querySelectorAll('.backdrop[data-backdrop]')].map((b) => {
   const cs = getComputedStyle(b), px = (name) => parseFloat(cs[name]);
@@ -335,5 +337,164 @@ test('a drawing of a file that is taken out of the page before the load is redra
   })()`);
   assert.ok(out.trajectories > 0, 'the file of the drawing is not loaded');
   assert.equal(out.error, null);
+  assert.deepEqual(page.errors, []);
+});
+
+const DOTS = 'test/pages/backdrops-dots.html';
+const dotted = `(async () => {
+  const out = [];
+  for (const b of Beeson.backdrops) {
+    const { h, v } = Reveal.getIndices(b.el.closest('section'));
+    Reveal.slide(h, v);
+    await b.ready;
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    b.complete();
+    const inked = (c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0, edge = 0, sum = 0, blue = 0;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          const i = 4 * (y * c.width + x);
+          if (!d[i + 3]) continue;
+          n++;
+          sum += d[i] + d[i + 1] + d[i + 2];
+          if (d[i + 2] >= d[i] && d[i + 2] >= d[i + 1]) blue++;
+          if (x < 2 || y < 2 || x >= c.width - 2 || y >= c.height - 2) edge++;
+        }
+      }
+      return { n, edge, tint: n ? Math.round(sum / n) : 0, blue: n ? blue / n : 0 };
+    };
+    const g = document.createElement('canvas').getContext('2d');
+    const mark = () => {
+      g.fillStyle = getComputedStyle(b.el).getPropertyValue('--data-7').trim();
+      return [1, 3, 5].map((k) => parseInt(String(g.fillStyle).slice(k, k + 2), 16));
+    };
+    const center = (c) => {
+      const sharp = c.width / b.el.offsetWidth, scale = b.el.offsetHeight / 2 / b.view.half;
+      const { unit, center: rows } = b.state.data, [cx, cy] = rows[rows.length - 1].map((v) => v * unit);
+      const x = b.el.offsetWidth / 2 + (cx - b.view.cx) * scale, y = b.el.offsetHeight / 2 - (cy - b.view.cy) * scale;
+      const at = (dx, dy) => [...c.getContext('2d').getImageData(Math.round((x + dx) * sharp), Math.round((y + dy) * sharp), 1, 1).data.slice(0, 3)];
+      const near = (rgb) => mark().every((v, i) => Math.abs(v - rgb[i]) < 40);
+      return { diagonal: near(at(2, 2)), side: near(at(3, 0)) };
+    };
+    const c = b.canvases[0];
+    const dark = inked(c);
+    const mid = b.el.dataset.backdrop === 'poincare' && b.fittedToDrawing ? center(c) : null;
+    document.documentElement.dataset.theme = 'light';
+    b.redraw();
+    const light = inked(c);
+    document.documentElement.dataset.theme = 'dark';
+    b.redraw();
+    out.push({ name: b.el.closest('section').querySelector('h2').textContent, view: b.view, fitted: b.fittedToDrawing, extent: b.extent, span: b.span, period: b.period, done: b.done, canvases: b.el.querySelectorAll(':scope > canvas').length, dark, light, mid });
+  }
+  return out;
+})()`;
+
+test('the tori of data-tori, the system of data-system, and the plane of data-plane are read with their defaults', () => {
+  const alphas = ALPHAS.map(Number);
+  assert.deepEqual(ALPHAS, ['0.02', '0.04', '0.06', '0.08', '0.10', '0.12', '0.14', '0.16', '0.18', '0.20']);
+  assert.deepEqual(shownTori(undefined, alphas), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(shownTori(' ', alphas), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(shownTori('0.10  0.02', alphas), [0, 4]);
+  assert.deepEqual(shownTori('0.1 0.5', alphas), [4]);
+  assert.deepEqual(shownTori('none', alphas), []);
+  assert.equal(toriSpec(alphas.map(() => true)), null);
+  assert.equal(toriSpec(alphas.map(() => false)), 'none');
+  assert.equal(toriSpec(alphas.map((_, n) => n === 0 || n === 4)), '0.02 0.10');
+  for (const shown of [[true, false, true], [false, false, false, false, false, false, false, false, false, true]]) {
+    const all = alphas.map((_, n) => !!shown[n]);
+    assert.deepEqual(shownTori(toriSpec(all), alphas), all.flatMap((on, n) => (on ? [n] : [])));
+  }
+  assert.equal(systemOf(undefined), 'earth-moon-l2');
+  assert.equal(systemOf('sun-earth-l1'), 'sun-earth-l1');
+  assert.equal(systemOf('bicircular-l1-horizontal'), 'bicircular-l1-horizontal');
+  assert.equal(systemOf('bicircular-l1-vertical'), 'bicircular-l1-vertical');
+  assert.equal(systemOf('toString'), 'earth-moon-l2');
+  assert.equal(planeOf(undefined), 'xy');
+  assert.equal(planeOf('xz'), 'xz');
+  assert.equal(planeOf('yz'), 'xy');
+});
+
+test('the file of a Poincaré section or of the tori is loaded once, and only by a deck that draws it', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const files = `[...document.querySelectorAll('script[src*="/backdrops/"]')].map((s) => s.src.split('/').pop()).sort()`;
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test-deck.html', 'still'));
+  await page.waitFor(deckSettled);
+  assert.deepEqual(await page.evaluate(files), []);
+  await page.goto(deckUrl(DOTS, 'still'));
+  await page.waitFor(deckSettled);
+  assert.equal(await page.evaluate('Beeson.backdrops.length'), 7);
+  assert.deepEqual(await page.evaluate(files), ['poincare-bicircular-l1-vertical.js', 'poincare-earth-moon-l2.js', 'poincare-sun-earth-l1.js', 'tori.js']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a Poincaré section and the tori are drawn inside their boxes in both modes', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(DOTS, 'still'));
+  await page.waitFor(deckSettled);
+  const out = await page.evaluate(dotted);
+  const [moon, sun, bicircular, all, one, two, none] = out;
+  for (const b of out) {
+    assert.equal(b.done, true, b.name);
+    assert.equal(b.canvases, 1, b.name);
+    assert.equal(b.period, 0, b.name);
+    assert.ok(b.dark.n > 0 && b.light.n > 0, `${b.name}: ${b.dark.n} and ${b.light.n} pixels are drawn`);
+    assert.notEqual(b.light.tint, b.dark.tint, `${b.name} is drawn in the same colors in both modes`);
+  }
+  for (const b of [moon, bicircular, all, one, two, none]) {
+    assert.equal(b.fitted, true, b.name);
+    assert.equal(b.dark.edge, 0, `${b.name} is cut at an edge of its box`);
+    const scale = 540 / b.view.half;
+    const slack = Math.min(720 - scale * (b.extent.x1 - b.extent.x0), 1080 - scale * (b.extent.y1 - b.extent.y0));
+    assert.ok(slack > 27 && slack < 33, `${b.name}: the drawing is ${slack} px short of its box in the tighter direction`);
+  }
+  assert.deepEqual(sun.view, { cx: 0.1, cy: 0, half: 2 });
+  assert.equal(sun.fitted, false);
+  assert.ok(moon.dark.n > 5000, `${moon.dark.n} pixels of the section`);
+  assert.ok(bicircular.dark.n > 5000, `${bicircular.dark.n} pixels of the bicircular section`);
+  for (const mode of ['dark', 'light']) {
+    assert.ok(bicircular[mode].blue > 0.95, `${bicircular[mode].blue} of the bicircular section is blue in the ${mode} mode`);
+    assert.ok(moon[mode].blue < 0.8, `${moon[mode].blue} of the section in plasma is blue in the ${mode} mode`);
+  }
+  assert.deepEqual(moon.mid, { diagonal: true, side: true }, 'the elliptic center is not a disk');
+  assert.deepEqual(bicircular.mid, { diagonal: true, side: false }, 'the hyperbolic center is not a cross');
+  assert.ok(all.dark.n > two.dark.n && two.dark.n > 3 * none.dark.n, `${all.dark.n} pixels of ten tori, ${two.dark.n} of one, ${none.dark.n} of none`);
+  assert.ok(Math.abs(moon.span - 0.5) < 1e-9 && Math.abs(sun.span - 13) < 1e-9, `${moon.span} ${sun.span}`);
+  assert.ok(Math.abs(all.span - 23.1) < 1e-9, `${all.span}`);
+  assert.ok(Math.abs(one.span - 14.4) < 1e-9 && Math.abs(none.span - 13.2) < 1e-9, `${one.span} ${none.span}`);
+  assert.ok(one.extent.x1 - one.extent.x0 > 3 * (two.extent.x1 - two.extent.x0), 'the plane x, z is not drawn wider than the plane x, y');
+  const warnings = await page.evaluate('window.warnings');
+  assert.deepEqual(warnings.filter((w) => /data-tori/.test(w)), ['beeson: data-tori="0.5 0.04" is not none or a list of 0.02 to 0.20 in steps of 0.02']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a Poincaré section is built up once to its still, and the tori run without end', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(DOTS));
+  await page.waitFor(deckSettled);
+  const ink = `((b) => { const c = b.canvases[0]; return c.toDataURL(); })`;
+  await page.waitFor('Beeson.backdrops[0].done && !Beeson.backdrops[0].tracing', 30000);
+  const built = await page.evaluate(`(() => { const b = Beeson.backdrops[0], traced = ${ink}(b); b.complete(); return traced === ${ink}(b); })()`);
+  assert.equal(built, true, 'the last frame of the section is not its still');
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('Beeson.backdrops[1].done');
+  assert.equal(await page.evaluate('Beeson.backdrops[1].tracing'), false, 'a section without data-live is traced');
+  await page.evaluate(`(() => {
+    Reveal.slide(3);
+    const b = Beeson.backdrops[3];
+    window.frames = new Set();
+    const read = () => { if (b.tracing) window.frames.add(${ink}(b)); if (window.frames.size < 4) requestAnimationFrame(read); };
+    requestAnimationFrame(read);
+  })()`);
+  await page.waitFor('window.frames.size >= 4', 30000);
+  assert.deepEqual(await page.evaluate('(({ tracing, done }) => ({ tracing, done }))(Beeson.backdrops[3])'), { tracing: true, done: false });
+  await page.evaluate('Reveal.slide(4)');
+  await page.waitFor('!Beeson.backdrops[3].tracing');
   assert.deepEqual(page.errors, []);
 });

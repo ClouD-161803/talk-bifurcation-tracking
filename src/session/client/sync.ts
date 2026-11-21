@@ -61,8 +61,8 @@ export class Sync {
     this.replica.answer(post, answer);
   }
 
-  receive(ops: AppliedOp[]): string | null {
-    return this.replica.receiveAll(ops);
+  receive(ops: AppliedOp[], dropped?: Patch[]): string | null {
+    return this.replica.receiveAll(ops, dropped);
   }
 
   resync(text: string, v: Version, wins?: Side): string | null {

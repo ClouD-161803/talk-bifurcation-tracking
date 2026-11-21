@@ -3,7 +3,7 @@ import type { Applied, Port } from '../../editor/session/port.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { dropped, early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type FigureState, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type FigureState, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Patch, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -25,6 +25,7 @@ export type ClientEvents = {
   figures: [FigureState];
   settled: [moved: boolean];
   rebased: [before: string];
+  dropped: [before: string];
   state: [];
   ended: [Ended];
   hello: [];
@@ -407,8 +408,10 @@ export class Client {
     const sync = this.sync!;
     const was = { text: sync.base, v: sync.version };
     const before = sync.mine;
-    const out = sync.receive(ops);
+    const dropped: Patch[] = [];
+    const out = sync.receive(ops, dropped);
     this.emit('rebased', before);
+    if (dropped.length) this.emit('dropped', before);
     if (sync.version !== was.v) this.emit('base', was.text, was.v, ops);
     return out;
   }

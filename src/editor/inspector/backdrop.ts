@@ -1,5 +1,5 @@
 import type { App } from '../app.ts';
-import { BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, brouckePick, colormapName, drawnBy, entryName, isBroucke, library, liveOf, probeLibrary, selectedBackdrop, type Pick } from '../commands/backdrop.ts';
+import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, library, liveOf, planePick, probeLibrary, selectedBackdrop, systemPick, toriPick, type Pick } from '../commands/backdrop.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { make } from '../ui/dom.ts';
 import { button, checkbox, glyph, keepFocus, note, numberField, row, section, type Control, type Run } from './controls.ts';
@@ -69,10 +69,22 @@ export function backdropPane(app: App, run: Run): Control[] {
     checked: brouckePick(el)?.[key] === v,
     run: () => run(`backdrop.${key}`, { value: v, el }),
   })), () => on() && (key === 'family' || !!brouckePick(el)));
+  const choicePopup = (label: string, command: string, values: string[], names: Record<string, string>, now: () => string) => popup(app, label, () => names[now()], () => values.map((v) => ({
+    label: names[v],
+    checked: now() === v,
+    run: () => run(command, { value: v, el }),
+  })), on);
+  const torusBox = (n: number) => checkbox(app, run, 'backdrop.torus', `α = ${ALPHAS[n]}`, () => toriPick(el)[n], { value: ALPHAS[n], el });
   const parts: Control[] = [
     section('Drawing', [
       drawing,
       row([button(app, run, { command: 'backdrop.choose', text: 'Choose…' })]),
+      when(() => dottedDrawing(el) === 'poincare', [choicePopup('System', 'backdrop.system', SYSTEMS, SYSTEM_NAMES, () => systemPick(el))]),
+      when(() => dottedDrawing(el) === 'tori', [
+        choicePopup('Plane', 'backdrop.plane', PLANES, PLANE_NAMES, () => planePick(el)),
+        row([checkbox(app, run, 'backdrop.tori', 'All Tori', () => toriPick(el).every(Boolean), { el })]),
+        ...Array.from({ length: ALPHAS.length / 2 }, (_, i) => row([torusBox(2 * i), torusBox(2 * i + 1)])),
+      ]),
       when(file, [
         when(() => isBroucke(el), [
           brouckePopup('Family', 'family', FAMILIES),
@@ -95,14 +107,14 @@ export function backdropPane(app: App, run: Run): Control[] {
       note(() => 'Drag the drawing or use the arrow keys to pan it, and drag a handle to resize its box.'),
     ]),
   ];
-  parts.push(section('Labels', [
+  parts.push(when(() => !dottedDrawing(el), [section('Labels', [
     when(() => !file(), [
       row(LABELS.slice(0, 2).map((l) => labelBox(app, run, el, l.at, l.name))),
       row(LABELS.slice(2).map((l) => labelBox(app, run, el, l.at, l.name))),
     ]),
     row([button(app, run, { command: 'backdrop.addLabel', arg: { el }, text: 'Add Label' })]),
     note(() => 'Add Label puts a label at the center of the window. Choose Add Label Here in the menu of the drawing to put one at a point, and drag a label to shift it.'),
-  ]));
+  ])]));
   const traced = !!el?.closest('section')?.matches('.title, .section, .closing');
   parts.push(
     section('Motion', [

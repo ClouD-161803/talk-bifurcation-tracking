@@ -83,7 +83,7 @@ html.beeson-cell-range .reveal *{user-select:none!important;-webkit-user-select:
 const BAR = 18;
 const GAP = 6;
 const GRIP = 9;
-const COARSE = matchMedia('(pointer: coarse), (hover: none)');
+const coarsePointer = (): boolean => matchMedia('(pointer: coarse), (hover: none)').matches;
 
 type Target = { table: HTMLTableElement; cell: HTMLTableCellElement | null; box: Box | null };
 type Size = { rows: number; columns: number };
@@ -1463,7 +1463,7 @@ function installBars(app: App): void {
         return g;
       }));
     }
-    const coarse = COARSE.matches;
+    const coarse = coarsePointer();
     const reach = coarse ? 2 * GRIP : Math.min(GRIP, ...rowBoxes.map((b) => b.height / 3));
     first.forEach((s, i) => {
       const x = edges[s.col + s.span - 1][1];
