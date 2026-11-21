@@ -281,8 +281,7 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 
 .reveal .backdrop { pointer-events: auto; }
 .reveal .backdrop canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.reveal .backdrop .label { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; line-height: 1; font-size: 28px; font-style: italic; color: var(--subtle); }
-.reveal .backdrop .label sub { font-size: 0.7em; font-style: normal; vertical-align: -0.25em; }
+.reveal .backdrop .label { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; line-height: 1; font-size: 28px; color: var(--subtle); }
 
 .reveal .surface { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
 .reveal .surface.dragging { cursor: grabbing; }
@@ -413,7 +412,7 @@ html:not([data-theme="light"]) .reveal .slides section.split .text-column { box-
 .reveal .plot-labels { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
 .reveal .plot-labels { pointer-events: none; }
 .reveal .plot-label { position: absolute; height: 1em; white-space: nowrap; line-height: 1; }
-.reveal .plot-tick { color: var(--muted); font-variant-numeric: tabular-nums; }
+.reveal .plot-tick { color: var(--muted); }
 .reveal .plot-axes path { fill: none; stroke: var(--muted); stroke-width: 2; }
 .reveal .plot-curve,
 .reveal .plot-ghost,
