@@ -66,21 +66,23 @@ const realPathIgnoringCase = (path) => {
     return path.toLowerCase();
   }
 };
-const editorInputs = new Set(Object.keys(editor.metafile.inputs).map(realPathIgnoringCase));
+const inputsOf = (result) => new Set(Object.keys(result.metafile.inputs).map(realPathIgnoringCase));
+const editorInputs = inputsOf(editor);
 
-function writeApartFromEditor(result, file, { shared = [], under = null, allowed }) {
+function writeApart(result, file, { from = editorInputs, shared = [], under = null, allowed, write = true }) {
   const inputs = result.metafile.inputs;
   const keep = new Set(shared.map(realPathIgnoringCase));
   const folder = under && realPathIgnoringCase(under) + (process.platform === 'win32' ? '\\' : '/');
   const stray = Object.keys(inputs).filter((path) => {
     const r = realPathIgnoringCase(path);
-    return editorInputs.has(r) && !keep.has(r) && !(folder && r.startsWith(folder));
+    return from.has(r) && !keep.has(r) && !(folder && r.startsWith(folder));
   });
   if (stray.length) {
     const by = (path) => Object.keys(inputs).filter((from) => inputs[from].imports.some((i) => i.path === path));
     const lines = stray.map((path) => `  ${path}, imported by ${by(path).join(', ')}`);
     throw new Error(`${file} ${allowed}, and a type with import type:\n${lines.join('\n')}`);
   }
+  if (!write) return;
   for (const out of result.outputFiles) {
     mkdirSync(dirname(out.path), { recursive: true });
     writeFileSync(out.path, out.contents);
@@ -96,7 +98,9 @@ const engine = await build({
   write: false,
   banner: { js: `/*! editor-session.js ${version}, the engine of the port of a session of the beeson editor. MIT license. */` },
 });
-writeApartFromEditor(engine, 'theme/editor-session.js', { allowed: 'may share no module with theme/editor.js, whose values it takes from src/editor/session/host.ts' });
+writeApart(engine, 'theme/editor-session.js', { allowed: 'may share no module with theme/editor.js, whose values it takes from src/editor/session/host.ts' });
+
+const sessionToEditor = { shared: ['src/editor/merge.ts', 'src/editor/tokens.ts', 'src/qr.ts'], under: 'src/session', allowed: 'may share with theme/editor.js only src/editor/merge.ts, src/editor/tokens.ts, src/qr.ts, and src/session/ as values' };
 
 const session = await build({
   ...common,
@@ -108,4 +112,17 @@ const session = await build({
   write: false,
   banner: { js: `/*! session.js ${version}, the client of the synchronous editor of the beeson theme. MIT license. */` },
 });
-writeApartFromEditor(session, 'theme/session.js', { shared: ['src/editor/merge.ts', 'src/editor/tokens.ts', 'src/qr.ts'], under: 'src/session', allowed: 'may share with theme/editor.js only src/editor/merge.ts, src/editor/tokens.ts, src/qr.ts, and src/session/ as values' });
+writeApart(session, 'theme/session.js', sessionToEditor);
+
+const history = await build({
+  ...common,
+  absWorkingDir: fileURLToPath(root),
+  entryPoints: ['src/session/client/history-pane.ts'],
+  outfile: fileURLToPath(new URL('theme/session-history.js', root)),
+  minifySyntax: true,
+  metafile: true,
+  write: false,
+  banner: { js: `/*! session-history.js ${version}, the Version History of the synchronous editor of the beeson theme. MIT license. */` },
+});
+writeApart(history, 'theme/session-history.js', { from: inputsOf(session), shared: ['src/editor/tokens.ts', 'src/session/protocol.ts', 'src/session/slides.ts', 'src/session/client/dom.ts', 'src/session/client/labels.ts'], allowed: 'may share with theme/session.js only modules without state of their own, and takes the others from src/session/client/history.ts', write: false });
+writeApart(history, 'theme/session-history.js', sessionToEditor);
