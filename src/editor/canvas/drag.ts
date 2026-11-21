@@ -11,6 +11,7 @@ import { cornerBoxOf } from '../commands/align.ts';
 import { backdropAt, pressBackdrop } from '../commands/backdrop.ts';
 import { placeCaretAt } from '../selection.ts';
 import { injectStyle } from '../ui/dom.ts';
+import { editItem, outlineItem } from '../text/outline.ts';
 
 const CSS = `
 html.beeson-dragging.beeson-copying, html.beeson-dragging.beeson-copying * { cursor: copy !important; }
@@ -615,6 +616,11 @@ export function install(app: App): void {
         const { clientX: x, clientY: y } = ev;
         pressElement(ev, el, target, () => placeCaretAt(host, x, y));
       }
+      return;
+    }
+    const item = el ? outlineItem(el, target) : null;
+    if (el && item) {
+      pressElement(ev, el, target, sel.only() === el && !ev.shiftKey && !commandHeld(ev) && !locked(el) ? () => editItem(app, item) : null);
       return;
     }
     if (el && (target.closest(BY_ITSELF) || !hasText(el))) {
