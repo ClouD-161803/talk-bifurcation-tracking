@@ -350,9 +350,9 @@ const OTHER = `  <p>Second slide</p>
     <tr><td>C2</td><td>D2</td></tr>
     <tr><td>C3</td><td>D3</td></tr>
   </table>`;
-const GESTURES = ['beeson-column-resizing', 'beeson-resizing', 'beeson-line-moving', 'beeson-line-refused', 'beeson-autofilling'];
+const GESTURES = ['beeson-row-resizing', 'beeson-dragging', 'beeson-column-resizing', 'beeson-resizing', 'beeson-line-moving', 'beeson-line-refused', 'beeson-autofilling'];
 
-test('a drag of the grip of a column, of the edge of a table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 360_000 }, async (t) => {
+test('a drag of the grip of a column or of a row, of the edge of a table, of the table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 360_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE], ['  <p>Second slide</p>', OTHER]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -370,7 +370,13 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
     ['the bar of a row', async () => {
       await click(ben, 'section.present tr:nth-child(3) td');
       await run('table.selectRow');
-    }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 4 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
+    }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + 1, y: r.top + r.height / 2 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
+    ['the grip of a row', () => click(ben, 'section.present th:nth-child(2)'), () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .grips.rows [data-row="0"]').getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`), async () => ({ dy: 20 })],
+    ['the table', async () => {
+      await click(ben, 'section.present th:nth-child(2)');
+      await press(ben, 'Escape');
+      await press(ben, 'Escape');
+    }, 'section.present tr:nth-child(3) td:nth-child(2)', async () => ({ dx: 40, dy: 20 })],
     ['the fill handle', async () => {
       await click(ben, 'section.present th');
       await run('table.selectRow');

@@ -1,5 +1,5 @@
 import type { App } from '../app.ts';
-import { moveTo, oneByOne, placedIndex, setFinal, setIndexReader, setStart, setStep, shift, stepAt, type Plan, type Start } from '../shown-steps.ts';
+import { CHILD, moveTo, oneByOne, placedIndex, setFinal, setIndexReader, setStart, setStep, shift, stepAt, type Plan, type Start } from '../shown-steps.ts';
 import type { TagEdit } from '../tags.ts';
 import { docOf } from './slide.ts';
 import { AFTER_DEFAULT, MIN_DELAY, WITH_SLIDE, afterable, carryDelays, classesOf, deliverPlan, deliveryOf, delaysOf, PLAYED, effectEdit, effectOf, indexIn, listItems, listOf, modelAt, modelOf, startAt, writePlan, type Delivery, type Effect, type Model, type StartKind, type Steps } from '../steps.ts';
@@ -12,8 +12,8 @@ function itemOf(app: App, arg: unknown): Element | null {
   if (!el) return null;
   const m = modelOf(app, el.closest('section'));
   if (!m) return null;
-  for (let up: Element | null = el; up && up !== m.slide; up = up.parentElement) if (indexIn(m, up) >= 0) return up;
-  return m.els.find((x, k) => !m.lines[k] && el.contains(x)) ?? null;
+  for (let up: Element | null = el; up && up !== m.slide; up = up.parentElement) if (indexIn(m, up) >= 0) return up.matches(CHILD) ? null : up;
+  return m.els.find((x, k) => !m.lines[k] && !x.matches(CHILD) && el.contains(x)) ?? null;
 }
 
 function change(app: App, arg: unknown, fn: (plan: Plan, i: number) => Plan): void {

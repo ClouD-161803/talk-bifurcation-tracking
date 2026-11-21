@@ -1177,6 +1177,7 @@ describe('Preview of the Backdrop pane', () => {
   }
 
   async function startPane(page) {
+    await page.evaluate(`document.querySelector(${JSON.stringify(PANE)}).scrollIntoView({ block: 'nearest' })`);
     await click(page, PANE);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 995 });
     await frames(page);

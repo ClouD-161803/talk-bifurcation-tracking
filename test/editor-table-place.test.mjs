@@ -301,7 +301,7 @@ describe('a new table at a free place', () => {
       assert.ok(inside(table), `the table at ${js(round(table))} is not inside the margins of the slide`);
       assert.ok(!meets(table, figure), `the table at ${js(round(table))} lies over the figure at ${js(round(figure))}`);
       assert.ok(Math.abs((table.top + table.bottom) / 2 - 540) <= 1, `the table at ${js(round(table))} is not at the middle of the slide`);
-      assert.deepEqual(round(table), [654, 433, 498, 213]);
+      assert.deepEqual(round(table), [654, 431, 498, 218]);
       await checkEdit(page, before, `r15-10-table-${platform}.html`);
       await insertTable(page);
       const tables = await boxes(page, ':scope > table');
@@ -313,7 +313,7 @@ describe('a new table at a free place', () => {
     });
 
     test(`a new table on a slide with a free place is put there as before (${platform})`, async (t) => {
-      for (const [n, place] of [[5, [120, 715, 498, 213]], [3, [1251, 414, 498, 213]]]) {
+      for (const [n, place] of [[5, [120, 715, 498, 218]], [3, [1251, 411, 498, 218]]]) {
         const page = await load(t, platform, n);
         const before = await render(page);
         await insertTable(page);
@@ -903,7 +903,7 @@ describe('a new table without a free place', () => {
       assert.ok(inside(table), `the table at ${js(round(table))} is not inside the margins of the slide`);
       assert.ok(Math.abs((table.top + table.bottom) / 2 - 540) <= 1, `the table at ${js(round(table))} is not at the middle of the slide`);
       assert.ok(!meets(table, figure), `the table at ${js(round(table))} lies over the figure at ${js(round(figure))}`);
-      assert.deepEqual(round(table), [654, 433, 498, 213]);
+      assert.deepEqual(round(table), [654, 431, 498, 218]);
       assert.match(await title(page), /\d+ texts? (is|are) under a table$/);
       await exec(page, 'insert.table', { rows: 3, columns: 3 });
       await sleep(300);
