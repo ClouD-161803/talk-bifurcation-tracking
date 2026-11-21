@@ -370,7 +370,7 @@ test('a drag of the grip of a column or of a row, of the edge of a table, of the
     ['the bar of a row', async () => {
       await click(ben, 'section.present tr:nth-child(3) td');
       await run('table.selectRow');
-    }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + (r.height - 14) / 2 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
+    }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + 1, y: r.top + r.height / 2 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
     ['the grip of a row', () => click(ben, 'section.present th:nth-child(2)'), () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .grips.rows [data-row="0"]').getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`), async () => ({ dy: 20 })],
     ['the table', async () => {
       await click(ben, 'section.present th:nth-child(2)');

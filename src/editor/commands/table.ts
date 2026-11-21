@@ -1465,7 +1465,7 @@ function installBars(app: App): void {
       }));
     }
     const coarse = coarsePointer();
-    const reach = coarse ? 2 * GRIP : Math.min(GRIP, ...rowBoxes.map((b) => b.height / 3));
+    const reach = Math.min(coarse ? 2 * GRIP : GRIP, ...rowBoxes.map((b) => b.height / 3));
     first.forEach((s, i) => {
       const x = edges[s.col + s.span - 1][1];
       if (coarse) place(grips.children[i], x - reach / 2, top, reach, BAR);
