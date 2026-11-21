@@ -98,7 +98,6 @@ const GAP = 4;
 export type Pick = { child: Element | null; i: number };
 
 export class ShownSteps {
-  readonly box = document.createElement('span');
   readonly tabs = document.createElement('div');
   private readonly slide: () => Element | null;
   private readonly onChange: () => void;
@@ -108,13 +107,10 @@ export class ShownSteps {
   constructor(slide: () => Element | null, onChange: () => void) {
     this.slide = slide;
     this.onChange = onChange;
-    this.box.className = 'beeson-shown-steps';
     this.tabs.className = 'beeson-step-tabs';
-    for (const el of [this.box, this.tabs]) {
-      el.setAttribute('role', 'group');
-      el.setAttribute('aria-label', 'Steps shown on the slide');
-      el.hidden = true;
-    }
+    this.tabs.setAttribute('role', 'group');
+    this.tabs.setAttribute('aria-label', 'Steps shown on the slide');
+    this.tabs.hidden = true;
     injectStyle('step-tabs', CSS);
     document.body.append(this.tabs);
   }
@@ -133,23 +129,19 @@ export class ShownSteps {
     const ranges = slide ? rangesOf(slide) : [];
     if (!slide || (ranges.length < 2 && !stacksOf(slide).length)) {
       if (slide) showRange(slide, null);
-      for (const el of [this.box, this.tabs]) {
-        el.hidden = true;
-        el.replaceChildren();
-      }
+      this.tabs.hidden = true;
+      this.tabs.replaceChildren();
       this.key = '';
       return;
     }
     const at = this.at(slide, ranges);
     showRange(slide, ranges[at]);
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
-    this.box.hidden = this.tabs.hidden = false;
+    this.tabs.hidden = false;
     const key = labels.join('|');
     if (key !== this.key) {
       this.key = key;
-      const head = document.createElement('span');
-      head.textContent = 'Shows';
-      const buttons = () => labels.map((text, i) => {
+      this.tabs.replaceChildren(...labels.map((text, i) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = text;
@@ -160,16 +152,12 @@ export class ShownSteps {
           if (now) this.choose(now, i);
         });
         return b;
-      });
-      this.box.replaceChildren(head, ...buttons());
-      this.tabs.replaceChildren(...buttons());
+      }));
     }
-    for (const el of [this.box, this.tabs]) {
-      el.querySelectorAll('button').forEach((b, i) => {
-        b.setAttribute('aria-pressed', String(i === at));
-        b.classList.toggle('on', i === at);
-      });
-    }
+    this.tabs.querySelectorAll('button').forEach((b, i) => {
+      b.setAttribute('aria-pressed', String(i === at));
+      b.classList.toggle('on', i === at);
+    });
     this.place();
   }
 

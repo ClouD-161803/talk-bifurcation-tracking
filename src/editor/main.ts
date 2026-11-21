@@ -114,7 +114,7 @@ app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], () => {
 installCanvas(app);
 installToolbar(app);
 installNotes(app);
-installStatusbar(app, shownSteps.box);
+installStatusbar(app);
 installFiles(app);
 installDrafts(app);
 installFollow(app);
