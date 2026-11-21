@@ -32,7 +32,12 @@ export const dottedDrawing = (el: Element | null): string | null => {
   const name = el && !el.hasAttribute('data-trajectories') ? el.getAttribute('data-backdrop') : null;
   return name !== null && DOTTED.includes(name) ? name : null;
 };
-export const SYSTEM_NAMES: Record<string, string> = { 'earth-moon-l2': 'Earth–Moon L2', 'sun-earth-l1': 'Sun–Earth L1' };
+export const SYSTEM_NAMES: Record<string, string> = {
+  'earth-moon-l2': 'Earth–Moon L2',
+  'sun-earth-l1': 'Sun–Earth L1',
+  'bicircular-l1-horizontal': 'Bicircular L1 (Horizontal)',
+  'bicircular-l1-vertical': 'Bicircular L1 (Vertical)',
+};
 export const PLANE_NAMES: Record<string, string> = { xy: 'x, y', xz: 'x, z' };
 export { ALPHAS, PLANES, SYSTEMS };
 export const systemPick = (el: Element | null): string => systemOf(el?.getAttribute('data-system'));
