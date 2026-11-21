@@ -194,6 +194,115 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
   assert.ok(out.near > 0, 'the end of the violet trajectory is drawn in the still');
 });
 
+test('a glowing backdrop is traced without shadowBlur, caches finished trajectories above the trail, and releases its offscreen canvases', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test-deck.html'));
+  await page.waitFor(deckSettled);
+  const out = await page.evaluate(`(() => {
+    const desc = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
+    let maxBlur = 0;
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+      configurable: true,
+      get() { return desc.get.call(this); },
+      set(v) { if (v > maxBlur) maxBlur = v; desc.set.call(this, v); },
+    });
+    const holder = document.createElement('div');
+    document.body.append(holder);
+    try {
+      const b = Beeson.backdrops.find((o) => o.el.closest('section.title'));
+      const diff = (a, c, tol = 8) => {
+        const read = (src) => {
+          const buf = document.createElement('canvas');
+          buf.width = b.W;
+          buf.height = b.H;
+          const g = buf.getContext('2d', { willReadFrequently: true });
+          g.drawImage(src, 0, 0);
+          return g.getImageData(0, 0, b.W, b.H).data;
+        };
+        const p = read(a), q = read(c);
+        const premultiplied = (d, i, k) => (k === 3 ? d[i + 3] : (d[i + k] * d[i + 3]) / 255);
+        let n = 0;
+        for (let i = 0; i < p.length; i += 4) {
+          if ([0, 1, 2, 3].some((k) => Math.abs(premultiplied(p, i, k) - premultiplied(q, i, k)) > tol)) n++;
+        }
+        return n;
+      };
+      const direct = (at, col, inks, trail) => {
+        const buf = document.createElement('canvas');
+        buf.width = b.W;
+        buf.height = b.H;
+        b.draw(buf.getContext('2d'), col, at, inks, trail, null);
+        return buf;
+      };
+      const cpu = () => {
+        const buf = document.createElement('canvas');
+        buf.width = b.W;
+        buf.height = b.H;
+        buf.getContext('2d', { willReadFrequently: true });
+        return buf;
+      };
+      b.reset();
+      b.t0 = 0;
+      const mid = b.duration * 600, late = b.duration * 850, end = b.duration * 1000 + 100;
+      for (let ms = 0; ms <= mid; ms += 250) b.frame(ms);
+      const cached = b.cached, midDoneAbove = b.doneAbove, firstAbove = b.above, firstTrail = b.trail;
+      const midDiff = diff(b.base, direct(mid, b.colors(), b.inks, b.trail));
+      const cpuAbove = cpu(), cpuCached = cpu(), cpuDirect = cpu();
+      b.paintAbove(cpuAbove, b.colors(), b.inks, b.cached, b.doneAbove);
+      b.draw(cpuCached.getContext('2d'), b.colors(), mid, b.inks, null, cpuAbove);
+      b.draw(cpuDirect.getContext('2d'), b.colors(), mid, b.inks, null, null);
+      const cpuDiff = diff(cpuCached, cpuDirect, 4);
+      b.redraw();
+      const rebuiltAbove = b.above, rebuiltTrail = b.trail;
+      const firstDropped = firstAbove.width === 0 && firstAbove.height === 0 && firstTrail.width === 0 && firstTrail.height === 0;
+      b.ghost(holder, { left: 0, top: 0 });
+      const ghost = b.ghosted;
+      for (let ms = mid + 250; ms <= late; ms += 250) b.frame(ms);
+      const lateDoneAbove = b.doneAbove, ghostAbove = ghost.above;
+      const ghostDiff = diff(ghost.base, direct(late, ghost.c, ghost.inks, ghost.trail));
+      b.unghost();
+      const ghostDropped = ghostAbove.width === 0 && ghostAbove.height === 0;
+      b.frame(end);
+      const endDropped = rebuiltAbove.width === 0 && rebuiltAbove.height === 0 && rebuiltTrail.width === 0 && rebuiltTrail.height === 0;
+      return {
+        maxBlur,
+        cached,
+        total: b.trajectories.length,
+        pixels: b.W * b.H,
+        midDoneAbove,
+        lateDoneAbove,
+        cpuDiff,
+        midDiff,
+        ghostDiff,
+        firstDropped,
+        ghostDropped,
+        endDropped,
+        finished: b.finished,
+        trailLeft: b.trail !== null,
+        aboveLeft: b.above !== null,
+      };
+    } finally {
+      Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', desc);
+      holder.remove();
+    }
+  })()`);
+  assert.equal(out.maxBlur, 0, `shadowBlur reached ${out.maxBlur}`);
+  assert.ok(out.midDoneAbove > out.cached && out.midDoneAbove < out.total, `doneAbove at 60% was ${out.midDoneAbove} of ${out.cached}..${out.total}`);
+  assert.ok(out.lateDoneAbove > out.midDoneAbove && out.lateDoneAbove < out.total, `doneAbove at 85% was ${out.lateDoneAbove} of ${out.cached}..${out.total}`);
+  assert.equal(out.cpuDiff, 0, `${out.cpuDiff} pixels differ between the cached above canvas and direct drawing on CPU`);
+  assert.ok(out.midDiff / out.pixels < 1e-3, `${out.midDiff} of ${out.pixels} pixels differ between the cached above canvas and direct drawing`);
+  assert.ok(out.ghostDiff / out.pixels < 1e-3, `${out.ghostDiff} of ${out.pixels} pixels of the ghost differ from direct drawing`);
+  assert.equal(out.firstDropped, true, 'redraw did not release its replaced offscreen canvases');
+  assert.equal(out.ghostDropped, true, 'unghost did not release its offscreen above canvas');
+  assert.equal(out.finished, true);
+  assert.equal(out.endDropped, true, 'finishing the trace did not release its offscreen canvases');
+  assert.equal(out.trailLeft, false);
+  assert.equal(out.aboveLeft, false);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the trajectories of a backdrop with data-stagger are started one after another', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());

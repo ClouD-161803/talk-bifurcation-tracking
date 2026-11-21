@@ -34,6 +34,8 @@ const LOOP = 9;
 const HEADS: Record<string, number> = { full: 2.2, small: 0.55, none: 0 };
 const PALETTE = 8;
 const TOLERANCE = 0.1;
+const GLOW_SIGMA = 3;
+const GLOW_RADII = [1.4, 3, 4.8, 7];
 
 export function accel(s: Float64Array, a: Float64Array): number {
   const x = s[0], y = s[1], z = s[2];
@@ -353,13 +355,20 @@ export class Orbits {
   private stagger: number;
   private everyHead: boolean;
   private inks: string[] = [];
-  private ghosted: { base: HTMLCanvasElement; head: HTMLCanvasElement; trail: HTMLCanvasElement | null; c: Colors; inks: string[] } | null = null;
+  private ghosted: { base: HTMLCanvasElement; head: HTMLCanvasElement; trail: HTMLCanvasElement | null; above: HTMLCanvasElement | null; c: Colors; inks: string[] } | null = null;
   private cached = 0;
+  private doneAbove = 0;
   private upTo: number[] = [];
   private bands: (Uint32Array | null)[] = [];
   private trail: HTMLCanvasElement | null = null;
+  private above: HTMLCanvasElement | null = null;
   readonly ready: Promise<void>;
   fileTrajectories: TrajectoryData[] | null = null;
+
+  private static drop(canvas: HTMLCanvasElement | null): null {
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+    return null;
+  }
 
   static of(el: HTMLElement): Orbits | undefined {
     return CACHE.get(el);
@@ -437,9 +446,11 @@ export class Orbits {
       ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds(k, s.times[s.times.length - 1])));
     }
     this.cached = k;
+    this.doneAbove = k;
     this.upTo = this.trajectories.map(() => 0);
     this.bands = this.trajectories.map(bandsOf);
-    this.trail = null;
+    this.trail = Orbits.drop(this.trail);
+    this.above = Orbits.drop(this.above);
   }
 
   private lastKept(i: number, j: number): number {
@@ -514,19 +525,25 @@ export class Orbits {
       into.append(to);
       return to;
     });
-    let trail: HTMLCanvasElement | null = null;
-    if (this.trail) {
-      trail = document.createElement('canvas');
-      trail.width = this.W;
-      trail.height = this.H;
-      trail.getContext('2d')?.drawImage(this.trail, 0, 0);
-    }
-    this.ghosted = { base, head, trail, c: this.colors(), inks: [...this.inks] };
+    const copy = (src: HTMLCanvasElement | null) => {
+      if (!src) return null;
+      const to = document.createElement('canvas');
+      to.width = this.W;
+      to.height = this.H;
+      to.getContext('2d')?.drawImage(src, 0, 0);
+      return to;
+    };
+    this.ghosted = { base, head, trail: copy(this.trail), above: copy(this.above), c: this.colors(), inks: [...this.inks] };
   }
 
   unghost(): void {
-    this.ghosted?.base.remove();
-    this.ghosted?.head.remove();
+    if (!this.ghosted) return;
+    this.ghosted.base.remove();
+    this.ghosted.head.remove();
+    Orbits.drop(this.ghosted.base);
+    Orbits.drop(this.ghosted.head);
+    Orbits.drop(this.ghosted.trail);
+    Orbits.drop(this.ghosted.above);
     this.ghosted = null;
   }
 
@@ -637,14 +654,40 @@ export class Orbits {
     ctx.globalAlpha = alphaOf(s);
     ctx.lineWidth = widthOf(s) * this.lw;
     ctx.lineJoin = 'round';
-    ctx.shadowBlur = s.glow ? 6 * this.lw : 0;
-    if (s.glow) ctx.shadowColor = ctx.strokeStyle;
+  }
+
+  private strokeGlow(ctx: CanvasRenderingContext2D, outline: Path2D, w: number, alpha: number): void {
+    if (!(w > 0)) return;
+    const peak = Math.min(1, w / (GLOW_SIGMA * Math.sqrt(2 * Math.PI)));
+    let cum = 0;
+    ctx.lineCap = 'round';
+    for (let k = GLOW_RADII.length - 1; k >= 0; k--) {
+      const mid = ((k > 0 ? GLOW_RADII[k - 1] : 0) + GLOW_RADII[k]) / 2;
+      const want = alpha * peak * Math.exp(-(mid * mid) / (2 * GLOW_SIGMA * GLOW_SIGMA));
+      const step = cum < 1 ? (want - cum) / (1 - cum) : 0;
+      if (step > 0.002) {
+        ctx.globalAlpha = step;
+        ctx.lineWidth = (w + 2 * GLOW_RADII[k]) * this.lw;
+        ctx.stroke(outline);
+        cum = 1 - (1 - cum) * (1 - step);
+      }
+    }
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = w * this.lw;
+    ctx.lineCap = 'butt';
+    ctx.stroke(outline);
   }
 
   private stroke(ctx: CanvasRenderingContext2D, i: number, j: number, f: number, from = 0): void {
-    const path = this.paths[i], ends = this.bands[i];
+    const s = this.trajectories[i], path = this.paths[i], ends = this.bands[i];
     const part = (a: number, b: number, g: number) => {
       if (b < from || (b === from && !(g > 0))) return;
+      if (s.glow) {
+        const outline = new Path2D();
+        trace(outline, path, b, g, Math.max(a, from));
+        this.strokeGlow(ctx, outline, widthOf(s), ctx.globalAlpha);
+        return;
+      }
       ctx.beginPath();
       trace(ctx, path, b, g, Math.max(a, from));
       ctx.stroke();
@@ -683,19 +726,21 @@ export class Orbits {
     if (!ctx) return;
     const c = this.colors(), now = performance.now();
     this.paint(ctx, c);
-    this.trail = null;
-    this.draw(ctx, c, now, this.inks, this.midTrace ? this.trailOf(c) : null);
+    this.trail = Orbits.drop(this.trail);
+    this.above = Orbits.drop(this.above);
+    this.above = this.midTrace ? this.paintAbove(null, c, this.inks, this.cached, this.doneAbove) : null;
+    this.draw(ctx, c, now, this.inks, this.midTrace ? this.trailOf(c) : null, this.above);
     this.paintHead(now, c);
   }
 
-  private draw(ctx: CanvasRenderingContext2D, c: Colors, now: number, inks = this.inks, trail: HTMLCanvasElement | null = null): void {
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  private draw(ctx: CanvasRenderingContext2D, c: Colors, now: number, inks = this.inks, trail: HTMLCanvasElement | null = null, above: HTMLCanvasElement | null = null): void {
+    ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, this.W, this.H);
     if (trail) ctx.drawImage(trail, 0, 0);
     else this.bodies(ctx, c);
     const tracing = this.midTrace;
-    this.trajectories.forEach((s, i) => {
-      const n = s.times.length, j = this.drawn(i), from = trail && i < this.cached ? this.upTo[i] : 0;
+    const paint = (i: number, from: number) => {
+      const s = this.trajectories[i], n = s.times.length, j = this.drawn(i);
       if (from > 0 && from >= n - 1) return;
       if (j < n - 1) {
         const tau = this.clock(i, now);
@@ -706,8 +751,14 @@ export class Orbits {
       }
       this.pen(ctx, c, i, inks);
       this.stroke(ctx, i, n - 1, 0, from);
-    });
-    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    };
+    for (let i = 0; i < this.cached; i++) paint(i, trail ? this.upTo[i] : 0);
+    if (above) {
+      ctx.globalAlpha = 1;
+      ctx.drawImage(above, 0, 0);
+    }
+    for (let i = above ? this.doneAbove : this.cached; i < this.trajectories.length; i++) paint(i, 0);
+    ctx.globalAlpha = 1;
   }
 
   private trailOf(c: Colors): HTMLCanvasElement | null {
@@ -717,33 +768,60 @@ export class Orbits {
       trail.width = this.W;
       trail.height = this.H;
       const ctx = trail.getContext('2d');
-      if (!ctx) return null;
+      if (!ctx) return Orbits.drop(trail);
       this.bodies(ctx, c);
       for (let i = 0; i < this.cached; i++) {
         if (!this.upTo[i]) continue;
         this.pen(ctx, c, i);
         this.stroke(ctx, i, this.upTo[i], 0);
       }
+      ctx.globalAlpha = 1;
       this.trail = trail;
     }
     return this.trail;
   }
 
-  private extend(c: Colors): void {
-    const ctx = this.trailOf(c)?.getContext('2d'), ghost = this.ghosted, gtx = ghost?.trail?.getContext('2d');
-    if (!ctx) return;
-    for (let i = 0; i < this.cached; i++) {
-      const to = this.lastKept(i, this.idx[i]), from = this.upTo[i];
-      if (to <= from) continue;
-      this.pen(ctx, c, i);
-      this.stroke(ctx, i, to, 0, from);
-      if (ghost && gtx) {
-        this.pen(gtx, ghost.c, i, ghost.inks);
-        this.stroke(gtx, i, to, 0, from);
-      }
-      this.upTo[i] = to;
+  private paintAbove(canvas: HTMLCanvasElement | null, c: Colors, inks: string[], from: number, to: number): HTMLCanvasElement | null {
+    if (to <= this.cached) return null;
+    const out = canvas ?? document.createElement('canvas');
+    if (!canvas) {
+      out.width = this.W;
+      out.height = this.H;
     }
-    for (const t of [ctx, gtx]) if (t) { t.globalAlpha = 1; t.shadowBlur = 0; }
+    const ctx = out.getContext('2d');
+    if (!ctx) return canvas ? canvas : Orbits.drop(out);
+    for (let i = canvas ? from : this.cached; i < to; i++) {
+      this.pen(ctx, c, i, inks);
+      this.stroke(ctx, i, this.trajectories[i].times.length - 1, 0);
+    }
+    ctx.globalAlpha = 1;
+    return out;
+  }
+
+  private extend(c: Colors): void {
+    const ghost = this.ghosted;
+    const ctx = this.trailOf(c)?.getContext('2d'), gtx = ghost?.trail?.getContext('2d');
+    if (ctx) {
+      for (let i = 0; i < this.cached; i++) {
+        const to = this.lastKept(i, this.idx[i]), from = this.upTo[i];
+        if (to <= from) continue;
+        this.pen(ctx, c, i);
+        this.stroke(ctx, i, to, 0, from);
+        if (ghost && gtx) {
+          this.pen(gtx, ghost.c, i, ghost.inks);
+          this.stroke(gtx, i, to, 0, from);
+        }
+        this.upTo[i] = to;
+      }
+      for (const t of [ctx, gtx]) if (t) t.globalAlpha = 1;
+    }
+    let next = this.doneAbove;
+    while (next < this.trajectories.length && this.idx[next] >= this.trajectories[next].times.length - 1) next++;
+    if (next <= this.doneAbove) return;
+    const from = this.doneAbove;
+    this.doneAbove = next;
+    this.above = this.paintAbove(this.above, c, this.inks, from, next);
+    if (ghost) ghost.above = this.paintAbove(ghost.above, ghost.c, ghost.inks, from, next);
   }
 
   reset(): void {
@@ -754,6 +832,7 @@ export class Orbits {
     this.finished = false;
     this.idx = this.trajectories.map(() => 0);
     this.upTo = this.trajectories.map(() => 0);
+    this.doneAbove = this.cached;
     this.redraw();
   }
 
@@ -762,7 +841,9 @@ export class Orbits {
     if (!this.loaded) { this.pending = true; return; }
     if (this.raf || (this.finished && !this.loop)) return;
     this.t0 = performance.now();
-    this.trail = null;
+    this.doneAbove = this.cached;
+    this.trail = Orbits.drop(this.trail);
+    this.above = Orbits.drop(this.above);
     const tick = (now: number) => {
       this.frame(now);
       this.raf = !this.finished || this.loop ? requestAnimationFrame(tick) : 0;
@@ -783,7 +864,8 @@ export class Orbits {
     this.unghost();
     this.stop();
     this.pending = false;
-    this.trail = null;
+    this.trail = Orbits.drop(this.trail);
+    this.above = Orbits.drop(this.above);
     this.base.remove();
     this.head.remove();
     CACHE.delete(this.el);
@@ -931,10 +1013,16 @@ export class Orbits {
     });
     if (flying === 0) this.finished = true;
     const c = this.colors(), ghost = this.ghosted, gtx = ghost?.base.getContext('2d');
-    if (this.finished) this.trail = null;
-    else this.extend(c);
-    this.draw(ctx, c, now, this.inks, this.trail);
-    if (ghost && gtx) this.draw(gtx, ghost.c, now, ghost.inks, this.trail && ghost.trail);
+    if (this.finished) {
+      this.trail = Orbits.drop(this.trail);
+      this.above = Orbits.drop(this.above);
+      if (ghost) {
+        ghost.trail = Orbits.drop(ghost.trail);
+        ghost.above = Orbits.drop(ghost.above);
+      }
+    } else this.extend(c);
+    this.draw(ctx, c, now, this.inks, this.trail, this.above);
+    if (ghost && gtx) this.draw(gtx, ghost.c, now, ghost.inks, this.trail && ghost.trail, this.above && ghost.above);
     this.paintHead(now, c);
   }
 }
