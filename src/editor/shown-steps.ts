@@ -324,17 +324,17 @@ export function moveTo(plan: Plan, i: number, gap: number | null): Plan {
   return p;
 }
 
-export function moveBlockTo(plan: Plan, head: number, inner: number[], gap: number): Plan {
+export function moveTabTo(plan: Plan, head: number, inner: number[], gap: number): Plan {
   const own = plan.groups.findIndex((g) => g.includes(head));
   const ownInner = own >= 0 ? plan.groups[own].filter((x) => inner.includes(x)) : [];
   const later = plan.groups.map((g, k) => (k === own ? [] : g.filter((x) => inner.includes(x)))).filter((g) => g.length);
-  const block = [[head, ...ownInner], ...later];
-  const moved = new Set(block.flat());
+  const group = [[head, ...ownInner], ...later];
+  const moved = new Set(group.flat());
   const p = copy(plan);
   p.groups = p.groups.map((g) => g.filter((x) => !moved.has(x))).filter((g) => g.length);
   p.finals = p.finals.filter((x) => x !== head);
   const at = plan.groups.slice(0, Math.max(0, gap)).filter((g) => g.some((x) => !moved.has(x))).length;
-  p.groups.splice(at, 0, ...block);
+  p.groups.splice(at, 0, ...group);
   return p;
 }
 
