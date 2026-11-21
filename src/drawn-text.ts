@@ -99,7 +99,7 @@ const shownAs = (label: Element, source: string) => label.childNodes.length === 
 
 export function typesetLabel(label: Element): Promise<void> {
   const source = labelSource(label);
-  if (shownAs(label, source) || !source.trim()) return Promise.resolve();
+  if (!mathjax() || shownAs(label, source) || !source.trim()) return Promise.resolve();
   return new Promise((done) => typeset(label, labelTex(source), (node) => {
     if (node && labelSource(label) === source && !label.contains(document.activeElement)) {
       node.setAttribute(LABEL_SOURCE, source);
