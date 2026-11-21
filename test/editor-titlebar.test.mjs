@@ -1,7 +1,3 @@
-// the title of the file in the menu bar of the editor, on both platforms. as in PowerPoint and
-// Keynote, the title is cut with an ellipsis, or hidden, when there is not room for it between the
-// menus and the buttons at the right, and it never overlaps a menu title
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -15,8 +11,6 @@ after(async () => {
   await browser?.close();
 });
 
-// the boxes of the last menu title, of the text of the title of the file, and of the leftmost
-// shown button at the right, and whether the title is cut or hidden
 const layout = (page) => page.evaluate(`(() => {
   const row = document.querySelector('.beeson-edit-titlebar');
   const titles = [...row.querySelectorAll('.beeson-edit-menubar [role=menuitem]')];

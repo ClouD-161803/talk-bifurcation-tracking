@@ -1,33 +1,20 @@
-// the rows and columns of a table: every row of a new table kept, Sort, a row or a column added by
-// Alt with an arrow, moved by a drag of its bar or by the Move commands, the drop line, and a range
-// of body cells pasted onto a slide, with other fixes of the same rounds
-
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { inflateSync } from 'node:zlib';
 import { numberOf, sortOrder } from '../src/editor/table.ts';
 import { attributeProblem, editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, contrast, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { decodePng } from './helpers/png.mjs';
 
-// tests of R7.8 on both platforms with trusted input: every row of a new table kept, a placeholder
-// with icons in an empty figure box that is drawn by the editor only, a mask resized by its handles, and
-// a sort of the rows of a table. after each edit the text is checked byte for byte, after an undo
-// and a redo, and after a save and an open
 describe('rows of a new table, and Sort', () => {
   const DECK = 'test-deck.html';
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
   const PLATFORMS = ['mac', 'other'];
-  // the window of the pictures of round 3 on the Mac, and a window of 1920 by 1080 elsewhere
   const SIZES = { mac: { width: 1600, height: 1000 }, other: { width: 1920, height: 1080 } };
-  // the index of the slide "Figures are first class citizens, too" of index.html, whose list ends
-  // near the bottom of the slide, beside its figure
   const FIGURES = 4;
-  // the deck of tables of the table tests, with a table with a rowspan on its first slide and a
-  // plain table of mass ratios on its second
   const TABLES = 'test/pages/editor-tables.html';
   const PANEL = '#beeson-edit-panel-format';
 
@@ -49,16 +36,13 @@ describe('rows of a new table, and Sort', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   const rect = (page, selector) => page.evaluate(`(() => { const e = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  // the editor on slide n of a deck served over HTTP, with the Format tab shown
   async function load(t, platform, { deck = DECK, n = 0 } = {}) {
     const page = await browser.newPage(SIZES[platform]);
     t.after(() => page.close().catch(() => {}));
-    // the file chooser of the browser is given its files by the test, as in editor-media.test.mjs
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
@@ -72,8 +56,6 @@ describe('rows of a new table, and Sort', () => {
     return page;
   }
 
-  // roundTrip checks the edited text, the text before byte for byte after an undo, the edited text
-  // after a redo, and an open of the saved text without problems. it returns the edited text
   let saves = 0;
   async function roundTrip(page, edited = null) {
     const text = await render(page);
@@ -85,15 +67,13 @@ describe('rows of a new table, and Sort', () => {
     assert.equal(await render(page), text);
     const saved = await saveAndReopen(page, `r7-8-${++saves}.html`);
     assert.equal(saved.text, text);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = saved.text;
     return text;
   }
 
   const count = (text, re) => (text.match(re) ?? []).length;
 
-  // states 23, 49, 93, and 157 of round 3: a table of 3 by 3 cells chosen in the grid was inserted
-  // with 2 rows, since the row that did not fit under the list was taken out
   for (const platform of PLATFORMS) {
     test(`a table of 3 by 3 cells chosen in the grid is inserted with its 3 rows, on the slide (${platform})`, async (t) => {
       const page = await load(t, platform, { n: FIGURES });
@@ -102,7 +82,6 @@ describe('rows of a new table, and Sort', () => {
       await press(page, 'Escape');
       await click(page, '.beeson-edit-top [data-command="insert.table"]');
       await page.waitFor(`!!document.querySelector('dialog.beeson-table-picker[open]')`);
-      // the cell of the third row and the third column of the grid of 10 columns
       const cell = await rect(page, '.beeson-table-picker .grid > :nth-child(23)');
       await click(page, cell);
       await page.waitFor(`!!document.querySelector('.reveal section.present table')`);
@@ -113,7 +92,6 @@ describe('rows of a new table, and Sort', () => {
       const table = await rect(page, '.reveal section.present table');
       const figure = await rect(page, '.reveal section.present figure.figure-box');
       assert.ok(table.top >= slide.top && table.bottom <= slide.bottom, `the table at ${js(table)} runs past the slide at ${js(slide)}`);
-      // a table that does not fit beside the figure is put at the center of the slide with a fill
       const center = Math.abs((table.left + table.right - slide.left - slide.right) / 2) < 3;
       const fill = await page.evaluate(`getComputedStyle(document.querySelector('.reveal section.present table')).backgroundColor`);
       assert.ok(!meets(table, figure) || (center && !/^rgba\(.*, 0\)$|^transparent$/.test(fill)), 'the table covers the figure off the center of the slide, or without a fill');
@@ -123,7 +101,6 @@ describe('rows of a new table, and Sort', () => {
     });
   }
 
-  // the center of the item labeled label of the open menus, or null
   const itemAt = (page, label) => page.evaluate(`(() => {
   const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)});
   if (!item || item.getAttribute('aria-disabled') === 'true') return null;
@@ -150,12 +127,9 @@ describe('rows of a new table, and Sort', () => {
     assert.deepEqual(sortOrder(['10', '9', '100'], true), [2, 0, 1]);
     assert.deepEqual(sortOrder(['b', '', '2', 'A', '1']), [4, 2, 3, 0, 1]);
     assert.deepEqual(sortOrder(['b', '', '2', 'A', '1'], true), [2, 4, 0, 3, 1]);
-    // rows with equal keys keep their order
     assert.deepEqual(sortOrder(['x', 'y', 'x']), [0, 2, 1]);
   });
 
-  // state 95 of round 3: the menu of a cell did not sort the rows of its table. Keynote sorts the
-  // body rows by a column from the menu of the column
   for (const platform of PLATFORMS) {
     test(`Sort Descending in the menu of a cell reorders the body rows by its column, as one entry (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: TABLES, n: 1 });
@@ -167,7 +141,6 @@ describe('rows of a new table, and Sort', () => {
       assert.ok(item, 'the menu of the cell does not offer Sort Descending');
       await click(page, item);
       await frames(page);
-      // 0.01215, 2.37e-4, and 2.53e-5, with the formula read as its number
       await byteExact(page, [[plainRows([0, 1, 2]), plainRows([0, 2, 1])]]);
       assert.equal(await undoLabel(page), 'Undo Sort Descending');
       await roundTrip(page);
@@ -181,14 +154,10 @@ describe('rows of a new table, and Sort', () => {
       assert.ok(button, 'the Table pane does not have Sort Ascending');
       await click(page, button);
       await frames(page);
-      // Europa, Moon, and Titan
       await byteExact(page, [[plainRows([0, 1, 2]), plainRows([1, 0, 2])]]);
       assert.equal(await undoLabel(page), 'Undo Sort Ascending');
-      // the caret is kept in its cell, which is moved with its row
       assert.equal(await page.evaluate('document.activeElement.textContent'), 'Moon');
       await roundTrip(page);
-      // a sort of rows already in order is not an entry of the history, which the open of the saved
-      // text emptied
       await click(page, cellOf(1, 0));
       await exec(page, 'table.sortAscending');
       assert.equal(await render(page), page.source);
@@ -204,15 +173,11 @@ describe('rows of a new table, and Sort', () => {
     });
   }
 
-  // the deck of empty figure boxes: a split slide and a content slide with an empty figure box each, and a figure
-  // slide with an empty plate
   const EMPTY = 'test/pages/editor-empty-figure-box.html';
   const PLACEHOLDER = '.reveal section.present .beeson-placeholder';
   const shownPlaceholders = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present .beeson-placeholder')].filter((p) => p.getBoundingClientRect().width > 0).length`);
   const buttonOf = (page, label) => rect(page, `${PLACEHOLDER} button[aria-label="${label}"]`);
 
-  // state 98 of round 3: an empty figure box was drawn as nothing until a file was dragged over it, where
-  // PowerPoint draws a content placeholder with icons that insert into it
   for (const platform of PLATFORMS) {
     test(`an empty zone or plate is drawn with a placeholder of the editor only, which a save does not write (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: EMPTY, n: 0 });
@@ -225,13 +190,10 @@ describe('rows of a new table, and Sort', () => {
         const slot = await rect(page, '.reveal section.present :is(.figure-box, .plate)');
         const box = await rect(page, PLACEHOLDER);
         assert.ok(box.left >= slot.left - 0.5 && box.right <= slot.right + 0.5 && box.top >= slot.top - 0.5 && box.bottom <= slot.bottom + 0.5, `the placeholder at ${js(box)} is not inside its slot at ${js(slot)}`);
-        // the icons are at the center of the slot
         const icon = await buttonOf(page, 'Insert Table');
         assert.ok(icon.x > slot.left + slot.width / 4 && icon.x < slot.right - slot.width / 4, 'the icons are not at the center of the slot');
-        // the placeholder does not have text, since a slot with text is not empty
         assert.equal(await page.evaluate(`document.querySelector('${PLACEHOLDER}').textContent`), '');
       }
-      // a thumbnail of the navigator does not draw the placeholder
       const thumb = await page.evaluate(`(() => {
       const hosts = [...document.querySelectorAll('.beeson-edit-nav *')].filter((h) => h.shadowRoot?.querySelector('.beeson-thumb'));
       return hosts.map((h) => [...h.shadowRoot.querySelectorAll('.beeson-placeholder')].filter((p) => p.getBoundingClientRect().width > 0).length);
@@ -242,7 +204,7 @@ describe('rows of a new table, and Sort', () => {
       const { text } = await saveAndReopen(page, `r7-8-${++saves}.html`);
       assert.equal(text, page.source, 'the save of a deck with empty zones changed the file');
       assert.equal(await page.evaluate(`window.BeesonEditor.status().dirty`), false);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the QR Code icon of a placeholder inserts a QR code into its zone, and an undo draws the placeholder again (${platform})`, async (t) => {
@@ -267,7 +229,6 @@ describe('rows of a new table, and Sort', () => {
       const page = await load(t, platform, { deck: EMPTY, n: 1 });
       await click(page, await buttonOf(page, 'Insert Table'));
       await page.waitFor(`!!document.querySelector('dialog.beeson-table-picker[open]')`);
-      // the cell of the second row and the second column of the grid of 10 columns
       await click(page, await rect(page, '.beeson-table-picker .grid > :nth-child(12)'));
       await page.waitFor(`!!document.querySelector('.reveal section.present .figure-box > table')`);
       await frames(page);
@@ -288,7 +249,6 @@ describe('rows of a new table, and Sort', () => {
       await page.waitFor(`!!document.querySelector('.reveal section.present .plate > img')`);
       await frames(page);
       assert.equal(await shownPlaceholders(page), 0);
-      // the entry is named as every insert, and the item of the Insert menu keeps its own label
       assert.equal(await undoLabel(page), 'Undo Insert Image');
       assert.equal((await state(page, 'insert.image')).label, 'Image…');
       const edited = await render(page);
@@ -299,10 +259,8 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await shownPlaceholders(page), 1);
       await redo(page);
       assert.equal(await render(page), edited);
-      // a save of a new file asks for the folder of the deck, which editor-media.test.mjs stubs, hence
-      // the text is opened again without a save
       assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(edited)})`)).problems, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the Video icon of a placeholder inserts the file chosen into its zone, as the entry Insert Video (${platform})`, async (t) => {
@@ -326,12 +284,10 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await render(page), edited);
       assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.redo').enabled`), false);
       assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(edited)})`)).problems, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the deck of layouts of the mask tests, whose slide 3 has a dark image of 1200 by 1440 px in a
-  // figure box of 600 by 800 px
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const IMG = '.reveal section.present figure.figure-box img.for-dark';
   const BAR = 'dialog.beeson-mask-bar';
@@ -340,50 +296,20 @@ describe('rows of a new table, and Sort', () => {
   const pressed = (page) => page.evaluate(`[...document.querySelectorAll('${BAR} .modes button')].map((b) => b.title + ' ' + b.getAttribute('aria-pressed'))`);
   const handleAt = (page, name) => rect(page, `.beeson-mask-window i[data-handle=${name}]`);
 
-  // the pixels of a PNG written by Chrome, with 8 bits per channel and without interlace, as in
-  // editor-formula.test.mjs
-  function decodePng(png) {
-    let at = 8, width = 0, channels = 4;
-    const data = [];
-    while (at < png.length) {
-      const length = png.readUInt32BE(at), kind = png.toString('ascii', at + 4, at + 8), body = png.subarray(at + 8, at + 8 + length);
-      if (kind === 'IHDR') ({ width, channels } = { width: body.readUInt32BE(0), channels: body[9] === 6 ? 4 : 3 });
-      if (kind === 'IDAT') data.push(body);
-      at += 12 + length;
-    }
-    const raw = inflateSync(Buffer.concat(data)), stride = width * channels, height = raw.length / (stride + 1), px = Buffer.alloc(height * stride);
-    for (let y = 0; y < height; y++) {
-      const filter = raw[y * (stride + 1)];
-      for (let x = 0; x < stride; x++) {
-        const a = x >= channels ? px[y * stride + x - channels] : 0, b = y ? px[(y - 1) * stride + x] : 0;
-        const c = x >= channels && y ? px[(y - 1) * stride + x - channels] : 0;
-        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
-        const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-        px[y * stride + x] = raw[y * (stride + 1) + 1 + x] + [0, a, b, (a + b) >> 1, paeth][filter];
-      }
-    }
-    return px;
-  }
-
-  // the mean difference of two captures of the same size, per channel
   function differ(a, b) {
-    const [x, y] = [decodePng(a), decodePng(b)];
+    const [x, y] = [decodePng(a).px, decodePng(b).px];
     assert.equal(x.length, y.length);
     let sum = 0;
     for (let i = 0; i < x.length; i++) sum += Math.abs(x[i] - y[i]);
     return sum / x.length;
   }
 
-  // the box of the image on the screen without its scale, inset by 12 px past the selection frame
   const insetBox = (page) => page.evaluate(`(() => {
   const el = document.querySelector(${js(IMG)}), k = Reveal.getScale(), r = el.getBoundingClientRect();
   const w = el.offsetWidth * k, h = el.offsetHeight * k;
   return { x: Math.round(r.left + r.width / 2 - w / 2 + 12), y: Math.round(r.top + r.height / 2 - h / 2 + 12), width: Math.round(w - 24), height: Math.round(h - 24), scale: 1 };
 })()`);
 
-  // the picture of the image after an edit captured inside its new box, and the same place after an
-  // undo, which differ by the resampling of the scaled picture only, i.e. less than the place shifted
-  // by 1 px in any direction. the edit is redone after the check
   async function pictureKept(page, edited) {
     await press(page, 'Escape');
     await click(page, '.reveal section.present h2');
@@ -415,8 +341,6 @@ describe('rows of a new table, and Sort', () => {
 
   const RESIZED = /^scale: [\d.]+; clip-path: inset\([\d.]+%\); object-fit: contain; object-position: -?[\d.]+(%|px) -?[\d.]+(%|px); width: (\d+)px; height: (\d+)px(; translate: -?\d+px -?\d+px)?$/;
 
-  // state 138 of round 3: the frame of Edit Mask was drawn with eight handles that did not resize it,
-  // where Keynote resizes the mask with them and keeps the picture in place
   for (const platform of PLATFORMS) {
     test(`in Edit Mask a handle resizes the box of an image, and the picture stays in place (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: LAYOUTS, n: 3 });
@@ -430,7 +354,6 @@ describe('rows of a new table, and Sort', () => {
       assert.ok(m && m[5], `the style ${style} is not a resized mask with a translate`);
       assert.ok(+m[3] < 600 && +m[4] < 800, `the box of ${m[3]} by ${m[4]} px is not smaller than the zone`);
       const edited = await render(page);
-      // the mask is written on both images of the pair of a dark and a light figure
       const pair = (text, tag) => text.replace(tag, `${tag.slice(0, -1)} style="${style}">`);
       assert.equal(edited, pair(pair(page.source, '<img class="for-dark" src="../../demo/figure-dark.png" alt="A figure, dark version">'), '<img class="for-light" src="../../demo/figure-light.png" alt="A figure, light version">'));
       assert.deepEqual(textProblems(edited, THEME), textProblems(page.source, THEME), 'the resized mask is out of the scope rule');
@@ -442,18 +365,15 @@ describe('rows of a new table, and Sort', () => {
       const page = await load(t, platform, { deck: LAYOUTS, n: 3 });
       await editMask(page);
       await drag(page, await handleAt(page, 'se'), { dx: -150, dy: -150 });
-      // Esc leaves the image as it was
       await press(page, 'Escape');
       assert.equal(await written(page), null);
       assert.equal(await render(page), page.source);
-      // Reset puts the box back, and Done then does not write anything
       await editMask(page);
       await drag(page, await handleAt(page, 'e'), { dx: -100, dy: 0 });
       await click(page, `${BAR} button[title="The picture as it was before this edit"]`);
       await click(page, `${BAR} button.done`);
       assert.equal(await render(page), page.source);
       assert.equal(await page.evaluate(`document.querySelector(${js(IMG)}).getAttribute('style')`), null);
-      // a box made smaller is moved over the picture by a drag inside it
       await editMask(page);
       await drag(page, await handleAt(page, 'se'), { dx: -150, dy: -150 });
       const shrunk = await rect(page, '.beeson-mask-window');
@@ -469,8 +389,6 @@ describe('rows of a new table, and Sort', () => {
       const edited = await render(page);
       await pictureKept(page, edited);
       await roundTrip(page, edited);
-      // Reset Mask takes the zoom and the place of the picture off, and keeps object-fit contain, without
-      // which the theme stretches the picture to the box
       await click(page, IMG);
       await click(page, IMG);
       assert.equal((await state(page, 'image.resetMask')).enabled, true);
@@ -486,10 +404,6 @@ describe('rows of a new table, and Sort', () => {
   }
 });
 
-// regression tests of R17.10 on both platforms with trusted keys: Alt with an arrow adds a row or a
-// column with the caret in a cell on Windows and Linux, where the text does not use these keys, and
-// the caret goes into the new cell. on a Mac, Option with an arrow is left to the text. Alt with Left or
-// Right does not reach the browser, which would go back or forward in its history
 describe('Alt or Option with an arrow adds rows', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r13-3.html';
@@ -508,13 +422,10 @@ describe('Alt or Option with an arrow adds rows', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 
-  // the editor on slide 2 of test/pages/editor-r13-3.html, whose table holds A1 to C4 in 4 rows of
-  // 3 cells
   async function load(t, platform) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -535,15 +446,12 @@ describe('Alt or Option with an arrow adds rows', () => {
   const TABLE = `document.querySelector('.reveal section.present table')`;
   const size = (page) => page.evaluate(`[${TABLE}.rows.length, ${TABLE}.rows[0].cells.length]`);
   const texts = (page) => page.evaluate(`[...${TABLE}.rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()))`);
-  // the row and column of the cell of the caret, or null, the cell selected as a range, and the
-  // elements selected
   const where = (page) => page.evaluate(`(() => {
   const c = document.activeElement?.closest?.('td, th');
   const at = c ? [[...${TABLE}.rows].indexOf(c.parentElement), [...c.parentElement.cells].indexOf(c)] : null;
   return { at, range: !!document.querySelector('.beeson-table-bars .cell.range:not([hidden])'), selected: window.BeesonEditor.selection().map((e) => e.tagName) };
 })()`);
 
-  // the caret at the end of the text of the cell B2, as after a click into it
   async function caretInB2(page) {
     const B2 = `[...${TABLE}.querySelectorAll('td')].find((c) => c.textContent.trim() === 'B2')`;
     const p = await page.evaluate(`(() => { const r = ${B2}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -553,8 +461,6 @@ describe('Alt or Option with an arrow adds rows', () => {
     assert.equal(await page.evaluate(`document.activeElement?.closest('td')?.textContent.trim() ?? null`), 'B2', 'the caret is not in the cell B2');
   }
 
-  // the keys, the size of the table after each, its name in the history, the cell of the caret
-  // after it, and the cells of the table after a letter typed at the caret
   const ROWS = [['A1', 'B1', 'C1'], ['A2', 'B2', 'C2'], ['A3', 'B3', 'C3'], ['A4', 'B4', 'C4']];
   const ADDS = [
     ['Alt+ArrowUp', [5, 3], 'Add Row Above', [1, 1], [ROWS[0], ['', 'x', ''], ...ROWS.slice(1)]],
@@ -563,16 +469,11 @@ describe('Alt or Option with an arrow adds rows', () => {
     ['Alt+ArrowRight', [4, 4], 'Add Column After', [1, 2], ROWS.map((r, i) => [r[0], r[1], i === 1 ? 'x' : '', r[2]])],
   ];
   const IDS = { 'Alt+ArrowUp': 'table.rowAbove', 'Alt+ArrowDown': 'table.rowBelow', 'Alt+ArrowLeft': 'table.columnBefore', 'Alt+ArrowRight': 'table.columnAfter' };
-  // after the undo of an add with the caret in a cell, from the menu as from a key, the caret is back
-  // in the cell B2 (R19.3)
   const UNDONE = { at: [1, 1], range: false, selected: [] };
 
-  // item 1: with the caret in a cell, the keys did nothing on Windows and Linux, although the menu of
-  // the cell lists them
   test('Alt with an arrow adds a row or a column with the caret in a cell, as one entry, and the caret goes into the new cell (other)', async (t) => {
     const page = await load(t, 'other');
     for (const [key, shape, label, at, cells] of ADDS) {
-      // the place of the caret after the undo of the same command run from the menu
       await caretInB2(page);
       await page.evaluate(`window.BeesonEditor.exec(${js(IDS[key])})`);
       await wait(page);
@@ -593,7 +494,6 @@ describe('Alt or Option with an arrow adds rows', () => {
       await redo(page);
       assert.equal(await render(page), added, `the redo of ${key} does not add again`);
       await undo(page);
-      // a letter typed after the key goes into the new cell
       await caretInB2(page);
       await press(page, key);
       await wait(page);
@@ -604,14 +504,13 @@ describe('Alt or Option with an arrow adds rows', () => {
       await undo(page);
       assert.equal(await render(page), page.source, `the undos after ${key} do not give the file back`);
     }
-    // a key added row is saved and opened without a problem
     await caretInB2(page);
     await press(page, 'Alt+ArrowDown');
     await wait(page);
     const added = await render(page);
     const { text } = await saveAndReopen(page, 'r17-10-1.html');
     assert.equal(text, added);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test('Option with an arrow is left to the text with the caret in a cell, and the table stays as it is (mac)', async (t) => {
@@ -624,11 +523,9 @@ describe('Alt or Option with an arrow adds rows', () => {
       assert.equal(await render(page), page.source, `${key} changes the file`);
     }
     assert.equal(await undoLabel(page), 'Undo');
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
-  // item 2: Alt with Left or Right is Back or Forward of a browser on Windows and Linux, hence the
-  // editor prevents it where it adds a column, with the caret in a cell and with the cell selected
   const watchKeys = (page) => page.evaluate(`(() => { window.__keys = []; addEventListener('keydown', (ev) => { if (ev.altKey) window.__keys.push(ev.key + ' ' + ev.defaultPrevented); }, true); return true; })()`);
   const watched = (page) => page.evaluate('window.__keys.splice(0)');
 
@@ -636,7 +533,6 @@ describe('Alt or Option with an arrow adds rows', () => {
     test(`Alt with Left or Right does not reach the browser where it adds a column (${platform})`, async (t) => {
       const page = await load(t, platform);
       await watchKeys(page);
-      // the page is the same document on the same slide, i.e. neither Back nor Forward was taken
       await page.evaluate('window.__stay = true');
       const where = () => page.evaluate('[window.__stay === true, history.length, Reveal.getIndices().h]');
       if (platform === 'other') {
@@ -651,7 +547,6 @@ describe('Alt or Option with an arrow adds rows', () => {
         await undo(page);
         await undo(page);
       }
-      // the cell selected as a range by Esc
       await caretInB2(page);
       await press(page, 'Escape');
       await wait(page);
@@ -664,17 +559,11 @@ describe('Alt or Option with an arrow adds rows', () => {
       assert.deepEqual(await watched(page), ['ArrowLeft true', 'ArrowRight true'], 'with the cell selected');
       assert.deepEqual(await size(page), [4, 5]);
       assert.deepEqual(await where(), url);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R13.3 on both platforms with trusted input: the start number of a numbered
-// list, drawn by the theme from the attribute start and written with the field Start at of the Text
-// pane and by Return on an empty item that cuts a numbered list, and a row or a column of a table
-// moved by a drag of its bar and by the commands Move Row Up, Move Row Down, Move Column Left, and
-// Move Column Right. after each edit the text is checked byte for byte after an undo, the edit
-// again after a redo, and after a save and an open
 describe('Start at, and rows moved by their bars', () => {
   const DECK = 'test/pages/editor-r13-3.html';
   const PLATFORMS = ['mac', 'other'];
@@ -697,7 +586,6 @@ describe('Start at, and rows moved by their bars', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -705,7 +593,6 @@ describe('Start at, and rows moved by their bars', () => {
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   let saves = 0;
 
-  // the editor on slide n of the deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -723,8 +610,6 @@ describe('Start at, and rows moved by their bars', () => {
     return page;
   }
 
-  // the edit checked against base after an undo, again after a redo, and after a save and an open,
-  // whose text becomes page.source
   async function roundTrip(page, base = page.source) {
     const edited = await render(page);
     assert.notEqual(edited, base, 'the action does not change the file');
@@ -734,13 +619,11 @@ describe('Start at, and rows moved by their bars', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r13-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
 
-  // the numbers drawn before the items of selector, read from the tree of accessibility of Chrome,
-  // in which the counter of a pseudo-element is a text node of the item
   async function drawnNumbers(page, selector) {
     await page.send('Accessibility.enable', {});
     const { root } = await page.send('DOM.getDocument', { depth: 0 });
@@ -762,8 +645,6 @@ describe('Start at, and rows moved by their bars', () => {
     return out;
   }
 
-  // the numbers drawn before the first items of selector once they are expected, since Chrome
-  // updates its tree of accessibility after a change of the page, within 3 s
   async function numbersAre(page, selector, expected) {
     let now = [];
     for (const end = Date.now() + 3000; Date.now() < end; await new Promise((d) => setTimeout(d, 100))) {
@@ -773,11 +654,9 @@ describe('Start at, and rows moved by their bars', () => {
     assert.deepEqual(now, expected);
   }
 
-  // the shown element of selector that holds needle, as an expression
   const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
   const ITEM = '.reveal section.present ol > li';
 
-  // the client point of the middle of the text needle
   const pointOf = (page, selector, needle) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -792,7 +671,6 @@ describe('Start at, and rows moved by their bars', () => {
   }
 })()`);
 
-  // the caret put at the end of the item that holds needle
   const caretAtEnd = (page, needle) => page.evaluate(`(() => {
   const li = ${find(ITEM, needle)};
   const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
@@ -802,7 +680,6 @@ describe('Start at, and rows moved by their bars', () => {
   getSelection().collapse(last, last.length);
 })()`);
 
-  // the tab of the inspector named name shown, with the Format pane open
   async function showTab(page, name) {
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await frames(page);
@@ -849,7 +726,6 @@ describe('Start at, and rows moved by their bars', () => {
       assert.equal(await undoLabel(page), 'Undo Start At');
       await numbersAre(page, '.reveal section.present ol > li', ['4', '5', '6', '7', '8']);
       await roundTrip(page);
-      // a typed 1 takes the attribute off, which gives the file back
       await click(page, await pointOf(page, ITEM, 'Charlie'));
       await showTab(page, 'Text');
       assert.equal(await page.evaluate(`document.querySelector(${js(START)}).value`), '4');
@@ -882,7 +758,6 @@ describe('Start at, and rows moved by their bars', () => {
       await numbersAre(page, '.reveal section.present ol > li', ['1', '2', '3', '4', '5']);
       assert.equal(await undoLabel(page), 'Undo New Paragraph');
       await roundTrip(page, added);
-      // a list with a start number goes on from it
       await caretAtEnd(page, 'Seventh');
       await press(page, 'Enter');
       await press(page, 'Enter');
@@ -900,7 +775,6 @@ describe('Start at, and rows moved by their bars', () => {
     });
   }
 
-  // the rows of the table of the current slide, as the texts of their cells
   const rowsOf = (page) => page.evaluate(`[...document.querySelector('.reveal section.present table').rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()).join(' '))`);
   const onSegments = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-table-bars .bar > .on')].map((d) => d.textContent)`);
   const segment = (bar, i) => `.beeson-table-bars .bar.${bar} > [data-index="${i}"]`;
@@ -910,8 +784,6 @@ describe('Start at, and rows moved by their bars', () => {
     page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].map((m) => ({ label: m.querySelector('.label')?.textContent ?? m.textContent.trim(), disabled: m.getAttribute('aria-disabled') === 'true' }))`);
   const cellPoint = (page, text) => pointOf(page, '.reveal section.present td, .reveal section.present th', text);
 
-  // the row or the column of segment i of a bar selected by a click on it, with the caret first put
-  // into the cell of text so that the bars are shown
   async function selectLine(page, text, bar, i, shift = false) {
     if (!shift) await click(page, await cellPoint(page, text));
     await frames(page);
@@ -919,7 +791,6 @@ describe('Start at, and rows moved by their bars', () => {
     await frames(page);
   }
 
-  // a drag of segment i of a bar by d times the size of the segment, released, or held with hold
   async function dragSegment(page, bar, i, d, hold = false) {
     const m = await middle(page, segment(bar, i));
     const step = bar === 'rows' ? { dy: d * m.h } : { dx: d * m.w };
@@ -942,8 +813,6 @@ describe('Start at, and rows moved by their bars', () => {
       assert.equal(await lineShown(page), false);
       assert.deepEqual(await onSegments(page), ['A', 'B', 'C', '3'], 'the moved row does not stay selected');
       await roundTrip(page);
-      // the first row moved down by two takes the widths of the columns off it, which stay on the row
-      // that is first now
       await selectLine(page, 'A1', 'rows', 0);
       await dragSegment(page, 'rows', 0, 2);
       assert.deepEqual(await rowsOf(page), ['A3 B3 C3', 'A2 B2 C2', 'A1 B1 C1', 'A4 B4 C4']);
@@ -1016,7 +885,6 @@ describe('Start at, and rows moved by their bars', () => {
       const cellMenu = await menuLabels(page);
       assert.deepEqual(cellMenu.filter((m) => m.label.startsWith('Move')).map((m) => [m.label, m.disabled]), [['Move Row Up', false], ['Move Row Down', true], ['Move Column Left', false], ['Move Column Right', false]]);
       await press(page, 'Escape');
-      // with the caret in a cell, the commands move its row or its column
       await click(page, await cellPoint(page, 'B2'));
       await exec(page, 'table.moveRowUp');
       await frames(page);
@@ -1048,13 +916,11 @@ describe('Start at, and rows moved by their bars', () => {
       await page.evaluate(`Reveal.slide(${MERGED})`);
       await frames(page);
       await selectLine(page, 'Lyapunov', 'rows', 3);
-      // Move Row Up moves the row past the whole merged block, and a drag into the block is refused
       assert.equal((await state(page, 'table.moveRowUp')).enabled, true, 'Move Row Up of the row under a merged block is dimmed');
       await dragSegment(page, 'rows', 3, -1, true);
       assert.equal(await lineShown(page), false, 'a line is shown inside a merged cell');
       await press(page, 'Escape');
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0, y: 0, button: 'left', clickCount: 1 });
-      // the column Period is not moved across the merged cell Halo, and the column Jacobi is moved
       await click(page, await cellPoint(page, '14.8'));
       assert.equal((await state(page, 'table.moveColumnLeft')).enabled, false, 'a column moves across a merged cell');
       assert.equal((await state(page, 'table.moveColumnRight')).enabled, true);
@@ -1063,9 +929,6 @@ describe('Start at, and rows moved by their bars', () => {
   }
 });
 
-// regression tests of R15.5 on both platforms with trusted input: a row or a column dragged by its
-// bar is lifted and follows the pointer along its axis while the button is held, the file changes
-// only at the drop, and Esc puts it back
 describe('a row or column dragged by its bar', () => {
   const TABLES = 'test/pages/editor-r13-3.html';
   const PLAIN = 1;
@@ -1085,13 +948,11 @@ describe('a row or column dragged by its bar', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   let saves = 0;
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, deck, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1109,8 +970,6 @@ describe('a row or column dragged by its bar', () => {
     return page;
   }
 
-  // the text after an edit checked against page.source after an undo, again after a redo, and after
-  // a save and an open of the saved text
   async function roundTrip(page) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -1120,10 +979,9 @@ describe('a row or column dragged by its bar', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-5-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   }
 
-  // the rows of the table of the current slide, as the texts of their cells
   const rowsOf = (page) => page.evaluate(`[...document.querySelector('.reveal section.present table').rows].map((tr) => [...tr.cells].map((c) => c.textContent.trim()).join(' '))`);
   const segment = (bar, i) => `.beeson-table-bars .bar.${bar} > [data-index="${i}"]`;
   const middle = (page, selector) => page.evaluate(`(() => { const r = document.querySelector(${js(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }; })()`);
@@ -1132,8 +990,6 @@ describe('a row or column dragged by its bar', () => {
   const TABLE = `document.querySelector('.reveal section.present table')`;
   const rowBox = (page, r) => box(page, `${TABLE}.rows[${r}]`);
   const cellBox = (page, r, c) => box(page, `${TABLE}.rows[${r}].cells[${c}]`);
-  // the box, the words, and the look of the lifted copy of the rows or the columns dragged by their
-  // bar, which the editor draws over the table, or null while none is shown
   const lifted = (page) => page.evaluate(`(() => {
   const l = document.querySelector('.beeson-table-bars .lift');
   if (!l || l.hidden) return null;
@@ -1147,8 +1003,6 @@ describe('a row or column dragged by its bar', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // the row or the column of segment i of a bar selected by a click on it, after a click into the cell
-  // of text, which shows the bars
   async function selectLine(page, text, bar, i) {
     await click(page, await cellPoint(page, text));
     await frames(page);
@@ -1176,12 +1030,10 @@ describe('a row or column dragged by its bar', () => {
       assert.equal(l.text, 'A2 B2 C2');
       assert.ok(l.opacity < 1 || l.shadow !== 'none', 'the lifted row is drawn neither lighter nor with a shadow');
       assert.equal(await lineShown(page), true, 'the gap where the row lands is not marked by a line');
-      // the row in the table stays, and the file is not changed during the drag
       assert.deepEqual(await rowBox(page, 1), row);
       assert.equal(await page.evaluate(`getComputedStyle(${TABLE}.rows[1]).transform`), 'none');
       assert.equal(await render(page), page.source, 'the file changes during the drag');
       assert.equal(await undoLabel(page), before);
-      // the lifted row follows the pointer further down
       await pointer(page, 'mouseMoved', m.x, m.y + 1.5 * m.h);
       await frames(page);
       near((await lifted(page)).y, row.y + 1.5 * m.h, 'the top of the lifted row after a further move');
@@ -1199,7 +1051,6 @@ describe('a row or column dragged by its bar', () => {
       const m = await middle(page, segment('cols', 1));
       const top = await cellBox(page, 0, 1);
       const table = await box(page, TABLE);
-      // the move of 40 px across the axis is not followed
       await drag(page, m, { dx: -m.w, dy: 40, steps: 12, hold: true });
       await frames(page);
       const l = await lifted(page);
@@ -1238,15 +1089,11 @@ describe('a row or column dragged by its bar', () => {
       await frames(page);
       assert.equal(await render(page), page.source, 'a drag canceled by Esc changes the file');
       assert.equal(await undoLabel(page), before, 'a drag canceled by Esc is an entry of the history');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R17.4 on both platforms with trusted input: the drop line of a drag by a bar
-// drawn over the lifted copy, a range of body cells pasted onto a slide as body cells, by the key
-// and by Paste of the Edit menu, a key pressed during a drag by a bar, and a move of rows in a
-// table with a merged cell
 describe('the drop line, and body cells pasted', () => {
   const PLATFORMS = ['mac', 'other'];
   const BARS = 'test/pages/editor-r13-3.html';
@@ -1267,13 +1114,11 @@ describe('the drop line, and body cells pasted', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const wait = (page, ms = 150) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
   let saves = 0;
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, deck, n, theme = '') {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1292,7 +1137,6 @@ describe('the drop line, and body cells pasted', () => {
     return page;
   }
 
-  // the edit checked against base after an undo, again after a redo, and after a save and an open
   async function roundTrip(page, base) {
     const edited = await render(page);
     assert.notEqual(edited, base, 'the action does not change the file');
@@ -1302,7 +1146,7 @@ describe('the drop line, and body cells pasted', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r17-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
@@ -1321,9 +1165,6 @@ describe('the drop line, and body cells pasted', () => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-  // the row i selected by a click into the cell named cell and a click on its bar, and pressed on
-  // its bar and moved by k heights of the row with the button held. the point of the pointer is
-  // returned
   async function pressRow(page, cell, i, k) {
     await click(page, await cellPoint(page, cell));
     await wait(page, 100);
@@ -1337,7 +1178,6 @@ describe('the drop line, and body cells pasted', () => {
     return { x: m.x, y: m.y + k * m.h, h: m.h };
   }
 
-  // the pixels of a screenshot at the points, read back in the page
   async function pixels(page, points) {
     const png = await page.screenshot({ x: 0, y: 0, width: 1600, height: 1000, scale: 1 });
     return page.evaluate(`(async () => {
@@ -1354,13 +1194,10 @@ describe('the drop line, and body cells pasted', () => {
   })()`);
   }
 
-  // N43: the drop line of a drag by a bar was drawn under the lifted copy at 85 percent opacity, at
-  // a contrast of about 1.1 to 1 in dark mode and 1.2 to 1 in light mode
   for (const platform of PLATFORMS) {
     for (const theme of ['dark', 'light']) {
       test(`the drop line of a row dragged by its bar is drawn over the lifted copy, in ${theme} mode (${platform})`, async (t) => {
         const page = await load(t, platform, BARS, 1, theme);
-        // 1.4 rows down, the gap is after row 3 and under the copy
         const m = await pressRow(page, 'A2', 1, 1.4);
         const drop = await shown(page, DROP);
         const lift = await shown(page, LIFT);
@@ -1374,16 +1211,13 @@ describe('the drop line, and body cells pasted', () => {
         await pointer(page, 'mouseReleased', m.x, m.y);
         await wait(page);
         assert.equal(await render(page), page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the cells of slide 2 of test/pages/editor-tables.html at row r and column c of its table
   const at = (page, r, c) => page.evaluate(`(() => { const t = Reveal.getCurrentSlide().querySelector('table'); const b = t.rows[${r}].cells[${c}].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
 
-  // the body cells Moon to 2.53e-5 of slide 2 selected as a block and copied by a trusted Mod+C,
-  // with the data that the copy wrote
   async function copyBody(page) {
     await click(page, await at(page, 1, 0));
     await wait(page);
@@ -1404,7 +1238,6 @@ describe('the drop line, and body cells pasted', () => {
     return { plain: w.find((x) => x[0] === 'text/plain')?.[1] ?? '', html: w.find((x) => x[0] === 'text/html')?.[1] ?? '' };
   }
 
-  // the new table of a paste of the range Moon to 2.53e-5, whose cells are body cells as in the source
   const BODY = '<tbody>\n      <tr><td>Moon</td><td style="text-align: right">\\(0.01215\\)</td></tr>\n      <tr><td>Europa</td><td style="text-align: right">2.53e-5</td></tr>\n    </tbody>';
   const tables = (page) => page.evaluate(`Reveal.getCurrentSlide().querySelectorAll('table').length`);
   const MENU_ITEM = (label) => `[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.querySelector('.label')?.textContent === ${js(label)})`;
@@ -1419,8 +1252,6 @@ describe('the drop line, and body cells pasted', () => {
     await wait(page);
   };
 
-  // requirement 9i and N50: a range of body cells pasted onto a slide was written with th cells in
-  // its first row, drawn italic in the color of a header
   for (const platform of PLATFORMS) {
     test(`a range of body cells pasted onto a slide by the key is a table of body cells (${platform})`, async (t) => {
       const page = await load(t, platform, TABLES, 1);
@@ -1438,7 +1269,6 @@ describe('the drop line, and body cells pasted', () => {
       await roundTrip(page, page.source);
     });
 
-    // N49: Paste of the Edit menu on the canvas with a range on the clipboard pasted nothing
     test(`Paste of the Edit menu on the canvas with a range of cells on the clipboard makes the table of the key (${platform})`, async (t) => {
       const page = await load(t, platform, TABLES, 1);
       await page.send('Page.bringToFront');
@@ -1456,19 +1286,15 @@ describe('the drop line, and body cells pasted', () => {
       assert.equal(await tables(page), 2, 'Paste of the Edit menu does not make a table');
       const pasted = await render(page);
       assert.ok(pasted.includes(BODY), `the new table is not the table of the key:\n${pasted.slice(pasted.lastIndexOf('<table>'), pasted.lastIndexOf('</table>'))}`);
-      // the entry takes the name of the menu item, as in Keynote
       assert.equal(await undoLabel(page), 'Undo Paste');
       assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName)`), ['table']);
       await roundTrip(page, page.source);
     });
   }
 
-  // N44: a key pressed during a drag by a bar acted on the table, and the drag went on with a stale
-  // lifted copy
   for (const platform of PLATFORMS) {
     test(`a key pressed during a drag of a row by its bar is without effect, and Esc ends the drag (${platform})`, async (t) => {
       const page = await load(t, platform, BARS, 1);
-      // an earlier entry, which Mod+Z during the drag must not undo
       let p = await pressRow(page, 'A2', 1, 2.2);
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
@@ -1487,12 +1313,10 @@ describe('the drop line, and body cells pasted', () => {
         assert.deepEqual(await rowsOf(page), ['A1 B1 C1', 'A3 B3 C3', 'A4 B4 C4', 'A2 B2 C2'], `${key} during the drag changes the table`);
         assert.ok(await shown(page, LIFT), `${key} during the drag takes the lifted row off`);
       }
-      // the drag goes on, and the release moves the row
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.deepEqual(await rowsOf(page), ['A1 B1 C1', 'A4 B4 C4', 'A3 B3 C3', 'A2 B2 C2']);
       await roundTrip(page, moved);
-      // Esc ends a drag, and its release writes nothing
       const now = await render(page);
       p = await pressRow(page, 'A1', 0, 1.2);
       await press(page, 'Escape');
@@ -1501,18 +1325,15 @@ describe('the drop line, and body cells pasted', () => {
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.equal(await render(page), now);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // N45: in a table with a merged cell, a move of rows that keeps every merged cell whole was refused
-  // without a sign, with a lifted copy and without a drop line
   for (const platform of PLATFORMS) {
     test(`a row moved past a merged block and a merged block moved whole are moved, and a refused move is not lifted (${platform})`, async (t) => {
       let page = await load(t, platform, BARS, 3);
       const rows = await rowsOf(page);
       assert.deepEqual(rows, ['Family Period Jacobi', 'Halo 14.8 3.05', '6.6 3.04', 'Lyapunov 2.69 3.10']);
-      // Lyapunov to the gap under the header row
       let p = await pressRow(page, 'Lyapunov', 3, -2);
       assert.ok(await shown(page, LIFT), 'the row is not lifted');
       assert.ok(await shown(page, DROP), 'the drop line is not drawn at the gap above the merged block');
@@ -1521,7 +1342,6 @@ describe('the drop line, and body cells pasted', () => {
       assert.deepEqual(await rowsOf(page), ['Family Period Jacobi', 'Lyapunov 2.69 3.10', 'Halo 14.8 3.05', '6.6 3.04']);
       assert.equal(await undoLabel(page), 'Undo Move Row');
       await roundTrip(page, page.source);
-      // the two rows of Halo dragged below Lyapunov, on the file as it was opened
       page = await load(t, platform, BARS, 3);
       p = await pressRow(page, '14.8', 1, 2);
       assert.equal(await liftText(page), 'Halo 14.8 3.05 6.6 3.04');
@@ -1532,20 +1352,18 @@ describe('the drop line, and body cells pasted', () => {
       await undo(page);
       await wait(page);
       assert.equal(await render(page), page.source);
-      // Lyapunov into the merged block is refused, without a drop line
       p = await pressRow(page, 'Lyapunov', 3, -1);
       assert.equal(await shown(page, DROP), null, 'a drop line is drawn inside the merged block');
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.equal(await render(page), page.source);
-      // the header row cannot be moved anywhere, hence it is not lifted
       p = await pressRow(page, 'Family', 0, 2);
       assert.equal(await shown(page, LIFT), null, 'the header row is lifted although it cannot be moved');
       assert.equal(await shown(page, DROP), null);
       await pointer(page, 'mouseReleased', p.x, p.y);
       await wait(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

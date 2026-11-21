@@ -1,26 +1,15 @@
-// what theme/session.js reads of the navigator and the Slide Sorter to draw who is on each slide
-// and which slide someone else changed, and the slides of ranges of the source, read from the
-// pairing without a parse of the deck. theme/session.js reaches them through its Handover
-
 import type { App } from '../app.ts';
 import type { Edit } from '../merge.ts';
 import { showPlaces, type Navigator } from '../navigator/navigator.ts';
 import { tileSlide } from '../navigator/sorter.ts';
 
 export type SlideHooks = {
-  // the row of slide in the navigator, or null
   row(slide: Element): HTMLElement | null;
-  // the tiles of the Slide Sorter by slide, empty while it is closed
   tiles(): Map<Element, HTMLElement>;
-  // fn is called after each refresh of the navigator or the Slide Sorter
   onRefresh(fn: () => void): void;
-  // the number of slide that the status bar shows
   numberOf(slide: Element): number;
-  // the numbers, from 1, of the slides marked as changed, and a mark of more, see marked and mark
-  // of Navigator
   marked(): number[];
   mark(numbers: number[]): void;
-  // the slides whose source meets a range of source() of the presence hooks
   slidesIn(ranges: Edit[]): Element[];
 };
 

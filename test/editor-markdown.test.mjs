@@ -1,7 +1,3 @@
-// the substitution Markdown Formatting of the Edit menu: a span closed by the mark that opened it
-// is written in the tag of the mark when its closing character is typed, the typing after it is
-// outside the tag, and one undo gives back the marks as typed
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -9,7 +5,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { markdownSpan } from '../src/editor/text/substitute.ts';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
-// the paragraph of slide 2 of LAYOUTS, which the typing is appended to
 const PARAGRAPH = '<p>A paragraph with <strong>bold</strong>, <em>italic</em>, <code>code</code>, and \\(x^2\\) inline.</p>';
 
 let browser;
@@ -35,7 +30,6 @@ async function load(t) {
   page.source = readFileSync(LAYOUTS, 'utf8');
   await page.evaluate(`window.BeesonEditor.open(${js(page.source)})`);
   await page.evaluate('Reveal.slide(2)');
-  // the caret at the end of the paragraph
   await page.evaluate(`(() => {
     const p = document.querySelector('.reveal section.present > p');
     p.closest('[contenteditable="true"]').focus();
@@ -48,8 +42,6 @@ async function load(t) {
   return page;
 }
 
-// each character typed as a trusted key, as the substitutions are made only for typed characters.
-// the keys are sent at once, since two keys more than 1 s apart are two entries of the history
 async function typeKeys(page, text) {
   const sent = [];
   for (const c of text) sent.push(page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: c, text: c, unmodifiedText: c }), page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: c }));
@@ -66,8 +58,6 @@ test('the span of each mark is found at its closing character, and a mark inside
   assert.deepEqual(markdownSpan('_it_'), { start: 0, words: 'it', tag: 'em' });
   assert.deepEqual(markdownSpan('a `x = 1`'), { start: 2, words: 'x = 1', tag: 'code' });
   assert.deepEqual(markdownSpan('a ~~gone~~'), { start: 2, words: 'gone', tag: 's' });
-  // the first closing mark of a double one, a name in snake_case, a span with a space inside its
-  // marks, an empty span, and TeX are left as typed
   for (const text of ['a **bold*', 'snake_case_', 'a * x*', 'a **', 'a ``', '\\(a *b*']) assert.equal(markdownSpan(text), null, text);
 });
 

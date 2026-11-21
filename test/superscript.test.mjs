@@ -1,9 +1,3 @@
-// a reference number written as a superscript, e.g. Orion<sup>2,3</sup>, in the show and in the
-// editor. the theme raises a sup and lowers a sub, which the reset of reveal.js sets on the
-// baseline, without making their lines taller. in the editor, the space typed after a number set
-// with Superscript, once Superscript is off again, is typed after the sup at the size of the text,
-// and the typing goes on at the caret
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -56,8 +50,6 @@ test('a sup is raised and a sub is lowered in running text, and the lines around
       size: parseFloat(getComputedStyle(sup).fontSize) / parseFloat(getComputedStyle(scripts).fontSize),
     };
   })()`);
-  // the number is set at 0.7 of the text, with its foot above the foot of the letter before it, and
-  // a sub is set with its foot below
   assert.ok(Math.abs(m.size - 0.7) < 0.01, `a sup is set at ${m.size} of the text`);
   assert.ok(m.sup.bottom < m.before.bottom - 8, `the sup ends at ${m.sup.bottom}, not above the letter before it, which ends at ${m.before.bottom}`);
   assert.ok(m.sub.bottom > m.before.bottom + 4, `the sub ends at ${m.sub.bottom}, not below the letters, which end at ${m.before.bottom}`);
@@ -76,7 +68,6 @@ for (const platform of PLATFORMS) {
     const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
     assert.deepEqual(status.problems, []);
     await page.evaluate('Reveal.slide(2)');
-    // the caret after the word "paragraph", in the middle of the paragraph
     const placed = await page.evaluate(`(() => {
       const p = [...document.querySelectorAll('.reveal section.present > p')].find((e) => e.textContent.startsWith('A paragraph with'));
       if (!p) return false;
@@ -95,7 +86,6 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`window.BeesonEditor.render().includes('A paragraph<sup>2</sup> with')`);
     await superscript();
     assert.equal(await page.evaluate(`window.BeesonEditor.state('text.superscript').checked`), false);
-    // one key at a time, so that each is typed at the caret that the one before left
     for (const key of [' ', 'a', 'n', 'd']) {
       const before = await page.evaluate('window.BeesonEditor.render().length');
       await typeKeys(page, key);
@@ -103,9 +93,6 @@ for (const platform of PLATFORMS) {
     }
     const edits = [[PARAGRAPH, PARAGRAPH.replace('A paragraph with', 'A paragraph<sup>2</sup> and with')]];
     await byteExact(page, edits);
-    // the space after the number is drawn as wide as the space after "and", as in the show. a
-    // no-break space, which Chrome types at the edge of an element, is half as wide again in Latin
-    // Modern Roman, and the file is written with a plain space
     const gaps = await page.evaluate(`(() => {
       const sup = document.querySelector('.reveal section.present > p sup');
       const text = sup.nextSibling;
@@ -120,7 +107,7 @@ for (const platform of PLATFORMS) {
     const { text } = await saveAndReopen(page, `superscript-${platform}.html`);
     page.source = text;
     await byteExact(page);
-    assert.deepEqual(page.errors.filter((e) => !e.includes('/favicon.ico')), []);
+    assert.deepEqual(page.errors, []);
     await page.close();
   });
 }

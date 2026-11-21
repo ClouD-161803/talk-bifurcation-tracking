@@ -1,8 +1,3 @@
-// the zip of the talk folder that a page of a session downloads. its entries are compared with the
-// files that the edit command serves and with index.html as the session has it. the modes, the
-// wrapped trajectory files, and the routes of POST, GET, and DELETE are tested as well, with the
-// limits directly and through a local relay, and the answers of the edit command while a zip is built
-
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -24,8 +19,6 @@ const SECRET = 'the secret of the group for this test';
 const unix = process.platform !== 'win32';
 const BUSY = 'The edit command is busy with other downloads of the talk folder. Try again in a minute.';
 
-// a second copy of the edit command, whose limit of a zip is 3 MB, for the tests that hold or change
-// a read of a file in this process. the limit is read when the copy is loaded
 process.env.SLIDES_ZIP_MAX_BYTES = String(3 * MB);
 const small = await import('../theme/edit.mjs?limit=3MB');
 delete process.env.SLIDES_ZIP_MAX_BYTES;
@@ -40,7 +33,6 @@ function put(talk, path, bytes) {
   return file;
 }
 
-// an edit command in this process, stopped before its folder is removed
 async function inProcess(t, root, talk, command = start) {
   const running = await command({ folder: talk, port: 0, log: () => {} });
   t.after(async () => {
@@ -50,8 +42,6 @@ async function inProcess(t, root, talk, command = start) {
   return running;
 }
 
-// the token of a new page, which polls the events until the session ends or the page leaves, as a
-// page of a session does. the edit command drops a page that has not polled 5 s after its hello
 async function hello(t, port, key, name) {
   const answer = await post(port, api(key, 'hello'), { name });
   assert.equal(answer.status, 200, answer.text);
@@ -67,12 +57,10 @@ async function hello(t, port, key, name) {
   return token;
 }
 
-// the answer waits for the zip, at most for timeout
 const makeZip = (port, key, token, timeout) => raw(port, 'POST', `${api(key, 'zip')}?token=${token}`, { body: '', timeout });
 const pieceOf = (port, key, token, id, at) => raw(port, 'GET', `${api(key, `zip/${id}`)}?token=${token}&at=${at}`);
 const dropZip = (port, key, token, id) => raw(port, 'DELETE', `${api(key, `zip/${id}`)}?token=${token}`);
 
-// the zip of the page of token, asked for piece by piece as the session client does
 async function download(port, key, token, timeout) {
   const made = await makeZip(port, key, token, timeout);
   assert.equal(made.status, 200, made.text);
@@ -91,7 +79,6 @@ async function download(port, key, token, timeout) {
   return { id, size, name, zip };
 }
 
-// the files below the talk folder, with every link followed, as segments
 function filesBelow(talk, dir = []) {
   const out = [];
   for (const name of readdirSync(join(talk, ...dir))) {
@@ -151,8 +138,6 @@ test('the zip holds every file that the edit command serves, with its bytes and 
   assert.equal(got.get('media/photo.png').method, 0);
   assert.equal(got.get('empty.txt').bytes.length, 0);
 
-  // every file that GET answers is in the zip with the same bytes, and every entry is answered. the
-  // outputs of npm run check, pdf, and pptx are served but left out of the zip
   const outputs = ['check/a.png', 'slides.pdf', 'slides.pptx'];
   const served = new Map();
   for (const path of filesBelow(talk)) {
@@ -202,7 +187,6 @@ test('links are followed inside the talk folder only, and a link to its own fold
   symlinkSync(join(talk, 'notes.txt'), join(talk, 'link.txt'));
   symlinkSync(join(talk, 'sub'), join(talk, 'sub', 'self'));
   symlinkSync(talk, join(talk, 'sub', 'up'));
-  // links inside the talk folder stand for short names of Windows, e.g. GIT~1
   put(talk, '.git/config', 'token');
   put(talk, 'node_modules/x/index.js', 'x');
   symlinkSync(join(talk, '.git'), join(talk, 'GIT~1'));
@@ -231,50 +215,40 @@ test('the top folder of the zip is named after the talk folder without the chara
 
 test('a talk folder named after a device of Windows, with a long name, or with a character that Windows or Chrome does not take in a name, gives a zip and a top folder that both take', { skip: !unix, timeout: 180_000 }, async (t) => {
   const names = [
-    ['aux', 'aux-'],
-    ['COM1.talk', 'COM1-.talk'],
-    ['auxiliary', 'auxiliary'],
-    // the digits that Windows reserves as well, and a device name with spaces before the dot
-    ['LPT\u00b9', 'LPT\u00b9-'],
-    ['com\u00b3.x', 'com\u00b3-.x'],
-    ['con .txt', 'con- .txt'],
-    // Extract All of Windows names a folder after the zip around the top folder, and a path of
-    // Windows holds 259 characters, hence the name is cut to 64, without a dot or a space at its end
-    ['x'.repeat(100), 'x'.repeat(64)],
-    [`${'y'.repeat(63)}. a long name`, 'y'.repeat(63)],
-    // Windows counts a path in the units of UTF-16, of which an emoji has two, and an emoji is not cut
-    ['\u{1f600}'.repeat(40), '\u{1f600}'.repeat(32)],
-    [`${'z'.repeat(63)}\u{1f600}`, 'z'.repeat(63)],
-    ['CONIN$', 'CONIN$-'],
-    ['conout$.x', 'conout$-.x'],
-    ['clock$', 'clock$-'],
-    // the - of a device counts in the 64, and a name that is cut to a device is one
-    [`COM1.${'a'.repeat(59)}`, `COM1-.${'a'.repeat(58)}`],
-    [`con${' '.repeat(59)}.x`, 'con-'],
-    [`aux${' '.repeat(61)}x`, 'aux-'],
-    // a dot, a space, or a ~ at the start, the last of which Chrome replaces in the name of a
-    // download, and a name of which nothing is left
-    ['.talk', 'talk'],
-    [' talk', 'talk'],
-    ['~talk', 'talk'],
-    ['...', 'talk'],
-    // a decomposed name is composed, on every system
-    ['cafe\u0301', 'caf\u00e9'],
-    // the control and the format characters, which Chrome replaces as well: DEL, NEL, the override of
-    // the direction, and the joiner
-    ['a\u007fb\u0085c', 'a-b-c'],
-    ['talk\u202egpj.exe', 'talk-gpj.exe'],
-    ['ta\u200dlk', 'ta-lk'],
+    ['aux', 'aux-', 'a device of Windows'],
+    ['COM1.talk', 'COM1-.talk', 'a device of Windows with an extension'],
+    ['auxiliary', 'auxiliary', 'a name that only begins with a device'],
+    ['LPT\u00b9', 'LPT\u00b9-', 'a digit that Windows reserves for a device as well'],
+    ['com\u00b3.x', 'com\u00b3-.x', 'a digit that Windows reserves for a device as well'],
+    ['con .txt', 'con- .txt', 'a device with spaces before the dot'],
+    ['x'.repeat(100), 'x'.repeat(64), 'a long name, cut to 64 since the zip is unzipped by Extract All of Windows into a folder of its name, in a path of at most 259 characters'],
+    [`${'y'.repeat(63)}. a long name`, 'y'.repeat(63), 'a cut name that would end with a dot or a space'],
+    ['\u{1f600}'.repeat(40), '\u{1f600}'.repeat(32), 'a path of Windows counted in UTF-16 code units, two for an emoji'],
+    [`${'z'.repeat(63)}\u{1f600}`, 'z'.repeat(63), 'an emoji that is not cut in half'],
+    ['CONIN$', 'CONIN$-', 'a device of Windows'],
+    ['conout$.x', 'conout$-.x', 'a device of Windows'],
+    ['clock$', 'clock$-', 'a device of Windows'],
+    [`COM1.${'a'.repeat(59)}`, `COM1-.${'a'.repeat(58)}`, 'the - after a device, which counts in the 64 characters'],
+    [`con${' '.repeat(59)}.x`, 'con-', 'a name cut to a device'],
+    [`aux${' '.repeat(61)}x`, 'aux-', 'a name cut to a device'],
+    ['.talk', 'talk', 'a dot at the start'],
+    [' talk', 'talk', 'a space at the start'],
+    ['~talk', 'talk', 'a ~ at the start, which Chrome replaces in the name of a download'],
+    ['...', 'talk', 'a name of which nothing is left'],
+    ['cafe\u0301', 'caf\u00e9', 'a decomposed name, which is composed on every system'],
+    ['a\u007fb\u0085c', 'a-b-c', 'control characters, which Chrome replaces'],
+    ['talk\u202egpj.exe', 'talk-gpj.exe', 'a format character, which Chrome replaces'],
+    ['ta\u200dlk', 'ta-lk', 'a joiner, which Chrome replaces'],
   ];
-  for (const [folder, name] of names) {
+  for (const [folder, name, why] of names) {
     const { root } = talkFolder(t);
     const talk = join(root, 'devices', folder);
     put(talk, 'index.html', DECK);
     const running = await inProcess(t, root, talk);
     const token = await hello(t, running.port, running.key, 'Ann');
     const got = await download(running.port, running.key, token);
-    assert.equal(got.name, `${name}.zip`);
-    assert.equal(entries(got.zip)[0].name, `${name}/index.html`);
+    assert.equal(got.name, `${name}.zip`, why);
+    assert.equal(entries(got.zip)[0].name, `${name}/index.html`, why);
   }
 });
 
@@ -293,7 +267,6 @@ test('on macOS, a name that is stored decomposed is zipped composed, as a deck w
   const { zip, name } = await download(running.port, running.key, token);
   assert.equal(name, `${composed} talk.zip`);
   const got = byName(zip, `${composed} talk`);
-  // the wrapped file keeps the name that the deck writes, with a number, since its name is taken
   assert.deepEqual([...got.keys()], ['index.html', `${composed}/o.json`, `${composed}/o.json.js`, `${decomposed}/o.json-2.js`, `media/${composed}.png`].sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a < b ? -1 : 1)));
   assert.ok(got.get('index.html').bytes.toString('utf8').includes(`data-trajectories="${decomposed}/o.json-2.js"`));
 });
@@ -303,14 +276,13 @@ test('an entry has the time of its file to 2 s, and a time outside the years of 
   const at = (file, date) => utimesSync(put(talk, file, file), date, date);
   at('now.txt', new Date(2026, 4, 17, 13, 45, 31));
   at('early.txt', new Date(1975, 0, 1, 12));
-  // on Windows, Node.js reads a time from 2106-02-07 on back modulo 2^32 s, hence the late time is
-  // given by stat and lstat and not by the disk
   put(talk, 'late.txt', 'late.txt');
+  const wrappedByNodeOnWindows = new Date(2200, 5, 15, 10, 20, 30);
   const { stat, lstat } = fsp;
   for (const [name, real] of [['stat', stat], ['lstat', lstat]]) {
     fsp[name] = async (file, ...rest) => {
       const info = await real(file, ...rest);
-      if (String(file).endsWith('late.txt')) info.mtime = new Date(2200, 5, 15, 10, 20, 30);
+      if (String(file).endsWith('late.txt')) info.mtime = wrappedByNodeOnWindows;
       return info;
     };
   }
@@ -332,7 +304,6 @@ test('index.html of the zip is the text of the session before it is written, wit
   const running = await inProcess(t, root, talk);
   const { port, key } = running;
   const ann = (await post(port, api(key, 'hello'), { name: 'Ann' })).json();
-  // the writes of index.html fail while held is set, as in a read-only folder
   const { renameSync } = fs;
   let held = true;
   let refused = 0;
@@ -372,12 +343,10 @@ test('tex.js of the zip is the one of the text of the session, before the edit c
   const running = await inProcess(t, root, talk);
   const { port, key } = running;
   const ann = (await post(port, api(key, 'hello'), { name: 'Ann' })).json();
-  // a talk folder whose tex.js was never written gets the one of its sources in the zip
   const before = byName((await download(port, key, ann.token)).zip).get('tex.js')?.bytes.toString('utf8');
   assert.ok(before?.includes('The first paper') && !before.includes('The second paper'), before);
   assert.equal(existsSync(join(talk, 'tex.js')), false);
 
-  // the writes of index.html fail while held is set, hence tex.js is not written either
   const { renameSync } = fs;
   let held = true;
   let refused = 0;
@@ -407,8 +376,7 @@ test('tex.js of the zip is the one of the text of the session, before the edit c
   assert.equal(readFileSync(join(talk, 'tex.js'), 'utf8'), tex);
 });
 
-test('a tex.js that the talk folder holds under a name in another case is zipped as tex.js on a disk that does not tell the cases apart', { timeout: 60_000 }, async (t) => {
-  // the second name ends with a long s, which the disk of a Mac reads as an s
+test('a tex.js that the talk folder holds under a name in another case, or with a long s that the disk of a Mac reads as an s, is zipped as tex.js on a disk that does not tell the cases apart', { timeout: 60_000 }, async (t) => {
   for (const name of ['Tex.js', 'tex.j\u017f']) {
     const { root, talk } = talkFolder(t, DECK.replace('</body>', '<section><p>A paper <cite data-key="ann2020"></cite></p></section>\n</body>'));
     put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
@@ -418,7 +386,6 @@ test('a tex.js that the talk folder holds under a name in another case is zipped
     const token = await hello(t, running.port, running.key, 'Ann');
     const got = byName((await download(running.port, running.key, token)).zip);
     assert.ok(got.get('tex.js')?.bytes.toString('utf8').includes('The first paper'), `tex.js is the one of the session next to ${name}`);
-    // a deck loads tex.js by this name, also after an unzip on a disk that tells the cases apart
     if (blind) assert.equal(got.has(name), false, name);
     else assert.equal(got.get(name)?.bytes.toString('utf8'), 'stale', name);
   }
@@ -454,7 +421,6 @@ test('on a disk that tells the cases apart, a Tex.js is kept next to the tex.js 
   put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
   put(talk, 'Tex.js', 'a file of the talk');
   if (existsSync(join(talk, 'tex.js'))) return t.skip('the disk does not tell the cases apart');
-  // a file outside the talk folder, which the edit command does not serve
   put(root, 'outside.js', 'outside');
   symlinkSync(join(root, 'outside.js'), join(talk, 'tex.js'));
   const running = await inProcess(t, root, talk);
@@ -466,7 +432,6 @@ test('on a disk that tells the cases apart, a Tex.js is kept next to the tex.js 
 });
 
 test('a JSON file named by data-trajectories is wrapped into a script file next to it, and index.html names the script file', { timeout: 60_000 }, async (t) => {
-  // each pair is the deck text and the same text in index.html of the zip
   const pairs = [
     ['<div data-trajectories="orbits/a.json"></div>', '<div data-trajectories="orbits/a.json.js"></div>'],
     ["<div data-trajectories='orbits/b.json'></div>", "<div data-trajectories='orbits/b.json.js'></div>"],
@@ -476,7 +441,6 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
     ['<div data-trajectories="orbits/q.json?v=2"></div>', '<div data-trajectories="orbits/q.json.js?v=2"></div>'],
     ['<div data-trajectories="orbits/h.json#t"></div>', '<div data-trajectories="orbits/h.json.js#t"></div>'],
     ['<div data-trajectories="orbits/f&amp;g.json"></div>', '<div data-trajectories="orbits/f&amp;g.json.js"></div>'],
-    // the path ends at the first ? or #, also in a value with an & and at one written as a reference
     ['<div data-trajectories="orbits/r.json?v=2&amp;t=3"></div>', '<div data-trajectories="orbits/r.json.js?v=2&amp;t=3"></div>'],
     ['<div data-trajectories="orbits/s.json?v=2&t=3"></div>', '<div data-trajectories="orbits/s.json.js?v=2&t=3"></div>'],
     ['<div data-trajectories="orbits/u.json&#63;v=2"></div>', '<div data-trajectories="orbits/u.json.js&#63;v=2"></div>'],
@@ -486,27 +450,15 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
     ['<div data-trajectories="../outside.json"></div>'],
     ['<div data-trajectories="orbits/../../outside.json"></div>'],
     ['<div data-trajectories="https://example.com/orbits/a.json"></div>'],
-    // a path from the root of the address or with a scheme is not a path of the talk folder
     ['<div data-trajectories="/t/orbits/a.json"></div>'],
     ['<div data-trajectories="http:orbits/a.json"></div>'],
     ['<div data-trajectories="//talk.invalid/t/orbits/a.json"></div>'],
-    // the talk folder has a file orbits/k.json.js, which is not written over
     ['<div data-trajectories="orbits/k.json"></div>', '<div data-trajectories="orbits/k.json-2.js"></div>'],
-    // nor is orbits/case.json.js, which is the same file on a disk that does not tell the cases apart
     ['<div data-trajectories="orbits/Case.json"></div>', '<div data-trajectories="orbits/Case.json-2.js"></div>'],
-    // nor is the name of a folder taken, here orbits/dir.json.js with a file in it
     ['<div data-trajectories="orbits/dir.json"></div>', '<div data-trajectories="orbits/dir.json-2.js"></div>'],
-    // nor is orbits/Straße.json.js, which the disk of a Mac takes for orbits/STRASSE.json.js
     ['<div data-trajectories="orbits/STRASSE.json"></div>', '<div data-trajectories="orbits/STRASSE.json-2.js"></div>'],
-    // nor is the script whose name is the capital of orbits/\u0390.json.js, an iota with a dialytika
-    // and a tonos, of which the capital is three characters
     ['<div data-trajectories="orbits/\u0390.json"></div>', '<div data-trajectories="orbits/\u0390.json-2.js"></div>'],
-    // nor is the script that the disk of a Mac takes for orbits/\u1fb7.json.js, an alpha with a
-    // perispomeni and an iota below it. in the name of this script, the two accents are in the other order
     ['<div data-trajectories="orbits/\u1fb7.json"></div>', '<div data-trajectories="orbits/\u1fb7.json-2.js"></div>'],
-    // nor is a script whose name differs only in its accents, here orbits/e.json.js. an exFAT disk
-    // of a Mac takes two names for one when an accent is before or behind a Hangul vowel in them,
-    // which the disk of a test does not show
     ['<div data-trajectories="orbits/\u00e9.json"></div>', '<div data-trajectories="orbits/\u00e9.json-2.js"></div>'],
     ['<!-- <div data-trajectories="orbits/m1.json"></div> -->'],
     [`<script>const s = '<div data-trajectories="orbits/m2.json"></div>';</script>`],
@@ -532,31 +484,31 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
   const token = await hello(t, running.port, running.key, 'Ann');
   const got = byName((await download(running.port, running.key, token)).zip);
 
-  assert.equal(got.get('index.html').bytes.toString('utf8'), deckOf(1));
+  assert.equal(got.get('index.html').bytes.toString('utf8'), deckOf(1), 'a path ends at the first ? or #, also after an & or at a character reference, and a path from the root of the address or with a scheme is not of the talk folder');
   for (const n of wrapped) {
     const original = readFileSync(join(talk, 'orbits', `${n}.json`));
     assert.ok(got.get(`orbits/${n}.json`).bytes.equals(original), `orbits/${n}.json is kept`);
     assert.equal(got.get(`orbits/${n}.json.js`)?.bytes.toString('utf8'), `Beeson.trajectories(${original});\n`, `orbits/${n}.json.js`);
     assert.equal(got.get(`orbits/${n}.json.js`).mode, 0o644);
   }
-  assert.equal(got.get('orbits/k.json.js').bytes.toString('utf8'), 'a script of the talk folder');
+  assert.equal(got.get('orbits/k.json.js').bytes.toString('utf8'), 'a script of the talk folder', 'a script of the talk folder is not written over');
   assert.equal(got.get('orbits/k.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'k.json'))});\n`);
-  assert.equal(got.get('orbits/case.json.js').bytes.toString('utf8'), 'another script of the talk folder');
+  assert.equal(got.get('orbits/case.json.js').bytes.toString('utf8'), 'another script of the talk folder', 'nor is the script of the same name on a disk that does not tell the cases apart');
   assert.equal(got.get('orbits/Case.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'Case.json'))});\n`);
   assert.equal(got.has('orbits/Case.json.js'), false);
   assert.equal(got.get('orbits/dir.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'dir.json'))});\n`);
-  assert.equal(got.get('orbits/dir.json.js/a.txt').bytes.toString('utf8'), 'a file in a folder');
+  assert.equal(got.get('orbits/dir.json.js/a.txt').bytes.toString('utf8'), 'a file in a folder', 'nor is the name of a folder taken');
   assert.equal(got.has('orbits/dir.json.js'), false);
-  assert.equal(got.get('orbits/Stra\u00dfe.json.js').bytes.toString('utf8'), 'a script with a sharp s');
+  assert.equal(got.get('orbits/Stra\u00dfe.json.js').bytes.toString('utf8'), 'a script with a sharp s', 'nor is the script that the disk of a Mac takes for STRASSE.json.js');
   assert.equal(got.get('orbits/STRASSE.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'STRASSE.json'))});\n`);
   assert.equal(got.has('orbits/STRASSE.json.js'), false);
-  assert.equal(got.get('orbits/\u03aa\u0301.json.js').bytes.toString('utf8'), 'a script with an iota');
+  assert.equal(got.get('orbits/\u03aa\u0301.json.js').bytes.toString('utf8'), 'a script with an iota', 'nor is the script named after the capital of an iota with a dialytika and a tonos, which is three characters');
   assert.equal(got.get('orbits/\u0390.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u0390.json'))});\n`);
   assert.equal(got.has('orbits/\u0390.json.js'), false);
-  assert.equal(got.get('orbits/\u1fbc\u0342.json.js').bytes.toString('utf8'), 'a script with an iota below');
+  assert.equal(got.get('orbits/\u1fbc\u0342.json.js').bytes.toString('utf8'), 'a script with an iota below', 'nor is the script that the disk of a Mac takes for the same name with the two accents of the alpha in the other order');
   assert.equal(got.get('orbits/\u1fb7.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u1fb7.json'))});\n`);
   assert.equal(got.has('orbits/\u1fb7.json.js'), false);
-  assert.equal(got.get('orbits/e.json.js').bytes.toString('utf8'), 'a script without the accent');
+  assert.equal(got.get('orbits/e.json.js').bytes.toString('utf8'), 'a script without the accent', 'nor is a script whose name differs only in its accents, since an exFAT disk of a Mac takes two such names for one next to a Hangul vowel');
   assert.equal(got.get('orbits/\u00e9.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u00e9.json'))});\n`);
   assert.equal(got.has('orbits/\u00e9.json.js'), false);
   for (const n of ['orbits/js.js.js', 'orbits/missing.json.js', 'outside.json.js', 'orbits/m1.json.js', 'orbits/m2.json.js', 'orbits/m3.json.js', 'orbits/out.json.js', 'orbits/out.json']) assert.equal(got.has(n), false, n);
@@ -564,7 +516,6 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
 
 test('a path of data-trajectories is read from the base element of the deck, and a deck whose base leaves the talk folder is not changed', { timeout: 60_000 }, async (t) => {
   const json = JSON.stringify({ trajectories: [] });
-  // the only JSON file of this deck is named with a hash that ends in .js
   const based = (href, path) => DECK.replace('<body>', `<head><base href="${href}"></head>\n<body>`).replace('</body>', `<section><div data-trajectories="${path}"></div></section>\n</body>`);
   const inside = based('orbits/', 'w.json#x.js');
   const outside = based('https://example.com/talk/', 'w.json');
@@ -637,12 +588,9 @@ test('a zip that is kept holds about its bytes in memory, also the zip of a fold
     gc();
     return process.memoryUsage().arrayBuffers;
   };
-  // Node.js cuts a small Buffer from a slab that it shares between Buffers, and a zip that kept such
-  // a Buffer would keep its slab whole. the slab is 8 kB up to Node 22 and 64 kB in Node 26, where
-  // the chunks of zlib are cut from it as well, so that four files fill one. the zip is built with
-  // the larger slab on every version, with which 3000 kept Buffers hold about 48 MB
+  const NODE_26_POOL_SIZE = 64 * 1024;
   const { poolSize } = Buffer;
-  Buffer.poolSize = 64 * 1024;
+  Buffer.poolSize = NODE_26_POOL_SIZE;
   t.after(() => (Buffer.poolSize = poolSize));
   const before = held();
   const made = await makeZip(port, key, token);
@@ -661,23 +609,19 @@ test('a zip that is kept holds about its bytes in memory, also the zip of a fold
 test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP_KEPT_MS, and after a quarter of this time when no piece was asked for', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  // long enough for a runner that stalls between two pieces, or for 2 s before the first piece
   const kept = 8000;
   const edit = await startEdit(talk, { env: { SLIDES_ZIP_KEPT_MS: String(kept), XDG_CONFIG_HOME: config, APPDATA: config } });
   const token = await hello(t, edit.port, edit.key, 'Ann');
-  // the zip of a download that was stopped while it was built
   const unasked = (await makeZip(edit.port, edit.key, token)).json();
   await new Promise((done) => setTimeout(done, kept / 2));
   assert.equal((await pieceOf(edit.port, edit.key, token, unasked.id, 0)).status, 404, 'a zip without a piece asked for is dropped');
   const made = await makeZip(edit.port, edit.key, token);
   const { id, size } = made.json();
-  // each piece keeps the zip for another SLIDES_ZIP_KEPT_MS
   const asked = Date.now();
   while (Date.now() - asked < 1.5 * kept) {
     assert.equal((await pieceOf(edit.port, edit.key, token, id, 0)).status, 200, `${Date.now() - asked} ms after the first piece`);
     await new Promise((done) => setTimeout(done, kept / 10));
   }
-  // an at past the end is answered without keeping the zip any longer
   await until(async () => (await pieceOf(edit.port, edit.key, token, id, size)).status === 404, 'the zip to be dropped');
 });
 
@@ -711,7 +655,6 @@ test('a folder over the limit is refused with its size, and the zips kept at one
 test('a page alone downloads a talk folder whose files are at the limit, although its zip is over the cap of the zips kept', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  // random bytes are stored as they are, hence the zip is longer than its files by its headers
   const most = 3 * MB - Buffer.byteLength(DECK);
   put(talk, 'media/a.png', randomBytes(most));
   const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -720,7 +663,6 @@ test('a page alone downloads a talk folder whose files are at the limit, althoug
   const first = await download(port, key, ann);
   assert.ok(first.size > 3 * MB, `a zip of ${first.size} bytes`);
   assert.equal(byName(first.zip).get('media/a.png').bytes.length, most);
-  // the zip that the page still holds does not count against its next one
   assert.equal((await download(port, key, ann)).size, first.size);
 
   put(talk, 'media/a.png', randomBytes(most + 1));
@@ -732,7 +674,6 @@ test('a page alone downloads a talk folder whose files are at the limit, althoug
 test('pages that ask at one time do not each build a zip: the room of a zip is taken before its files are read', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
   put(talk, 'media/a.png', randomBytes(2 * MB));
-  // the reads of media/a.png wait for release()
   const { readFile } = fsp;
   let reads = 0;
   let release;
@@ -771,7 +712,6 @@ test('pages that ask at one time do not each build a zip: the room of a zip is t
 test('a page whose zip is built while the edit command stops is told so, and not that the edit command is busy', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
   put(talk, 'media/a.png', randomBytes(MB));
-  // the read of media/a.png waits for release()
   const { readFile } = fsp;
   let reads = 0;
   let release;
@@ -793,7 +733,6 @@ test('a page whose zip is built while the edit command stops is told so, and not
   const token = await hello(t, running.port, running.key, 'Ann');
   const made = makeZip(running.port, running.key, token);
   await until(() => reads === 1, 'the zip to read media/a.png');
-  // the edit command answers the requests in flight for a moment after it was stopped
   const closing = running.close();
   release();
   const answer = await within(made, 10_000, 'the answer to the page');
@@ -881,14 +820,10 @@ test('through the relay, a folder over 64 MB is refused, and a download gives th
   await until(() => relay.held() === 0, 'the relay to hold nothing');
 });
 
-// a talk folder of 65,535 empty files takes a few seconds on macOS and Linux, and minutes on Windows.
-// each call to the file system is held 1 ms, as on a busy disk, where a zip that looked up its files
-// one call after the other took over 4 min. the edit command is given 4 min for each answer, and the
-// limit is longer than the hello, the two answers, and the 4 pieces of the zip
-test('a folder of more files than a zip holds is refused', { skip: !unix, timeout: 900_000 }, async (t) => {
+test('a folder of more files than a zip holds is refused', { skip: !unix && '65,535 files take minutes on Windows', timeout: 900_000 }, async (t) => {
+  const FILES_A_ZIP_HOLDS = 65_535;
   const { root, talk } = talkFolder(t);
-  // with index.html, the folder holds the 65,535 files that a zip holds
-  for (let n = 0; n < 65_534; n++) {
+  for (let n = 0; n < FILES_A_ZIP_HOLDS - 1; n++) {
     if (n % 256 === 0) mkdirSync(join(talk, String(n >> 8)));
     writeFileSync(join(talk, String(n >> 8), String(n & 255)), '');
   }
@@ -897,14 +832,15 @@ test('a folder of more files than a zip holds is refused', { skip: !unix, timeou
   const token = await hello(t, port, key, 'Ann');
   const calls = ['lstat', 'stat', 'realpath', 'readdir', 'readFile'];
   const real = Object.fromEntries(calls.map((name) => [name, fsp[name]]));
-  for (const name of calls) fsp[name] = async (...rest) => (await new Promise((done) => setTimeout(done, 1)), real[name](...rest));
+  const asOnABusyDisk = () => new Promise((done) => setTimeout(done, 1));
+  for (const name of calls) fsp[name] = async (...rest) => (await asOnABusyDisk(), real[name](...rest));
   syncBuiltinESMExports();
   t.after(() => {
     Object.assign(fsp, real);
     syncBuiltinESMExports();
   });
   const { zip } = await download(port, key, token, 240_000);
-  assert.equal(entries(zip).length, 65_535);
+  assert.equal(entries(zip).length, FILES_A_ZIP_HOLDS);
   put(talk, 'one more.txt', '');
   const over = await makeZip(port, key, token, 240_000);
   assert.equal(over.status, 413);

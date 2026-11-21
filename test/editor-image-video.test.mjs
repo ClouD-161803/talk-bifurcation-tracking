@@ -1,10 +1,3 @@
-// regression tests of R9.9 on both platforms with trusted input: the mode, Invert, and Decorative
-// of an image of a pair for the two modes, a picture added beside a filled figure box, a video held still
-// while the deck is edited, Distribute Evenly, the selection after a drop onto a picture and after
-// an undo and a redo of an insert, the Size note of a locked figure, the drag of a file that is not
-// a picture, and Undo with the focus on a control of the inspector. after each edit the text is
-// checked byte for byte, after an undo and a redo, and after a save and an open
-
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,13 +31,10 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const selection = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.className ? '.' + [...e.classList].join('.') : ''))`);
 let saves = 0;
 
-// the editor on the slide n of the demo deck served over HTTP, in a window of 1600 by 1000 px,
-// with the Format tab of the inspector shown
 async function load(t, platform, { n = 0, mode = 'light', query = 'edit&still' } = {}) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close().catch(() => {}));
@@ -64,8 +54,6 @@ async function load(t, platform, { n = 0, mode = 'light', query = 'edit&still' }
   return page;
 }
 
-// roundTrip checks the text before byte for byte after undos undos, the edit after as many redos,
-// and an open of the saved edit without problems, which is the text before the next check
 async function roundTrip(page, undos = 1) {
   const edited = await render(page);
   assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -73,11 +61,10 @@ async function roundTrip(page, undos = 1) {
   await byteExact(page);
   for (let i = 0; i < undos; i++) await page.evaluate('window.BeesonEditor.redo()');
   assert.equal(await render(page), edited);
-  // the folder of a new media file is the root of the private file system
   await page.evaluate('window.showDirectoryPicker = async () => navigator.storage.getDirectory()');
   const { text } = await saveAndReopen(page, `r9-9-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
@@ -87,8 +74,6 @@ const setMode = async (page, mode) => {
   await frames(page);
 };
 
-// the files and filters of the shown images of the figure of the current slide, and whether they
-// and the caption are drawn inside the slide
 const SHOWN = `(() => {
   const slide = document.querySelector('.reveal:not(.beeson-peek) .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -97,8 +82,6 @@ const SHOWN = `(() => {
   return { n: imgs.length, files: imgs.map((i) => i.getAttribute('src')), filters: imgs.map((i) => getComputedStyle(i).filter), inside: imgs.every((i) => i.getBoundingClientRect().bottom <= s.bottom + 1) && (!cap || cap.bottom <= s.bottom + 1) };
 })()`;
 
-// shownIn asserts that the figure shows one image in each mode, inside the slide, with the file
-// given for the mode, and turns the slide back to the light mode
 async function shownIn(page, files) {
   for (const mode of ['light', 'dark']) {
     await setMode(page, mode);
@@ -110,7 +93,6 @@ async function shownIn(page, files) {
   await setMode(page, 'light');
 }
 
-// a trusted click on the button or the checkbox of the Format tab whose text starts with text
 async function tap(page, text) {
   const at = await page.evaluate(`(() => {
     const el = [...document.querySelectorAll('${PANEL} button, ${PANEL} label.ed-check')].find((b) => b.textContent.trim() === ${js(text)} || b.textContent.trim().startsWith(${js(text)} + ','));
@@ -124,9 +106,6 @@ async function tap(page, text) {
   await frames(page);
 }
 
-
-// a trusted drag of the files at paths from the Finder, dropped at the point at. it returns the
-// label of the outline and the drop effect while the files are over the point
 async function dropFiles(page, at, paths, { drop = true } = {}) {
   const data = { items: [], files: paths, dragOperationsMask: 1 };
   await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: at.x, y: at.y, data });
@@ -140,8 +119,6 @@ async function dropFiles(page, at, paths, { drop = true } = {}) {
 const centerOf = (page, selector) =>
   page.evaluate(`(() => { const el = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width > 0); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// the frames of the figures of the current slide, i.e. the shown picture with its caption, and the
-// boxes of the text of its blocks and of the chrome, in px of the window
 const LAID = `(() => {
   const slide = document.querySelector('.reveal:not(.beeson-peek) .slides > section.present');
   const s = slide.getBoundingClientRect();
@@ -175,7 +152,6 @@ const itemAt = (page, label) => page.evaluate(`(() => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 })()`);
 
-// the submenu of the menu bar at the path, e.g. Arrange, Distribute, opened with trusted input
 async function openSubmenu(page, bar, label) {
   await click(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
@@ -187,7 +163,6 @@ async function openSubmenu(page, bar, label) {
   await page.waitFor(`document.querySelectorAll('.beeson-edit-menu').length > 1`, 3000);
 }
 
-// every element of the current slide selected with the key of Select All on the canvas
 async function selectAll(page) {
   const at = await page.evaluate(`(() => { const r = document.querySelector('.reveal .slides > section.present').getBoundingClientRect(); return { x: r.right - 20, y: r.bottom - 60 }; })()`);
   await click(page, at);
@@ -210,19 +185,16 @@ for (const platform of PLATFORMS) {
     await selectPicture(page);
     assert.deepEqual(await selection(page), ['img.for-light']);
 
-    // Both keeps the light image alone, shown in both modes
     await tap(page, 'Both');
     await byteExact(page, [[`${DARK}\n    ${LIGHT}`, LIGHT.replace(' class="for-light"', '')]]);
     await shownIn(page, { dark: files.light, light: files.light });
     assert.equal((await state(page, 'figure.mode.both')).checked, true);
-    // and Light gives the pair back
     await tap(page, 'Light');
     await byteExact(page);
     await shownIn(page, files);
     await tap(page, 'Both');
     await roundTrip(page);
 
-    // Dark on the light image of a pair swaps the two, and Dark on the image shown then swaps back
     const page2 = await load(t, platform, { n: FIGURE });
     await selectPicture(page2);
     await tap(page2, 'Dark');
@@ -251,7 +223,6 @@ for (const platform of PLATFORMS) {
     const page2 = await load(t, platform, { n: FIGURE });
     await selectPicture(page2);
     await tap(page2, 'Decorative');
-    // the empty alt of a decorative image is written as the bare attribute
     const bare = (tag) => tag.replace(/alt="[^"]*"/, 'alt');
     await byteExact(page2, [[DARK, bare(DARK)], [LIGHT, bare(LIGHT)]]);
     await roundTrip(page2);
@@ -289,7 +260,6 @@ for (const platform of PLATFORMS) {
       assert.equal(a.length, 1);
       assert.deepEqual(b, a, `the video plays on the canvas in the ${mode} mode`);
       assert.equal(b[0].paused, true);
-      // and after the slide is shown again
       await page.evaluate(`Reveal.slide(${VIDEO - 1})`);
       await page.evaluate(`Reveal.slide(${VIDEO})`);
       await sleep(800);
@@ -302,7 +272,6 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 2 });
     await selectAll(page);
     assert.ok((await selection(page)).length >= 3, 'the elements of the slide are not selected');
-    // both ways, from a second page with the two commands of the axes
     const page2 = await load(t, platform, { n: 2 });
     await selectAll(page2);
     await exec(page2, 'arrange.distribute.horizontal');
@@ -318,7 +287,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.equal(await render(page), both);
     assert.equal((await state(page, 'edit.undo')).label, 'Undo Distribute Evenly');
-    // with several text blocks selected, the Text pane is shown first since R10.2
     await page.evaluate(`[...document.querySelectorAll('${PANEL} [role=tab]')].find((t) => t.textContent === 'Arrange')?.click()`);
     await frames(page);
     const buttons = await page.evaluate(`[...document.querySelectorAll('${PANEL} button')].map((b) => b.textContent.trim())`);
@@ -327,7 +295,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the files at paths given to the file chooser of the command id, as a person picks them
 async function choose(page, id, paths) {
   await page.evaluate(`window.__done = window.BeesonEditor.exec(${js(id)}).then(() => true); 0`);
   await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
@@ -337,8 +304,6 @@ async function choose(page, id, paths) {
   await frames(page);
 }
 
-// redoSelects asserts that the selection after an undo and a redo of the last entry is the one
-// after the entry, with an element in it
 async function redoSelects(page, what) {
   const made = await selection(page);
   assert.ok(made.length, `nothing is selected after ${what}`);
@@ -358,7 +323,6 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.deepEqual(await selection(page), ['img.for-light'], 'the picture replaced by the drop is not selected');
     await redoSelects(page, 'Replace Image');
-    // a picture replaced by a video
     await choose(page, 'media.replace', [resolve('demo/clip-light.mp4')]);
     await redoSelects(page, 'Replace Image with a video');
     await roundTrip(page, 2);
@@ -367,7 +331,6 @@ for (const platform of PLATFORMS) {
     await exec(page2, 'insert.qr');
     await frames(page2);
     await redoSelects(page2, 'Insert QR Code');
-    // a new table gets the caret in its first cell, and its redo selects it, as in Keynote
     await exec(page2, 'insert.table', { rows: 2, columns: 2 });
     await frames(page2);
     assert.equal(await page2.evaluate(`(() => { const n = getSelection().anchorNode; return (n?.nodeType === 1 ? n : n?.parentElement)?.closest('td, th')?.cellIndex; })()`), 0);
@@ -392,8 +355,6 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
   });
 
-  // a box written with a key, then left with Esc, which selects it. its first input is an entry
-  // over the insert of the box, as in Keynote, and a redo of it puts the caret back into the text
   for (const [id, what] of [['insert.text', 'Insert Text Box'], ['insert.code', 'Insert Code Box']]) {
     test(`${platform}: a redo of the first input of ${what} puts the caret into the box`, async (t) => {
       const page = await load(t, platform, { n: 5 });
@@ -418,7 +379,6 @@ for (const platform of PLATFORMS) {
 
 const NOTE = 'Only the width is written';
 const notes = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-note')].filter((n) => !n.hidden).map((n) => n.textContent)`);
-// a text file of the Finder, dragged where a picture would be
 const NOTE_FILE = join(mkdtempSync(join(tmpdir(), 'r9-9-')), 'note.txt');
 writeFileSync(NOTE_FILE, 'a note, not a picture\n');
 
@@ -452,7 +412,6 @@ const shownVideo = `.reveal:not(.beeson-peek) .slides > section.present video`;
 const focused = (page) => page.evaluate(`(() => { const a = document.activeElement; return a ? a.localName + (a.type ? '.' + a.type : '') : null; })()`);
 const rectOf = (page, selector) => page.evaluate(`(() => { const el = [...document.querySelectorAll(${js(selector)})].find((e) => e.getBoundingClientRect().width > 0); if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
 
-// the video of the current slide selected by itself, with its pane in the Format tab
 async function selectVideo(page) {
   const at = await centerOf(page, shownVideo);
   await click(page, at);
@@ -462,8 +421,6 @@ async function selectVideo(page) {
   await page.waitFor(`!!document.querySelector('${PANEL} input[name=poster-frame]:not([disabled])')`, 10000);
 }
 
-// undoRedoKeys asserts that the keys of Undo and Redo, with the focus left on the control,
-// take the deck back to before and forward to edited
 async function undoRedoKeys(page, platform, before, edited, control) {
   assert.equal(await focused(page), control, `the focus is not on the ${control}`);
   await press(page, 'Mod+Z');
@@ -477,7 +434,6 @@ for (const platform of PLATFORMS) {
   test(`${platform}: Undo and Redo act on the deck with the focus on a slider or a checkbox of the inspector, and not in a text field`, async (t) => {
     const page = await load(t, platform, { n: VIDEO });
     await selectVideo(page);
-    // a click on the Poster Frame slider, which captures the frame as the poster
     const before = await render(page);
     const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
     await click(page, { x: r.left + r.width * 0.6, y: r.top + r.height / 2 });
@@ -485,8 +441,6 @@ for (const platform of PLATFORMS) {
     const poster = await render(page);
     await undoRedoKeys(page, platform, before, poster, 'input.range');
 
-    // the Loop checkbox of the pane, reached with Tab and checked with Space, since a click keeps
-    // the focus where it is
     const onLoop = `document.activeElement?.closest('label.ed-check')?.textContent.trim() === 'Loop'`;
     for (let i = 0; i < 8 && !(await page.evaluate(onLoop)); i++) await press(page, 'Tab');
     assert.ok(await page.evaluate(onLoop), 'Tab does not reach the Loop checkbox');
@@ -496,7 +450,6 @@ for (const platform of PLATFORMS) {
     assert.notEqual(looped, poster, 'Loop does not change the file');
     await undoRedoKeys(page, platform, poster, looped, 'input.checkbox');
 
-    // Undo in a text field of the inspector is the undo of its typing, and not of the deck
     await tap(page, 'Arrange');
     const x = await rectOf(page, `${PANEL} input[name=X]:not([disabled])`);
     await click(page, { x: x.left + x.width / 2, y: x.top + x.height / 2 });
@@ -509,10 +462,6 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// LATE_SEEKS delays each listener of the event seeked of a video by ms, and records in
-// window.__lateSeeks the time of each delayed call. a seek of a crowded runner ends this late,
-// since the frames from the key frame before its time are decoded in software. the video that a
-// poster is captured from is not in the document, hence its listeners are delayed, not its events
 const LATE_SEEKS = (ms) => `(() => {
   window.__lateSeeks = [];
   const add = EventTarget.prototype.addEventListener;
@@ -528,8 +477,6 @@ const LATE_SEEKS = (ms) => `(() => {
   return true;
 })()`;
 
-// the frame at 0.6 of the demo clip is 6 s after a key frame, and the capture of its poster took
-// more than 20 s on an Ubuntu runner in a round of the workflow check
 test('other: a poster is captured from the Poster Frame slider when each seek of the video ends 20 s late', async (t) => {
   const page = await load(t, 'other', { n: VIDEO });
   await selectVideo(page);
@@ -540,12 +487,9 @@ test('other: a poster is captured from the Poster Frame slider when each seek of
   await captured(page, `window.BeesonEditor.render() !== ${js(before)}`);
   assert.ok(await page.evaluate('window.__lateSeeks.length > 0'), 'no seek of the capture is delayed');
   assert.match(await render(page), /poster="media\/clip-light\.png"/);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
-// the box of the new element of the current slide in px of the window, and the boxes of the texts
-// and the chrome it lies over: a heading, a paragraph, a list, a code box, a formula, a caption,
-// the running head, the footnote line, and the slide number
 const OVER = `((el) => {
   const slide = document.querySelector('.reveal:not(.beeson-peek) .slides > section.present');
   const box = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
@@ -566,8 +510,6 @@ const NEW = {
   qr: `window.BeesonEditor.selection()[0]`,
 };
 
-// the deck at path served over HTTP with the editor, and its slides with the kinds of new element
-// whose place is checked on each
 const PLACES = [
   ['test/pages/editor-layouts.html', [2, 3, 4, 5, 6, 8], ['text', 'code', 'formula', 'qr']],
   ['test/pages/editor-empty-figure-box.html', [0, 1, 2], ['text', 'code', 'formula', 'qr']],
@@ -598,7 +540,6 @@ for (const platform of PLATFORMS) {
           const where = `${kind} on the slide ${n} of ${path} at ${JSON.stringify(m.me)}`;
           assert.deepEqual(m.over, [], `the new ${where} lies over a text or the chrome`);
           assert.ok(m.inside, `the new ${where} runs past the slide`);
-          // the new element is taken back
           await press(page, 'Escape');
           await frames(page);
           if ((await render(page)) !== source) await page.evaluate('window.BeesonEditor.undo()');
@@ -610,16 +551,12 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the selected video, the Play button of its pane, and the Poster Frame slider beside it
 const PLAYED = `(() => {
   const v = window.BeesonEditor.selection()[0];
   const slider = document.querySelector('${PANEL} input[name=poster-frame]');
   const play = slider?.parentElement.querySelector('button.ed-play');
   return { paused: v.paused, time: v.currentTime, slider: Number(slider?.value), label: play?.getAttribute('aria-label') ?? null, before: !!play && !!(play.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING) };
 })()`;
-// RECORD writes the time of the selected video and of the slider into window.__plays at each update,
-// and the state of the video in the task of the first click on Play, after the handler of the
-// editor, into window.__click
 const RECORD = `(() => {
   const v = window.BeesonEditor.selection()[0];
   window.__plays = [];
@@ -629,7 +566,6 @@ const RECORD = `(() => {
   document.addEventListener('click', (e) => {
     if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
   });
-  // the callers of pause, for the message of a failed wait
   window.__pauses = [];
   const pause = v.pause;
   v.pause = function () {
@@ -638,7 +574,6 @@ const RECORD = `(() => {
   };
   return true;
 })()`;
-// the record and the state of the selected video, for the message of a failed wait
 const RECORDED = `(() => {
   const v = window.BeesonEditor.selection()[0];
   const play = document.querySelector('${PANEL} button.ed-play');
@@ -646,12 +581,9 @@ const RECORDED = `(() => {
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// with late, the state of the video is read late ms later, and with hold, the main thread of the page
-// is held for hold ms after the click on Play, as on a crowded machine
 async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
-  // the frame at half of the video, captured as the poster
   const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
   await click(page, { x: r.left + r.width * 0.5, y: r.top + r.height / 2 });
   await captured(page, `window.BeesonEditor.render() !== ${js(page.source)}`);
@@ -665,17 +597,12 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
   if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
-  // the updates of the playing video are read from the record, since it plays on until the read.
-  // the first is at the frame it plays from, and the slider is compared with an update 0.5 s later
   const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
   await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
   const started = await page.evaluate('window.__click');
   assert.ok(started && !started.paused && Math.abs(started.time - from) < 0.1, `Play starts the video at ${JSON.stringify(started)} and not at the frame ${from} of the slider`);
-  // a listener of the record reads the time when it is run, which on a crowded machine is seconds
-  // after the update. the first time read is then at most this delay past the frame of the slider,
-  // or past the end of the video and wrapped to its start, since the video loops
   const { first, duration } = await page.evaluate('({ first: window.__plays.find((p) => !p.paused), duration: window.BeesonEditor.selection()[0].duration })');
   const ran = (first.at - started.at) / 1000;
   const time = first.time < from - 0.1 && from + ran >= duration ? first.time + duration : first.time;
@@ -685,7 +612,6 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   s = await page.evaluate(PLAYED);
   assert.equal(s.paused, false, 'the video does not play');
   assert.equal(s.label, 'Pause');
-  // Pause pauses it, and the preview is not an edit
   await click(page, await playAt(page));
   await frames(page);
   s = await page.evaluate(PLAYED);
@@ -694,7 +620,6 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   assert.equal(await render(page), edited, 'the preview changes the file');
   assert.equal((await state(page, 'edit.undo')).label, undo, 'the preview is an entry of the history');
 
-  // a change of the slide, and of the selection, stops the preview
   await click(page, await playAt(page));
   const video = `[...document.querySelectorAll(${js(shownVideo)})].find((v) => v.getBoundingClientRect().width > 0)`;
   await page.waitFor(`!!(window.__played = ${video}) && !window.__played.paused`);
@@ -711,7 +636,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   assert.deepEqual(await selection(page), []);
   assert.equal(await page.evaluate('window.__played.paused'), true, 'the video plays on after a change of the selection');
   assert.equal(await render(page), edited);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 }
 
 for (const platform of PLATFORMS) {
@@ -720,10 +645,8 @@ for (const platform of PLATFORMS) {
 
 test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', { late: 3000 }));
 
-// #124: on a crowded runner, the listeners of the record ran seconds after the start of the video
 test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
 
-// the tag of the outline of a drop, and the buttons of the placeholder drawn under it
 const TAGGED = `(() => {
   const tag = document.querySelector('.beeson-drop:not([hidden]) span')?.getBoundingClientRect();
   const shown = [...document.querySelectorAll('.reveal section.present .beeson-placeholder button')].filter((b) => getComputedStyle(b).visibility === 'visible' && b.getBoundingClientRect().width > 0);
@@ -752,7 +675,6 @@ for (const platform of PLATFORMS) {
     assert.ok(over.tag, 'the zone is not outlined');
     assert.deepEqual(over.under, [], 'the tag is drawn over buttons of the placeholder');
     await page.send('Input.dispatchDragEvent', { type: 'dragCancel', x: at.x, y: at.y, data });
-    // the leave of the window, as the browser sends it at the end of the drag
     await page.evaluate(`(() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'a.png', { type: 'image/png' })); window.dispatchEvent(new DragEvent('dragleave', { dataTransfer: d })); })()`);
     await frames(page);
     assert.equal((await page.evaluate(TAGGED)).buttons, 4, 'the buttons are not drawn again after the drag');

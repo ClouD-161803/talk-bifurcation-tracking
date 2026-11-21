@@ -1,11 +1,3 @@
-// the TeX of a formula is edited in a sheet beside the line or the list item that holds it, as the
-// Edit Equation popover of Keynote, flipped to the other side where the window ends: a title, a tall field of the TeX, a live preview, and Cancel with Apply, or Insert for a new
-// formula. a click on a display, or Enter on a focused formula, opens the sheet, and a TeX with an
-// error is refused before the slide is touched. an empty TeX is shown as a gray prompt and is not
-// applied. the field completes the macros of the deck and the commands of TeX after a
-// backslash, and texEditor gives the same field with its preview to the Formula pane of the
-// inspector. openInsert opens the sheet for an inline formula at the caret of a text
-
 import { HOST, type App, type MathPop } from '../app.ts';
 import type { Entry } from '../history.ts';
 import { completionText, completions, contentWithInline, contentWithTex, deckMacros, glyphOf, isName, mathLookup, previewTex, type Macro } from '../math.ts';
@@ -44,12 +36,8 @@ const CSS = `
 .beeson-complete li[aria-selected="true"] .args, .beeson-complete li[aria-selected="true"] .what { color: inherit; opacity: 0.8; }
 `;
 
-// the completion list that is open, which the keys of its field reach before the keys of the
-// editor, since the keyboard handler of commands.ts is on window in the capture phase as well
 let completing: { field: HTMLTextAreaElement; key(ev: KeyboardEvent): boolean; close(): void } | null = null;
 
-// the place of the caret of field on the screen, read from a copy of the field with the same
-// font and wrapping
 function caretPoint(field: HTMLTextAreaElement): { x: number; y: number } {
   const style = getComputedStyle(field);
   const mirror = document.createElement('div');
@@ -67,9 +55,6 @@ function caretPoint(field: HTMLTextAreaElement): { x: number; y: number } {
   return { x, y };
 }
 
-// the completion of field: after a backslash and the letters typed after it, a list of the macros
-// of the deck and of the commands of TeX that match. the arrows choose, Return or Tab writes the
-// name with the braces of its arguments, and Esc closes the list
 export function attachCompletion(field: HTMLTextAreaElement): void {
   const list = make('ul', 'beeson-complete');
   list.id = `beeson-complete-${Math.random().toString(36).slice(2, 8)}`;
@@ -116,8 +101,6 @@ export function attachCompletion(field: HTMLTextAreaElement): void {
       const li = make('li');
       li.id = `${list.id}-${i}`;
       li.setAttribute('role', 'option');
-      // the glyph of the command, as in the math autocomplete list of PowerPoint, is filled in once
-      // MathJax has typeset it, and from the cache of glyphOf in every later list
       const shown = make('span', 'glyph');
       shown.setAttribute('aria-hidden', 'true');
       void glyphOf(it).then((g) => {
@@ -139,8 +122,6 @@ export function attachCompletion(field: HTMLTextAreaElement): void {
     list.style.left = `${Math.max(8, Math.min(p.x - 8, window.innerWidth - list.offsetWidth - 8))}px`;
     list.style.top = `${p.y + list.offsetHeight + 4 > window.innerHeight ? Math.max(8, p.y - list.offsetHeight - 20) : p.y + 4}px`;
     field.setAttribute('aria-expanded', 'true');
-    // a name typed in full, e.g. \quad, is not replaced by Enter with a longer name, e.g. \qquad,
-    // until an arrow chooses one
     choose(isName(m[1], macros) ? -1 : 0);
     completing = { field, key, close };
   };
@@ -163,10 +144,6 @@ export function attachCompletion(field: HTMLTextAreaElement): void {
   field.addEventListener('pointerdown', () => setTimeout(update, 0));
 }
 
-// a field of the TeX with its live preview and its message, which is the error of MathJax in red
-// or the prompt of an empty TeX in gray. a late result of an earlier TeX is dropped, and shown is
-// called with the result of each TeX that is typeset. settle resolves once the TeX of the field is
-// typeset, after which ok() is true for that TeX
 export type TexEditor = { field: HTMLTextAreaElement; preview: HTMLElement; message: HTMLElement; ok(): boolean; refresh(): Promise<void>; settle(): Promise<void> };
 
 export function texEditor(options: { display(): boolean; label: string; placeholder?: string; shown?(ok: boolean): void }): TexEditor {
@@ -181,7 +158,6 @@ export function texEditor(options: { display(): boolean; label: string; placehol
   let seq = 0;
   let timer = 0;
   let ok = false;
-  // the TeX and the mode of the last result shown
   let shown: string | null = null;
   const key = () => `${options.display()}\n${field.value}`;
   const refresh = async () => {
@@ -191,7 +167,6 @@ export function texEditor(options: { display(): boolean; label: string; placehol
     if (n !== seq) return;
     shown = typeset;
     const empty = !field.value.trim();
-    // the error of a TeX is shown once, in the message under the preview
     preview.replaceChildren(...(result.node && !result.error ? [result.node] : empty ? [make('span', 'empty', 'A preview of the formula appears here.')] : []));
     message.textContent = result.error ?? '';
     message.classList.toggle('prompt', empty);
@@ -212,30 +187,17 @@ export function texEditor(options: { display(): boolean; label: string; placehol
   return { field, preview, message, ok: () => ok, refresh, settle };
 }
 
-// the sheet of a TeX: its title, its first TeX, whether it is a display, the label of its button,
-// the text element that it is put beside and kept clear of, and commit, which writes the TeX and throws an
-// error to be shown at the field. with made, the sheet of a new formula, a click away commits a
-// TeX that is not empty, and made is selected after the commit. left is run after a click away
-// that closes the sheet without a commit
 type Sheet = { title: string; tex: string; display: boolean; open: string; close: string; primary: string; textEl(): Element; commit(tex: string): Promise<void>; done?(): void; made?: Element; left?(): void; closed?(): void };
 
-// the sheet is put at the right of the text column, over the figure of the slide, or at the left,
-// and above or below a text element that fills the slide. its width of 440 px fits at the right of the
-// text column of a content slide in a window 1600 px wide
 const SIDES: Side[] = ['right', 'left', 'below', 'above'];
 
-// the text element that holds a formula or a caret, e.g. a list item, a paragraph, or a display
 const textElementOf = (el: Element): Element => el.closest(HOST) ?? el;
 
-// the formula that the sheet is open for, read by the Formula pane of the inspector
 let openFor: Element | null = null;
 export const sheetTarget = (): Element | null => openFor;
 
 let sheetApi: { open(sheet: Sheet, target: Element | null): void } | null = null;
 
-// the sheet of an inline formula at range in host, written at Insert as \(tex\) at the caret, as
-// one entry of the history. a range that is not collapsed is the first TeX, as the conversion of
-// a selection by Insert Equation in PowerPoint
 export function openInsert(app: App, host: Element, range: Range): void {
   const selected = range.collapsed ? '' : range.toString();
   const kept = range.cloneRange();
@@ -248,14 +210,10 @@ export function openInsert(app: App, host: Element, range: Range): void {
     primary: 'Insert',
     textEl: () => textElementOf(host),
     commit: async (tex) => {
-      // the empty words of a shape are not in the file yet, hence the formula is sent to them as typed
-      // text, which commands/shape.ts writes as the words of the shape in one entry
       if (host.hasAttribute('data-generated')) {
         host.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: `\\(${tex}\\)`, bubbles: true, cancelable: true }));
         return;
       }
-      // a new empty box is not in the file yet, hence the formula is typed into it, which writes the
-      // box with the formula as one entry, as typed text is written by commands/insert.ts
       if (host.classList.contains('beeson-pending')) {
         placeCaret(host);
         document.execCommand('insertText', false, `\\(${tex}\\)`);
@@ -273,8 +231,6 @@ export function openInsert(app: App, host: Element, range: Range): void {
       sel?.removeAllRanges();
       sel?.addRange(after);
     },
-    // a new empty box, or the empty words of a shape, kept while the sheet was open, are given the
-    // focusout of the click away, at which commands/insert.ts and commands/shape.ts drop them
     left: host.matches('.beeson-pending, [data-generated]') ? () => host.dispatchEvent(new FocusEvent('focusout')) : undefined,
   }, null);
 }
@@ -285,17 +241,12 @@ export function install(app: App): void {
   let back: (() => void) | null = null;
   let ended: (() => void) | null = null;
   let unplace: (() => void) | null = null;
-  // the commit of the open sheet at a click away, or null for a close
   let away: (() => Promise<void>) | null = null;
-  // left of the open sheet, run when another sheet replaces it. the focusout that it sends is read
-  // a task later, until when the next sheet is not seen as open
   let leftOf: (() => void) | null = null;
   let leaving = false;
-  // the field of the open sheet of a formula, with the TeX that it opened with
   let opened: { field: HTMLTextAreaElement; tex: string } | null = null;
   let bound: (() => Element) | null = null;
 
-  // the keys of an open completion list are taken before the keys of the editor and of the sheet
   window.addEventListener('keydown', (ev) => {
     if (completing && ev.target === completing.field && completing.key(ev)) {
       ev.preventDefault();
@@ -303,8 +254,6 @@ export function install(app: App): void {
     }
   }, true);
 
-  // the keys typed between Insert > Formula and the open of its TeX field are held from the canvas,
-  // where a letter can be a command, e.g. D, which flips the mode of the slide
   let held: string | null = null;
   window.addEventListener('keydown', (ev) => {
     if (held === null || ev.isComposing || ev.ctrlKey || ev.metaKey || ev.altKey) return;
@@ -340,9 +289,6 @@ export function install(app: App): void {
     end?.();
   }
 
-  // a TeX with an error, or with a delimiter of a formula in it, is refused before the slide is
-  // touched, and the error is thrown to the field, where it is shown under the TeX. the text element is
-  // written through app.doc as one entry of the history, and the focus is kept where it was
   async function setMath(container: Element, tex: string): Promise<void> {
     const host = container.closest(HOST);
     if (!host) throw new Error('the formula is not in a text element');
@@ -356,7 +302,6 @@ export function install(app: App): void {
     if (after === before) return;
     const count = host.querySelectorAll('mjx-container').length;
     const active = document.activeElement as HTMLElement | null;
-    // a selected display stays selected, also at an undo and a redo, which put a caret into it
     const kept = app.selection.elements();
     const write = async () => {
       await app.doc.setContent(host, after, 'Formula');
@@ -391,13 +336,13 @@ export function install(app: App): void {
     const hint = make('span', 'hint', `${sheet.open} … ${sheet.close}, ${keys} to ${sheet.primary.toLowerCase()}, Esc to cancel`);
     row.append(hint, cancel, apply);
     box.append(title, field, ed.preview, ed.message, row);
+    box.addEventListener('mousedown', (ev) => {
+      if (!(ev.target as Element).closest('textarea, button')) ev.preventDefault();
+    });
     document.body.append(box);
     unplace = popoverBeside(app, box, sheet.textEl(), { sides: SIDES });
     apply.disabled = !sheet.tex.trim();
     void ed.refresh();
-    // the commit key is held until the TeX typed before it is typeset, since Apply is dimmed or
-    // lit by the preview of an earlier TeX until then. a TeX with an error is not committed. false
-    // for a commit that threw
     let committing = false;
     const submit = async (focus = !!target && !sheet.made) => {
       if (committing) return true;
@@ -429,7 +374,6 @@ export function install(app: App): void {
         closeMath();
       }
     });
-    // Tab and Shift+Tab cycle between the field and the buttons, as in a modal dialog
     box.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Tab') return;
       ev.preventDefault();
@@ -438,7 +382,6 @@ export function install(app: App): void {
       stops[(at + (ev.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
     });
     popover = box;
-    // a refused commit keeps the field open with its TeX and the message
     away = sheet.made
       ? async () => {
           if (field.value.trim() && !(await submit(false))) return;
@@ -457,8 +400,6 @@ export function install(app: App): void {
     opened = target ? { field, tex: sheet.tex } : null;
     const host = target?.closest(HOST);
     const at = host && target ? [...host.querySelectorAll('mjx-container')].indexOf(target) : -1;
-    // the focus goes back to the formula, whose object is selected for the keys of the slide, or to
-    // the caret of the text of an inline formula
     const sel = window.getSelection();
     const caret = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     const from = document.activeElement as HTMLElement | null;
@@ -485,16 +426,11 @@ export function install(app: App): void {
     app.invalidate('selection');
   }
 
-  // with into, the entry of the insert of a new formula, the TeX is written into this entry, and a
-  // click away commits it
   function openMath(container: Element, into?: Entry, closed?: () => void): void {
     const info = mathLookup()(container);
     if (!info) return;
     const fresh = !info.tex.trim();
-    // the text element is taken now, since a commit draws the formula again in a new container
     const textEl = textElementOf(container);
-    // so does a redraw of tex.js while the field is open, after which the formula is found by its place,
-    // as long as its text element holds as many formulas and this one has its TeX
     const count = textEl.querySelectorAll('mjx-container').length;
     const at = [...textEl.querySelectorAll('mjx-container')].indexOf(container);
     const now = (): Element => {
@@ -524,24 +460,21 @@ export function install(app: App): void {
   }
 
   sheetApi = { open: openSheet };
-  // the formula whose field has the focus with all of its TeX selected, as the field opens
   const wholeTex = () => {
     const f = opened?.field;
     return f && document.activeElement === f && f.value.trim() && f.value === opened?.tex && f.selectionStart === 0 && f.selectionEnd === f.value.length ? openFor : null;
   };
   const math: MathPop = { isOpen: () => !!popover && !leaving, open: openMath, close: closeMath, setMath, hold, wholeTex };
   app.math = math;
+  let sheetBeforeClick: HTMLElement | null = null;
+  window.addEventListener('click', () => (sheetBeforeClick = popover), true);
   document.addEventListener('click', (ev) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    // the click of a drag or an Alt-click, which canvas/drag.ts marks as handled, does not open the TeX
     const container = ev.defaultPrevented ? null : target?.closest('mjx-container');
     if (container && app.hostOf(container)) {
       ev.preventDefault();
-      // a Shift-click or a command-click only adds the object of the formula to the selection or
-      // takes it out. a click on an inline formula shows its TeX selected in its text, unless a
-      // sheet is open, which is then given to the formula clicked
       if (!ev.shiftKey && !(app.platform === 'mac' ? ev.metaKey : ev.ctrlKey) && (popover || !showTex(app, container, 'all'))) openMath(container);
-    } else if (popover && target && !popover.contains(target) && !target.closest('.beeson-complete, .beeson-edit-menu')) {
+    } else if (popover && popover === sheetBeforeClick && target && !popover.contains(target) && !target.closest('.beeson-complete, .beeson-edit-menu')) {
       if (away) void away();
       else closeMath(false);
     }

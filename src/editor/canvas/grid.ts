@@ -1,9 +1,3 @@
-// the grid of the canvas, as View > Gridlines, Snap to Grid, and Grid Settings of PowerPoint: lines
-// over the slide at a spacing in slide px, 40 by default, at which the x of every layout guide of
-// snap.ts lies. with Snap to Grid, an element snaps to the lines of the grid as it snaps to the
-// other elements, whether the grid is shown or not. the settings are kept in the storage of the
-// browser, and not in the deck
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import { ask } from '../ui/dialog.ts';
@@ -24,7 +18,6 @@ const CSS = `
 .beeson-grid[hidden] { display: none; }
 `;
 
-// a spacing in slide px from a text, or null for one out of range
 export function spacingOf(text: string): number | null {
   const n = Number(text.trim());
   return Number.isFinite(n) && n >= MIN && n <= MAX ? Math.round(n) : null;
@@ -57,7 +50,6 @@ export function install(app: App): void {
   app.onRefresh(['layout', 'slide'], draw);
   queueMicrotask(draw);
 
-  // the sheet of Grid Settings: the spacing, Show Gridlines, and Snap to Grid
   const sheet = async () => {
     const body = make('div');
     const row = (input: HTMLInputElement, text: string) => {
@@ -121,7 +113,6 @@ export function install(app: App): void {
       save();
     },
   });
-  // with an arg, the spacing is set at once, e.g. by a test
   c.define({
     id: 'view.grid.settings',
     label: 'Grid Settings…',
@@ -130,7 +121,6 @@ export function install(app: App): void {
     run: (a, arg) => {
       const n = typeof arg === 'number' ? spacingOf(String(arg)) : null;
       if (n === null) {
-        // the command ends at once, and the sheet is answered later
         void sheet().catch((e) => a.fail(e));
         return;
       }

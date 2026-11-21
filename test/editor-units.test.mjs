@@ -1,6 +1,3 @@
-// the units of a container, the text of new slides and elements, and the scope rule, all without
-// a browser
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -9,17 +6,16 @@ import { childrenIn, eolOf, indentAt, placeLead, spaceOf, unitsOf } from '../src
 import { ELEMENT_KINDS, LAYOUTS, elementText, layoutText, textStyle } from '../src/editor/model/templates.ts';
 import { attributeProblem, declarationProblem, editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 
-// the units of the content of the first element of the text
 function unitsIn(text) {
   const tokens = tokenize(text);
   const open = tokens.find((t) => t.type === 'start');
   const close = tokens.findLast((t) => t.type === 'end' && t.name === open.name);
   const content = { start: open.end, end: close.start };
-  return { content, ...unitsOf(text, childrenIn(tokens, content), content) };
+  return { content, ...unitsOf(childrenIn(tokens, content), content) };
 }
 
 const slice = (text, r) => text.slice(r.start, r.end);
-const pieces = (text, u) => [...u.units.map((x) => text.slice(x.lead.start, x.end)), slice(text, u.tail)];
+const pieces = (text, u) => [...u.units.map((x) => text.slice(x.lead.start, x.range.end)), slice(text, u.tail)];
 
 function assertPartition(text) {
   const u = unitsIn(text);
@@ -33,22 +29,6 @@ test('a unit is an element with the white space and the comments before it', () 
   assert.deepEqual(pieces(text, u), ['\n\n<!-- 1. title -->\n<section>a</section>', '\n\n<!-- 2. two -->\n<!-- more -->\n<section>b</section>', '\n\n']);
   assert.equal(slice(text, u.units[1].range), '<section>b</section>');
   assert.equal(slice(text, u.units[1].lead), '\n\n<!-- 2. two -->\n<!-- more -->\n');
-});
-
-test('a marker pair around one element is one unit, up to its end comment', () => {
-  const text = '<section>\n  <h2>A</h2>\n  <!-- tycho-viewer start, written by demo/tycho-scene.py -->\n  <tycho-viewer src="a"></tycho-viewer>\n<!-- tycho-viewer end -->\n  <p>b</p>\n</section>';
-  const u = assertPartition(text);
-  assert.equal(u.units.length, 3);
-  assert.equal(text.slice(u.units[1].lead.start, u.units[1].end), '\n  <!-- tycho-viewer start, written by demo/tycho-scene.py -->\n  <tycho-viewer src="a"></tycho-viewer>\n<!-- tycho-viewer end -->');
-  assert.equal(slice(text, u.units[1].range), '<tycho-viewer src="a"></tycho-viewer>');
-  assert.equal(slice(text, u.units[2].lead), '\n  ');
-});
-
-test('a start comment without its end comment is only the lead of its element', () => {
-  const text = '<div>\n  <!-- x start -->\n  <p>a</p>\n  <!-- y end -->\n  <p>b</p>\n</div>';
-  const u = assertPartition(text);
-  assert.equal(text.slice(u.units[0].lead.start, u.units[0].end), '\n  <!-- x start -->\n  <p>a</p>');
-  assert.equal(slice(text, u.units[1].lead), '\n  <!-- y end -->\n  ');
 });
 
 test('the tail is the white space and the comments after the last element', () => {
@@ -79,7 +59,7 @@ test('the units of the demo deck cover its slides byte for byte', () => {
     return false;
   });
   const content = { start: open.end, end: close.start };
-  const u = unitsOf(text, childrenIn(tokens, content), content);
+  const u = unitsOf(childrenIn(tokens, content), content);
   assert.equal(pieces(text, u).join(''), slice(text, content));
   assert.ok(u.units.length >= 10);
   for (const x of u.units) assert.match(slice(text, x.range), /^<section/);
@@ -139,12 +119,10 @@ test('the scope rule allows the writes of AGENTS.md and names the others', () =>
   assert.deepEqual(editProblems('p', attrs, { classes: { mine: true }, attrs: { title: 'x' }, style: { color: 'red' } }, theme), ['the class mine', 'the attribute title', 'the declaration color']);
   assert.equal(declarationProblem('img', [], 'width', '40%'), null);
   assert.equal(declarationProblem('div', ['qr'], 'width', '300px'), null);
-  // a text block takes a width in px from its grips, and an image or a video a height as well
   assert.equal(declarationProblem('p', [], 'width', '300px'), null);
   assert.match(declarationProblem('p', [], 'width', '40%'), /width/);
   assert.equal(declarationProblem('img', [], 'height', '300px'), null);
   assert.match(declarationProblem('div', ['qr'], 'height', '300px'), /height/);
-  // a shape is placed and sized in its style, in px
   assert.equal(declarationProblem('div', ['shape', 'ellipse'], 'width', '300px'), null);
   assert.equal(declarationProblem('div', ['shape'], 'height', '160px'), null);
   assert.match(declarationProblem('div', ['shape'], 'height', '40%'), /height 40% on a shape/);

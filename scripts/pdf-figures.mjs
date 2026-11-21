@@ -1,8 +1,3 @@
-// the PDF figures of a deck. a PDF figure is an img with data-pdf, the path of a PDF next to the
-// deck, and data-page, its page from 1, whose src is the render of this page in the mode of its
-// class, as src/pdffigure.ts describes. the editor writes the renders at insert, and npm run tex
-// writes those of a figure written by hand, in a page of Chrome with the pdf.js of theme/vendor/.
-// npm run check reads the hash in each render, without Chrome or pdf.js
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { launch } from './chrome.mjs';
@@ -19,7 +14,6 @@ const read = (file) => {
   }
 };
 
-/** The PDF figures of a deck, in the order of the file: the PDF, the page, the mode, and the render of each. */
 export function deckPdfFigures(html) {
   const text = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[\s\S]*?<\/script\s*>/gi, '');
   const figures = [];
@@ -31,14 +25,11 @@ export function deckPdfFigures(html) {
   return figures;
 }
 
-// the theme of a deck, next to it, else the theme of this checkout
 const themeOf = (dir) => (existsSync(join(dir, 'theme', 'beeson.css')) ? join(dir, 'theme') : join(import.meta.dirname, '..', 'theme'));
 
-/** Each PDF figure of a deck with its state: current, stale, missing, no source, or invalid. */
 export function pdfFigureStatus(deck) {
   const dir = dirname(resolve(deck));
   const figures = deckPdfFigures(readFileSync(deck, 'utf8'));
-  // the tones are read only for a deck with PDF figures, since a talk may have changed them
   if (!figures.length) return [];
   const tones = tonesOf(readFileSync(join(themeOf(dir), 'beeson.css'), 'utf8'));
   return figures.map((figure) => {
@@ -60,18 +51,12 @@ const problem = (figure, deck) =>
     invalid: `${basename(deck)}: a PDF figure without data-pdf or without a src next to the deck, for ${figure.pdf || figure.src}`,
   })[figure.state];
 
-/** One line for each PDF figure of a deck that is not current, as npm run check prints it. */
 export function pdfFigureProblems(deck) {
   return pdfFigureStatus(deck)
     .filter((figure) => figure.state !== 'current')
     .map((figure) => problem(figure, deck));
 }
 
-/**
- * Renders each stale or missing PDF figure of a deck, for npm run tex, with one line for each
- * render written. Chrome is started only when a render is written. Sets the exit code to 1 while a
- * figure is not current.
- */
 export async function renderPdfFigures(deck, { log = console.log } = {}) {
   const dir = dirname(resolve(deck));
   const figures = pdfFigureStatus(deck);

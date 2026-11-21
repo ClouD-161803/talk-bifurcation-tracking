@@ -1,8 +1,3 @@
-// a tycho viewer is resized in the editor as a picture is (issue #39): its grips at the top and the bottom are
-// shown, a corner keeps the aspect of its box while Constrain Proportions is on, a grip at a side changes one
-// dimension while it is off, and its width and its height are written into its style, which its scene is laid out
-// into. the Arrange pane writes both as well, and the text written is opened again without a problem
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -11,7 +6,6 @@ import { byteExact, click, drag, editorPage } from './helpers/editor.mjs';
 const VIEWER = '.reveal section.present tycho-viewer';
 const TAG = '<tycho-viewer theme="dark" kiosk class="figure-box">';
 
-// the box of the first shown element of a selector, and of the canvas of the viewer, in slide px
 const boxes = `(() => {
   const v = document.querySelector(${JSON.stringify(VIEWER)});
   const s = document.querySelector('.reveal .slides').getBoundingClientRect();
@@ -21,8 +15,6 @@ const boxes = `(() => {
   return { viewer: b(v.getBoundingClientRect()), canvas: c ? b(c.getBoundingClientRect()) : null };
 })()`;
 
-// the editor on the slide of test-deck.html with its tycho viewer, the viewer selected by a click on the band just
-// outside its left border, since a drag inside it turns its scene
 async function viewerSelected(browser, { constrain = null } = {}) {
   const page = await editorPage(browser, { clear: true });
   if (constrain) await page.evaluate(`(() => { localStorage.setItem('beeson-edit-constrain-viewer', '${constrain}'); return true; })()`);
@@ -56,7 +48,6 @@ test('a corner of a tycho viewer resizes its box at its aspect, with its width a
   assert.ok(Math.abs(ratio - 1) < 0.01, `the aspect of the box is not kept: ${style}`);
   assert.ok(Math.abs(after.viewer.w - w) < 1 && Math.abs(after.viewer.h - h) < 1, `the viewer is not drawn at the size written: ${JSON.stringify(after.viewer)}`);
   await byteExact(page, [[TAG, `<tycho-viewer theme="dark" kiosk class="figure-box" style="width: ${w}px; height: ${h}px">`]]);
-  // the text written is opened again without a problem, i.e. a height on a viewer is in the scope rule
   const text = await page.evaluate('window.BeesonEditor.render()');
   const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(text)})`);
   assert.deepEqual(status.problems, []);
@@ -74,7 +65,6 @@ test('a grip at a side of a tycho viewer changes one dimension while Constrain P
   assert.ok(Math.abs(px(style, 'width') - before.viewer.w) < 1, `the width is changed: ${style}`);
   assert.ok(px(style, 'height') > before.viewer.h + 20, `the height is not larger: ${style}`);
   await page.evaluate('window.BeesonEditor.undo()');
-  // the runtime of tycho writes the colors of its theme into the style of the viewer, hence the size alone is read
   assert.doesNotMatch(await styleOf(page), /(^|;\s*)(width|height):/, 'one undo does not take the size off');
   await byteExact(page);
   assert.deepEqual(page.errors, []);

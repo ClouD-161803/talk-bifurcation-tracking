@@ -1,22 +1,7 @@
-// the toolbar, drawn from the commands of the registry that name a toolbar place: a 20 px icon over
-// an 11 px label in groups with a thin rule between them, and the groups after Present at the
-// right. a switch is shown pressed, and a command whose toolbar place names a split is drawn as a
-// split button. the commands of a group that name the same split are its variants, e.g. Image…,
-// Video…, and QR Code under Media, as the Pictures button of PowerPoint: the main part runs the
-// first of them, and its arrow lists them with the commands of the submenu of that name of the
-// menu of the first. while the toolbar is wider than the window, its last groups are put into a
-// menu » at its right end, as in Keynote, first those after Present and then those before it.
-// the labels are hidden only while the toolbar does not fit with them. the toolbar has one tab stop, and the arrow keys move in it. the
-// View button at its left shows and hides the navigator, and its arrow lists the Slide Sorter,
-// the rulers, and the gridlines. the Zoom popup beside it is as in Keynote, with Fit, Actual Size,
-// Zoom to Selection, and the levels, showing the zoom on its face. the items of the toolbar and whether it shows icons, labels, or both are set in the sheet
-// Customize Toolbar of the View menu, as in Keynote, and kept in the storage of the browser for
-// each deck, never in the file
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS, type Command, type Group } from '../commands.ts';
-import { entering } from '../commands/edit.ts';
 import { onSlides } from '../commands/slide.ts';
+import { entering } from '../inspector/controls.ts';
 import { injectStyle, make, store, stored, wire } from '../ui/dom.ts';
 import { icon, itemIcon } from '../ui/icons.ts';
 import { playing } from '../commands/preview.ts';
@@ -26,16 +11,12 @@ import { ZOOMS } from './canvas.ts';
 const POPUPS = new Set(['toolbar.zoom']);
 const percent = (z: number) => `${Math.round(z * 100)}%`;
 
-// an item of the layout is a command, a separator, or a space that pushes the items after it to
-// the right. a split button is laid out as its first command
 const SEPARATOR = 'separator';
 const SPACE = 'space';
 type Show = 'both' | 'icon' | 'text';
 const SHOWS: [Show, string][] = [['both', 'Icon and Text'], ['icon', 'Icon Only'], ['text', 'Text Only']];
 const storeKey = () => `beeson-edit-toolbar:${location.pathname}`;
 
-// the commands without a place in the default set that the sheet offers, with their icons on the
-// grid of ui/icons.ts. a name is an icon of that file, and a list is the paths of a new one
 const EXTRA: Record<string, { label: string; icon: string | string[] }> = {
   'file.open': { label: 'Open', icon: 'open' },
   'find.open': { label: 'Find', icon: ['M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10z', 'M12.25 12.25 16.5 16.5'] },
@@ -56,7 +37,6 @@ const MARKS: Record<string, { label: string; icon: string[] }> = {
   [SPACE]: { label: 'Space', icon: ['M3 6.5v7', 'M17 6.5v7', 'M3 10h14'] },
 };
 
-// an icon of ui/icons.ts, or one drawn from paths in the same style
 function glyph(face: string | string[]): SVGSVGElement {
   if (typeof face === 'string') return icon(face);
   const svg = icon('square');
@@ -141,7 +121,6 @@ html.beeson-no-toolbar .beeson-edit-top { display: none; }
 
 type Shown = { c: Command; el: HTMLButtonElement; variants: Command[] };
 
-// the label of a command on the toolbar: its toolbar label, and else its label
 function toolbarLabel(app: App, c: Command): string {
   return c.toolbar?.label ?? EXTRA[c.id]?.label ?? app.commands.label(c.id);
 }
@@ -156,16 +135,13 @@ export function install(app: App): void {
   let shown: Shown[] = [];
   let signature = '';
   let late: { commands: Command[] }[] = [];
-  // the layout kept for this deck, with null for the default set
   let kept: string[] | null = null;
   let show: Show = 'both';
   try {
     const saved = JSON.parse(stored(storeKey()) ?? 'null') as { items?: unknown; show?: unknown } | null;
     if (Array.isArray(saved?.items) && saved.items.every((x) => typeof x === 'string')) kept = saved.items as string[];
     if (SHOWS.some(([v]) => v === saved?.show)) show = saved!.show as Show;
-  } catch {
-    // a layout that is not read is the default set
-  }
+  } catch {}
   let customizing = false;
   const more = make('button', 'tb more-groups');
   more.type = 'button';
@@ -210,14 +186,11 @@ export function install(app: App): void {
     const face = c.id === 'toolbar.zoom' ? make('span', 'readout', zoomText()) : glyph(faceOf(c));
     b.append(face, make('span', 'label', label));
     if (!POPUPS.has(c.id)) {
-      // Undo, Redo, and Delete leave the focus in a text, a field of the inspector, or the slide
-      // list, as the Edit menu does, and they enter a value typed into the field first
       const kept = (a: Element | null) => !!a && ((a as HTMLElement).isContentEditable || entering.has(a) || onSlides(app));
       if (c.toolbar?.group === 'history') b.addEventListener('mousedown', (ev) => void (kept(document.activeElement) && ev.preventDefault()));
       wire(b, () => app.commands.run(c.id), fail);
       return b;
     }
-    // a popup opens at the press, and a second press on its button closes it
     b.setAttribute('aria-haspopup', 'menu');
     b.setAttribute('aria-expanded', 'false');
     b.addEventListener('pointerdown', (ev) => {
@@ -232,10 +205,6 @@ export function install(app: App): void {
     return b;
   };
 
-  // the list of a split button: its variants, with a rule where their group of the menu changes,
-  // then the submenu that the split names in the menu of the first, unless the variants list it,
-  // e.g. the shapes of Insert > Shape. variants in another submenu of the menu are listed as that
-  // submenu, once, e.g. Insert > TikZ Figure in the list of Media
   const splitItems = (first: Command, variants: Command[]): MenuItem[] => {
     const out: MenuItem[] = [];
     const subs = new Set<string>();
@@ -253,8 +222,6 @@ export function install(app: App): void {
     return out.length && sub.length ? [...out, { rule: true }, ...sub] : [...out, ...sub];
   };
 
-  // the default set: the groups of the registry with a separator between them, and a space before
-  // the groups after Present
   function defaults(groups: Group[]): string[] {
     const at = groups.findIndex((g) => g.commands.some((c) => c.id === 'file.present'));
     const out: string[] = [];
@@ -266,7 +233,6 @@ export function install(app: App): void {
   }
   const layout = (groups = app.commands.forToolbar()): string[] => (kept ?? defaults(groups)).filter((id) => id === SEPARATOR || id === SPACE || app.commands.get(id));
 
-  // the variants of the split of a command, in the order of its toolbar group, or the command alone
   const variantsOf = (c: Command, groups: Group[]): Command[] => {
     const split = c.toolbar?.split;
     const list = split ? (groups.find((g) => g.group === c.toolbar?.group)?.commands ?? []).filter((x) => x.toolbar?.split === split) : [];
@@ -286,7 +252,6 @@ export function install(app: App): void {
     if (customizing) {
       top.classList.remove('compact');
       const parts: HTMLElement[] = [];
-      // while the sheet is open, every item is drawn by itself, to be dragged
       for (const [i, id] of list.entries()) {
         let el: HTMLElement;
         if (id === SEPARATOR || id === SPACE) {
@@ -308,16 +273,12 @@ export function install(app: App): void {
       update();
       return;
     }
-    // the groups between the separators and the spaces, the group after a space at the right
     const boxes: { commands: Command[]; right: boolean }[] = [{ commands: [], right: false }];
     for (const id of list) {
       if (id === SEPARATOR || id === SPACE) boxes.push({ commands: [], right: id === SPACE });
       else boxes[boxes.length - 1].commands.push(app.commands.get(id)!);
     }
     const spaced = boxes.findIndex((b) => b.right);
-    // the groups that may be folded into », from the right: those after the space, then those
-    // before it but the first. the group of Format, which opens and closes the inspector, stays,
-    // and the labels are hidden only where the toolbar does not fit with every group folded
     const filled = boxes.map((b, i) => i).filter((i) => boxes[i].commands.length && !boxes[i].commands.some((c) => c.id === 'shell.format'));
     const after = filled.filter((i) => spaced >= 0 && i >= spaced).reverse();
     const before = filled.filter((i) => !after.includes(i)).slice(1).reverse();
@@ -345,7 +306,6 @@ export function install(app: App): void {
           if (c.toolbar?.split) el.append(splitButton(app, b, () => (c.id === 'toolbar.view' ? viewItems() : splitItems(c, variants)), `${toolbarLabel(app, c)} options`));
           else el.append(b);
         }
-        // the group of Format after a folded group is put after »
         (late.length && box.commands.some((c) => c.id === 'shell.format') ? kept : parts).push(el);
       }
       if (late.length) {
@@ -378,9 +338,6 @@ export function install(app: App): void {
     update();
   }
 
-  // the items are not folded into » while they are dragged, hence they are drawn as icons, also
-  // in Text Only, where their labels do not fit the window, and closer together where the icons
-  // do not fit either
   function fit(): void {
     top.classList.remove('compact', 'tight');
     const over = () => top.scrollWidth > top.clientWidth + 0.5;
@@ -388,7 +345,6 @@ export function install(app: App): void {
     if (over()) top.classList.add('tight');
   }
 
-  // the state of each button, and the one tab stop on the first button that can be pressed
   function update(): void {
     if (signatureOf(app.commands.forToolbar()) !== signature) {
       render();
@@ -399,12 +355,10 @@ export function install(app: App): void {
       el.disabled = !s.enabled && !customizing;
       const keys = commandKeys(c, app.platform);
       el.title = c.note?.(app) ?? (keys ? `${s.label} (${keys})` : s.label);
-      // a split button is pressed while one of its variants is on, e.g. Arrow while an arrow is drawn
       const on = variants.map((v) => app.commands.state(v.id).checked);
       if (on.some((x) => x !== null) && !customizing) el.setAttribute('aria-pressed', String(on.some((x) => x === true)));
       else el.removeAttribute('aria-pressed');
       if (c.id === 'file.save') el.classList.toggle('on', app.dirty);
-      // the main part of Preview is pressed and reads Stop with the icon pause while a preview plays
       if (c.id === 'preview.slide' && !customizing) {
         const on = playing();
         const face = on ? 'pause' : String(faceOf(c));
@@ -445,16 +399,11 @@ export function install(app: App): void {
     list.forEach((b, i) => (b.tabIndex = i === to ? 0 : -1));
     list[to].focus();
   });
-  // a button that gets the focus is the tab stop
   top.addEventListener('focusin', (ev) => {
     if (!(ev.target instanceof HTMLElement) || !items().includes(ev.target)) return;
     for (const b of items()) b.tabIndex = b === ev.target ? 0 : -1;
   });
 
-  // a folded split button whose arrow has a list is a submenu of » with the items of this list, as
-  // a folded item with a menu is in Keynote. the command of its main part is put first, before a
-  // rule, where the list does not hold it, e.g. Navigator of View. while a preview plays, Play
-  // Slide reads Stop, as the main part of Preview does
   const folded = (c: Command, groups: Group[]): MenuItem => {
     const label = toolbarLabel(app, c);
     if (!c.toolbar?.split) return { command: c.id, label };
@@ -489,10 +438,6 @@ export function install(app: App): void {
     if (ev.detail === 0) openMore(true);
   });
 
-  // the sheet Customize Toolbar of Keynote, drawn down from the toolbar: the items that have a
-  // place on it, the default set, and the choice of icons and labels. an item is dragged into the
-  // toolbar or out of it, and the default set dragged into it puts it back. on the keyboard,
-  // Return adds an item or puts the default set back, and Delete takes the item of the focus off
   const sheet = make('div', 'beeson-edit-customize');
   sheet.hidden = true;
   sheet.setAttribute('role', 'dialog');
@@ -521,8 +466,6 @@ export function install(app: App): void {
   mark.hidden = true;
   let back: HTMLElement | null = null;
 
-  // a layout equal to the default set is kept as the default, and nothing is kept for the
-  // default set shown with icons and labels
   const save = (next: string[] | null) => {
     kept = next && JSON.stringify(next) !== JSON.stringify(defaults(app.commands.forToolbar())) ? next : null;
     store(storeKey(), kept || show !== 'both' ? JSON.stringify({ items: kept, show }) : null);
@@ -530,7 +473,6 @@ export function install(app: App): void {
     render();
     dim();
   };
-  // an item that the toolbar holds is dimmed, as in Keynote, since a command is on the toolbar once
   const dim = () => {
     const list = layout();
     for (const el of palette.querySelectorAll<HTMLElement>('.item')) {
@@ -545,7 +487,6 @@ export function install(app: App): void {
   const nameOf = (id: string) => (isMark(id) ? MARKS[id].label : toolbarLabel(app, app.commands.get(id)!));
   const faceFor = (id: string) => glyph(isMark(id) ? MARKS[id].icon : faceOf(app.commands.get(id)!));
 
-  // the commands with a place in the default set, then the others that the sheet offers
   const paletteIds = (): string[] => {
     const ids = defaults(app.commands.forToolbar()).filter((id) => !isMark(id));
     for (const id of Object.keys(EXTRA)) if (app.commands.get(id) && !ids.includes(id)) ids.push(id);
@@ -599,8 +540,6 @@ export function install(app: App): void {
     else if (sheet.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     back = null;
   }
-  // Show Toolbar and Hide Toolbar of the View menu of Keynote, with its key ⌥⌘T, and elsewhere
-  // with Ctrl+F1, the key of the ribbon of PowerPoint for Windows. the choice is kept per browser
   const hidden = () => document.documentElement.classList.contains('beeson-no-toolbar');
   const setHidden = (on: boolean) => {
     if (on && top.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
@@ -628,8 +567,6 @@ export function install(app: App): void {
     },
   });
 
-  // a drag adds an item of the sheet, moves an item of the toolbar or takes it off when it is
-  // dropped outside, or puts the default set back. it starts once the pointer moves 4 px
   type Drag = { kind: 'add' | 'move' | 'default'; id: string; from: number; x: number; y: number; started: boolean; pointer: number };
   let drag: Drag | null = null;
   const begin = (ev: PointerEvent, kind: Drag['kind'], id: string, from: number) => {
@@ -646,7 +583,6 @@ export function install(app: App): void {
     return ev.clientY >= r.top - 8 && ev.clientY <= r.bottom + 8 && ev.clientX >= r.left && ev.clientX <= r.right;
   };
   const slots = () => [...top.querySelectorAll<HTMLElement>(':scope > [data-at]')];
-  // the index of the layout before which a drop at x puts its item
   const dropAt = (x: number): number => {
     for (const el of slots()) {
       const r = el.getBoundingClientRect();
@@ -694,7 +630,6 @@ export function install(app: App): void {
     let at = over ? dropAt(ev.clientX) : -1;
     if (at < 0 && d.kind === 'add') return;
     const list = layout();
-    // a command is on the toolbar once, hence a command dragged in from the sheet is moved
     const was = d.kind === 'move' ? d.from : isMark(d.id) ? -1 : list.indexOf(d.id);
     if (was >= 0) {
       list.splice(was, 1);
@@ -705,7 +640,6 @@ export function install(app: App): void {
   }, true);
   window.addEventListener('pointercancel', () => drag && endDrag(), true);
 
-  // while the sheet is open, the buttons of the toolbar are items to drag and do not run
   top.addEventListener('pointerdown', (ev) => {
     if (!customizing) return;
     ev.stopPropagation();
@@ -781,7 +715,6 @@ export function install(app: App): void {
   app.listen('history', update);
   app.listen('report', update);
   app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], update);
-  // the toolbar is laid out again when its width changes, e.g. with the window
   let width = 0;
   new ResizeObserver(() => {
     if (top.clientWidth === width) return;
@@ -789,8 +722,6 @@ export function install(app: App): void {
     if (customizing) fit();
     else render();
   }).observe(top);
-  // a mode that ends without a change of the file, e.g. the drawing of a line left with Esc, is
-  // shown on its switch after the key or the release that ends it
   for (const type of ['keyup', 'pointerup']) window.addEventListener(type, () => requestAnimationFrame(update), true);
   render();
   document.body.append(top);

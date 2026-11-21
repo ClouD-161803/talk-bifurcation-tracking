@@ -1,31 +1,15 @@
-// the presence of the other people on the canvas, as in UI.md section 3: a frame in the tone of a
-// person around each element of the shown slide that the person selected, one around a group, a
-// name flag on its upper left corner, the caret bar of a person in a text element, and the selected
-// text of a person as a highlight of the CSS Custom Highlight API in the tone. the boxes are
-// read in one animation frame in fractions of the slide, and shell/canvas.ts lays .beeson-presence
-// over the slide with the custom properties of .reveal, hence a pointer move, a scroll, or a zoom
-// does not read layout. during a drag of the own selection the boxes of the last read are moved by
-// the translates that the drag writes
-
 import type { Shape } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
 import { badge } from './people.ts';
 import type { Resolved } from './presence.ts';
 
-// in ms, the time that a flag shows the name before it collapses to a chip with initials
 const NAMED = 3000;
-// the flags of an element before the rest are counted in +N, and the px that the frame of each of
-// them stands outside the frame of frames.ts
 const FLAGS = 2;
 const OUT = [4, 8];
-// the side of the hit area of a chip in px for a touch or a pen, and the height of a flag with
-// the gap under it
 const HIT = 32;
 const FLAG = 21;
-// the classes of html during a drag, a resize, or a turn of the own selection
 const GESTURE = ['beeson-dragging', 'beeson-sizing', 'beeson-rotating'];
-// the custom properties of the tones c0 to c3, as in CSS
 const TONES = ['--data-2', '--data-3', '--data-5', '--data-7'];
 
 const CSS = `
@@ -49,10 +33,8 @@ html.beeson-previewing .beeson-presence, html.beeson-playing .beeson-presence, h
 .beeson-presence .caret { position: absolute; width: 2px; margin-left: -1px; background: var(--tone); box-shadow: 0 0 0 1px var(--edge); }
 `;
 
-// a shape of the last read, with the translate of its element then
 type Kept = { s: Shape; at: [number, number] };
 
-// the position of a box of fractions of the slide, grown by px on each side
 const placed = (s: Shape, px: number): Partial<CSSStyleDeclaration> => ({
   left: `calc(${s.x * 100}% - ${px}px)`,
   top: `calc(${s.y * 100}% - ${px}px)`,
@@ -61,7 +43,6 @@ const placed = (s: Shape, px: number): Partial<CSSStyleDeclaration> => ({
   transform: s.deg ? `rotate(${s.deg}deg)` : '',
 });
 
-// the width in px of a flag that shows text, measured on a canvas, which does not read layout
 let pen: CanvasRenderingContext2D | null | undefined;
 const widthOf = (text: string): number => {
   if (pen === undefined) pen = document.createElement('canvas').getContext('2d');
@@ -79,22 +60,13 @@ export function install(client: Client): void {
   cell.append(layer);
   document.body.append(cell);
   let frame = 0;
-  // the time from which each page shows its name, by client id, with its name and selection then
   const named = new Map<string, { at: number; name: string; selected: Element[] }>();
   let timer = 0;
-  // the flags drawn on each element, for the hover
   let flagsOf = new Map<Element, HTMLElement>();
   let hovered: Element | null = null;
-  // the chips of the last draw, each at a fraction of the slide and px from it, for a press
   let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
-  // the shapes of the last read: of each element or group by the element that heads it, the
-  // members of each group, and each caret by client with its element, its offset, and its angle,
-  // with the size of the slide, and the top of the canvas in px of the layer
   let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number; from: number; deg: number; line: number; range: Range | null }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
-  // the highlights of the selected text by tone, where the browser has them
   const highlights = typeof Highlight === 'function' ? (window.CSS.highlights ?? null) : null;
-  // the highlight takes the literal color of the tone, read again at a change of mode, since a
-  // custom property in ::highlight is not read by every browser
   const tint = (): void => {
     const root = getComputedStyle(document.documentElement);
     const names = TONES.map((_, i) => `::highlight(beeson-c${i})`);
@@ -114,17 +86,13 @@ export function install(client: Client): void {
     if (!frame) frame = requestAnimationFrame(draw);
   };
 
-  // a person shows the name from a new selection or name on, for NAMED ms
   const nameFrom = (r: Resolved, now: number): number => {
     const seen = named.get(r.client);
     if (!seen || seen.name !== r.name || seen.selected.length !== r.selected.length || r.selected.some((el, i) => el !== seen.selected[i])) named.set(r.client, { at: now, name: r.name, selected: r.selected });
     return named.get(r.client)!.at;
   };
-  // a click after a tap on a chip does not reach the canvas
   let eat = false;
 
-  // the translate in slide px of el with its ancestors, and the angle that they turn it by, from
-  // the inline styles that the editor writes
   const offset = (el: Element): [number, number] => {
     let x = 0, y = 0;
     for (let e: Element | null = el; e && e !== app.slides(); e = e.parentElement) {
@@ -144,8 +112,6 @@ export function install(client: Client): void {
     return x === k.at[0] && y === k.at[1] ? k.s : { ...k.s, x: k.s.x + (x - k.at[0]) / kept.W, y: k.s.y + (y - k.at[1]) / kept.H };
   };
 
-  // every read of layout is made here, before the writes of draw. during a drag of the own
-  // selection the last read is kept while it holds every element and caret
   function measure(els: Element[], carets: Resolved[]): void {
     const members = new Set([...kept.groups.values()].flat());
     const known = els.every((el) => kept.els.has(el) || members.has(el)) && carets.every((r) => {
@@ -174,15 +140,12 @@ export function install(client: Client): void {
       const { el, at, from } = r.caret!;
       if (!s) return;
       const deg = turnOf(el);
-      // a caret in a turned text element, whose box is the upright box of the turned bar, falls
-      // back to the line height when it is turned near a right angle
       const cs = deg ? getComputedStyle(el) : null;
       const line = cs ? parseFloat(cs.lineHeight) || 1.2 * parseFloat(cs.fontSize) : 0;
       kept.carets.set(r.client, { s, at: offset(el), el, offset: at, from, deg, line, range: shapes.ranges[i] ?? null });
     });
   }
 
-  // a flag of r, with its width in px
   const flagOf = (r: Resolved, now: number, soon: (at: number) => void): { flag: HTMLElement; chip: boolean; width: number } => {
     const from = nameFrom(r, now);
     const collapsed = !r.typing && now - from >= NAMED;
@@ -206,7 +169,6 @@ export function install(client: Client): void {
     for (const r of list) for (const el of r.selected) if (on(el)) byEl.set(el, [...(byEl.get(el) ?? []), r]);
     const carets = list.filter((r) => r.caret && on(r.caret.el));
     measure([...byEl.keys()], carets);
-    // the people of each element, or of the group that it is a member of
     const head = new Map<Element, Element>();
     for (const [h, members] of kept.groups) for (const m of members) head.set(m, h);
     const units = new Map<Element, Resolved[]>();
@@ -235,7 +197,6 @@ export function install(client: Client): void {
       const flags = make('div', 'flags');
       flags.dataset.client = framed.map((r) => r.client).join(' ');
       Object.assign(flags.style, { left: `calc(${s.x * 100}% - ${out}px)`, top: `calc(${s.y * 100}% - ${out}px)` });
-      // the flags go inside the frame when the canvas does not leave room for them above it
       const inside = s.y * kept.height - out - FLAG < kept.edge;
       if (inside) flags.classList.add('inside');
       const made = framed.map((r) => flagOf(r, now, soon));
@@ -259,15 +220,12 @@ export function install(client: Client): void {
       const s = moved(k, k.el);
       const { W, H } = kept;
       const a = (k.deg * Math.PI) / 180, cos = Math.abs(Math.cos(a)), sin = Math.abs(Math.sin(a));
-      // in slide px: the length of the bar and its center, from the upright box of the turned bar
       const length = !k.deg ? s.h * H : cos > 0.5 ? (s.h * H) / cos : k.line;
       const cx = s.x * W + (length * sin) / 2, cy = s.y * H + (length * cos) / 2;
       const c = make('div', `caret c${r.color % 4}`);
       c.dataset.client = r.client;
       Object.assign(c.style, { left: `${(cx / W) * 100}%`, top: `${((cy - length / 2) / H) * 100}%`, height: `${(length / H) * 100}%`, transform: k.deg ? `rotate(${k.deg}deg)` : '' });
       nodes.push(c);
-      // a caret has a flag at its top end, unless the frame of the person around its text element
-      // shows the flag of the person already
       if (units.get(head.get(r.caret!.el) ?? r.caret!.el)?.slice(0, FLAGS).includes(r)) continue;
       const flags = make('div', 'flags');
       flags.dataset.caret = r.client;
@@ -294,7 +252,6 @@ export function install(client: Client): void {
     TONES.forEach((_, i) => highlights?.delete(`beeson-c${i}`));
   });
 
-  // the flags of the element under the pointer show the names, by a class alone
   window.addEventListener('pointermove', () => {
     const h = shell.presence.hovered();
     if (h === hovered) return;
@@ -303,10 +260,6 @@ export function install(client: Client): void {
     flagsOf.get(h!)?.classList.add('hover');
   }, { passive: true });
 
-  // a press on a chip shows the name, hit-tested against the stored chips: the chip itself for a
-  // mouse, and a square of HIT px around it for a touch or a pen. a press that the layer does not
-  // take reaches the editor as if the layer were not there, i.e. one out of the canvas or on the
-  // overlay of the own frame, and every press while the layer is hidden
   window.addEventListener('pointerdown', (ev) => {
     eat = false;
     const target = ev.target instanceof Element ? ev.target : null;

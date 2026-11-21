@@ -1,6 +1,3 @@
-// inline code is drawn as a chip in both modes, tinted with the text color and with rounded corners,
-// and the code of a code box is drawn without the chip
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';

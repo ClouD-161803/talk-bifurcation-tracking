@@ -1,8 +1,3 @@
-// what each person is doing: the line of the person in the Share dialog, as in UI.md section 7,
-// and the label of the avatar of the person for a screen reader, e.g. Ana Silva, on slide 4,
-// typing, as in section 11. a person is away while every page of the person is hidden. the people
-// who have the same sheet of preamble.tex or references.bib open are shown as flags in the sheet
-
 import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
 import { callName, followersText, followOf, pagesOf } from './follow.ts';
@@ -25,8 +20,6 @@ export function install(client: Client): void {
   const numberOf = (slide: Element | null | undefined): number => (slide?.isConnected ? client.shell.slides.numberOf(slide) : 0);
   const named = (person: string | null) => (person === client.person ? 'you' : person ? callName(client, person) : '');
 
-  // what person does, in the order of precedence of the Share dialog, with the person followed and
-  // the slide of the page that changed last
   const doing = (person: string): { what: string; whom: string | null; slide: number } | null => {
     if (person === client.person) {
       const target = followOf()?.target ?? null;
@@ -55,7 +48,6 @@ export function install(client: Client): void {
     return now.slide ? `On slide ${now.slide}` : '';
   });
 
-  // after people.ts, which sets the label to the name at each draw
   const label = () => {
     if (client.connection === 'ended') return;
     for (const b of document.querySelectorAll<HTMLElement>('.beeson-session-people .beeson-session-avatar[data-person]')) {

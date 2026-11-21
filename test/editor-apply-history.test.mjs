@@ -1,10 +1,3 @@
-// the person on the page of an apply of the synchronous editor, see src/editor/session/apply.ts:
-// an entry of typing in a changed text element is kept, and its undo and redo change only the
-// typing of the person, or it is skipped when the change took letters of the typing. the other
-// entries that name a changed element are dropped. the caret stays at its character, an unsaved
-// edit is kept, an edit made while the apply waits is merged into it, and an apply into a text with
-// an open composition of an input method waits for its end
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -30,7 +23,6 @@ const H2 = `[...document.querySelectorAll('.reveal h2')].find((h) => h.textConte
 const status = (page) => page.evaluate(`${E}.status()`);
 const sessionText = (page) => page.evaluate(`${E}.session.text()`);
 const render = (page) => page.evaluate(`${E}.render()`);
-// the text of the first paragraph before the caret, or null when the caret is not in it
 const beforeCaret = (page) => page.evaluate(`(() => {
   const p = ${P1};
   const sel = getSelection();
@@ -57,14 +49,11 @@ test('an entry of typing is kept when an apply changes its text element or anoth
   await b.evaluate(`${E}.undo()`);
   text = once(text, 'viewer\'s attention. One.</p>', 'viewer\'s attention.</p>');
   assert.equal(await render(b), text, 'the undo takes the typing and keeps the change of the apply');
-  // the typing that follows is a new entry, whose undo gives the text before it
   await caretAtEnd(b, P1);
   await typeKeys(b, ' Two.');
   await b.waitFor(`${E}.status().undo`);
   await b.evaluate(`${E}.undo()`);
   assert.equal(await b.evaluate(`${E}.render()`), text);
-  // a removal by the document model is kept through an apply on another slide, and its undo puts
-  // the paragraph back
   const kept = await sessionText(b);
   await b.evaluate(`${E}.doc.remove(${P2})`);
   await b.waitFor(`${E}.status().undo`);
@@ -74,7 +63,6 @@ test('an entry of typing is kept when an apply changes its text element or anoth
   await b.evaluate(`${E}.undo()`);
   assert.equal(await b.evaluate(`!!${P2}`), true, 'the undo puts the paragraph back');
   assert.equal(await b.evaluate(`${E}.render()`), once(kept, 'Thank you', 'Thanks'));
-  // the entry of a typing in a paragraph that an apply takes away is dropped
   await caretAtEnd(b, P1);
   await typeKeys(b, ' Three.');
   await b.waitFor(`${E}.status().undo`);
@@ -86,7 +74,6 @@ test('an entry of typing is kept when an apply changes its text element or anoth
   assert.deepEqual(b.errors, []);
 });
 
-// the caret put after 'Design the' in the first paragraph
 const AFTER_DESIGN = `(() => { const p = ${P1}; p.focus(); getSelection().collapse(p.firstChild, 'Design the'.length); return true; })()`;
 
 test('the keys of one entry typed between applies on both sides of them are undone in one step, which keeps every change of the applies', async (t) => {
@@ -96,7 +83,6 @@ test('the keys of one entry typed between applies on both sides of them are undo
   await b.evaluate(AFTER_DESIGN);
   await typeKeys(b, ' whole');
   await b.waitFor(`${E}.status().undo`);
-  // each apply and the keys after it are sent at once, hence the keys are one entry
   const typed = (await sessionText(b)).replace('Design the whole', 'Now design the whole');
   assert.equal(await b.evaluate(`${E}.apply(${JSON.stringify(typed)}).then((r) => (document.execCommand('insertText', false, ' new'), r.reload))`), false);
   const more = (await sessionText(b)).replace('slide first,', 'slide at first,');
@@ -203,7 +189,6 @@ test('the caret stays at its character when its text element changes before and 
   text = once(text, 'slide first, then', 'slide at first, then');
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   assert.equal(await beforeCaret(b), 'Now design the');
-  // a tag before the caret sets the content of the paragraph, and the caret is put back
   text = once(text, '<p>Now design the', '<p><b>Now</b> design the');
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   await applied(b, text, 'a tag before the caret');
@@ -211,7 +196,6 @@ test('the caret stays at its character when its text element changes before and 
   text = once(text, 'first, then break', 'first, then <i>break</i>');
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   assert.equal(await beforeCaret(b), 'Now design the');
-  // the paragraph is not made again by a change on another slide
   await b.evaluate(`window.__p = ${P1}`);
   text = once(text, 'Thank you', 'Thanks');
   assert.equal((await applyOn(b, text)).reload, false);
@@ -224,11 +208,9 @@ test('a selection and the caret stay at their characters when one apply changes 
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
-  // with a tag in the paragraph, a change on both sides of the tag sets the content of the paragraph
   let text = once(b.source, 'the complete slide first', 'the <em>complete</em> slide first');
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   await applied(b, text, 'the tag');
-  // the selection of "sli", in the text after the tag
   await b.evaluate(`(() => {
     const p = ${P1};
     p.focus();
@@ -244,12 +226,10 @@ test('a selection and the caret stay at their characters when one apply changes 
     return [r.toString(), sel.toString()];
   })()`);
   assert.deepEqual(await selected(), ['Design the complete ', 'sli']);
-  // two changes of other people arrive in one apply, one before the selection and one after it
   text = once(once(text, '<p>Design the', '<p>BDesign the'), "viewer's attention.</p>", "viewer's attention.C</p>");
   assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
   await applied(b, text, 'a change on both sides of a selection');
   assert.deepEqual(await selected(), ['BDesign the complete ', 'sli']);
-  // the same with the caret after "sli", and the next key of the person goes to the caret
   await b.evaluate(`(getSelection().collapseToEnd(), true)`);
   assert.equal(await beforeCaret(b), 'BDesign the complete sli');
   text = once(once(text, '<p>BDesign the', '<p>BBDesign the'), "viewer's attention.C</p>", "viewer's attention.CC</p>");
@@ -290,7 +270,6 @@ test('an edit made while an apply waits for its turn is merged into the text of 
   await showSlide(b, 'Show your steps');
   await caretAtEnd(b, P1);
   const text = once(b.source, 'Copy-paste the code', 'Paste the code');
-  // the apply is asked for, and a word is typed before its turn
   const result = await b.evaluate(`(() => {
     const done = ${E}.apply(${JSON.stringify(text)});
     document.execCommand('insertText', false, ' Typed.');
@@ -325,9 +304,7 @@ test('an apply into a text with an open composition resolves at once and leaves 
   assert.deepEqual(b.errors, []);
 });
 
-// the slides of text, each from its start tag to its end tag, which start a line in test-deck.html
 const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
-// text with the closing slide moved before the first section slide, far from the slides of the person
 const farMove = (text) => {
   const closing = sectionsOf(text).find((s) => s.startsWith('<section class="closing">'));
   const first = sectionsOf(text).find((s) => s.startsWith('<section class="section">'));
@@ -336,8 +313,6 @@ const farMove = (text) => {
 };
 const SLIDE = (heading) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h1, h2')?.textContent.startsWith(${JSON.stringify(heading)}))`;
 
-// the entries of the person by kind, each made by an operation of the document model or a command
-// on a slide far from the closing slide
 const KINDS = {
   delete: async (b) => b.evaluate(`${E}.doc.remove(${P2})`),
   insert: async (b) => b.evaluate(`${E}.doc.insert('<p>An inserted paragraph.</p>', ${P2}.parentElement, ${P2}.nextElementSibling).then(() => true)`),
@@ -353,7 +328,6 @@ const KINDS = {
   move: async (b) => b.evaluate(`(() => { const s = ${SLIDE('Embedding videos')}; return ${E}.doc.move(s, s.parentElement, ${SLIDE('Code boxes')}).then(() => true); })()`),
 };
 
-// the entry of kind made on a session page, and the text before and after it
 async function entry(t, kind) {
   const b = await sessionPage(browser);
   t.after(() => b.close());
@@ -414,8 +388,6 @@ test('the undo of an entry kept through a move of a slide far away gives the tex
   }
 });
 
-// dictation and an input method insert text with an input event and without a key, while the
-// formulas of an apply are typeset, after which the caret of the apply is not put back
 const typedDuringTypeset = [
   ['a formula put into its text element', (s) => once(s, 'Design the complete', 'Design \\(x\\) the complete')],
   ['its text element changed by a structural apply that places a slide with a formula', (s) => once(once(s, 'viewer\'s attention.</p>', 'viewer\'s attention!</p>'), '<section>\n  <h2>Equations are first class', '<section>\n  <h2>A formula</h2>\n  <p>\\(x^2\\)</p>\n</section>\n\n<section>\n  <h2>Equations are first class')],

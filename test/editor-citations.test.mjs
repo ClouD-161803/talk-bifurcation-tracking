@@ -1,12 +1,3 @@
-// the citations of the editor on test/pages/tex-sheets/index.html: \cite{ typed in a text opens a
-// list of the bibliography at the caret, filtered as the author types, Enter inserts the citation
-// in place of the typed text as one entry of the history, a comma adds a second paper, and Esc
-// leaves the typed text. Insert > Citation… and its key open the same list. a click on the number
-// of a citation shows the full entries in the Format pane, where a paper is changed, added, or
-// removed and the DOI opened. a BibTeX entry pasted into the list is added to references.bib and
-// cited, and a DOI alone is not resolved. the reference is drawn at once, and a save writes tex.js
-// with it. on file: without the folder permission, the list asks for the files of the deck
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -55,8 +46,7 @@ const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.ex
 const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
 const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-// a server answers 404 for a package of the preamble that is not next to the deck, e.g. physics.sty
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') && !/404/.test(e));
+const errors = (page) => page.errors.filter((e) => !/404/.test(e));
 const expect = (...edits) => edits.reduce((text, [a, b]) => {
   assert.equal(text.split(a).length, 2, `${a} does not occur once in the deck`);
   return text.replace(a, () => b);
@@ -73,13 +63,11 @@ async function open(platform = 'mac', page = null) {
   return page;
 }
 
-// the slide of the citations shown
 async function citations(page) {
   await page.evaluate(`Reveal.slide(Reveal.getIndices([...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === 'Citations')).h)`);
   await page.waitFor(`document.querySelector('.reveal section.present h2')?.textContent === 'Citations'`);
 }
 
-// the caret at the end of the paragraph that starts with words
 async function caretAfter(page, words) {
   await page.evaluate(`(() => {
     const p = [...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith(${js(words)}));
@@ -94,7 +82,6 @@ async function caretAfter(page, words) {
   await page.waitFor(`document.activeElement?.matches('.reveal section.present p')`);
 }
 
-// the words typed after the brace of \cite{ selected, so that the next typing replaces them
 const selectQuery = (page) => page.evaluate(`(() => {
   const s = getSelection();
   const n = s.anchorNode;
@@ -106,7 +93,6 @@ const selectQuery = (page) => page.evaluate(`(() => {
   return true;
 })()`);
 
-// the rows of the open list, each as its text, and the key of the chosen row
 const rows = (page) => page.evaluate(`[...document.querySelectorAll('${LIST} li[data-key]')].map((li) => li.textContent.replace(/\\s+/g, ' ').trim())`);
 const chosen = (page) => page.evaluate(`document.querySelector('${LIST} li[aria-selected="true"]')?.dataset.key ?? null`);
 const listOpen = (page) => page.evaluate(`!!document.querySelector('${LIST}')`);
@@ -114,19 +100,13 @@ const lastText = (page) => page.evaluate(`[...document.querySelectorAll('.reveal
 const refKeys = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present div.refs .ref')].map((r) => r.dataset.key)`);
 const numberOf = (page, keys) => page.evaluate(`document.querySelector('.reveal section.present cite[data-key="${keys}"]')?.dataset.n ?? null`);
 
-// the list open with its rows after \cite{ typed at the end of the last paragraph
 async function typeCite(page) {
   await caretAfter(page, 'Invariant');
   await type(page, ' \\cite{');
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
-  // a pause before the next key, as on a slow runner, where the typing is then two entries of the
-  // history
   await sleep(1100);
 }
 
-// the insert of a citation undone, and the typing before it, which is one entry of the history or
-// more, since the tests wait for the list between keys and keys more than a second apart are two
-// entries
 async function undoCitation(page) {
   assert.equal(await undoLabel(page), 'Undo Insert Citation');
   await undo(page);
@@ -137,7 +117,6 @@ async function undoCitation(page) {
   assert.equal(await render(page), SOURCE);
 }
 
-// a paste of text onto target, as the clipboard of the browser sends it
 const paste = (page, target, text) => page.evaluate(`(() => {
   const dt = new DataTransfer();
   dt.setData('text/plain', ${js(text)});
@@ -145,8 +124,6 @@ const paste = (page, target, text) => page.evaluate(`(() => {
   return true;
 })()`);
 
-// the text of the files that npm run tex reads for the deck, with the saved files in place of the
-// files of the deck, and the tex.js that it writes from them
 function npmRunTex(files) {
   const dir = mkdtempSync(join(tmpdir(), 'tex-cite-'));
   try {
@@ -158,8 +135,6 @@ function npmRunTex(files) {
   }
 }
 
-// a save into a folder of the private file system, which the stub of showDirectoryPicker gives as
-// the folder that the person chooses, and the files of the folder after it
 const SAVE_INTO = (folder) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${js(folder)}, { create: true });
@@ -181,7 +156,6 @@ test('\\cite{ typed in a text opens the bibliography at the caret, filtered as t
     'Gómez et al., Nonlinearity 17 (2004) gomez2004',
     'Szebehely, Academic Press (1967) szebehely1967',
   ]);
-  // the list is put under the caret
   const at = await page.evaluate(`(() => {
     const l = document.querySelector('${LIST}').getBoundingClientRect();
     const c = getSelection().getRangeAt(0).getBoundingClientRect();
@@ -199,14 +173,11 @@ test('\\cite{ typed in a text opens the bibliography at the caret, filtered as t
   await page.waitFor(`document.querySelector('${LIST} li[aria-selected="true"]')?.dataset.key === 'szebehely1967'`);
   await press(page, 'Enter');
   await page.waitFor(`!document.querySelector('${LIST}')`);
-  // the citation is put after the words, in place of the typed text and of the space before it
   assert.equal(await render(page), expect([PLAIN, cited('szebehely1967')]));
   assert.equal(await undoLabel(page), 'Undo Insert Citation');
-  // the reference is drawn at once, numbered after the two papers above it
   await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="szebehely1967"]')?.dataset.n === '3'`);
   assert.deepEqual(await refKeys(page), ['koon2000', 'gomez2004', 'szebehely1967']);
   assert.match(await page.evaluate(`document.querySelector('.reveal section.present .ref[data-key="szebehely1967"]').textContent`), /Szebehely, Academic Press \(1967\)/);
-  // the caret is after the citation, and a typed character is put after it, outside the cite
   await type(page, '.');
   await sleep(50);
   assert.equal(await render(page), expect([PLAIN, cited('szebehely1967').replace('</cite></p>', '</cite>.</p>')]));
@@ -219,7 +190,6 @@ test('\\cite{ typed in a text opens the bibliography at the caret, filtered as t
   assert.equal(await render(page), expect([PLAIN, cited('szebehely1967')]));
   await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="szebehely1967"]')?.dataset.n === '3'`);
 
-  // a save writes tex.js with the reference of the new paper
   const files = await page.evaluate(SAVE_INTO('cite-save'));
   assert.deepEqual(Object.keys(files).sort(), ['index.html', 'tex.js']);
   assert.equal(files['index.html'], expect([PLAIN, cited('szebehely1967')]));
@@ -236,7 +206,6 @@ test('a comma adds a second paper to the citation, a closing brace ends it, and 
   await type(page, 'koon');
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 2`);
   await type(page, ',');
-  // the typed words before the comma are replaced by the key of the chosen paper
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
   assert.match(await lastText(page), /\\cite\{koon2000,$/);
   await type(page, '1967');
@@ -247,7 +216,6 @@ test('a comma adds a second paper to the citation, a closing brace ends it, and 
   await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="koon2000,szebehely1967"]')?.dataset.n === '1,3'`);
   await undoCitation(page);
 
-  // a closing brace inserts the citation as Enter does
   await typeCite(page);
   await type(page, 'gomez2004}');
   await page.waitFor(`!document.querySelector('${LIST}')`);
@@ -261,7 +229,6 @@ test('a comma adds a second paper to the citation, a closing brace ends it, and 
   await press(page, 'Escape');
   await page.waitFor(`!document.querySelector('${LIST}')`);
   assert.match(await lastText(page), /transfer\s\\cite\{gom$/);
-  // the key is not taken by the editor, and the caret stays in the text
   assert.equal(await page.evaluate(`document.activeElement === [...document.querySelectorAll('.reveal section.present p')].at(-1)`), true);
   await type(page, 'ez');
   await sleep(100);
@@ -312,7 +279,6 @@ test('a click on the number of a citation selects it, and the Format pane shows 
   t.after(() => page.close());
   await click(page, '.reveal section.present cite[data-key="koon2000"]');
   await page.waitFor(`!!document.querySelector('${PANEL} [data-pane="citation"] .ed-cite[data-key="koon2000"]')`);
-  // the citation is the range of the text
   assert.equal(await page.evaluate(`(() => { const f = getSelection().getRangeAt(0).cloneContents(); return f.childNodes.length === 1 && f.firstChild.localName === 'cite'; })()`), true);
   const entry = await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="koon2000"]').textContent.replace(/\\s+/g, ' ')`);
   assert.match(entry, /Wang Sang Koon, Martin W\. Lo, Jerrold E\. Marsden, and Shane D\. Ross/);
@@ -321,7 +287,6 @@ test('a click on the number of a citation selects it, and the Format pane shows 
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="koon2000"] a.doi')?.href`), 'https://doi.org/10.1063/1.166509');
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-cite a.doi')?.target`), '_blank');
 
-  // Add Paper… opens the list with a search field, and the paper chosen is added to the citation
   await page.evaluate(`document.querySelector('${PANEL} [data-pane="citation"] button.add').click()`);
   await page.waitFor(`document.activeElement === document.querySelector('${LIST} input[type=search]')`);
   await type(page, 'szeb');
@@ -333,13 +298,11 @@ test('a click on the number of a citation selects it, and the Format pane shows 
   await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="koon2000,szebehely1967"]')?.dataset.n === '1,2'`);
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="szebehely1967"] a.doi')`), null, 'a paper without a DOI is linked');
 
-  // a paper of two is taken out of the citation
   await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="szebehely1967"] button.remove').click()`);
   await page.waitFor(`!document.querySelector('${PANEL} .ed-cite[data-key="szebehely1967"]')`);
   assert.equal(await render(page), SOURCE);
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="koon2000"] button.remove')`), null, 'the only paper of a citation can be removed');
 
-  // Change Paper… replaces the paper
   await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="koon2000"] button.change').click()`);
   await page.waitFor(`document.activeElement === document.querySelector('${LIST} input[type=search]')`);
   await type(page, '1967');
@@ -376,7 +339,6 @@ test('a BibTeX entry pasted into the list is added to references.bib and cited, 
   assert.equal(files['references.bib'], `${BIB}\n${ENTRY}\n`);
   assert.equal(files['tex.js'], npmRunTex({ 'index.html': files['index.html'], 'references.bib': files['references.bib'] }));
 
-  // an entry pasted into the search field of Insert > Citation… is cited at the caret
   await caretAfter(page, 'The same tubes');
   await exec(page, 'insert.citation');
   await page.waitFor(`document.activeElement === document.querySelector('${LIST} input[type=search]')`);
@@ -402,7 +364,6 @@ test('on file: without the folder permission, the list says that the bibliograph
   await page.waitFor(`/not read/.test(document.querySelector('${LIST} .note')?.textContent ?? '')`);
   assert.equal(await page.evaluate(`document.querySelectorAll('${LIST} li[data-key]').length`), 0);
   await click(page, `${LIST} button.choose`);
-  // the list stays open, with the caret in the text
   assert.equal(await listOpen(page), true);
   const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('dialog.beeson-edit-tex input[type=file]')` });
   const files = ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty', 'index.html'].map((name) => resolve(DIR, name));

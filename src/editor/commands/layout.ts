@@ -1,11 +1,3 @@
-// the layout of a slide changed in place, as the Slide Layout of Keynote. the parts of a slide,
-// i.e. its heading, its words, its figures, its footnote, and its notes, are taken out of the
-// wrappers of the old layout and put into those of the new one: the text column of a split slide, the
-// title text of a title or a closing slide, and the sec of a section slide. the parts keep their order,
-// their steps, and their places, and the slide is written again from its own text with the
-// indentation of the file. Reset Slide writes a slide in its own layout and takes the places off
-// its elements. each command is one entry of the history
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { LAYOUTS, layoutText, sampleText, textStyle, type Layout, type NewLayout } from '../model/templates.ts';
@@ -25,8 +17,6 @@ const WRAPPER_CLASSES = ['text-column', 'title-text', 'sec', 'caption'];
 
 export type Kind = 'heading' | 'words' | 'caption' | 'foot' | 'visual' | 'other';
 
-// the wrapper of each layout that has one, and the kinds of parts that it takes. the words of a
-// figure slide are its caption at the lower left, since the plate takes the rest of the slide
 const WRAP: Partial<Record<Layout, { cls: string; takes: Kind[] }>> = {
   title: { cls: 'title-text', takes: ['heading', 'words', 'caption'] },
   closing: { cls: 'title-text', takes: ['heading', 'words', 'caption'] },
@@ -35,8 +25,6 @@ const WRAP: Partial<Record<Layout, { cls: string; takes: Kind[] }>> = {
   figure: { cls: 'caption', takes: ['words'] },
 };
 
-// the empty plate of a figure slide, as a new one has, which is added to a slide without a figure
-// and taken off again at a change to another layout
 const PLATE = '<div class="plate"></div>';
 
 const VISUAL_CLASSES = ['backdrop', 'surface', 'figure-box', 'plate', 'qr', 'plot', 'tikz'];
@@ -48,7 +36,6 @@ export function layoutOf(slide: Element | null): Layout {
   return (LAYOUT_CLASSES as Layout[]).find((l) => c?.contains(l)) ?? 'content';
 }
 
-// the kind of a part of a slide, from its tag name and its classes
 export function kindOf(name: string, classes: string[]): Kind {
   if (OTHER_TAGS.includes(name) || classes.includes('run') || classes.includes('lockup') || classes.includes('shape')) return 'other';
   if (name === 'h1' || name === 'h2') return 'heading';
@@ -58,12 +45,8 @@ export function kindOf(name: string, classes: string[]): Kind {
   return 'words';
 }
 
-// a part by its index, or a wrapper with the indices of its parts
 export type Item = number | { wrap: string; parts: number[] };
 
-// the parts of a slide in the layout, in their order. the parts that the wrapper of the layout
-// takes are put into it, and the wrapper is put where the first of them was. only the first
-// heading is the heading of the slide, and a later one counts as words
 export function arrange(kinds: Kind[], layout: Layout): Item[] {
   const first = kinds.indexOf('heading');
   const ks = kinds.map((k, i) => (k === 'heading' && i !== first ? 'words' : k));
@@ -82,8 +65,6 @@ export function arrange(kinds: Kind[], layout: Layout): Item[] {
   return out;
 }
 
-// the empty placeholders of the words of a new slide of the layout, without white space, e.g.
-// <p class="caption"></p> of a figure slide
 const holdersOf = (layout: Layout): string[] =>
   layoutText(layout, { eol: '\n', step: '' }).replace(/\s+(?=<)/g, '').match(/<p[^>]*><\/p>|<ul><li><\/li><\/ul>/g) ?? [];
 const holderOf = (body: string): string | null => {
@@ -93,18 +74,13 @@ const holderOf = (body: string): string | null => {
 
 const headingTag = (layout: Layout) => (layout === 'title' || layout === 'closing' ? 'h1' : 'h2');
 
-// the classes of a section in the layout. a class that does not name a layout is kept
 export function layoutClasses(classes: string[], layout: Layout): string[] {
   const keep = classes.filter((c) => !LAYOUT_CLASSES.includes(c));
   return layout === 'content' ? keep : [layout, ...keep];
 }
 
-// a part read from the text: lead is the comments before it, blank is true after a blank line,
-// and indent is the indentation of its first line in the file
 type Part = { name: string; classes: string[]; lead: string; blank: boolean; body: string; indent: string };
 
-// text with each line after the first that starts with from started with to instead. a line in
-// a pre or a textarea keeps its white space, which is shown
 export function shift(text: string, from: string, to: string): string {
   if (from === to || !text.includes('\n')) return text;
   const keep: Range[] = [];
@@ -122,7 +98,6 @@ export function shift(text: string, from: string, to: string): string {
   });
 }
 
-// the start tag of a section with its class attribute set to classes, and its other bytes kept
 function openTag(body: string, open: Extract<Token, { type: 'start' }>, classes: string[]): string {
   const text = body.slice(open.start, open.end);
   if (classes.join(' ') === classesOf(open).join(' ')) return text;
@@ -135,9 +110,6 @@ function openTag(body: string, open: Extract<Token, { type: 'start' }>, classes:
   return text.slice(0, a).replace(/[ \t\r\n\f]+$/, '') + text.slice(b);
 }
 
-// body is the text of a section with its edits, and step one step of the indentation of the file.
-// relayout returns the section written in the layout, and body itself when the section is
-// already in it
 export function relayout(body: string, layout: Layout, step: string): string {
   const tokens = tokenize(body);
   const open = tokens.find((t): t is Extract<Token, { type: 'start' }> => t.type === 'start');
@@ -147,11 +119,10 @@ export function relayout(body: string, layout: Layout, step: string): string {
   const base = indentAt(body, close.start);
   const startAt = new Map(tokens.filter((t) => t.type === 'start').map((t) => [t.start, t as Extract<Token, { type: 'start' }>]));
   const endAt = new Map(tokens.filter((t) => t.type === 'end').map((t) => [t.end, t]));
-  // the start tag of each wrapper of the slide, reused when the layout has the same wrapper
   const wrappers = new Map<string, string>();
   const parts: Part[] = [];
   const read = (content: Range, depth: number, prefix: string) => {
-    for (const u of unitsOf(body, childrenIn(tokens, content), content).units) {
+    for (const u of unitsOf(childrenIn(tokens, content), content).units) {
       const lead = body.slice(u.lead.start, u.lead.end);
       const space = spaceOf(lead);
       const tok = startAt.get(u.range.start)!;
@@ -164,14 +135,11 @@ export function relayout(body: string, layout: Layout, step: string): string {
         continue;
       }
       const indent = indentAt(body, u.lead.start + space.length);
-      parts.push({ name: tok.name, classes, lead: prefix + lead.slice(space.length), blank: (space.match(/\n/g) ?? []).length > 1, body: body.slice(u.range.start, u.end), indent });
+      parts.push({ name: tok.name, classes, lead: prefix + lead.slice(space.length), blank: (space.match(/\n/g) ?? []).length > 1, body: body.slice(u.range.start, u.range.end), indent });
       prefix = '';
     }
   };
   read({ start: open.end, end: close.start }, 1, '');
-  // an empty placeholder that the layout does not have is dropped, and a slide left without words
-  // gets the placeholders of a new slide of the layout after its heading, as Change Layout of
-  // PowerPoint replaces the placeholders of a slide by those of the new layout
   const same = ((LAYOUT_CLASSES as Layout[]).find((c) => classesOf(open).includes(c)) ?? 'content') === layout;
   const holders = holdersOf(layout);
   const kept = parts.filter((p) => same || p.lead.trim() || !holderOf(p.body) || holders.includes(holderOf(p.body)!));
@@ -182,7 +150,6 @@ export function relayout(body: string, layout: Layout, step: string): string {
     kept.splice(at, 0, ...holders.map((b) => ({ name: b.slice(1, 3).replace(/\W/g, ''), classes: /class="([^"]*)"/.exec(b)?.[1].split(' ') ?? [], lead: '', blank: false, body: b.replace('<ul><li></li></ul>', `<ul>${eol}${step}<li></li>${eol}</ul>`), indent: '' })));
   }
   parts.splice(0, parts.length, ...kept);
-  // a plate is laid out only on a figure slide, and on another slide it is the figure box at the right
   if (layout !== 'figure') {
     for (const p of parts) {
       if (p.name !== 'div' || !p.classes.includes('plate') || p.body === PLATE) continue;
@@ -200,7 +167,6 @@ export function relayout(body: string, layout: Layout, step: string): string {
     return (p.blank ? eol : '') + eol + ind(d) + shift(p.lead + text, p.indent, ind(d));
   };
   let out = openTag(body, open, layoutClasses(classesOf(open), layout));
-  // an empty element, e.g. a span that is a step of a plot, is not a text of the caption
   const empty = (p: Part) => /^<([\w-]+)[^>]*>\s*<\/\1\s*>$/.test(p.body);
   const kinds = parts.map((p) => kindOf(p.name, p.classes)).map((k, i) => (layout === 'figure' && k === 'words' && empty(parts[i]) ? 'other' : k));
   const items = arrange(kinds, layout).filter((i) => typeof i !== 'number' || layout === 'figure' || parts[i].body !== PLATE);
@@ -218,7 +184,6 @@ export function relayout(body: string, layout: Layout, step: string): string {
 
 const navOf = (app: App): Navigator => app.nav as Navigator;
 
-// the slides of the commands: those selected in the navigator, else the current one
 function targets(app: App): Element[] {
   if (!app.pairing?.root) return [];
   const picked = app.selection.kind === 'slides' ? [...app.selection.items] : [app.current()].filter((s): s is Element => !!s);
@@ -227,12 +192,8 @@ function targets(app: App): Element[] {
 
 const stepOf = (app: App) => textStyle(app.source?.text ?? '').step;
 
-// each slide replaced by a slide of the text that write returns for it, after the comments of its
-// unit. a slide whose text write leaves as it is stays on the page
 type Page = { Beeson?: { mount?(root: Element): void } };
 
-// every step of a slide is shown while it is edited, and a new slide is not marked so by reveal.js.
-// its fragments are marked as shown, and its highlights are applied again
 function showSteps(slide: Element): void {
   for (const f of slide.querySelectorAll('.fragment')) f.classList.add('visible');
   (window as unknown as Page).Beeson?.mount?.(slide);
@@ -275,8 +236,6 @@ export async function changeLayout(app: App, slides: Element[], layout: Layout):
     const o = origins.get(s);
     return o && o.last === body ? o : { text: body, layout: layoutOf(s), last: body };
   });
-  // the places among the words of each slide of the text elements that the fit of its text column shrank. a
-  // slide written from its first text has none
   const shrunk = slides.map((s, k) => (layout === 'split' || from[k].text !== from[k].last ? [] : wordsOf(app, s).flatMap((el, i) => (fitted.has(el) && el.classList.contains('small') ? [i] : []))));
   const codes = slides.map((s) => drawnCodes(app, s));
   const out = await rewrite(app, slides, (_, s) => {
@@ -295,9 +254,6 @@ export async function changeLayout(app: App, slides: Element[], layout: Layout):
   return out;
 }
 
-// the QR codes of a slide in their order, each with the center of its drawn box and its width in
-// slide px, its computed position, and the translate and the width of its style, or null for a
-// code that is not shown. the center does not move with a rotate about it
 type Drawn = { x: number; y: number; width: number; position: string; translate?: string; w?: string } | null;
 function drawnCodes(app: App, slide: Element): Drawn[] {
   if (!(slide instanceof HTMLElement)) return [];
@@ -313,13 +269,6 @@ function drawnCodes(app: App, slide: Element): Drawn[] {
   });
 }
 
-// each QR code with a translate or a width keeps its place in the new layout of slide. a code that
-// the theme places in the same way in both layouts keeps the translate and the width of its style,
-// also where the slide was written from its text before a run of changes. a code that the theme
-// places in another way, e.g. at the lower right of a closing slide and in the flow elsewhere, keeps
-// the box drawn before the change, as PowerPoint keeps an object that is not a placeholder: its
-// translate is written again, and its width where the default width of the layout differs. a code
-// without a translate and a width takes the place and the size of the layout
 function keepCodes(app: App, slide: Element, was: Drawn[]): void {
   [...slide.querySelectorAll<HTMLElement>('.qr')].forEach((q, i) => {
     const old = was[i];
@@ -331,8 +280,6 @@ function keepCodes(app: App, slide: Element, was: Drawn[]): void {
     put('width', old.w);
     const at = drawnCodes(app, slide)[i];
     if (!at || at.position === old.position) return put('translate', old.translate);
-    // the width of the text before the run, none, or the old width, whichever draws the old size,
-    // so that a width written by an earlier change is taken off where the layout draws it by default
     const fits = (w: string | undefined) => {
       put('width', w);
       return drawnCodes(app, slide)[i]?.width === old.width;
@@ -340,8 +287,6 @@ function keepCodes(app: App, slide: Element, was: Drawn[]): void {
     if (!fits(first) && !fits(undefined) && !(old.w !== undefined && fits(old.w))) put('width', `${Math.round(old.width)}px`);
     const moved = drawnCodes(app, slide)[i]!;
     const now = app.doc.tagState(q).style.translate;
-    // a translate that is not written in px, e.g. with a bare 0 or as a share of the box, is read
-    // from the computed style, where a share is of the drawn box of the code, which is square
     const drawn = () => {
       const [a = '0', b = '0'] = getComputedStyle(q).translate.split(/\s+/);
       const px = (v: string) => (v.endsWith('%') ? parseFloat(v) / 100 * moved.width : parseFloat(v)) || 0;
@@ -354,16 +299,10 @@ function keepCodes(app: App, slide: Element, was: Drawn[]): void {
   });
 }
 
-// the text of each slide before a run of changes of layout without an edit between them, and its
-// layout. a change back to this layout gives the text again, as the file has it
 const origins = new WeakMap<Element, { text: string; layout: Layout; last: string }>();
 
-// the text elements set in the style Small by the fit of a text column in this session. an undo and a redo put
-// the same elements back, hence a change of layout away from Split takes the style off these
-// text elements only, and a text element in the style Small before the change to Split keeps it
 const fitted = new WeakSet<Element>();
 
-// the parts of a slide of the kind words, in their order, which a change of layout keeps
 function wordsOf(app: App, slide: Element): Element[] {
   const open = (el: Element) => !!app.pairing?.elements.get(el)?.open;
   const parts = [...slide.children].filter(open).flatMap((el) =>
@@ -371,7 +310,6 @@ function wordsOf(app: App, slide: Element): Element[] {
   return parts.filter((el) => kindOf(el.localName, [...el.classList]) === 'words');
 }
 
-// true when a text of the text column runs past its bottom, or into the footnote at its bottom
 function overflows(textColumn: Element): boolean {
   const foot = textColumn.querySelector(':scope > .foot');
   const box = textColumn.getBoundingClientRect();
@@ -379,11 +317,6 @@ function overflows(textColumn: Element): boolean {
   return [...textColumn.children].some((el) => !el.matches('.foot, aside') && el.getBoundingClientRect().bottom > limit + 1);
 }
 
-// the texts moved into the text column of a split slide are shrunk to fit it, as PowerPoint shrinks the
-// text of a placeholder: the paragraphs and the lists of the text column are set in the style Small,
-// within the scale of the theme. a text that still does not fit keeps the mark of overflow.ts. a
-// slide that is not shown is laid out for the measure, hidden, since reveal.js does not lay out a
-// slide away from the current one
 function fitPanel(app: App, slide: Element): void {
   const textColumn = slide.querySelector(':scope > .text-column');
   if (!textColumn || !(slide instanceof HTMLElement) || !laidOut(slide, () => overflows(textColumn))) return;
@@ -396,9 +329,6 @@ function fitPanel(app: App, slide: Element): void {
   }
 }
 
-// the elements of a slide with a place of the editor: a translate, a rotate, the width of a
-// figure that the editor resizes, or the z-index and the position of a layer command. the translate
-// of a shape or a line is its place on the slide, which a reset keeps
 const SIZED = 'img, video, .qr, tycho-viewer';
 const KEPT = '.shape, svg.line';
 function placed(app: App, slide: Element): Element[] {
@@ -414,10 +344,6 @@ function needsReset(app: App, slide: Element): boolean {
   return relayout(body, layoutOf(slide), stepOf(app)) !== body || placed(app, slide).length > 0;
 }
 
-// the chooser: a grid of a sample slide of each layout, as the master slides of Keynote and the
-// layout gallery of PowerPoint, with the name of the layout under it and the layout of the slide
-// marked. a click or Enter on a tile changes the layout of the selected slides. it has the look of
-// the New Slide gallery of commands/slide.ts, with larger tiles
 const TILE = 120;
 const CSS = `
 .beeson-edit-gallery.beeson-edit-layouts { width: max-content; }
@@ -427,8 +353,6 @@ const CSS = `
 .beeson-edit-layouts .tile[aria-selected="true"] span:last-child { color: var(--g-select); font-weight: 600; }
 `;
 
-// the sample slide of a layout, parsed from its text, for the tiles of this chooser and of the New
-// Slide gallery of commands/slide.ts
 export function sample(layout: NewLayout): Element {
   const t = document.createElement('template');
   t.innerHTML = sampleText(layout);
@@ -446,8 +370,6 @@ function closeChooser(back = true): void {
   if (back && c.anchor?.isConnected) c.anchor.focus({ preventScroll: true });
 }
 
-// the chooser beside the menu item that opened it, as a submenu, else under its anchor, at the right
-// of a row of the navigator, or else in the window
 function placeChooser(dialog: HTMLElement, anchor: Element | null, item: DOMRect | null = null): void {
   const w = dialog.offsetWidth;
   const h = dialog.offsetHeight;
@@ -482,7 +404,6 @@ export function openChooser(app: App, anchor: Element | null, item: DOMRect | nu
   grid.setAttribute('aria-label', 'Layouts');
   const stage = app.slides() as HTMLElement;
   const deck = { width: stage.offsetWidth || 1920, height: stage.offsetHeight || 1080 };
-  // slides of several layouts mark none of them, as Multiple Layouts in Keynote
   const now = new Set(targets(app).map(layoutOf)).size > 1 ? null : layoutOf(slide);
   const tiles = LAYOUTS.map((layout) => {
     const tile = document.createElement('button');
@@ -547,9 +468,6 @@ export function install(app: App): void {
       }),
     ),
     {
-      // arg is the button that opens the chooser, or the argument of a context menu. from a menu,
-      // the tiles are opened beside the item, as the Layout gallery of the menu of a thumbnail in
-      // PowerPoint
       id: 'slide.layoutChooser',
       label: 'Layout',
       menu: { bar: 'Slide', group: 'layout', order: 55 },
@@ -574,8 +492,6 @@ export function install(app: App): void {
           for (const el of placed(a, s)) {
             const has = a.doc.tagState(el).style;
             const style: Record<string, null> = {};
-            // the box of a backdrop resized by its grips is put back with its offset, and the height of a tycho viewer,
-            // which a resize writes with its width, is taken off with the width
             const box = el.matches('.backdrop');
             const viewer = el.matches('tycho-viewer');
             for (const k of ['translate', 'rotate', 'width', 'height', 'z-index', 'position']) if (k in has && (box || k !== 'width' || el.matches(SIZED)) && (box || viewer || k !== 'height') && (k !== 'translate' || !el.matches(KEPT))) style[k] = null;
@@ -587,7 +503,5 @@ export function install(app: App): void {
     },
   ];
   for (const d of defs) app.commands.define(d.undoable ? { ...d, run: (a, arg) => navOf(a).keeping(d.id, () => d.run(a, arg)) } : d);
-  // the commands of the order, the groups, the locks, and the rotation, from the same install line
-  // of main.ts
   installOrder(app);
 }

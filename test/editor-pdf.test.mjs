@@ -1,9 +1,3 @@
-// the PDF figures of the editor. a PDF is inserted into an empty figure box as a render for each
-// mode, in the tones of the mode. another page and Match the Mode are rendered again from the PDF,
-// and an image is replaced with a PDF. each edit is checked byte for byte after an undo and a redo, and the
-// saved renders carry the hash that npm run check reads. the PDF of test/pages/figure.pdf has a
-// white page 1 with a black line across its middle, and a blue box on a transparent page 2
-
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -39,7 +33,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 const slideWith = (text) => readFileSync(LAYOUTS, 'utf8').split('<section').slice(1).findIndex((s) => s.includes(text));
 
 async function load() {
@@ -79,7 +72,6 @@ function inScope(page, text) {
   assert.deepEqual(now, []);
 }
 
-// the bytes of the shown file of each image of the current slide with data-pdf, by its class
 const RENDERS = `(async () => {
   const out = {};
   for (const img of document.querySelectorAll('.reveal section.present img[data-pdf]')) {
@@ -89,7 +81,6 @@ const RENDERS = `(async () => {
   return out;
 })()`;
 
-// the color of the pixel of a render at the fractions x and y of its size, as #rrggbb and alpha
 async function pixel(page, bytes, x, y) {
   return page.evaluate(`(async () => {
     const bitmap = await createImageBitmap(new Blob([new Uint8Array(${JSON.stringify(bytes)})], { type: 'image/png' }));
@@ -121,14 +112,12 @@ test('a PDF inserted into an empty figure box is a render for each mode, in the 
   assert.deepEqual(Object.keys(renders).sort(), ['for-dark', 'for-light']);
   for (const [cls, mode] of [['for-dark', 'dark'], ['for-light', 'light']]) {
     const { bytes, width, height } = renders[cls];
-    // page 1 is 400 by 200 pt, fitted into 3840 by 2160 px
     assert.deepEqual([width, height], [3840, 1920]);
     assert.equal(hashOf(new Uint8Array(bytes)), renderHash(PDF_BYTES, 1, mode, TONES[mode]));
-    // the white of the page is the background of the mode, and the black line its text
     assert.deepEqual(await pixel(page, bytes, 0.02, 0.05), { hex: TONES[mode].bg, a: 255 });
     assert.deepEqual(await pixel(page, bytes, 0.5, 0.5), { hex: TONES[mode].text, a: 255 });
   }
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });
 
@@ -145,7 +134,6 @@ test('the page of a PDF figure and Match the Mode render the PDF again', async (
   await frames(page);
   const pair = await render(page);
 
-  // page 2 of the PDF, drawn on a transparent page
   await exec(page, 'media.pdfPage', { page: 2 });
   await waitText(page, 'data-page="2"');
   const second = await render(page);
@@ -153,15 +141,12 @@ test('the page of a PDF figure and Match the Mode render the PDF again', async (
   await undoRedo(page, pair, second);
   const renders = await page.evaluate(RENDERS);
   assert.equal((await pixel(page, renders['for-dark'].bytes, 0.02, 0.05)).a, 0);
-  // the box of page 2 is blue, a hue that is kept in the dark mode
   const blue = (await pixel(page, renders['for-light'].bytes, 0.5, 0.5)).hex;
   assert.ok(parseInt(blue.slice(5, 7), 16) > parseInt(blue.slice(1, 3), 16), blue);
 
-  // a page past the last one is refused, and the text is kept
   await assert.rejects(exec(page, 'media.pdfPage', { page: 3 }), /the PDF has 2 pages/);
   assert.equal(await render(page), second);
 
-  // Match the Mode off: one image in the colors of the PDF, shown in both modes
   assert.equal((await state(page, 'media.matchMode')).checked, true);
   await exec(page, 'media.matchMode');
   await page.waitFor(`!window.BeesonEditor.render().includes('for-light" src="media/figure-page-2')`, 30000);
@@ -171,21 +156,17 @@ test('the page of a PDF figure and Match the Mode render the PDF again', async (
   const single = await page.evaluate(RENDERS);
   assert.deepEqual(Object.keys(single), ['none']);
   assert.equal(hashOf(new Uint8Array(single.none.bytes)), renderHash(PDF_BYTES, 2, null, null));
-  // in the colors of the PDF, a transparent page is white, as in a PDF viewer
   assert.deepEqual(await pixel(page, single.none.bytes, 0.02, 0.05), { hex: '#ffffff', a: 255 });
   assert.equal((await state(page, 'media.matchMode')).checked, false);
 
-  // and on again: a render for each mode
   await exec(page, 'media.matchMode');
   await waitText(page, 'class="for-light"');
   assert.match(await render(page), /<img class="for-dark" src="media\/figure-page-2-dark-2\.png" data-pdf="media\/figure\.pdf" data-page="2">\s*<img class="for-light" src="media\/figure-page-2-light-2\.png" data-pdf="media\/figure\.pdf" data-page="2">/);
   inScope(page, await render(page));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });
 
-// a deck of pictures with a step, written next to test/pages/figure.pdf, for the edits of a
-// picture that the layouts deck does not have
 const DECK = 'test/pages/pdf-figures.tmp.html';
 const STEP = '<img class="fragment fade-up" src="../../demo/figure-light.png" style="width: 600px; rotate: 5deg" data-fragment-index="2" alt="A plot">';
 const VIDEOS = '<video class="for-dark fragment" src="../../demo/clip-dark.mp4" muted loop data-autoplay></video>\n  <video class="for-light fragment" src="../../demo/clip-light.mp4" muted loop data-autoplay></video>';
@@ -216,7 +197,6 @@ const showSlide = async (page, title) => {
   await frames(page);
 };
 
-// the tag of each picture of the current slide, by its mode
 const tagsOf = (text, title) => {
   const slide = text.split('<section').find((s) => s.includes(`<h2>${title}</h2>`));
   return slide.match(/<(img|video)\b[^>]*>/g);
@@ -239,7 +219,7 @@ test('a picture with a step replaced with a PDF is a pair whose new image keeps 
       for (const part of [/\bfragment\b/, /\bfade-up\b/, /data-fragment-index="2"/, /width: 600px/, /rotate: 5deg/, /alt="A plot"/, /data-pdf="media\/figure\.pdf"/]) assert.match(tag, part, tag);
     }
     inScope(page, await render(page));
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -259,7 +239,7 @@ test('a video of a pair replaced with a PDF is a pair of renders that keeps the 
     assert.equal(tags.length, 2, tags.join('\n'));
     assert.match(tags[0], /^<img class="for-dark fragment" src="media\/figure-dark\.png" data-pdf="media\/figure\.pdf">$/);
     assert.match(tags[1], /^<img class="for-light fragment" src="media\/figure-light\.png" data-pdf="media\/figure\.pdf">$/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
@@ -287,14 +267,12 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
     assert.equal(await page.evaluate(`!!document.querySelector(${JSON.stringify(ASK)})`), false);
     await first;
     assert.match(await render(page), /<img class="for-dark" src="media\/figure-dark\.png" data-pdf="figure\.pdf" alt="A plot">/);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
   }
 });
 
-// the messages of a new page and of Match the Mode of the PDF figure outside a session, whose PDF is
-// answered with status, or with the promise of the expression answer
 async function refused(status, answer = `Promise.resolve(new Response('', { status: ${status} }))`) {
   writeDeck();
   const page = await browser.newPage();
@@ -318,7 +296,6 @@ async function refused(status, answer = `Promise.resolve(new Response('', { stat
   }
 }
 
-// a 413 without the header of the edit command is not the limit of the relay
 test('a PDF figure whose PDF is answered with 404, or with 413 by a server other than the edit command, is said to be not found next to the deck', { timeout: 300_000 }, async () => {
   for (const status of [404, 413]) assert.deepEqual(await refused(status), Array(2).fill('figure.pdf is not found next to the deck'), `status ${status}`);
 });
@@ -333,8 +310,6 @@ test('a PDF figure whose request fails on the network cannot be read now', { tim
   assert.deepEqual(await refused(0, "Promise.reject(new TypeError('Failed to fetch'))"), Array(2).fill('figure.pdf cannot be read now (the request failed). Try again later'));
 });
 
-// a talk of index.html with a PDF figure of media/figure.pdf, the names of the case of a talk, whose
-// page is answered the PDF, or the answer that the function window.__pdf returns once it is set
 const TITLED = 'test/pages/pdf-title.tmp';
 function titledPage() {
   const layouts = readFileSync(LAYOUTS, 'utf8').replaceAll('"../../', '"../../../');
@@ -350,15 +325,12 @@ function titledPage() {
 }
 after(() => rmSync(TITLED, { recursive: true, force: true }));
 
-// the answers of the PDF in the title bar test, with a word of their message
 const TITLED_ANSWERS = [
   ["Promise.resolve(new Response('', { status: 502 }))", '502'],
   ["Promise.resolve(new Response('', { status: 413, headers: { 'x-edit-command': '1' } }))", '16 MB'],
   ["Promise.reject(new TypeError('Failed to fetch'))", 'Try again later'],
 ];
 
-// the state of the title bar is left out when it does not fit, hence a message that is too long
-// is never seen. a 413 of the edit command carries its header
 test('the message of a PDF figure whose PDF cannot be read is shown in the title bar of a laptop of 1280 px outside a session, also after an edit', { timeout: 300_000 }, async () => {
   const script = titledPage();
   for (const dirty of [false, true]) {
@@ -372,7 +344,6 @@ test('the message of a PDF figure whose PDF cannot be read is shown in the title
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
       await showSlide(page, 'A PDF figure');
       await click(page, await centerOf(page, '.reveal section.present figure img'));
-      // the checkbox Match the Mode, which an edit may move in the pane
       const box = () => page.evaluate(`(() => { const r = document.querySelector('input[data-command="media.matchMode"]').closest('label').getBoundingClientRect(); return { x: r.left + 8, y: r.top + r.height / 2 }; })()`);
       if (dirty) {
         await click(page, await box());
@@ -408,6 +379,6 @@ test('an image of a pair replaced with a PDF is a PDF figure, with the alt of ea
   assert.equal(text, page.source.replace(PAIR, dark).replace('<img class="for-light" src="../../demo/figure-light.png" alt="A figure, light version">', light));
   await undoRedo(page, page.source, text);
   inScope(page, text);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
   await page.close();
 });

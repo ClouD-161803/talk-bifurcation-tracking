@@ -356,7 +356,7 @@ One named data set of an animated plot, chosen with its button under the plot.
 
 ## Tagged version
 
-A version given a tag with Tag this version in Version History. A tagged version is kept when the history is shortened, together with the versions after it.
+A version given a tag with Tag this version in Version History. A tagged version is kept when the history is shortened.
 
 Avoid "named version".
 

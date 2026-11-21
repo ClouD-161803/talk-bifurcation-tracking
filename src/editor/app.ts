@@ -1,9 +1,3 @@
-// the shared state of the editor, which main.ts creates once and passes to the install function of
-// each module. it holds the file and its pairing with the page, the pending tag edits, the one
-// history, and the registry of commands. a module reaches another one through the services below,
-// which each module sets at its install. app.invalidate() batches the refresh of the modules after
-// an event, and app.region() names the part of the window that has the focus
-
 import type { Source } from './source.ts';
 import type { Pairing } from './render.ts';
 import type { TagEdit } from './tags.ts';
@@ -13,7 +7,6 @@ import { Commands } from './commands.ts';
 import type { Selection } from './selection.ts';
 import type { Doc } from './model/doc.ts';
 
-// the part of reveal.js that the editor uses
 export type Deck = {
   isReady(): boolean;
   configure(options: Record<string, unknown>): void;
@@ -30,43 +23,30 @@ export type Deck = {
   on(type: string, listener: () => void): void;
 };
 
-// what a refresh is for: a text typed, the selection, the current slide, the slides or elements
-// added, removed, or moved, and the size of the window or of a pane
 export type Flag = 'content' | 'selection' | 'slide' | 'structure' | 'layout';
 export const ALL: Flag[] = ['content', 'selection', 'slide', 'structure', 'layout'];
 
-// the part of the window with the focus, which decides where a key is taken
 export type Region = 'canvas' | 'text' | 'field' | 'navigator' | 'notes' | 'inspector' | 'dialog';
 
-// the platform of the keys: the command modifier is ⌘ on a Mac and Ctrl elsewhere
 export type Platform = 'mac' | 'other';
 
-// starting, waiting for a file, loaded, or error
 export type State = 'starting' | 'waiting' | 'loaded' | 'error';
 
-// the state shown in the toolbar, and its list of the texts that cannot be edited as its title
 export type Line = { text: string; warn: boolean; title: string };
 
-// open is emitted after files.open has paired a text with the page, and session at begin() and
-// end() of the session port
 export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open' | 'session' | 'sheet';
 
-// a text element paired with the file is editable in place
 export const HOST = '[contenteditable="true"]';
 
-// the services of the modules, each set by the module named in its comment
 export interface Files {
-  // file/files.ts: the file, its saves, and the state line
   open(text: string, fresh?: boolean): void;
   render(): string;
   save(): Promise<void>;
   saveAs(): Promise<void>;
   openFile(): Promise<void>;
-  // the show at hash, in place or in a new tab, with its window, or null when it is not played
   present(hash?: string, tab?: boolean): Promise<{ win: Window | null } | null>;
   toggleAutosave(): void;
   line(): Line;
-  // the dialog of the texts that cannot be edited, and the dialog that asks before Open or Present
   showProblems(): void;
   closeProblems(): void;
   problemsShown(): boolean;
@@ -75,23 +55,17 @@ export interface Files {
 }
 
 export interface Follow {
-  // file/follow.ts: the file followed while the editor is open. start() begins after the first
-  // read of the file, read() and written() tell it the text of the file read by an open or written
-  // by a save, and begin() and end() bracket a save
   start(): Promise<void>;
   read(text: string): void;
   written(text: string): void;
   begin(): void;
   end(): void;
-  // the edits merged into the file of target when it changed since it was read: same when it did
-  // not change, other when it holds another deck, which a save then overwrites
   merge(target: FileSystemFileHandle): Promise<'same' | 'other' | 'merged' | 'cancelled'>;
   line(): string | null;
   status(): { changed: number[]; stale: number[] | null; watching: boolean };
 }
 
 export interface Drafts {
-  // file/drafts.ts: the unsaved edits kept in the storage of the browser
   keepSoon(): void;
   drop(): void;
   hasDraft(): boolean;
@@ -101,7 +75,6 @@ export interface Drafts {
 }
 
 export interface Notes {
-  // notes.ts: the notes pane under the slide, and its button in the status bar
   readonly button: HTMLButtonElement;
   shown(): boolean;
   toggle(): void;
@@ -111,29 +84,21 @@ export interface Notes {
 }
 
 export interface MathPop {
-  // text/mathpop.ts: the TeX field of a formula
   isOpen(): boolean;
-  // into is the entry of the insert of a new formula, which its TeX is written into
   open(container: Element, into?: Entry, closed?: () => void): void;
   close(back?: boolean): void;
   setMath(container: Element, tex: string): Promise<void>;
-  // holds the keys typed until the next open, which types them into its field, and returns the
-  // release of the hold for a command that opens nothing
   hold(): () => void;
-  // the formula whose TeX field has the focus with all of its TeX selected and unchanged, as the
-  // field opens, or null
   wholeTex(): Element | null;
 }
 
 export interface Typing {
-  // text/typing.ts: the editable text elements, and a text element put back by the history
   attach(): void;
   markMath(root: Element): void;
   restoreHost(host: Element, content: string): Promise<void>;
 }
 
 export interface Selector {
-  // selection.ts: the selected element for the modules of today
   select(el: Element | null): void;
   movableOf(target: Element | null): Element | null;
   mark(pairing: Pairing | null): void;
@@ -141,18 +106,15 @@ export interface Selector {
 }
 
 export interface Pane {
-  // nav.ts and steps.ts: a pane shown with its button in the status bar
   readonly pane: HTMLElement;
   readonly button: HTMLButtonElement;
   readonly shown: boolean;
-  // nav.ts: whether the pane is drawn, which the width of the window can prevent while it is shown
   readonly seen?: boolean;
   toggle(): void;
   refresh(): void;
 }
 
 export interface ShownStepsSwitch {
-  // shown-steps.ts: the steps of the slide that are shown
   refresh(): void;
   reveal(el: Element): void;
 }
@@ -164,8 +126,6 @@ const detectPlatform = (): Platform => {
   return /mac|iphone|ipad/i.test(agent) ? 'mac' : 'other';
 };
 
-// true in Safari, which takes Cmd+L and Cmd+R of Keynote before the page, where Chrome and Firefox
-// pass them on. the URL parameter edit-browser=safari sets it for a test
 const detectSafari = (): boolean => {
   const forced = new URLSearchParams(location.search).get('edit-browser');
   if (forced) return forced === 'safari';
@@ -174,32 +134,20 @@ const detectSafari = (): boolean => {
 
 export class App {
   source: Source | null = null;
-  // the text last read from the file or written to it. it differs from the source after a save
-  // during which an edit was made, and the deck is clean when it renders as this text
   saved: string | null = null;
   pairing: Pairing | null = null;
-  // the step, the offset, and later any attribute of each element changed since the last save
   readonly tagEdits = new Map<Element, TagEdit>();
   handle: FileSystemFileHandle | null = null;
   state: State = 'starting';
   dirty = false;
-  // the message of the last save or error, shown until the next edit
   note: { text: string; warn: boolean } | null = null;
-  // the session of the synchronous editor after its begin(), see session/port.ts. Save then
-  // calls save() of its client, the file is neither written nor followed, and status is shown in
-  // the state line
-  session: { status: string | null; save(): Promise<void> | void } | null = null;
+  session: { status: string | null; save(): Promise<void> | void; sent(): Promise<void> } | null = null;
   autosave = false;
-  // the texts of the current slide that run past its edge
   overflow = 0;
-  // those of them drawn over a figure of the slide
   overFigure = 0;
-  // the state line as last reported
   line: Line = { text: '', warn: false, title: '' };
   readonly platform: Platform = detectPlatform();
   readonly safari: boolean = detectSafari();
-  // the box of the menu item whose command runs, until the task of the run ends, e.g. for the
-  // layout tiles that Layout opens beside its item
   menuItem: DOMRect | null = null;
   readonly history: History;
   readonly commands: Commands;
@@ -254,8 +202,6 @@ export class App {
     return this.deck()?.getCurrentSlide() ?? null;
   }
 
-  // the slide of el is shown at the steps at which el is seen, e.g. for an undo of a change on
-  // another slide
   showSlide(el: Element): void {
     if (this.history.quiet) return;
     const d = this.deck();
@@ -263,13 +209,10 @@ export class App {
     if (d && section) {
       const was = d.getCurrentSlide();
       const at = d.getIndices();
-      // a current slide taken off the page, e.g. by an undo, is first replaced by the slide at its
-      // index, since reveal.js would otherwise animate from it
       if (!was?.isConnected) d.slide(at.h, at.v);
       const { h, v = 0 } = d.getIndices(section);
       const moved = h !== at.h || v !== (at.v ?? 0);
       if (moved || section !== d.getCurrentSlide()) d.slide(h, v);
-      // reveal.js announces a change of its index only, and not another slide put at the index
       if (!moved && d.getCurrentSlide() !== was) {
         this.emit('slide');
         this.invalidate();
@@ -284,17 +227,12 @@ export class App {
     return d ? d.getIndices(slide).h + 1 : null;
   }
 
-  // the focused text of a slide with the caret in it, apart from a formula
   caretHost(): Element | null {
     const active = document.activeElement, sel = getSelection();
     const host = active?.matches('mjx-container') ? null : this.hostOf(active);
     return host && sel?.rangeCount && active!.contains(sel.anchorNode) ? host : null;
   }
 
-  // els selected by an undo or a redo. a caret left in a text of one of them keeps the text as the
-  // selection, since the keys go to the text of the caret. a display among them is an object, hence
-  // its formula takes the focus, as at a click on it. a caret in another text is taken off, as in
-  // Keynote, since the keys would else go to the text and the commands to els
   frame(els: Element[]): void {
     const host = this.caretHost();
     const formula = host?.matches('div.math') && els.includes(host) ? host.querySelector<HTMLElement>('mjx-container') : null;
@@ -307,13 +245,11 @@ export class App {
     this.selection.set('elements', els);
   }
 
-  // the editable text element around target, on a slide
   hostOf(target: EventTarget | null): Element | null {
     const host = target instanceof Element ? target.closest(HOST) : null;
     return host && this.slides().contains(host) ? host : null;
   }
 
-  // the viewport of reveal.js is laid out again, e.g. after a pane was shown or resized
   relayout(): void {
     this.deck()?.layout();
     this.emit('resize');
@@ -329,7 +265,6 @@ export class App {
     for (const fn of this.listeners.get(event) ?? []) fn();
   }
 
-  // every change passes here: the state is shown, and the drafts and the autosave are scheduled
   markDirty(): void {
     if (!this.dirty) {
       this.dirty = true;
@@ -344,16 +279,11 @@ export class App {
     this.emit('report');
   }
 
-  // an error of a button or a key, shown in the state until the next edit
   fail(e: unknown): void {
     this.note = { text: e instanceof Error ? e.message : String(e), warn: true };
     this.report();
   }
 
-  // refresh is called once after the event in which one of flags was invalidated, with every flag
-  // invalidated in the event, and the modules are refreshed in the order of their install. the
-  // refresh is run in a microtask rather than an animation frame, since a pane is read right after
-  // an action in the tests of today
   onRefresh(flags: Flag[], refresh: (flags: ReadonlySet<Flag>) => void): void {
     this.refreshers.push({ flags, refresh });
   }
@@ -365,7 +295,6 @@ export class App {
     queueMicrotask(() => this.flush());
   }
 
-  // the refresh that is due is run now, e.g. before the state is read by a test
   flush(): void {
     this.scheduled = false;
     const flags = this.pending;
@@ -377,18 +306,11 @@ export class App {
   region(): Region {
     const active = document.activeElement;
     if (!(active instanceof Element) || active === document.body) return 'canvas';
-    // a popover, e.g. the grid of Insert Table, leaves the toolbar and the commands enabled
     if (active.closest('.beeson-math, .beeson-edit-dialog:not([hidden]), dialog[open]:not([data-popover])')) return 'dialog';
-    // a slider, a checkbox, a button, or a list does not have an undo of its own, hence its region
-    // is that of the pane around it
     if (active.matches('textarea, input:not([type=range], [type=checkbox], [type=radio], [type=button], [type=color])')) return 'field';
     if (active.closest('aside.notes')) return 'notes';
-    // a formula, or a text without a caret, focused in an object that is framed takes the keys of the
-    // slide, e.g. a new display after its TeX field is closed. a caret in a text keeps the keys of the
-    // text, also where an undo framed its text element
     if (this.caretHost() || (this.hostOf(active) && !(this.selection.kind === 'elements' && this.selection.items.some((el) => el.contains(active))))) return 'text';
     if (active.closest('.beeson-edit-nav')) return 'navigator';
-    // the object list of navigator/objects.ts takes its own keys, as a pane of controls
     if (active.closest('.beeson-edit-inspector, .beeson-edit-side, .beeson-edit-objects')) return 'inspector';
     return 'canvas';
   }

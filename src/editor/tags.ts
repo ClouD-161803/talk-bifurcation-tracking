@@ -1,22 +1,6 @@
-// the start tag of an element with a TagEdit applied, i.e. with target values for some of its
-// attributes, classes, and declarations of its style. the fields fragment, index, and translate
-// are the step at which the element is shown and the offset it was dragged by, kept as fields of
-// their own since the Steps pane and the moves of the editor read them. every other byte of the
-// tag is copied from the file. an attribute that is not changed keeps its bytes, and so does each
-// class and each declaration of a changed attribute that is not changed itself
-
 import { REFERENCE_IN_ATTR, decodeAttr, type Attr, type Range } from './tokens.ts';
 
 export type Translate = { x: number; y: number };
-// each field is a target value, and a field or a key left undefined is not changed. in attrs and
-// style, null removes the attribute or the declaration, and in classes, false removes the class.
-// an empty string in attrs is written as an attribute without a value, e.g. muted. the fields
-// fragment, index, and translate take precedence over the class fragment, the attribute
-// data-fragment-index, and the declaration translate of the maps. order gives the names of the
-// attributes, the classes, and the declarations of a tag in their order, e.g. those of the tag
-// before an edit that is undone. those of the file that it names are written in this order, e.g.
-// after an undo across a save, and a new one is written before the first one that follows it
-// there, else at the end
 export type TagEdit = {
   attrs?: Record<string, string | null>;
   classes?: Record<string, boolean>;
@@ -28,10 +12,8 @@ export type TagEdit = {
 };
 export type Step = { fragment: boolean; index: number | null };
 
-// a part of a written value: raw bytes kept from the file, or new text to escape
 type Part = { text: string; raw: boolean };
 
-// the index in list at which an item named name is put, by its place in order
 function placeOf<T>(order: string[] | undefined, list: T[], name: string, nameOf: (t: T) => string): number {
   const i = order ? order.indexOf(name) : -1;
   if (i < 0) return list.length;
@@ -39,8 +21,6 @@ function placeOf<T>(order: string[] | undefined, list: T[], name: string, nameOf
   return j < 0 ? list.length : j;
 }
 
-// list with the items named in order sorted by it, and the others in their places. a name that is
-// in list twice is sorted by its first item
 function reorder<T>(list: T[], order: string[] | undefined, nameOf: (t: T) => string): T[] {
   if (!order) return list;
   const sorts = (t: T) => order.includes(nameOf(t)) && list.find((u) => nameOf(u) === nameOf(t)) === t;
@@ -52,16 +32,12 @@ function reorder<T>(list: T[], order: string[] | undefined, nameOf: (t: T) => st
 const isSpace = (c: string | undefined) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 const attr = (attrs: Attr[], name: string): Attr | null => attrs.find((a) => a.name === name) ?? null;
 const px = (n: number) => `${Math.round(n)}px`;
-// a declaration value compared with white space collapsed
 const norm = (value: string) => value.trim().replace(/\s+/g, ' ');
 
-// the classes of a class value, each with its raw bytes
 const splitClasses = (raw: string | null | undefined): { raw: string; name: string }[] =>
   (raw ?? '').split(/[ \t\n\r\f]+/).filter(Boolean).map((r) => ({ raw: r, name: decodeAttr(r) }));
 const rawClasses = (attrs: Attr[]) => splitClasses(attr(attrs, 'class')?.value);
 
-// the declarations of a style value, each with its raw bytes, its property in lowercase, and its
-// value. a semicolon that ends a character reference does not end a declaration
 function rawDeclarations(value: string | null | undefined): { raw: string; name: string; value: string }[] {
   const raw = value ?? '';
   const out: string[] = [];
@@ -84,14 +60,12 @@ function rawDeclarations(value: string | null | undefined): { raw: string; name:
 
 export const classesIn = (attrs: Attr[]): string[] => rawClasses(attrs).map((c) => c.name);
 
-// the step of an element as the file gives it
 export function stepIn(attrs: Attr[]): Step {
   const value = attr(attrs, 'data-fragment-index')?.value;
   const index = value === undefined || value === null || !/^\s*-?\d+\s*$/.test(value) ? null : Number(value);
   return { fragment: classesIn(attrs).includes('fragment'), index };
 }
 
-// the translation in a style, e.g. "translate: 40px -20px", in px
 export function translateIn(style: string | null | undefined): Translate | null {
   const m = (style ?? '').match(/(?:^|;)\s*translate\s*:\s*(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?\s*(?:;|$)/);
   return m ? { x: Number(m[1]), y: Number(m[2] ?? 0) } : null;
@@ -99,10 +73,6 @@ export function translateIn(style: string | null | undefined): Translate | null 
 
 export const translateText = (t: Translate): string => `${px(t.x)} ${px(t.y)}`;
 
-// edit b laid over edit a, as two edits of the same element made one after the other. a whole
-// class, style, or data-fragment-index of b replaces the classes, the declarations, or the index
-// that a sets, and a declaration translate of b replaces the field translate of a, since those of
-// a would otherwise be laid over it
 export function mergeEdit(a: TagEdit | undefined, b: TagEdit): TagEdit {
   const whole = b.attrs ?? {};
   const before: TagEdit = { ...a };
@@ -123,8 +93,6 @@ export function mergeEdit(a: TagEdit | undefined, b: TagEdit): TagEdit {
   return out;
 }
 
-// the start tag of the file read as the classes, the attributes, and the declarations of the style
-// that it has after edit, all decoded. it is the state that an undo of a tag edit records
 export type TagState = { classes: string[]; attrs: Record<string, string>; style: Record<string, string> };
 
 export function stateOf(attrs: Attr[], edit: TagEdit = {}): TagState {
@@ -146,9 +114,10 @@ export function stateOf(attrs: Attr[], edit: TagEdit = {}): TagState {
   return out;
 }
 
-// the classes and the declarations of edit, with the fields fragment and translate in them
 function classesOf(edit: TagEdit): Record<string, boolean> {
-  return edit.fragment === undefined ? { ...edit.classes } : { ...edit.classes, fragment: edit.fragment };
+  if (edit.fragment === undefined) return { ...edit.classes };
+  const { fragment: _, ...classes } = edit.classes ?? {};
+  return { fragment: edit.fragment, ...classes };
 }
 function styleOf(edit: TagEdit): Record<string, string | null> {
   if (edit.translate === undefined) return { ...edit.style };
@@ -159,13 +128,7 @@ const join = (parts: Part[][], by: string): Part[] => parts.flatMap((p, i) => (i
 
 type Cls = { raw: string; name: string; fresh: boolean };
 type Decl = { raw: string; name: string; value: string; fresh: boolean };
-// an attribute of the start tag after an edit: one of the file, with its new value or undefined
-// when it is not changed, or a new one, without attr. an attribute that does not stay is moved, or
-// put in if it is new, before the next one that stays
 type Item = { name: string; attr: Attr | null; value: Part[] | undefined; stays: boolean };
-// the start tag after an edit. changes holds the value of each attribute that changes as parts, or
-// null for an attribute to remove. classes and style are the classes and the declarations after
-// the edit, items the attributes in the order in which renderTag writes them, and names their names
 type Layout = { changes: Map<string, Part[] | null>; classes: Cls[]; style: Decl[]; items: Item[]; names: string[] };
 
 function layout(attrs: Attr[], edit: TagEdit): Layout {
@@ -206,7 +169,6 @@ function layout(attrs: Attr[], edit: TagEdit): Layout {
     else style.splice(placeOf(edit.order?.style, style, name, (d) => d.name), 0, decl);
   }
   if (edit.translate !== undefined) {
-    // the translation is compared in whole px, and a new one is put last unless order places it
     const current = translateIn(style.filter((d) => d.name === 'translate').map((d) => `translate: ${d.value}`)[0] ?? '');
     const t = edit.translate;
     const same = current === t || (!!current && !!t && px(current.x) === px(t.x) && px(current.y) === px(t.y));
@@ -232,8 +194,6 @@ function layout(attrs: Attr[], edit: TagEdit): Layout {
     if (current !== value) changes.set(name, value === '' ? [] : [{ text: value, raw: false }]);
   }
 
-  // the attributes of the file that are kept, in the order of the edit where it gives one, e.g.
-  // after an undo across a save that wrote them in another order, with the others in their place
   const order = edit.order?.attrs;
   const kept = reorder(attrs.filter((a) => changes.get(a.name) !== null), order, (a) => a.name);
   const fresh = [...changes]
@@ -249,7 +209,6 @@ function layout(attrs: Attr[], edit: TagEdit): Layout {
     items.push({ name: a.name, attr: a, value: changes.get(a.name) ?? undefined, stays: true });
   });
   put(kept.length);
-  // the attributes of the file that stay are a longest run of them in the order of the file
   const own = items.filter((i) => i.attr);
   const run = own.map(() => 1);
   const prev = own.map(() => -1);
@@ -263,17 +222,12 @@ function layout(attrs: Attr[], edit: TagEdit): Layout {
   return { changes, classes, style, items, names };
 }
 
-// the quote of an attribute in the file, or null for a value without quotes or an attribute
-// without a value
 function quoteOf(text: string, a: Attr): string | null {
   if (a.value === null) return null;
   const c = text[a.end - 1];
   return (c === '"' || c === "'") && a.end - a.start >= a.name.length + 2 ? c : null;
 }
 
-// an attribute written with the quote of the file, where raw parts keep their bytes and new parts
-// are escaped. a raw part of a value without quotes cannot hold a quote, and one is escaped anyway.
-// an empty value is written as the name alone
 function written(name: string, parts: Part[], quote: string | null): string {
   if (!parts.length) return name;
   const q = quote ?? '"';
@@ -284,10 +238,8 @@ function written(name: string, parts: Part[], quote: string | null): string {
   return `${name}=${q}${value}${q}`;
 }
 
-// the start tag at range in text with edit applied, or null when nothing changes
 export function renderTag(text: string, range: Range, attrs: Attr[], edit: TagEdit): string | null {
   const { changes, items } = layout(attrs, edit);
-  // ops at one place are applied from the last in the tag, i.e. the highest rank, to the first
   const ops: { start: number; end: number; text: string; rank: number }[] = [];
   let end = range.end - 1;
   if (text[end - 1] === '/') end--;

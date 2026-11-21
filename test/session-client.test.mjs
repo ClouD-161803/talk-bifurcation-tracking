@@ -1,27 +1,16 @@
-// the client of a session in Chrome, on the edit command started on a temporary talk folder: the
-// join, the edits of two pages that reach each other and index.html byte for byte, a structural
-// change, an undo, a change of the file from outside, a change of the head that loads the page
-// again, a change from outside of a tag that the theme reads at a mount, which loads both pages
-// again, an apply that changes the deck in part, after which the keys that the client has not read
-// reach index.html, as does a word that an input method commits at the end of a composition whose
-// held-back change cannot be made, and the guard that never sends a text that the deck did not take
-// as an edit
-
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, SIGTERM_TELLS_THE_PAGES, STATE, talk, TALK } from './helpers/client.mjs';
 import { click, clickText, drag, press, type, typeKeys } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 import { cleanPersonName, nameKey } from '../src/session/protocol.ts';
 
-// the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
-// waits for a load of each page after the counts of before, with each page in front in turn
 async function reloaded(list, before) {
   await until(async () => {
     for (const [i, page] of list.entries()) {
@@ -43,9 +32,7 @@ test('a page joins with the name typed in the dialog, and again without it', { t
     const d = document.querySelector('dialog.beeson-session-join');
     return { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, label: d.querySelector('label').textContent, focused: document.activeElement === d.querySelector('input') };
   })()`);
-  // the host and a guest read one title, which the button Join repeats
   assert.deepEqual(dialog, { title: 'Join the session', text: 'Type the name that the others will see on your edits and comments.', label: 'Your name', focused: true });
-  // the field takes 40 characters, also of emoji, which are two UTF-16 code units each
   const field = `document.querySelector('dialog.beeson-session-join input')`;
   await page.send('Input.insertText', { text: '😀'.repeat(41) });
   assert.equal(await page.evaluate(`Array.from(${field}.value).join(' ')`), Array(40).fill('😀').join(' '));
@@ -56,7 +43,6 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   await page.waitFor(ONLINE);
   assert.deepEqual(await page.evaluate(`({ name: ${C}.name, host: ${C}.host, shown: !!document.querySelector('dialog.beeson-session-join[open]'), state: ${STATE} })`), { name: 'Ada Lovelace', host: true, shown: false, state: 'Saved to index.html' });
 
-  // the wait is for the new document, since the one before the reload is complete and online as well
   await page.evaluate('location.reload()');
   await reloaded([page], [1]);
   assert.equal(await loads(page), 2);
@@ -72,7 +58,6 @@ test('a page with edit and without session loads neither theme/session.js nor th
   const page = await open(browser, `${server.edit.url}index.html?edit`, { wait: false });
   await page.waitFor('window.BeesonEditor.status().texts > 0');
   assert.equal(await page.evaluate(`performance.getEntriesByType('resource').some((e) => e.name.includes('session.js'))`), false);
-  // a script that is still on its way is not among the resources yet, hence its element is looked for
   assert.equal(await page.evaluate(`document.querySelector('script[src*="session.js"]')`), null);
   assert.equal(await page.evaluate(`'BeesonSession' in window || 'BeesonEditorSession' in window || !!document.querySelector('.beeson-session-state')`), false);
   clean(page);
@@ -106,7 +91,6 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
     assert.equal(text, before.replace('<p>First slide</p>', '<p>First slide from Ann</p>').replace('<p>Second slide</p>', '<p>Second slide from Ben</p>'));
   });
 
-  // the loads of both pages before and after each change of one page that the other page takes
   const loaded = {};
   const both = async () => [await loads(a), await loads(b)];
 
@@ -209,8 +193,6 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
   clean(a);
 });
 
-// a change of a start tag that the theme reads only at a mount is a reload of every page, also of a
-// page that sent an edit before it, and the pages show the new tag after it and take edits
 const FIGURE = '  <div class="figure-box tikz" id="tk" data-figure="two" style="width: 300px; height: 200px"></div>\n  <div id="bd" class="later"></div>\n';
 for (const [what, from, to, shown] of [
   ['data-figure of a TikZ figure', 'data-figure="two"', 'data-figure="three"', `!!document.querySelector('#tk > svg [id]')?.id.startsWith('tikz-three-')`],
@@ -251,9 +233,6 @@ for (const [what, from, to, shown] of [
   });
 }
 
-// keys typed at the end of the text element of host as the client of the page hands the next text
-// to port.apply, i.e. after the last read of the deck by the client and before the apply reads it,
-// in a composition of an input method when compose is set
 const typeAtApply = (page, host, keys, compose) => page.evaluate(`(() => {
   const port = window.BeesonEditor.session;
   const apply = port.apply;
@@ -272,9 +251,6 @@ const typeAtApply = (page, host, keys, compose) => page.evaluate(`(() => {
   };
 })()`);
 
-// an apply that changes the deck in part rejects, and the edits that the client has not read reach
-// index.html before the page loads again. around a composition, the word after it is changed before
-// the backdrop is reached, whose class taken off is a reload
 for (const [what, slide, change, typed] of [
   ['a block element inside a paragraph', '', (text) => text.replace('<p>First slide</p>', '<p>First slide, see <div class="math">\\[x^2\\]</div></p>'), [[1, 'p', 'QQQ', false]]],
   [
@@ -308,11 +284,6 @@ for (const [what, slide, change, typed] of [
   });
 }
 
-// a change from outside into the paragraph of an open composition is held back until it ends, and
-// then cannot be made, with a reload answer or with a rejection. the composing text is not sent
-// before the end, and the word that the input method commits at the end is an edit of the person
-// all the same. on a busy page, whose frames come after ended() in session.ts, the client reads
-// the committed word only from the target that ended() passes to the listeners of onReload
 const rejected = (text) => text.replace('<p>Second slide</p>', '<p>Second slide<div>q</div></p>');
 for (const [what, change, slow] of [
   ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
@@ -331,8 +302,6 @@ for (const [what, change, slow] of [
     await show(b, 'Two');
     await front(b);
     await caretAtEnd(b, el(1, 'p'));
-    // the text of a read of the client while the paragraph shows the composing text, which index.html
-    // holds once the client has sent it
     await b.evaluate(`(() => {
       const port = window.BeesonEditor.session;
       const text = port.text;
@@ -347,7 +316,6 @@ for (const [what, change, slow] of [
     await b.waitFor(`window.BeesonEditor.render().includes('<p>Second slidenih</p>')`);
     await until(async () => (await b.evaluate('window.__read')) === server.read(), 'a read of the client with the composing text shown, in index.html');
     assert.ok(server.read().includes('<p>Second slide</p>'), 'index.html does not hold the composing text');
-    // the text of each apply that resolved, to wait for the one that holds the change back
     await b.evaluate(`(() => {
       const port = window.BeesonEditor.session;
       const apply = port.apply;
@@ -363,21 +331,17 @@ for (const [what, change, slow] of [
     await b.send('Input.insertText', { text: '你好' });
     await reloaded(pages, counts);
     const text = await converge(server, pages, 'the pages and index.html to agree', 30_000);
-    // the change from outside and the committed word are each kept once
     const line = text.match(/<p>Second[^\n]*/)[0];
     assert.deepEqual([line.split('你好').length, line.replace('你好', '')], [2, marker], line);
   });
 }
 
-// every answer of the edit command to the page waits while window.__held is set
 const HOLD = `(() => {
   const f = window.fetch.bind(window);
   window.__held = true;
   window.fetch = (...a) => f(...a).then(async (r) => { while (window.__held) await new Promise((d) => setTimeout(d, 20)); return r; });
   return true;
 })()`;
-// the moves by Ben of the list of slide Two, or of the paragraph that Ann dragged when same is set,
-// while the answers to the page of Ann wait when held is set
 const MOVES = {
   'a nudge of another element': { run: async (b) => {
     await b.evaluate(`${C}.app.selection.set('elements', [${el(1, 'ul')}])`);
@@ -438,7 +402,6 @@ test('a name held by another person asks whether it is this person, says what co
   const b = await open(browser, sessionUrl(server.edit), { name: 'ann', wait: false });
   const asked = `document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent`;
   await b.waitFor(`${asked} === 'Ann has joined this deck before. Is this you?'`);
-  // the name is isolated from the text around it, which a name in a right-to-left script would reorder
   assert.equal(await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3 bdi')?.textContent`), 'Ann');
   assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
   assert.equal(
@@ -466,7 +429,6 @@ test('a name keeps an emoji with joiners and a name in a right-to-left script, a
     assert.equal(cleanPersonName(`A${c}nn`), 'Ann', code);
     assert.equal(cleanPersonName(`${c}Ann${c}`), 'Ann', code);
   }
-  // a joiner is kept only between two characters that are not spaces
   for (const j of ['\u200c', '\u200d']) {
     assert.equal(cleanPersonName(`${j}Ann ${j} Ben${j}`), 'Ann Ben');
     assert.equal(nameKey(`An${j}n`), nameKey('Ann'));
@@ -504,7 +466,6 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   assert.deepEqual(box, { inside: true, hit: true, height: 32, label: 'Saved to index.html' });
 
   const open_ = `document.querySelector('dialog.beeson-edit-dialog[open]')`;
-  // the layout height, which the transform of the animation at the open does not change
   const heights = (p) => p.evaluate(`[...${open_}.querySelectorAll('.row button')].map((b) => b.offsetHeight)`);
   const low = (list) => list.filter((h) => h < 32);
   const other = await open(browser, sessionUrl(server.edit), { ...phone, name: '', wait: false });
@@ -514,8 +475,7 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   await other.evaluate(`document.querySelector('dialog.beeson-session-join .row button.primary').click()`);
   await other.waitFor(`${open_}?.querySelector('h3').textContent === 'Ann has joined this deck before. Is this you?'`);
   assert.deepEqual(low(await heights(other)), [], 'the buttons of the taken dialog');
-  // a signal ends a process at once on Windows, where a page is thus not told the end of the session
-  if (process.platform !== 'win32') {
+  if (SIGTERM_TELLS_THE_PAGES) {
     server.edit.child.kill('SIGTERM');
     await server.edit.exited;
     server.edit = null;
@@ -530,12 +490,9 @@ test('the save state is written once in the title bar, in the title while it has
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // the texts of the save state that are drawn, in the title and in the button
   const drawn = `[...document.querySelectorAll('.beeson-edit-titlebar .doc .state, .beeson-session-state .name')].filter((el) => el.getClientRects().length).map((el) => [el.matches('.state') ? 'title' : 'button', el.textContent])`;
   const wide = await open(browser, sessionUrl(server.edit), { width: 1440, height: 900 });
   assert.deepEqual(await wide.evaluate(drawn), [['title', 'Saved to index.html']]);
-  // a title without room for the state leaves it out, as fit() of menubar.ts marks it. the texts
-  // are read in the same task, before fit() runs again
   assert.deepEqual(await wide.evaluate(`(document.querySelector('.beeson-edit-titlebar .doc').classList.add('tight'), ${drawn})`), [['button', 'Saved to index.html']]);
   const phone = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, name: 'Ben' });
   assert.deepEqual(await phone.evaluate(drawn), [['button', 'Saved to index.html']]);
@@ -552,9 +509,6 @@ test('a page that is hidden for good sends nothing after its bye, and stays out 
   const ben = await open(browser, url, { name: 'Ben Carter' });
   await front(ann);
   await ann.waitFor(`${C}.people.length === 2`);
-  // the route of every request of Ben, in order, and the number of answers of a poll that its
-  // client has read. an answer is read here in full first, so that the client reads it, takes it,
-  // and sends its next request within one turn of the tasks
   await front(ben);
   await ben.evaluate(`(() => {
     window.__sent = [];
@@ -573,14 +527,12 @@ test('a page that is hidden for good sends nothing after its bye, and stays out 
       });
     };
   })()`);
-  // an edit of Ann answers the poll of Ben that waits, hence the next poll of Ben is recorded
   await front(ann);
   await show(ann, 'One');
   await caretAtEnd(ann, el(0, 'p'));
   await typeKeys(ann, 'x');
   await front(ben);
   await ben.waitFor(`window.__sent.includes('events') && ${el(0, 'p')}.textContent === 'First slidex'`);
-  // the page is hidden for good, as at a close, and the edit command answers its poll at the bye
   const read = await ben.evaluate(`(() => {
     const before = window.__read;
     window.__sent.length = 0;

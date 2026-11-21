@@ -1,7 +1,3 @@
-// the citations of src/citations.ts and theme/beeson.css: the numbers of the citations of a slide,
-// under node, and the citations and the references of test/pages/tex/index.html in Chrome, at each
-// step, in both modes, above a footnote, after a citation is added, and in the print view
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -13,9 +9,7 @@ const PAGE = 'test/pages/tex/index.html';
 test('the citations of a slide are numbered from 1 in the order of their first citation', () => {
   const known = (key) => key !== 'lost';
   assert.deepEqual(citedOf([['a'], ['b'], ['a']], known), { labels: ['1', '2', '1'], missing: [false, false, false], keys: ['a', 'b'] });
-  // two papers at one place are written in the order of their numbers
   assert.deepEqual(citedOf([['a'], ['b', 'a'], ['c', 'd']], known), { labels: ['1', '1,2', '3,4'], missing: [false, false, false], keys: ['a', 'b', 'c', 'd'] });
-  // a key that is not in the bibliography is written in place of a number, and it is not counted
   assert.deepEqual(citedOf([['lost'], ['a', 'lost'], ['b']], known), { labels: ['lost', '1,lost', '2'], missing: [true, true, false], keys: ['a', 'b'] });
   assert.deepEqual(citedOf([['a', 'a'], []], known), { labels: ['1', ''], missing: [false, false], keys: ['a'] });
   assert.deepEqual(citedOf([], known), { labels: [], missing: [], keys: [] });
@@ -27,8 +21,6 @@ test('the tex.js of the deck holds the references of the cited entries, and the 
   assert.deepEqual(fresh.missing, ['lost1999']);
 });
 
-// the citations and the references of the slide root: the number of each citation, and each
-// reference with its text, its link, and whether it is shown
 const CITED = (root) => `((at) => {
   const refs = at.querySelector(':scope > .refs');
   return {
@@ -45,9 +37,7 @@ const CITED = (root) => `((at) => {
 const KOON = { text: '1Koon et al., Chaos 10 (2000)', venue: 'Chaos', link: 'https://doi.org/10.1063/1.166509' };
 const GOMEZ = { text: '2Gómez et al., Nonlinearity 17 (2004)', venue: 'Nonlinearity', link: 'https://doi.org/10.1088/0951-7715/17/5/002' };
 const SZEBEHELY = { text: '3Szebehely, Academic Press (1967)', venue: 'Academic Press', link: '' };
-// the citation in the notes is not numbered
 const LABELS = ['1', '2', '1,2', '3', 'lost1999', null];
-// at the start and after each of the two steps: a reference is shown with the step of its citation
 const STEPS = [[true, false, false], [true, true, false], [true, true, true]].map((shown) => ({
   labels: LABELS,
   refs: [KOON, GOMEZ, SZEBEHELY].map((ref, k) => ({ ...ref, shown: shown[k] })),
@@ -71,7 +61,6 @@ for (const mode of ['dark', 'light']) {
       seen.push(await page.evaluate(CITED('Reveal.getCurrentSlide()')));
     }
     assert.deepEqual(seen, STEPS);
-    // a step back hides the reference of its citation again
     await page.evaluate('Reveal.prev()');
     await settle();
     assert.deepEqual(await page.evaluate(CITED('Reveal.getCurrentSlide()')), STEPS[1]);
@@ -88,7 +77,6 @@ for (const mode of ['dark', 'light']) {
         small: parseFloat(number.fontSize) < 0.6 * parseFloat(words.fontSize),
         raised: number.verticalAlign,
         upright: number.fontStyle,
-        // the references are set as a footnote is, at its line, and the three of this slide are on two lines
         asFoot: ['color', 'fontSize', 'lineHeight', 'left', 'position'].every((name) => getComputedStyle(refs)[name] === foot[name]),
         bottom: getComputedStyle(refs).bottom,
         lines: Math.round(refs.offsetHeight / parseFloat(foot.lineHeight)),
@@ -115,7 +103,6 @@ test('the references of a slide with a footnote are under the footnote, and a sl
     const root = Reveal.getCurrentSlide(), refs = root.querySelector(':scope > .refs'), foot = root.querySelector('.foot');
     return {
       cited: ${CITED('root')},
-      // in the px of the slide: the references end at the line of a footnote, 50 px above the edge
       refsBottom: refs.offsetTop + refs.offsetHeight,
       footBottom: foot.offsetTop + foot.offsetHeight,
       refsTop: refs.offsetTop,
@@ -150,7 +137,6 @@ test('the citations are numbered again after one is added to a slide or taken of
     Beeson.mount(root);
     return { refs: root.querySelector('.refs') === null, footBottom: foot.offsetTop + foot.offsetHeight };
   })()`);
-  // without a citation, the footnote is at its line again
   assert.deepEqual(gone, { refs: true, footBottom: 1080 - 50 });
   assert.deepEqual(page.errors, []);
 });
@@ -161,10 +147,8 @@ test('the print view shows the references of each step on its page', { timeout: 
   const page = await browser.newPage();
   await printView(page, deckUrl(PAGE, 'print-pdf&still'));
   const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('cite')).map((s) => ({ cited: ${CITED('s')}, foot: !!s.querySelector('.foot') }))`);
-  // the last page of the slide is the step at which the theme restores the dimmed steps
   assert.deepEqual(pages.filter((p) => !p.foot).map((p) => p.cited), [...STEPS, STEPS[2]]);
   assert.deepEqual(pages.filter((p) => p.foot).map((p) => p.cited.refs.map((ref) => [ref.text, ref.shown])), [[['1Gómez et al., Nonlinearity 17 (2004)', true]]]);
-  // on a page, the footnote is above the references as in the show
   const stacked = await page.evaluate(`(() => {
     const s = [...document.querySelectorAll('.pdf-page section')].find((s) => s.querySelector('.foot')), refs = s.querySelector(':scope > .refs'), foot = s.querySelector('.foot');
     return foot.offsetTop + foot.offsetHeight === refs.offsetTop && refs.offsetHeight > 0;

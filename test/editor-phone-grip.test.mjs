@@ -1,7 +1,3 @@
-// on a phone, a touch drag of a grip of a selected paragraph resizes the paragraph and leaves the
-// deck on its slide, with the navigator or the Format pane open beside the canvas, and a tap on a
-// grip puts the caret into the paragraph (#61)
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -19,7 +15,6 @@ const PARA = '.reveal section.present > p';
 const GRIP = '.beeson-grip[data-handle="e"]';
 const js = (v) => JSON.stringify(v);
 
-// a trusted drag of one finger from the point x, y by dx, dy, in eight steps
 async function touchDrag(page, { x, y }, dx, dy) {
   const at = (k) => [{ x: x + (dx * k) / 8, y: y + (dy * k) / 8, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
   await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
@@ -27,8 +22,6 @@ async function touchDrag(page, { x, y }, dx, dy) {
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
-// a phone with pane open, on the first slide with a paragraph, which a first tap selects as a box.
-// returns the page and the center of the east grip of the paragraph
 async function selected(t, pane) {
   const page = await editorPage(browser, { page: { width: 390, height: 844, mobile: true } });
   t.after(() => page.close());
@@ -65,12 +58,9 @@ for (const pane of ['view.navigator', 'shell.format']) {
   });
 }
 
-// the grips of a small text element cover most of it on a phone, hence the second tap of the click
-// model reaches the text through them
 test('on a phone, a tap on a grip of a selected paragraph puts the caret into it and keeps its width (#61)', { timeout: 120000 }, async (t) => {
   const { page, grip } = await selected(t, null);
   const width = await page.evaluate(`document.querySelector(${js(PARA)}).getBoundingClientRect().width`);
-  // a second tap within the time of a double tap would be a double tap
   await page.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
   await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...grip, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });

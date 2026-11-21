@@ -1,18 +1,10 @@
-// Records the animated backdrops of a deck for scripts/export-pptx.mjs, in the print view of the
-// export, where each step of a slide is a .pdf-page. A recording is the layer of a PowerPoint slide
-// under the words: the ground of the slide, the elements painted under the backdrop, and the
-// canvases of the backdrop, traced on a clock that is stepped from here, hence each frame is drawn
-// at its time whatever it costs. The frames are composed on a canvas in the page and encoded there
-// with the H.264 encoder of Chrome, the WebCodecs VideoEncoder, and the MP4 file is written by
-// scripts/mp4.mjs. Everything painted over the backdrop is in the picture of the words of each step,
-// a screenshot with a transparent ground.
 import { mp4 } from './mp4.mjs';
 
 const DESIGN = { width: 1920, height: 1080 };
 
-// High profile at level 5.2, for 3840 by 2160 px at 60 frames per second
+const H264_HIGH_5_2 = 'avc1.640034';
 const config = (fps, scale, hardwareAcceleration) => ({
-  codec: 'avc1.640034',
+  codec: H264_HIGH_5_2,
   width: DESIGN.width * scale,
   height: DESIGN.height * scale,
   bitrate: 30e6,
@@ -22,17 +14,11 @@ const config = (fps, scale, hardwareAcceleration) => ({
   avc: { format: 'avc' },
 });
 
-// the software encoder of Chrome gave a mean PSNR of 41.5 dB in a trial on a Mac, against 40.2 dB
-// for the encoder of macOS, at about the same time and size, and it gives the same kind of file on
-// every system
 const ACCELERATIONS = ['prefer-software', 'no-preference'];
 
-// a clock that is stepped from Node in place of performance.now and requestAnimationFrame, in a page.
-// at(ms) runs the frames asked for at ms after install(), and remove() hands them to the real clock
 export const CLOCK = `{
   install() {
     this.real = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
-    // a whole number of seconds ahead of the real clock, so that a time of a frame is summed exactly
     this.base = Math.ceil(performance.now() / 1000) * 1000 + 1000;
     this.now = this.base;
     this.queue = new Map();
@@ -57,11 +43,6 @@ export const CLOCK = `{
   },
 }`;
 
-// installs in a page a VideoFrame that takes a canvas of a 2d context from the bytes of its pixels.
-// Chrome encodes a frame of a canvas in the limited range of video, in which PowerPoint draws near
-// black a level darker than the slide around it, and a frame of bytes in full range, which
-// PowerPoint and Keynote draw at the level of the slide. tycho, whose exportVideo records the
-// scenes, makes its frames with the VideoFrame of the page
 export const FULL_RANGE = `if (!window.__canvasFrame) {
   const Frame = window.__canvasFrame = VideoFrame;
   window.VideoFrame = function VideoFrame(source, init) {
@@ -74,13 +55,8 @@ export const FULL_RANGE = `if (!window.__canvasFrame) {
 
 export const refused = (reason, what = 'the backdrops') => new Error(`${reason}. Export with the option --still to keep ${what} as stills.`);
 
-// the part of the recorder in the page, installed once in the print view. the elements of a step
-// are marked with data-rec as under or over the canvases of the recorded backdrops, by their order
-// in a hit test, and the classes rec-under and rec-words on the root show one of the two layers
 const HELPER = `window.__record ??= (() => {
   const style = document.createElement('style');
-  // :root outranks the rule of reveal.js that shows every section of the print view, which would
-  // keep the lockup, a ::before of the section, in both layers
   style.textContent = \`
     :root.rec-probe .pdf-page * { pointer-events: auto !important; }
     :root.rec-under :is(.rec-page[data-rec="over"], .rec-page [data-rec="over"], .rec-page .rec-canvas),
@@ -102,18 +78,13 @@ const HELPER = `window.__record ??= (() => {
     return a;
   };
   const drawn = (el, page) => getComputedStyle(el).visibility === 'visible' && el.getClientRects().length > 0 && opacity(el, page) > 0;
-  // a trace of a backdrop without a box, e.g. of the class for-light in the dark mode, is not
-  // finished, since its frames are not drawn
   const live = (page) => backdropsOf(page).flatMap((el, i) => (orbitsOf(el) && Beeson.animated(orbitsOf(el))
     && drawn(el, page) && el.offsetWidth > 0 && el.offsetHeight > 0 ? [i] : []));
-  // an element of its own layer, whose order against the canvases is not the one of its parent
   const own = (cs) => cs.position !== 'static' || cs.zIndex !== 'auto' || cs.opacity !== '1' || cs.transform !== 'none'
     || cs.translate !== 'none' || cs.rotate !== 'none' || cs.scale !== 'none' || cs.filter !== 'none' || cs.isolation === 'isolate'
     || cs.mixBlendMode !== 'normal' || cs.float !== 'none';
   const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-  // true when el is painted over the canvases, by the order of el and the canvases at points of
-  // their overlap, or null when el is not hit there, e.g. at the gaps between the lines of a text
   function over(el, canvases) {
     const box = el.getBoundingClientRect();
     for (const c of canvases) {
@@ -130,8 +101,6 @@ const HELPER = `window.__record ??= (() => {
     return null;
   }
 
-  // the element of the page first at the place of el in page, by the index of each ancestor among
-  // its siblings, hence a step that adds an element moves only the places of its later siblings
   function counterpart(el, page, first) {
     const path = [];
     for (let e = el; e !== page; e = e.parentElement) path.unshift([...e.parentElement.children].indexOf(e));
@@ -140,9 +109,6 @@ const HELPER = `window.__record ??= (() => {
     return c?.tagName === el.tagName ? c : null;
   }
 
-  // marks each element of page as under or over the canvases. an element under the canvases whose
-  // counterpart at the first step, where the layer under them is taken, is missing or not drawn
-  // is put over them
   function classify(page, canvases, first) {
     const rects = canvases.map((c) => c.getBoundingClientRect());
     const all = [page, ...page.querySelectorAll('*')];
@@ -159,8 +125,6 @@ const HELPER = `window.__record ??= (() => {
       let side;
       if (canvases.some((c) => el.contains(c))) {
         side = 'under';
-        // a pseudo-element is not hit in a hit test. the ::after of an ancestor of the canvases, e.g.
-        // the group logo of a slide, is painted over them when it is positioned, as the last child
         const after = getComputedStyle(el, '::after');
         if (after.content !== 'none' && after.position !== 'static') el.dataset.recAfter = '';
       } else {
@@ -206,14 +170,12 @@ const HELPER = `window.__record ??= (() => {
 
   return {
     live: () => pages().map(live),
-    // scrolls to the page of index i, and returns its box in the document
     scrollTo(i) {
       const y = window.scrollY + pages()[i].getBoundingClientRect().top;
       window.scrollTo(0, y);
       const box = { x: 0, y, width: innerWidth, height: innerHeight, scale: 1 };
       return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(box))));
     },
-    // marks the pages of the steps, and returns what the recording needs to know of its backdrops
     prepare(steps) {
       const all = pages(), group = steps.map((i) => all[i]);
       const keys = live(group[0]);
@@ -222,8 +184,6 @@ const HELPER = `window.__record ??= (() => {
       state = { group, keys, orbits, scroll: window.scrollY };
       return { periods: orbits.map((o) => o.period), span: Math.max(...orbits.map((o) => o.span)) };
     },
-    // marks the elements of the step of index k of the group, and shows the layer of mode, under or
-    // words. the page is scrolled to the step first, since a hit test is made in the viewport
     show(k, mode) {
       const { group, keys } = state;
       unmark();
@@ -236,7 +196,6 @@ const HELPER = `window.__record ??= (() => {
       document.documentElement.classList.add(\`rec-\${mode}\`);
       return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))));
     },
-    // starts the traces on the clock and the encoder, over the picture of the layer under the canvases
     async begin(under, fps, scale, config) {
       unmark();
       const { group, orbits } = state;
@@ -244,7 +203,6 @@ const HELPER = `window.__record ??= (() => {
       const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(under), (c) => c.charCodeAt(0))], { type: 'image/png' }));
       const canvas = new OffscreenCanvas(config.width, config.height);
       const ctx = canvas.getContext('2d', { alpha: false });
-      // the canvases in the order of the page, clipped to the page as in the print view
       const layers = orbits.flatMap((o) => o.canvases).sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
         .map((c) => ({ c, r: c.getBoundingClientRect(), alpha: opacity(c, page) }));
       const draw = () => {
@@ -277,10 +235,6 @@ const HELPER = `window.__record ??= (() => {
       state = { ...state, canvas, draw, encoder, chunks, fps, frame: 0, failed: () => error, decoder: () => decoder };
       return true;
     },
-    // draws the frames from the next one up to frame to, and encodes those before stop. with
-    // untilDone, the frames end at the first one at which every trace is finished, whose index is
-    // returned as last, or else -1. saved holds the PNGs of the frames of keep, of the first frame,
-    // and of the last one
     async frames(to, stop, keep, untilDone) {
       const s = state, saved = {};
       for (; s.frame <= to; s.frame++) {
@@ -288,7 +242,6 @@ const HELPER = `window.__record ??= (() => {
         clock.at((k * 1000) / s.fps);
         s.draw();
         if (k < stop) {
-          // an encoder that failed is closed, and its reason would be lost in the error of encode()
           if (s.failed()) throw new Error(s.failed());
           if (s.encoder.state === 'closed') throw new Error('the encoder was closed');
           const frame = new VideoFrame(s.canvas, { timestamp: Math.round((k * 1e6) / s.fps), duration: Math.round(1e6 / s.fps) });
@@ -321,7 +274,6 @@ const HELPER = `window.__record ??= (() => {
         color: s.decoder()?.colorSpace ?? null,
       };
     },
-    // the chunks from index a to b, as their sizes, their key flags, and the base64 of their bytes
     take(a, b) {
       const part = state.chunks.slice(a, b);
       const all = new Uint8Array(part.reduce((n, c) => n + c.data.length, 0));
@@ -329,9 +281,6 @@ const HELPER = `window.__record ??= (() => {
       for (const c of part) { all.set(c.data, at); at += c.data.length; }
       return { sizes: part.map((c) => c.data.length), keys: part.map((c) => c.key), b64: toBase64(all) };
     },
-    // puts the page back as the print view shows it, with the backdrops drawn complete
-    // the traces are completed before the clock is removed, so that a frame queued on the clock is
-    // not handed to the real requestAnimationFrame, where a loop would go on
     end() {
       if (state?.encoder && state.encoder.state !== 'closed') state.encoder.close();
       for (const o of state?.orbits ?? []) o.complete();
@@ -344,12 +293,9 @@ const HELPER = `window.__record ??= (() => {
   };
 })(), true`;
 
-// the first of ACCELERATIONS at which browser encodes the recordings, or throws the reason why it
-// does not
 async function check(browser, fps, scale) {
   const probe = await browser.newPage();
   try {
-    // WebCodecs is defined in a secure context alone, e.g. a page of a file URL, and not in about:blank
     await probe.goto(import.meta.url);
     const configs = ACCELERATIONS.map((a) => config(fps, scale, a));
     const found = await probe.evaluate(`(async () => {
@@ -366,18 +312,9 @@ async function check(browser, fps, scale) {
   }
 }
 
-/**
- * Returns a recorder for the print view of a deck at the pixel ratio scale, opened with
- * printView() of scripts/chrome.mjs in a page of browser, which is launched with wholeFrames, since
- * a layer may be missing from a picture otherwise. The print view is opened with
- * pdfPageHeightOffset=0, so that a page is the whole slide. Throws, with the reason and the option
- * --still, when browser does not encode H.264 at the size of the recordings.
- */
 export async function recorder(browser, { fps = 60, scale = 2 } = {}) {
   const acceleration = await check(browser, fps, scale);
 
-  // a page behind another one, e.g. behind the page of check(), is not given animation frames, and
-  // its timers are slowed down
   const ready = async (page) => {
     await page.send('Page.bringToFront');
     await page.evaluate(HELPER);
@@ -386,29 +323,19 @@ export async function recorder(browser, { fps = 60, scale = 2 } = {}) {
   };
 
   return {
-    /** The hardwareAcceleration of the VideoEncoder, 'prefer-software' or else 'no-preference'. */
     acceleration,
 
-    /** For each .pdf-page, the indices among the backdrops of its slide of those that are traced or looped at its step. */
     async live(page) {
       await ready(page);
       return page.evaluate('__record.live()');
     },
 
-    /**
-     * Records the backdrops traced at the first of steps, the indices of the .pdf-pages that are
-     * stacked on one PowerPoint slide. Returns the recording, the still, i.e. its last frame, and
-     * tops, the picture of the words of each step. keep lists frames whose PNG is returned in kept,
-     * by index, or as 'last' for the last frame and 'end' for the frame after it.
-     */
     async record(page, steps, { keep = [] } = {}) {
       await ready(page);
       try {
         const { periods, span } = await page.evaluate(`__record.prepare(${JSON.stringify(steps)})`);
-        // a recording of loops alone covers one period, and with a trace it ends with the trace
         const loop = periods.every((p) => p > 0);
         const transparent = { color: { r: 0, g: 0, b: 0, a: 0 } };
-        // the pictures are clipped to the box of the page in the document
         const box = await page.evaluate(`__record.scrollTo(${steps[0]})`);
         await page.evaluate(`__record.show(0, 'under')`);
         const under = await page.screenshot(box);
@@ -427,8 +354,6 @@ export async function recorder(browser, { fps = 60, scale = 2 } = {}) {
         const c = config(fps, scale, acceleration);
         await page.evaluate(`__record.begin(${JSON.stringify(under.toString('base64'))}, ${fps}, ${scale}, ${JSON.stringify(c)})`);
 
-        // the frames are drawn a second per round trip. a trace ends with the frame at which every
-        // trace is finished, and it fails a second past its span
         const kept = {};
         const asked = JSON.stringify(keep.filter((k) => typeof k === 'number'));
         let frames = loop ? Math.round(Math.max(...periods) * fps) : 0;
@@ -440,7 +365,6 @@ export async function recorder(browser, { fps = 60, scale = 2 } = {}) {
           if (last >= 0) frames = last + 1;
         }
         const index = (k) => (k === 'last' ? frames - 1 : k === 'end' ? frames : k);
-        // the frames of keep past the recording are drawn without being encoded
         const past = Math.max(-1, ...keep.map(index));
         if (past >= frames) Object.assign(kept, (await page.evaluate(`__record.frames(${past}, ${frames}, ${JSON.stringify(keep.map(index))}, false)`)).saved);
         const done = await page.evaluate(`__record.finish()`);

@@ -1,7 +1,3 @@
-// the house form of a reference of src/reference.ts: the family names of the authors, the venue, the
-// volume, and the year of an entry of the bibliography, e.g. Koon et al., Chaos 10 (2000), its link,
-// and the search of the bibliography by author, year, title, and key
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readBibtex } from '../src/bibtex.ts';
@@ -47,7 +43,6 @@ test('a reference is the authors, the venue, the volume, and the year in parenth
     doi: '10.1063/1.166509',
   });
   assert.equal(shown(KOON), 'Koon et al., Chaos 10 (2000)');
-  // the venue is the only part in italics
   assert.deepEqual(referenceParts(referenceOf(entry(KOON))), ['Koon et al., ', 'Chaos', ' 10 (2000)']);
   assert.equal(shown('@book{s, author = {Szebehely, Victor}, title = {Theory of Orbits}, publisher = {Academic Press}, year = 1967}'), 'Szebehely, Academic Press (1967)');
   assert.equal(shown('@phdthesis{r, author = {Ross, Shane D.}, title = {Cylindrical manifolds}, school = {California Institute of Technology}, year = 2004}'), 'Ross, California Institute of Technology (2004)');
@@ -66,7 +61,6 @@ test('the venue is the first of the journal, the title of the book, the publishe
   assert.equal(venue('howpublished = {a talk}, school = {a school}, publisher = {a publisher}'), 'a publisher');
   assert.equal(venue('howpublished = {a talk}, school = {a school}'), 'a school');
   assert.equal(venue('howpublished = {a talk}'), 'a talk');
-  // the short name of a journal of biblatex comes before its name, and an eprint of arXiv is a venue
   assert.equal(venue('journal = {Celestial Mechanics and Dynamical Astronomy}, shortjournal = {Celest. Mech. Dyn. Astron.}'), 'Celest. Mech. Dyn. Astron.');
   assert.equal(venue('journaltitle = {Chaos}'), 'Chaos');
   assert.equal(venue('institution = {Jet Propulsion Laboratory}'), 'Jet Propulsion Laboratory');

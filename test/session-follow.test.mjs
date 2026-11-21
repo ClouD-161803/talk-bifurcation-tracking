@@ -1,11 +1,3 @@
-// following a person, the dots of the people on each slide, and the lines of Share, in Chrome on
-// the edit command started on a temporary talk folder: a click on an avatar that follows, the
-// selection of the person followed brought into view, each way that following stops, the texts of
-// the pill, the count of the followers, a person with two pages, the dots of a row and a tile with
-// +N and the chips of a shared tone, the changed dot, the lines of the Share dialog, a page that
-// closes, which sends no state after its bye, the pill on a phone of 390 px, and a deck of 200
-// slides with three people typing, which is not parsed per operation
-
 import assert from 'node:assert/strict';
 import { cpSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -19,13 +11,10 @@ import { dialogButton, HIT, item, menu, press, tap } from './helpers/share.mjs';
 
 const F = 'window.BeesonSession.follow()';
 const P = 'window.BeesonSession.presence()';
-// the avatar of the person named name
 const avatar = (name) => `.beeson-session-people button[title=${JSON.stringify(name)}]`;
-// the element of selector on the slide whose heading starts with heading
 const on = (heading, selector) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.startsWith(${JSON.stringify(heading)}))?.querySelector(${JSON.stringify(selector)})`;
 const HEADING = `Reveal.getCurrentSlide()?.querySelector('h2')?.textContent`;
 
-// the text, the button, and the border of the pill, or null while it is hidden
 const PILL = `(() => {
   const box = document.querySelector('.beeson-session-follow');
   if (!box || box.hidden) return null;
@@ -41,7 +30,6 @@ async function untilPill(page, want, what = JSON.stringify(want)) {
   }, `the pill ${what}`);
 }
 
-// the elements of expressions selected on page
 async function select(page, ...expressions) {
   await front(page);
   const ok = await page.evaluate(`(() => {
@@ -65,7 +53,6 @@ async function session(t, names, options = {}) {
   return { browser, server, url, pages, ids };
 }
 
-// a second page of the person who holds name, which answers Yes to the question of the join
 async function samePerson(browser, url, name) {
   const page = await open(browser, url, { name, wait: false });
   await page.waitFor(`!!${dialogButton('beeson-edit-dialog', 'Yes, continue')}`);
@@ -74,7 +61,6 @@ async function samePerson(browser, url, name) {
   return page;
 }
 
-// the person followed by page once it is target
 const following = async (page, target) => {
   await front(page);
   await page.waitFor(`${F}.target === ${JSON.stringify(target)}`);
@@ -85,11 +71,9 @@ test('a click on an avatar follows the person to the slide, and brings the selec
   await press(ben, avatar('Ana'));
   await following(ben, anaId);
   assert.deepEqual(await ben.evaluate(PILL), { text: 'Following Ana', button: 'Stop', on: true });
-  // the name is isolated from the text around it, for a name in a right-to-left script
   assert.equal(await ben.evaluate(`document.querySelector('.beeson-session-follow .text bdi')?.textContent`), 'Ana');
   assert.equal(await ben.evaluate(`document.querySelector(${JSON.stringify(avatar('Ana'))}).getAttribute('aria-pressed')`), 'true');
   assert.ok(await ben.evaluate(`[...document.querySelectorAll('.beeson-session-live')].some((l) => l.textContent === 'Following Ana')`));
-  // the border lies over the canvas, in the tone of Ana, and only the pill takes a pointer
   const border = await ben.evaluate(`(() => {
     const box = document.querySelector('.beeson-session-follow');
     const r = box.getBoundingClientRect(), v = ${C}.app.stage.viewport, s = getComputedStyle(box);
@@ -107,13 +91,11 @@ test('a click on an avatar follows the person to the slide, and brings the selec
     await ben.waitFor(`${HEADING} === 'Two'`);
     assert.equal(await ben.evaluate(`${C}.app.history.last === window.__last && ${C}.app.dirty === window.__dirty`), true);
     assert.equal(await ben.evaluate(`${F}.target`), anaId);
-    // the label of the avatar of Ana reads the slide of Ana
     await ben.waitFor(`document.querySelector(${JSON.stringify(avatar('Ana'))}).getAttribute('aria-label') === 'Ana, on slide 2'`);
   });
 
   await t.test('a zoom and a scroll do not stop it, and the selection of Ana is scrolled into view', async () => {
     const IN_VIEW = `(() => {
-      // an item wider than the canvas at this zoom is brought in by its left edge
       const v = ${C}.app.stage.viewport, r = ${on('Two', 'li:last-child')}.getBoundingClientRect();
       return r.left >= v.left && r.left < v.right && r.top >= v.top && r.bottom <= v.bottom;
     })()`;
@@ -139,7 +121,6 @@ test('a click on an avatar follows the person to the slide, and brings the selec
     await ana.waitFor(`document.querySelector('.beeson-session-people .me .beeson-session-followers')?.dataset.count === '1'`);
     assert.equal(await ana.evaluate(`document.querySelector('.beeson-session-people .me .beeson-session-followers').title`), 'Ben is following you');
     assert.equal(await ana.evaluate(`document.querySelector('.beeson-session-people .me').getAttribute('aria-label')`), 'Ana, you, Ben is following you');
-    // the count is drawn by CSS, and the text of the avatar keeps the initials alone
     assert.doesNotMatch(await ana.evaluate(`document.querySelector('.beeson-session-people .me').textContent`), /\d/);
   });
 
@@ -162,7 +143,6 @@ test('a click on an avatar follows the person to the slide, and brings the selec
     await press(ben, item('Go to Slide 2'));
     await ben.waitFor(`${HEADING} === 'Two'`);
     assert.equal(await ben.evaluate(`${F}.target`), null);
-    // the count goes with the last follower
     await front(ana);
     await ana.waitFor(`!document.querySelector('.beeson-session-followers') && document.querySelector('.beeson-session-people .me').getAttribute('aria-label') === 'Ana, you'`);
   });
@@ -218,8 +198,6 @@ test('following stops at the avatar, Stop, Escape, a selection, a slide, an edit
     await ben.evaluate(`void ${C}.app.commands.run('file.present')`);
     await ben.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
     await stopped('a show');
-    // the page of Ben stays in front. a page that is not in front is taken out of full screen, and
-    // its show ends when the blur of its window comes more than 100 ms after this change
     await ana.waitFor(`${C}.resolved().some((r) => r.name === 'Ben' && r.mode === 'present')`);
     await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await ben.waitFor(`!document.querySelector('.beeson-edit-show')`);
@@ -286,7 +264,6 @@ test('a person with two pages is followed on the page that changed last, and two
   await show(ana2, 'Two');
   await front(ben);
   await ben.waitFor(`${HEADING} === 'Two'`);
-  // the first page of Ana, still on One, selects there and changes last, then the second does
   await select(ana, on('One', 'p'));
   await front(ben);
   await ben.waitFor(`${HEADING} === 'One'`);
@@ -314,11 +291,9 @@ test('a person with two pages is followed on the page that changed last, and two
     await front(ana);
     await ana.evaluate(`${F}.start(${JSON.stringify(benId)})`);
     await ana.waitFor(`${HEADING} === 'Two'`);
-    // Ben has heard that Ana follows Ben from Two before Ben follows Ana
     await front(ben);
     await ben.waitFor(`${C}.resolved().some((r) => r.person === ${JSON.stringify(anaId)} && r.following === ${JSON.stringify(benId)} && r.slide?.querySelector('h2')?.textContent === 'Two')`);
     await ben.evaluate(`${F}.start(${JSON.stringify(anaId)})`);
-    // each page has heard that the other follows it
     await front(ana);
     await ana.waitFor(`${C}.resolved().some((r) => r.following === ${JSON.stringify(anaId)})`);
     await front(ben);
@@ -341,13 +316,11 @@ test('the dots of the people on each slide in the navigator and the Slide Sorter
   const url = sessionUrl(server.edit);
   const ann = await open(browser, url, { name: 'Ann Smith' });
   const ben = await open(browser, url, { name: 'Ben Carter' });
-  // one Chrome holds six connections to a host, and each page holds one with its poll
   const other = await launch({ offline: false });
   t.after(() => other.close());
   const cleo = await open(other, url, { name: 'Cleo Diaz' });
   const dan = await open(other, url, { name: 'Dan Evans' });
   const eve = await open(other, url, { name: 'Eve Fox' });
-  // the dots of the row or the tile of the slide of heading
   const dots = (where, heading) => ann.evaluate(`(() => {
     const slide = [...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)});
     const owner = ${JSON.stringify(where)} === 'row' ? ${C}.app.nav.rowOf(slide) : ${C}.shell.slides.tiles().get(slide);
@@ -364,7 +337,6 @@ test('the dots of the people on each slide in the navigator and the Slide Sorter
   };
   await show(ann, 'One');
   for (const page of [ben, cleo, dan, eve]) await show(page, 'Two');
-  // the tones go round in the order of joining, hence Eve Fox has the tone of Ann Smith
   await untilDots('row', 'Two', ['|Ben Carter', '|Cleo Diaz', '|Dan Evans', '++1|Eve Fox']);
   assert.deepEqual(await dots('row', 'One'), []);
   await show(eve, 'One');
@@ -409,7 +381,6 @@ test('the line of each person in the Share dialog', { timeout: 120_000 }, async 
   await press(ann, '.beeson-session-share');
   const DIALOG = 'dialog.beeson-session-share-dialog[open]';
   await ann.waitFor(`document.querySelectorAll('${DIALOG} li').length === 2`);
-  // every line of Ben shown, recorded, since Typing on slide 2 lasts two seconds
   await ann.evaluate(`(() => {
     window.__lines = [];
     const read = () => {
@@ -439,12 +410,10 @@ test('the line of each person in the Share dialog', { timeout: 120_000 }, async 
     await ben.evaluate(`${P}.set({ mode: ${JSON.stringify(mode)} })`);
     await untilLine(benId, text);
   }
-  // a page is away while it is hidden
   await ben.evaluate(`window.__visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange'))`);
   await untilLine(benId, 'Away');
   await ben.evaluate(`window.__visibility = undefined; document.dispatchEvent(new Event('visibilitychange'))`);
   await untilLine(benId, 'On slide 2');
-  // following goes before the rest
   await front(ben);
   await ben.evaluate(`${F}.start(${JSON.stringify(annId)})`);
   await untilLine(benId, 'Following you');
@@ -465,8 +434,6 @@ test('the line of each person in the Share dialog', { timeout: 120_000 }, async 
 
 test('a page that closes sends no state after its bye', { timeout: 60_000 }, async (t) => {
   const { pages: [ann, ben] } = await session(t, ['Ann Smith', 'Ben Carter']);
-  // Ben reads the visibility of Chrome, which hides a page as it closes, and tells Ann each request
-  // that it sends and each change of its visibility, in order
   await ann.evaluate(`window.__sent = []; new BroadcastChannel('sent').onmessage = (m) => window.__sent.push(m.data)`);
   await ben.evaluate(`(() => {
     window.__visibility = 'real';
@@ -520,7 +487,6 @@ test('on a phone of 390 px the pill and its buttons are in view with a hit area 
   clean(ben);
 });
 
-// a deck of n slides of about bytes / n characters each, with the bulk in the speaker notes
 function bigDeck(n, bytes) {
   const words = 'the orbit of the moon is followed by a ship that sees the far side '.repeat(Math.ceil(bytes / n / 68));
   const slides = Array.from({ length: n }, (_, i) => `<section>\n  <h2>Slide ${i + 1}:</h2>\n  <p>Text of slide ${i + 1}</p>\n  <aside class="notes">${words.slice(0, Math.floor(bytes / n))}</aside>\n</section>\n`);
@@ -542,8 +508,6 @@ test('a deck of 200 slides with three people typing finds the slides of each ope
   const ben = await open(browser, url, { name: 'Ben' });
   const cleo = await open(browser, url, { name: 'Cleo' });
   assert.ok((await ana.evaluate(`${C}.port.text().length`)) > 2_000_000);
-  // the calls of Ana into the editor that parse the deck, and the time of each read of the slides
-  // of an operation
   await front(ana);
   await ana.evaluate(`(() => {
     const c = ${C};
@@ -566,7 +530,6 @@ test('a deck of 200 slides with three people typing finds the slides of each ope
   })()`);
   const typists = [[ana, 'Slide 10:'], [ben, 'Slide 100:'], [cleo, 'Slide 190:']];
   for (const [page, heading] of typists) await show(page, heading);
-  // the caret is set again at each turn, since a page brought behind another loses it
   for (let round = 0; round < 6; round++) {
     for (const [page, heading] of typists) {
       await front(page);
@@ -574,7 +537,6 @@ test('a deck of 200 slides with three people typing finds the slides of each ope
       await typeKeys(page, 'ab');
     }
   }
-  // each page is brought to the front until the three agree, since a page behind does not apply
   let last = [];
   await until(async () => {
     const texts = [];
@@ -587,21 +549,15 @@ test('a deck of 200 slides with three people typing finds the slides of each ope
   }, 'the three pages to agree', 120_000).catch((e) => {
     throw new Error(`${e.message}: ${last.join('; ')}`);
   });
-  // the keys of a page may be sent as fewer operations than keys, and the texts agree once Ana has
-  // applied every operation
   await front(ana);
   const calls = await ana.evaluate('window.__calls');
   assert.ok(calls.ops > 0, 'the operations of Ben and Cleo reached Ana');
   assert.equal(calls.slidesAt, 0, 'the deck is not parsed for the slides of an operation');
   assert.equal(calls.changedSlides, 0, 'the deck is not compared for the slides of an operation');
   assert.ok(calls.slidesIn > 0, 'the slides of the operations were read');
-  // the slides of Ben and Cleo are marked with their names
   for (const [n, name] of [[100, 'Ben'], [190, 'Cleo']]) {
     await ana.waitFor(`(() => { const row = ${C}.app.nav.rowOf(Reveal.getSlides()[${n - 1}]); return row.classList.contains('changed') && row.querySelector('.no').title === 'Changed by ${name} since you last saw it.'; })()`);
   }
-  // a read of the slides of an operation is bound by a tenth of one parse of the same deck, taken
-  // in the same page, and measured again before the test fails. slidesAt keeps the parse of its
-  // last text, hence each of the three texts differs from the one before it
   const parse = () => ana.evaluate(`(() => {
     const c = ${C}, text = c.port.text(), texts = [1, 2, 3].map((n) => text + ' '.repeat(n)), t = performance.now();
     for (const x of texts) c.shell.slidesAt(x, [{ start: 0, end: 1, text: '' }]);

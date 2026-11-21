@@ -1,10 +1,6 @@
-// the modules of src/ that the scripts read, e.g. the readers of TeX. they are TypeScript, which
-// Node reads without a flag from version 22.18 on. under an older Node they are bundled by esbuild,
-// which is installed by npm ci
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** The exports of the modules src/<name>.ts, merged into one object. */
 export async function sources(names) {
   try {
     return Object.assign({}, ...(await Promise.all(names.map((name) => import(`../src/${name}.ts`)))));

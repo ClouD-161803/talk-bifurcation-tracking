@@ -1,7 +1,3 @@
-// the Shape pane of the Format tab, for one or more selected shapes, as the Style tab of a shape in
-// Keynote: the geometry in a pop-up, a swatch of each tone, the fill, the width of the outline, and
-// the corners of a rounded rectangle. each control runs a command of commands/shape.ts by its id
-
 import type { App } from '../app.ts';
 import { CORNERS, FILLS, SHAPE_KINDS, WEIGHTS, kindOf, selectedShapes } from '../commands/shape.ts';
 import { make } from '../ui/dom.ts';
@@ -10,7 +6,6 @@ import { closeMenus, menuOpen, openMenu } from '../ui/menu.ts';
 import { row, section, segmented, type Control, type Run } from './controls.ts';
 import { swatches } from './line.ts';
 
-// the pop-up of the geometry, which lists every kind of shape with the kind of the selection checked
 function kindButton(app: App, run: Run): Control {
   const b = make('button', 'beeson-edit-select ed-shape-kind');
   b.type = 'button';

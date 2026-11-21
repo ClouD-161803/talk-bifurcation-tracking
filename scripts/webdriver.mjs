@@ -1,8 +1,3 @@
-// Firefox and Safari driven over W3C WebDriver with fetch, used in scripts/check.mjs. The object
-// returned by launch() has the shape of the one in scripts/chrome.mjs, hence an npm package is not
-// required. WebDriver has no access to the console in Safari, thus page.errors stays empty here, and
-// the check of a deck is made in the page itself. geckodriver and safaridriver are preinstalled on
-// the runners of GitHub. On a Mac, safaridriver has to be enabled once with `sudo safaridriver --enable`.
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createServer as createHttpServer } from 'node:http';
@@ -10,21 +5,21 @@ import { createServer } from 'node:net';
 import { extname, join, resolve, sep } from 'node:path';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+const decoded = (path) => {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
 
 const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.mp4': 'video/mp4', '.svg': 'image/svg+xml' };
 
-/**
- * Serves the files of a folder on a local port, and returns its origin and close(). The answer for
- * a file is held back by delay(path), a number of ms or a promise. A Range request is answered with the bytes it names, as a
- * static server does, since Chrome otherwise holds a connection for each video it reads in part,
- * and a second tab of a deck with two videos then waits about 15 s for its files. With writable, a
- * PUT writes its body into the file, as the stand-in of a file handle does in
- * test/editor-follow.test.mjs.
- */
 export async function serve(folder, { delay = () => 0, writable = false } = {}) {
   const root = resolve(folder);
   const server = createHttpServer(async (request, response) => {
-    const path = join(root, decodeURIComponent(new URL(request.url, 'http://localhost').pathname));
+    const { pathname } = new URL(request.url, 'http://localhost');
+    const path = join(root, decoded(pathname));
     try {
       if (!path.startsWith(root + sep)) throw new Error(`${path} is outside ${root}`);
       if (writable && request.method === 'PUT') {
@@ -53,7 +48,7 @@ export async function serve(folder, { delay = () => 0, writable = false } = {}) 
       response.writeHead(200, { ...type, 'Content-Length': body.length });
       response.end(body);
     } catch {
-      response.writeHead(404).end();
+      response.writeHead(pathname === '/favicon.ico' ? 204 : 404).end();
     }
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
@@ -80,9 +75,6 @@ function freePort() {
 export function driverOf(browser, env) {
   if (browser === 'safari') return { command: '/usr/bin/safaridriver', capabilities: { browserName: 'safari' } };
   if (browser !== 'firefox') throw new Error(`unknown browser ${browser}, use chrome, firefox, or safari`);
-  // with a display, as under xvfb-run on a runner, since WebGL in software needs a window on Linux
-  // every host but this machine is sent to a proxy on a closed port, as Chrome is started with
-  // every other host blocked in chrome.mjs. Firefox does not send this machine to a proxy
   const prefs = { 'network.proxy.type': 1, 'network.proxy.http': '127.0.0.1', 'network.proxy.http_port': 9, 'network.proxy.ssl': '127.0.0.1', 'network.proxy.ssl_port': 9 };
   const options = { args: env.DISPLAY ? [] : ['-headless'], prefs, ...(env.FIREFOX_PATH ? { binary: env.FIREFOX_PATH } : {}) };
   return {
@@ -91,14 +83,12 @@ export function driverOf(browser, env) {
   };
 }
 
-// the expression is evaluated in the global scope of the page, and a promise is awaited
 const evaluator = `const done = arguments[arguments.length - 1];
 Promise.resolve().then(() => (0, eval)(arguments[0])).then(
   (value) => done({ value }),
   (error) => done({ error: String(error?.stack ?? error) }),
 );`;
 
-/** Starts the driver and a session, and returns an object with newPage() and close(). */
 export async function launch(browser, { env = process.env, timeout = 120000 } = {}) {
   const { command, capabilities } = driverOf(browser, env);
   const port = await freePort();
@@ -148,7 +138,6 @@ export async function launch(browser, { env = process.env, timeout = 120000 } = 
     return result.value;
   }
 
-  // all pages are shown in one window, which is kept at the size given to launch()
   function newPage() {
     return {
       errors: [],
@@ -165,7 +154,6 @@ export async function launch(browser, { env = process.env, timeout = 120000 } = 
         }
       },
       screenshot: async () => Buffer.from(await request('GET', `/session/${id}/screenshot`), 'base64'),
-      // the next goto() is thus a load of the deck, and not only a change of its hash
       close: () => request('POST', `/session/${id}/url`, { url: 'about:blank' }),
     };
   }
@@ -179,7 +167,6 @@ export async function launch(browser, { env = process.env, timeout = 120000 } = 
     }
   }
 
-  // a command of the session, e.g. session('POST', '/actions', { actions }) for trusted input
   const session = (method, path, body) => request(method, `/session/${id}${path}`, body);
 
   return { newPage, close, session };

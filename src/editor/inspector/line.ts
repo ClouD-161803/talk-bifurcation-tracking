@@ -1,9 +1,3 @@
-// the Line pane of the Format tab, for a selected line or arrow, as the Line section of the Style
-// tab of Keynote: a swatch of each tone of the theme, the arrowheads (none, at the start, at the
-// end, or at both ends), the kind (straight, curved, or elbow, as Connection of Keynote), the weight
-// in px, a dash, and the element that each attached end is attached to. each control runs a command of
-// commands/line.ts by its id
-
 import type { App } from '../app.ts';
 import { HEADS, KINDS, LINE_TONES, WEIGHTS, selectedLines } from '../commands/line.ts';
 import { attachedTo, type End } from '../model/attach.ts';
@@ -13,8 +7,6 @@ import { button, checkbox, keepFocus, row, section, segmented, type Control, typ
 
 const SVG = 'http://www.w3.org/2000/svg';
 
-// a short line with the arrowheads of heads, on the grid of the glyphs of controls.ts, drawn along
-// the path line at the stroke width width
 function glyphOf(heads: string, line = 'M3 6h22', width = 1.5): SVGSVGElement {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', '0 0 28 12');
@@ -35,8 +27,6 @@ function glyphOf(heads: string, line = 'M3 6h22', width = 1.5): SVGSVGElement {
   return svg;
 }
 
-// a swatch of each tone, in the color that the tone has on the slide in its mode, each running the
-// command of the tone after prefix, e.g. line.tone
 export function swatches(app: App, run: Run, prefix = 'line.tone', label = 'Line color'): Control {
   const el = make('div', 'ed-swatches');
   el.setAttribute('role', 'group');
@@ -66,9 +56,6 @@ export function swatches(app: App, run: Run, prefix = 'line.tone', label = 'Line
   return { el, sync };
 }
 
-// a row of an attached end of the one selected line, e.g. Start: Rounded Rectangle, with the name of its
-// element or group in the Object List and a button that takes its attachment off. it is hidden without
-// an attachment, as the section is without a row
 function attachRow(app: App, run: Run, end: End): Control {
   const label = make('span', 'ed-label');
   const detach = button(app, run, { command: `line.detach.${end === 'from' ? 'start' : 'end'}`, text: 'Detach' });

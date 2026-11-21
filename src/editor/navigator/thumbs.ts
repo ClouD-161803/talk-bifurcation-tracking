@@ -1,15 +1,8 @@
-// the thumbnails of the navigator, drawn from cached clones of the slides at the width of the
-// pane. each clone is put into a shadow root, so that the queries of the theme and of the editor
-// over .reveal .slides do not find it, and the stylesheets of the deck are adopted by the root. a thumbnail is drawn when its row comes into view, and again 300 ms after the last change
-// of its slide
-
 import type { App } from '../app.ts';
 import { isRuntimeClass } from '../render.ts';
 import { rangesOf, showRange } from '../shown-steps.ts';
 import { whenLoaded } from '../../viewers.ts';
 
-// the rules of theme/beeson.css that are written on html or body do not reach into a shadow root,
-// hence they are given here on the wrapper of the clone. every step of the slide is shown
 const CSS = `
 :host { display: block; position: relative; overflow: hidden; contain: strict; }
 .reveal.beeson-thumb { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); pointer-events: none; }
@@ -28,9 +21,6 @@ const CSS = `
 const SVG = 'http://www.w3.org/2000/svg';
 const XLINK = 'http://www.w3.org/1999/xlink';
 
-// the stylesheets of the deck, i.e. its links and its style elements other than those of the
-// editor, e.g. the styles of MathJax. each style element is one sheet shared by every root, and a
-// relative url in it is read against the address of the deck
 const sheets = new Map<string, CSSStyleSheet>();
 const sheetOf = (text: string): CSSStyleSheet => {
   let sheet = sheets.get(text);
@@ -42,17 +32,11 @@ const sheetOf = (text: string): CSSStyleSheet => {
   return sheet;
 };
 
-// the folder brand/ beside theme/, read from the link of theme/beeson.css as the theme reads
-// ../brand/, since a deck may be in another folder than the template, e.g. test/pages/
 function brandUrl(links: HTMLLinkElement[]): string {
   const theme = links.find((l) => new URL(l.href, location.href).pathname.endsWith('/beeson.css'));
   return new URL('../brand', theme?.href ?? new URL('theme/beeson.css', location.href)).href;
 }
 
-// the sheet of a link of the deck built again from its rules, with its urls made absolute against
-// the address of the link, since Chrome reads a built sheet against the page, so that a root is styled on the frame in which it is drawn. a link that is
-// cloned into a root loads its sheet after that frame. null for a link whose rules cannot be read,
-// e.g. over file:// or before the link is loaded
 const built = new WeakMap<CSSStyleSheet, CSSStyleSheet>();
 function linkSheet(link: HTMLLinkElement): CSSStyleSheet | null {
   const from = link.sheet;
@@ -71,8 +55,6 @@ function linkSheet(link: HTMLLinkElement): CSSStyleSheet | null {
   return sheet;
 }
 
-// the sheets adopted by a root, and the links that are cloned into it since their sheets cannot be
-// built again
 function deckStyles(): { links: HTMLLinkElement[]; adopted: CSSStyleSheet[] } {
   const all = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')];
   const fromLinks = all.map((l) => linkSheet(l));
@@ -81,7 +63,6 @@ function deckStyles(): { links: HTMLLinkElement[]; adopted: CSSStyleSheet[] } {
   return { links, adopted: [...fromLinks.filter((x): x is CSSStyleSheet => !!x), ...styles, sheetOf(CSS.replaceAll('BRAND', brandUrl(all)))] };
 }
 
-// measure run on slide shown as the current slide is, and invisible, with its inline style put back
 export function laidOut<T>(slide: HTMLElement, measure: () => T): T {
   const style = slide.getAttribute('style');
   const hidden = slide.hidden;
@@ -102,27 +83,16 @@ export function laidOut<T>(slide: HTMLElement, measure: () => T): T {
   }
 }
 
-// the element of the tycho runtime, as far as a still is taken of it. draw renders the current frame
-// of its scene, with WebGL into canvas and its texts into paintCanvas, at ratio device px per CSS px
-// of its stage, whose size measureStage reads into stageSize. a runtime without the members marked
-// optional gives the still of a viewer whose stage has a size
 type Viewer = HTMLElement & {
   renderer: object | null;
   canvas: HTMLCanvasElement | null;
   paintCanvas?: HTMLCanvasElement | null;
-  stageSize?: { w: number; h: number };
-  measureStage?(): void;
+  panelAreaSize?: { w: number; h: number };
+  measurePanelArea?(): void;
   draw(ratio?: number): void;
   store?: { readonly playing?: boolean; subscribe?(listener: (change: string) => void): unknown } | null;
 };
 
-// the box of a viewer in a picture of its slide at scale, which the theme lays out as the viewer,
-// as the still of the print view in src/print.ts, at the size of the viewer. it holds a still of the
-// scene where the canvas of the viewer is: the viewer draws its current frame again, and the still is
-// copied from its canvases in the same task, since the buffer of its WebGL canvas is cleared once
-// it is shown. a viewer whose stage has no size, on a slide that reveal.js does not lay out, draws
-// at twice the resolution of the still, and draws again at its own once its slide is shown. the box
-// is empty while the scene is not loaded
 function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
   const box = document.createElement('div');
   box.className = viewer.className;
@@ -135,7 +105,6 @@ function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
   box.style.height = `${viewer.offsetHeight}px`;
   const { canvas, paintCanvas } = viewer;
   if (!viewer.renderer || !canvas) return box;
-  // the rects are scaled with the slide, and the width of the viewer is not
   const host = viewer.getBoundingClientRect();
   const k = host.width / viewer.offsetWidth;
   const r = canvas.getBoundingClientRect();
@@ -145,29 +114,24 @@ function stillBox(viewer: Viewer, scale: number, ratio: number): HTMLElement {
   still.width = Math.max(1, Math.round(w * scale * ratio));
   still.height = Math.max(1, Math.round(h * scale * ratio));
   still.style.cssText = `position: absolute; left: ${(r.left - host.left) / k}px; top: ${(r.top - host.top) / k}px; width: ${w}px; height: ${h}px`;
-  const size = viewer.stageSize;
+  const size = viewer.panelAreaSize;
   try {
     if (size && size.w >= 1 && size.h >= 1) viewer.draw();
     else {
-      viewer.measureStage?.();
-      const stage = viewer.stageSize?.w ?? 0;
-      if (stage < 1) return box;
-      viewer.draw(Math.min(ratio, (2 * still.width) / stage));
+      viewer.measurePanelArea?.();
+      const area = viewer.panelAreaSize?.w ?? 0;
+      if (area < 1) return box;
+      viewer.draw(Math.min(ratio, (2 * still.width) / area));
     }
-    shrinkInto(still, [canvas, paintCanvas].filter((c): c is HTMLCanvasElement => !!c?.width && !!c.height));
+    shrinkByHalves(still, [canvas, paintCanvas].filter((c): c is HTMLCanvasElement => !!c?.width && !!c.height));
     box.append(still);
-  } catch {
-    // a viewer that cannot draw, e.g. after the loss of its WebGL context, is left empty
-  } finally {
-    if (size) viewer.stageSize = size;
+  } catch {} finally {
+    if (size) viewer.panelAreaSize = size;
   }
   return box;
 }
 
-// the layers of a scene, of one size, drawn over each other into still. they are halved in steps
-// down to twice the size of still at most, since a bilinear step to less than half of a picture
-// breaks its thin lines and its texts
-function shrinkInto(still: HTMLCanvasElement, layers: HTMLCanvasElement[]): void {
+function shrinkByHalves(still: HTMLCanvasElement, layers: HTMLCanvasElement[]): void {
   let from = layers;
   while (from.length) {
     const { width: w, height: h } = from[0];
@@ -183,9 +147,6 @@ function shrinkInto(still: HTMLCanvasElement, layers: HTMLCanvasElement[]): void
   }
 }
 
-// the tycho viewers of clone replaced by their boxes with a still of their scene, drawn from the
-// viewers of slide at scale. a viewer itself is not cloned, since its clone would start a second
-// renderer
 export function stillViewers(slide: Element, clone: Element, scale: number): void {
   const viewers = [...slide.querySelectorAll<Viewer>('tycho-viewer')];
   if (!viewers.length) return;
@@ -196,10 +157,6 @@ export function stillViewers(slide: Element, clone: Element, scale: number): voi
   clone.querySelectorAll('tycho-viewer').forEach((v, i) => v.replaceWith(made[i]));
 }
 
-// the backdrops of clone that are not drawn on slide yet, drawn by the theme at the size of clone, as
-// the tiles of the gallery of backdrops. clone is a clone of slide that is laid out in the page. a
-// backdrop is not drawn before reveal.js lays its slide out, and a drawn one keeps the copy of its
-// canvases
 export function drawBackdrops(slide: Element, clone: Element): void {
   const preview = (window as unknown as { Beeson?: { preview?(el: HTMLElement): unknown } }).Beeson?.preview;
   const from = slide.querySelectorAll('.backdrop');
@@ -207,32 +164,23 @@ export function drawBackdrops(slide: Element, clone: Element): void {
     const canvas = from[i]?.querySelector(':scope > canvas.orbits-base');
     if (preview && canvas && !canvas.hasAttribute('width')) preview(el);
   });
-  // a label of a backdrop that is not drawn is not placed
   clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
     if (!l.style.left) l.remove();
   });
 }
 
-// the surfaces and strip bundles of slide that were never drawn, drawn with slide laid out. fit in
-// src/surface.ts and src/bundle.ts draws only in a laid-out slide, and the theme calls it again
-// when the slide is shown, hence a far slide that was never shown has a blank canvas.surface-image
 function drawSurfaces(slide: Element): void {
   const all = (window as unknown as { Beeson?: { surfaces?: { el: HTMLElement; fit(): void }[] } }).Beeson?.surfaces ?? [];
   const due = all.filter((s) => slide.contains(s.el) && !s.el.querySelector(':scope > canvas.surface-image')?.hasAttribute('width'));
   if (due.length && slide instanceof HTMLElement) laidOut(slide, () => due.forEach((s) => s.fit()));
 }
 
-// a clone of slide for its thumbnail, with every step shown, or the first range of steps of a slide whose
-// elements are hidden at a step. its canvases are painted from the originals at the scale of the
-// thumbnail, a tycho viewer shows a still of its scene, and a video shows its poster
 export function cloneSlide(slide: Element, scale: number): HTMLElement {
   drawSurfaces(slide);
   const clone = slide.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('aside.notes').forEach((n) => n.remove());
   const from = [...slide.querySelectorAll('canvas')];
   const ratio = Math.min(2, window.devicePixelRatio || 1);
-  // the sizes of the canvases in slide px. a slide far from the current one is not laid out by
-  // reveal.js, and the size of the buffer of its canvas is in device px, hence it is laid out
   const size = () => from.map((c) => [c.offsetWidth, c.offsetHeight]);
   let sizes = size();
   if (sizes.some(([w]) => !w) && slide instanceof HTMLElement) sizes = laidOut(slide, size);
@@ -246,9 +194,7 @@ export function cloneSlide(slide: Element, scale: number): HTMLElement {
     canvas.style.height = `${h}px`;
     try {
       if (source.width && source.height) canvas.getContext('2d')?.drawImage(source, 0, 0, canvas.width, canvas.height);
-    } catch {
-      // a WebGL canvas without a kept buffer is left blank
-    }
+    } catch {}
   });
   stillViewers(slide, clone, scale);
   clone.querySelectorAll('video').forEach((v) => {
@@ -258,7 +204,6 @@ export function cloneSlide(slide: Element, scale: number): HTMLElement {
   });
   for (const el of [clone, ...clone.querySelectorAll('*')]) {
     for (const name of ['contenteditable', 'tabindex', 'hidden', 'aria-hidden', 'role']) el.removeAttribute(name);
-    // the classes of the marks of a plot are set at run time too, and the theme paints the marks by them
     for (const c of [...el.classList]) if (isRuntimeClass(c) && !c.startsWith('plot-')) el.classList.remove(c);
   }
   if (window.MathJax) hideTex(clone);
@@ -270,8 +215,6 @@ export function cloneSlide(slide: Element, scale: number): HTMLElement {
   return clone;
 }
 
-// the formulas of clone that are not typeset yet, i.e. in raw TeX, are hidden in place, so that a
-// picture shows the rest of its slide while MathJax typesets. a code box and the notes are kept
 const TEX = /\\\((?:[\s\S]*?\\\)|[\s\S]*$)|\\\[(?:[\s\S]*?\\\]|[\s\S]*$)/g;
 function hideTex(clone: Element): void {
   const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
@@ -295,8 +238,6 @@ function hideTex(clone: Element): void {
   }
 }
 
-// MathJax keeps its glyphs in one cache of the page, named by use elements, and a use element does
-// not reach out of a shadow root. the glyphs that clone names are thus copied next to it
 function glyphsOf(clone: Element): SVGSVGElement | null {
   const ids = new Set<string>();
   for (const use of clone.querySelectorAll('use')) {
@@ -315,10 +256,8 @@ function glyphsOf(clone: Element): SVGSVGElement | null {
 
 export type Size = { width: number; height: number };
 
-// the links cloned into a root whose load has ended, with a sheet or with an error
 const settled = new WeakSet<HTMLLinkElement>();
 
-// draws slide into the shadow root of host, scaled from the size of the deck to width, in CSS px
 export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: number): void {
   const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   const { links, adopted } = deckStyles();
@@ -348,20 +287,14 @@ export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: n
   if (glyphs) wrap.append(glyphs);
   root.querySelector('.beeson-thumb')?.remove();
   root.append(wrap);
-  // a backdrop is drawn in the box that the sheets give it. a link that was cloned into a new root
-  // loads its sheet after this frame
   const loading = [...root.querySelectorAll('link')].filter((l) => !settled.has(l));
   const ended = (l: HTMLLinkElement) => new Promise((done) => ['load', 'error'].forEach((type) => l.addEventListener(type, done, { once: true })));
   if (loading.length) void Promise.all(loading.map(ended)).then(() => clone.isConnected && drawBackdrops(slide, clone));
   else drawBackdrops(slide, clone);
 }
 
-// the attributes that reveal.js, the theme, and the editor set at run time, which a thumbnail does
-// not show
 const QUIET = new Set(['contenteditable', 'tabindex', 'aria-hidden', 'hidden', 'role', 'aria-label', 'data-appendix', 'data-visibility']);
 
-// true for a change of the page that a thumbnail shows. a class set at run time is left out, and so
-// is the style of a section, in which reveal.js sets its place
 function seen(m: MutationRecord): boolean {
   if (m.type !== 'attributes') return true;
   const el = m.target as Element;
@@ -375,16 +308,9 @@ function seen(m: MutationRecord): boolean {
 }
 
 export const DELAY = 300;
-// the ms after a flip of the mode at which the theme has redrawn every backdrop, see the listener of
-// beeson:theme in src/main.ts
-const REDRAWN = 600;
-// the times a thumbnail waits DELAY for the formulas of its slide to be typeset, after which it is
-// drawn as it is, e.g. on a deck whose MathJax does not load
+const redrawnLater = (slide: Element): boolean => !!slide.querySelector('.backdrop') && !slide.classList.contains('present');
 const WAITS = 20;
 
-// true while a formula of slide is in raw TeX on a deck with MathJax, which is its configuration
-// until MathJax is loaded, i.e. not typeset yet. a code box, the notes, and the text being edited,
-// whose TeX is shown while it has the focus, are passed over
 function rawTex(slide: Element): boolean {
   if (!window.MathJax) return false;
   const walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT);
@@ -399,18 +325,13 @@ function rawTex(slide: Element): boolean {
   return false;
 }
 
-// the thumbnails of the slides, each drawn into the host that the navigator gives for its slide. a
-// host is drawn while it is in view and its slide is dirty, and the other dirty hosts are drawn one
-// at a time while the page is idle
 export class Thumbs {
   private readonly app: App;
   private readonly hosts = new Map<Element, HTMLElement>();
   private readonly dirty = new Set<Element>();
   private readonly timers = new Map<Element, number>();
   private readonly inView = new Set<HTMLElement>();
-  // the times each slide has waited for its formulas to be typeset
   private readonly waits = new Map<Element, number>();
-  // the tycho viewers whose scenes are watched for a change, see watch
   private readonly scenes = new WeakSet<Element>();
   private readonly seenBy: IntersectionObserver;
   private idle = 0;
@@ -440,8 +361,6 @@ export class Thumbs {
       for (const s of slides) this.soon(s);
     });
     watch.observe(app.slides(), { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true });
-    // a drag, a turn of the wheel, or a key in a tycho viewer may move the camera of its scene, which
-    // is not written in the page
     const moved = (e: Event) => {
       const slide = (e.target as Element | null)?.closest?.('tycho-viewer')?.closest('.reveal .slides > section');
       if (slide) this.soon(slide);
@@ -449,10 +368,6 @@ export class Thumbs {
     for (const type of ['pointerup', 'wheel', 'keyup']) app.slides().addEventListener(type, moved, { capture: true, passive: true });
   }
 
-  // the slide of a tycho viewer drawn again once its scene is loaded, and 300 ms after the last
-  // change of its state or of its frame. the frames of a scene that is played are passed over, and
-  // its slide is drawn again once it is paused, so that a scene played without end, e.g. of a kiosk
-  // viewer on the current slide, does not hold back the drawing of the slide after an edit
   private watch(viewer: Viewer): void {
     if (this.scenes.has(viewer)) return;
     this.scenes.add(viewer);
@@ -472,7 +387,6 @@ export class Thumbs {
     }
   }
 
-  // the host of each slide, kept while its slide is on the page. a new host is drawn once seen
   setHosts(next: Map<Element, HTMLElement>): void {
     for (const [slide, host] of this.hosts) {
       if (next.get(slide) === host) continue;
@@ -483,38 +397,42 @@ export class Thumbs {
     for (const [slide, host] of next) {
       if (this.hosts.get(slide) === host) continue;
       this.hosts.set(slide, host);
-      this.dirty.add(slide);
+      this.markDue(slide);
       this.seenBy.observe(host);
     }
     this.drawDue();
   }
 
-  // the width of the thumbnails in CSS px, set after a resize of the pane
   setWidth(width: number): void {
     if (Math.abs(width - this.width) < 0.5) return;
     this.width = width;
-    for (const s of this.hosts.keys()) this.dirty.add(s);
+    for (const s of this.hosts.keys()) this.markDue(s);
     this.drawDue();
   }
 
-  // the slide is drawn again 300 ms after its last change
   soon(slide: Element, delay = DELAY): void {
     clearTimeout(this.timers.get(slide));
     this.timers.set(
       slide,
       window.setTimeout(() => {
         this.timers.delete(slide);
-        this.dirty.add(slide);
+        this.markDue(slide);
         this.drawDue();
       }, delay),
     );
   }
 
-  // every slide drawn again after a flip of the mode of the slides. the theme redraws the backdrops
-  // of the slides other than the current one REDRAWN ms after the flip, hence their thumbnails are
-  // drawn after it
   all(): void {
-    for (const s of this.hosts.keys()) this.soon(s, s.querySelector('.backdrop') && !s.classList.contains('present') ? REDRAWN + 100 : DELAY);
+    for (const s of this.hosts.keys()) if (!redrawnLater(s)) this.soon(s);
+  }
+
+  redrawn(): void {
+    for (const s of this.hosts.keys()) if (redrawnLater(s)) this.soon(s, 100);
+  }
+
+  private markDue(slide: Element): void {
+    this.dirty.add(slide);
+    this.hosts.get(slide)?.setAttribute('data-due', '');
   }
 
   private deck(): Size {
@@ -525,9 +443,8 @@ export class Thumbs {
   private draw(slide: Element): void {
     const host = this.hosts.get(slide);
     this.dirty.delete(slide);
+    host?.removeAttribute('data-due');
     if (!host || !this.width || !slide.isConnected) return;
-    // the last picture is kept until the formulas of the slide are typeset. a thumbnail without a
-    // picture is drawn at once with its raw TeX hidden, and drawn again once they are typeset
     const waited = this.waits.get(slide) ?? 0;
     if (waited < WAITS && rawTex(slide)) {
       this.waits.set(slide, waited + 1);
@@ -539,13 +456,9 @@ export class Thumbs {
     for (const v of slide.querySelectorAll<Viewer>('tycho-viewer')) this.watch(v);
   }
 
-  // a thumbnail is not drawn into a host that is not laid out, e.g. in a hidden list or in the row of
-  // a hidden slide, in which the theme does not draw a backdrop. its slide stays due, and it is drawn
-  // once the host is shown, at the call of the observer
   private drawDue(): void {
     if (!this.width) return;
     const due = () => [...this.hosts].filter(([slide, host]) => this.dirty.has(slide) && host.getClientRects().length > 0);
-    // the hosts are read before a thumbnail is drawn, since a read after it lays the page out again
     const now = due();
     for (const [slide, host] of now) if (this.inView.has(host)) this.draw(slide);
     if (this.idle || !now.some(([slide]) => this.dirty.has(slide))) return;
@@ -561,10 +474,14 @@ export class Thumbs {
   }
 }
 
-// the thumbnails of the navigator, drawn again after a flip of the mode of the slides
 export function install(app: App): void {
   const nav = app.nav as unknown as { list: HTMLElement; useThumbs(t: Thumbs): void };
   const thumbs = new Thumbs(app, nav.list);
   nav.useThumbs(thumbs);
+  followTheme(thumbs);
+}
+
+export function followTheme(thumbs: Thumbs): void {
+  document.addEventListener('beeson:redrawn', () => thumbs.redrawn());
   new MutationObserver(() => thumbs.all()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }

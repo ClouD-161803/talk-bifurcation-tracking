@@ -1,9 +1,3 @@
-// the Format tab of the inspector on both platforms, driven with trusted input: a click in the
-// inspector keeps the selection on the canvas, X typed as 40 writes the translate of a figure, Align
-// Left of two elements is one entry of the history, Narrow writes the class of the slide, and the
-// description of an image is written into its alt. each edit is checked byte for byte, after an
-// undo and a redo, against the scope rule, and after a save and an open of the saved text
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -43,8 +37,6 @@ after(async () => {
 
 let last = null;
 
-// the editor on slide n of the deck of layouts, served over HTTP so that a save is written into the
-// origin private file system, with the Format tab shown
 async function inspectorPage(platform, n) {
   await last?.close().catch(() => {});
   const page = await browser.newPage();
@@ -68,13 +60,11 @@ const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const pane = (page) => page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane ?? null`);
 
-// the index of the first slide of the deck that has an element at selector
 const slideWith = (selector) => {
   const sections = readFileSync(LAYOUTS, 'utf8').split('<section').slice(1);
   return sections.findIndex((s) => s.includes(selector));
 };
 
-// a click on the tab or the button of the inspector whose text or title is name
 async function tap(page, name) {
   const at = await page.evaluate(`(() => {
     const b = [...document.querySelectorAll('${PANEL} button, ${PANEL} label.ed-check')].find((b) => b.textContent.trim() === ${JSON.stringify(name)} || b.title === ${JSON.stringify(name)} || b.getAttribute('aria-label') === ${JSON.stringify(name)});
@@ -87,11 +77,7 @@ async function tap(page, name) {
   await frames(page);
 }
 
-// the boxes of the solid frames shown, and whether one is drawn around the element at selector
 const shownFrames = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-frame.selected')].filter((f) => !f.hidden && f.getBoundingClientRect().width).map((f) => { const r = f.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })`);
-// the box of the first shown element matched by selector. a figure that holds a picture is framed at
-// the picture, i.e. at the image or video fitted into it with object-fit contain, and over its
-// caption while the figure is selected
 const boxOf = (page, selector) => page.evaluate(`(() => {
   let el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width);
   const caps = el.matches('figure, .figure-box, .plate') && window.BeesonEditor.selection().includes(el) ? [...el.querySelectorAll(':scope > figcaption, :scope > .caption')].map((c) => c.getBoundingClientRect()).filter((c) => c.width) : [];
@@ -118,7 +104,6 @@ async function framed(page, selectors) {
   return out;
 }
 
-// the problems of the scope rule in the rendered text that the file did not have before
 async function inScope(page) {
   const now = textProblems(await page.evaluate('window.BeesonEditor.render()'), THEME);
   for (const p of textProblems(page.source, THEME)) {
@@ -145,9 +130,7 @@ async function saved(page, edits) {
   assert.ok(edits.every(([, after]) => text.includes(after)));
 }
 
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-// the value typed into the field at selector of the inspector, after its old value is selected
 async function typeInto(page, selector, text) {
   await click(page, `${PANEL} ${selector}`);
   await page.evaluate(`document.querySelector('${PANEL} ${selector}').select()`);
@@ -161,16 +144,12 @@ for (const platform of PLATFORMS) {
     const page = await inspectorPage(platform, slideWith(FIGURE));
     await selectFigure(page, IMG);
     assert.deepEqual(await framed(page, [FIGURE_BOX]), [FIGURE_BOX], 'the figure is not selected by a click on its image and Esc');
-    // the figure has the Image pane with its tabs, as an image with a caption in Keynote, and its
-    // place in the Arrange tab
     assert.equal(await pane(page), 'image');
     await tap(page, 'Arrange');
     assert.equal(await pane(page), 'arrange');
     await tap(page, 'Slide');
     assert.deepEqual(await framed(page, [FIGURE_BOX]), [FIGURE_BOX], 'a click on Align to Slide clears the selection');
     await tap(page, 'Selection');
-    // X and Y are the position of the figure on the slide, and a position 40 px to the right is
-    // written as a translate of 40 px
     const field = (n) => page.evaluate(`Number(document.querySelector('${PANEL} #beeson-edit-num-${n}').value)`);
     const x0 = await field('x'), y0 = await field('y');
     await typeInto(page, '#beeson-edit-num-x', String(x0 + 40));
@@ -178,7 +157,6 @@ for (const platform of PLATFORMS) {
     const moved = [FIGURE, '<figure class="figure-box fragment" data-fragment-index="2" style="translate: 40px 0px">'];
     await roundTrip(page, [moved]);
     assert.equal(await field('x'), x0 + 40);
-    // Y is written next to X, and Reset Position takes both off
     await typeInto(page, '#beeson-edit-num-y', String(y0 - 12));
     const both = [FIGURE, '<figure class="figure-box fragment" data-fragment-index="2" style="translate: 40px -12px">'];
     await byteExact(page, [both]);
@@ -189,7 +167,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [moved]);
     await saved(page, [moved]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a click on Bold in the Text pane keeps the range of the text, and formats it on ${platform}`, async () => {
@@ -219,7 +197,7 @@ for (const platform of PLATFORMS) {
     await redo(page);
     await byteExact(page, [bold]);
     await saved(page, [bold]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Align Left of two elements writes both offsets as one entry of the history on ${platform}`, async () => {
@@ -243,19 +221,16 @@ for (const platform of PLATFORMS) {
     ];
     await byteExact(page, edits);
     await inScope(page);
-    // one undo takes both offsets off
     await undo(page);
     await byteExact(page);
     await redo(page);
     await byteExact(page, edits);
-    // the two are moved as one ensemble: the left edge of the pair is at the left edge of the slide,
-    // and the figure keeps its distance from the paragraph
     const left = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().left`);
     const [p2, f2] = [await boxOf(page, P), await boxOf(page, FIGURE_BOX)];
     assert.ok(Math.abs(Math.min(p2.left, f2.left) - left) <= 1, 'the pair is not at the left edge');
     assert.ok(Math.abs(f2.left - p2.left - (f.left - p.left)) <= 1, 'the figure did not keep its distance from the paragraph');
     await saved(page, edits);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Narrow in the Slide pane writes the class of the section on ${platform}`, async () => {
@@ -272,7 +247,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [narrow]);
     await saved(page, [narrow]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the description typed into the Image pane is written into the alt of the image on ${platform}`, async () => {
@@ -283,14 +258,13 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await framed(page, ['.reveal section.present .plate']), ['.reveal section.present .plate'], 'a description typed clears the selection');
     const alt = [WHITE_FIGURE, '<img class="white-figure" src="../../demo/figure-light.png" alt="Zero-velocity curves, with &quot;quotes&quot; &amp; an ampersand">'];
     await roundTrip(page, [alt]);
-    // Decorative writes the empty alt, and a second click takes the alt off
     await tap(page, 'Decorative');
     await byteExact(page, [[WHITE_FIGURE, '<img class="white-figure" src="../../demo/figure-light.png" alt>']]);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} textarea[name="alt"]').disabled`), true);
     await undo(page);
     await byteExact(page, [alt]);
     await saved(page, [alt]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -302,10 +276,9 @@ test('Edit Alt Text… of the context menu shows the Image pane with its descrip
   await frames(page);
   assert.equal(await pane(page), 'image');
   assert.equal(await page.evaluate(`document.activeElement?.getAttribute('name')`), 'alt');
-  // the keys typed into the field are not taken by the canvas, e.g. an arrow nudges nothing
   await press(page, 'ArrowLeft');
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the text of a QR code is written into its data-qr and drawn again, also after an undo', async () => {
@@ -322,19 +295,11 @@ test('the text of a QR code is written into its data-qr and drawn again, also af
   await undo(page);
   await frames(page);
   assert.equal(await modules(), before, 'the QR code is not drawn again after an undo');
-  // an empty text is refused, and the file is kept
   await typeInto(page, 'textarea[name="qr"]', ' ');
   await byteExact(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
-// the panes of the Format tab that are kept across a change that they depend on, R35.1, on both
-// platforms. the Slide pane shows the sections and the controls of a pane built fresh for the same
-// selection after Mod+A or Mod+click in the navigator, and after a change of the layout of several
-// slides that keeps the current slide, with its undo and its redo. the Image pane and the Video
-// pane name the twin of a dark and light pair that a flip of the mode shows, and act on it. the
-// Poster Frame slider of the Video pane is on again once the video is loaded after an undo or a
-// redo of Replace…
 describe('panes kept across a change they depend on', () => {
   const PLATFORMS = ['mac', 'other'];
   const PANEL = '#beeson-edit-panel-format';
@@ -357,9 +322,6 @@ describe('panes kept across a change they depend on', () => {
     return page;
   }
 
-  // a click on the row of slide n of the navigator, counted from 1. Chrome on a macOS host turns a
-  // trusted Ctrl+click into a context menu without a click, hence the Ctrl+click of other is
-  // dispatched in the page there
   async function row(page, n, modifiers = '') {
     const at = await page.evaluate(`(() => {
     const r = document.querySelectorAll('.beeson-edit-nav .row')[${n - 1}];
@@ -373,7 +335,6 @@ describe('panes kept across a change they depend on', () => {
     await frames(page);
   }
 
-  // the pane that is shown: its shown sections, its layout card, and the state of each shown control
   const PANE = `(() => {
   const root = document.querySelector('${PANEL} .ed-panes');
   const shown = (el) => !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
@@ -391,7 +352,6 @@ describe('panes kept across a change they depend on', () => {
 })()`;
   const pane = async (page) => { await frames(page); return page.evaluate(PANE); };
 
-  // the pane built again for the same selection, i.e. the Format tab shown again without its panes
   async function fresh(page) {
     await page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.remove()`);
     await exec(page, 'shell.format');
@@ -399,7 +359,6 @@ describe('panes kept across a change they depend on', () => {
     return pane(page);
   }
 
-  // the kept pane, which must be the pane built fresh for the same selection
   async function same(page, what) {
     const kept = await pane(page);
     const built = await fresh(page);
@@ -434,7 +393,6 @@ describe('panes kept across a change they depend on', () => {
 
     test(`the Slide pane after Mod+click takes a slide off the selection is the pane built for the slide left (${platform})`, async () => {
       const page = await open(platform);
-      // [first, then with Mod, then with Mod again, the slide left, its sections]
       for (const [a, b, c, left, sections] of [
         [3, 1, 3, 1, ['Backdrop', 'Appearance']],
         [3, 2, 3, 2, ['Backdrop', 'Appearance', '(untitled)']],
@@ -506,7 +464,6 @@ describe('panes kept across a change they depend on', () => {
           if (kind === 'image') assert.equal(now.alt, now.shownAlt, `the description is that of the twin shown (${flip})`);
           was = now;
         }
-        // the Description field acts on the twin that the flip shows
         if (kind === 'image') {
           await press(page, 'D');
           await frames(page);
@@ -567,11 +524,6 @@ describe('panes kept across a change they depend on', () => {
   }
 });
 
-// the fixes of R5.5 on both platforms: the space after a smart dash at the end of a paragraph, the
-// Text pane live in an empty text, the switch Number the lines of the Code pane, the menu of the
-// delivery of a list in the Steps tab, a list in the text column after a change of layout to Split, and
-// typeset math in the running head of the Slide pane. each edit of the file is checked byte for
-// byte, after an undo and a redo, and after a save and an open
 describe('the Text and Code panes in new boxes', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -590,7 +542,6 @@ describe('the Text and Code panes in new boxes', () => {
 
   let last = null;
 
-  // the editor on the slide at index of the deck of layouts, served over HTTP, with the Format tab
   async function editor(platform, index = 2) {
     await last?.close().catch(() => {});
     const page = await browser.newPage();
@@ -613,9 +564,7 @@ describe('the Text and Code panes in new boxes', () => {
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the caret put at the end of the first element at selector, with its block focused
   const caretAtEnd = (page, selector) =>
     page.evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
@@ -636,8 +585,6 @@ describe('the Text and Code panes in new boxes', () => {
     return text;
   }
 
-  // a trailing space typed at the end of a block is a no-break space in Chrome, and the en dash put
-  // for the hyphen must keep it, since a plain trailing space is dropped by the next character
   test('an en dash keeps the space typed after it, whatever space the browser typed', () => {
     const on = { quotes: true, dashes: true };
     assert.deepEqual(substitution('done -', ' ', on), { remove: 2, insert: '– ' });
@@ -654,15 +601,13 @@ describe('the Text and Code panes in new boxes', () => {
       const typed = PARAGRAPH.replace('inline.', 'inline. “Halo” — it’s done – ok');
       await byteExact(page, [[PARAGRAPH, typed]]);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the controls of the Text pane that are not dimmed
   const liveControls = (page) =>
     page.evaluate(`[...document.querySelectorAll('#beeson-edit-panel-format .ed-panes button')].filter((b) => !b.disabled && !b.closest('.ed-tabs')).map((b) => b.getAttribute('aria-label') || b.title || b.textContent)`);
 
-  // the button of the Format tab with the title, clicked as a user would
   async function tap(page, title) {
     const at = await page.evaluate(`(() => {
     const b = [...document.querySelectorAll('#beeson-edit-panel-format button')].find((b) => (b.getAttribute('aria-label') || b.title || b.textContent) === ${JSON.stringify(title)});
@@ -688,7 +633,6 @@ describe('the Text and Code panes in new boxes', () => {
       await typeKeys(page, 'Hi there');
       const text = await page.evaluate('window.BeesonEditor.render()');
       assert.ok(text.includes('<p><strong><span class="tone-accent">Hi there</span></strong></p>'), 'the new text is not bold and orange');
-      // the box with its first character is one entry, and the typing after it another
       await undo(page);
       await undo(page);
       await byteExact(page);
@@ -696,7 +640,7 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), text);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a format chosen at the end of a footnote is typed after it on ${platform}`, async () => {
@@ -766,12 +710,10 @@ describe('the Text and Code panes in new boxes', () => {
       await undo(page3);
       await byteExact(page3);
       await saved(page3);
-      assert.deepEqual(errors(page3), []);
+      assert.deepEqual(page3.errors, []);
     });
   }
 
-  // the numbers drawn at the left of the code box of the slide, and the gap between the left edge
-  // of the box and its first character, in CSS pixels
   const drawnNumbers = (page) =>
     page.evaluate(`(() => {
     const pre = document.querySelector('.reveal section.present pre');
@@ -790,7 +732,6 @@ describe('the Text and Code panes in new boxes', () => {
       assert.equal((await state(page, 'code.numbers')).checked, true);
       const numbered = await drawnNumbers(page);
       assert.equal(numbered.numbers, '1\n2', 'the lines of the code box are not numbered on the canvas');
-      // a new code box is drawn without numbers until the switch is turned on
       await exec(page, 'insert.code');
       await frames(page);
       await type(page, 'x\ny');
@@ -815,12 +756,10 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), after);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the editor on the demo deck at a size of the window, with the Steps tab shown on the slide of a
-  // list delivered item by item
   async function stepsPage(platform, width, height) {
     await last?.close().catch(() => {});
     const page = await browser.newPage({ width, height });
@@ -852,16 +791,14 @@ describe('the Text and Code panes in new boxes', () => {
       })()`);
         assert.deepEqual(covered, [], 'the menu is drawn over rows of the Steps tab');
         assert.ok(menu.left >= 0 && menu.top >= 0 && menu.right <= width && menu.bottom <= height, 'the menu runs out of the window');
-        // the menu is level with the head row, at its side
         const head = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-side .list-head').getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })()`);
         assert.ok(menu.top <= head.bottom && menu.bottom >= head.top, `the menu is not level with its row: ${JSON.stringify([menu, head])}`);
         await press(page, 'Escape');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the contrast ratio of two colors given as rgb() strings, as WCAG 2 defines it
   function contrast(a, b) {
     const lum = (c) => {
       const [r, g, bl] = c.match(/[\d.]+/g).slice(0, 3).map((v) => {
@@ -902,7 +839,7 @@ describe('the Text and Code panes in new boxes', () => {
       await redo(page);
       assert.equal(await page.evaluate('window.BeesonEditor.render()'), split);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
@@ -920,26 +857,15 @@ describe('the Text and Code panes in new boxes', () => {
       const note = await page.evaluate(`(() => { const n = document.querySelector(${JSON.stringify(sel)}); return { tex: n.dataset.tex, shown: n.textContent }; })()`);
       assert.equal(note.tex, '“Content \\(\\mathcal{L}_{1}\\)”, from the last section slide');
       assert.ok(!note.shown.includes('\\('));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// tests of the popovers beside their target, the zoom levels, the poster frame slider, and the
-// table grid with Autofill, on either platform with trusted input. the Insert Formula sheet is kept
-// off its formula inside the canvas, the Edit Formula sheet and the link editor are kept off a list
-// item near the bottom of the slide, the
-// toolbar and the status bar list the same zoom levels, a poster is captured at the time of the
-// slider, also in a deck opened from a file, the grid of Insert Table is 10 columns by 8 rows with
-// Insert Table… under it, and a drag of the fill handle of a range of cells fills the cells beside
-// it. after each edit the text is in the scope rule, an undo gives the file byte for byte, a redo
-// gives the edit, and a save is opened again without problems
 describe('popovers, zoom levels, and the poster frame slider', () => {
   const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
   const PANEL = '#beeson-edit-panel-format';
   const PLATFORMS = ['mac', 'other'];
-  // the indexes of slides of index.html: "Show your steps one at a time", whose list ends near the
-  // bottom of the slide, "Equations are first class citizens", and "Embedding videos"
   const STEPS = 2;
   const EQUATIONS = 3;
   const VIDEOS = 10;
@@ -962,13 +888,9 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on a deck served over HTTP, with the Format tab shown
   async function open(platform, { deck = 'test-deck.html', size = { width: 1440, height: 900 } } = {}) {
     const page = await browser.newPage(size);
-    // an earlier test that keeps its page open 1 s after its last edit leaves a draft in the storage
-    // of the origin, and the dialog of this draft then covers the slide of the next page of the deck
     await page.send('Storage.clearDataForOrigin', { origin: server.origin, storageTypes: 'local_storage' });
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
@@ -995,8 +917,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
   const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
   const middle = (r) => ({ x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 });
 
-  // asserts that the popover of selector popover does not meet the box of target, is inside the
-  // window, and has an arrow
   async function besideCheck(page, popover, target, what) {
     const p = await boxOf(page, popover);
     const t = await boxOf(page, target);
@@ -1021,14 +941,13 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r6-3-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
   test('a popover is put on the first side where it fits, and flipped where the window ends', () => {
     const view = { width: 1440, height: 900 };
     const item = { left: 250, top: 780, right: 750, bottom: 830, width: 500, height: 50 };
-    // below an item near the bottom of the window there is no room, hence the popover goes above it
     const up = besidePlace(item, 372, 200, view);
     assert.equal(up.side, 'above');
     assert.ok(up.y + 200 <= item.top);
@@ -1037,7 +956,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
     const left = besidePlace(wide, 460, 316, view, ['right', 'left', 'below', 'above']);
     assert.equal(left.side, 'left');
     assert.ok(left.x + 460 <= wide.left);
-    // without room on any side, the popover is kept in the window without an arrow
     const full = besidePlace({ left: 0, top: 0, right: 1440, bottom: 900, width: 1440, height: 900 }, 460, 316, view);
     assert.equal(full.side, null);
     assert.ok(full.x >= 8 && full.y >= 8 && full.x + 460 <= 1432 && full.y + 316 <= 892);
@@ -1054,7 +972,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
     assert.deepEqual(GRID, { columns: 10, rows: 8 });
   });
 
-  // the caret at the end of the last item of the list of the current slide
   async function caretInLast(page) {
     const r = await boxOf(page, LAST);
     await clickText(page, { x: r.right - 4, y: r.bottom - 6 });
@@ -1083,7 +1000,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await sleep(200);
       await besideCheck(page, '.beeson-math', LAST, 'the Insert Inline Formula sheet');
       await type(page, 'x^2');
-      // the sheet takes its TeX once the preview is typeset
       await page.waitFor(`!document.querySelector('.beeson-math button.primary').disabled`);
       await press(page, 'Mod+Enter');
       await page.waitFor(`!document.querySelector('.beeson-math')`);
@@ -1100,7 +1016,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await page.evaluate('window.BeesonEditor.undo()');
       await byteExact(page);
 
-      // the link editor on the word PDF of the item
       await caretInLast(page);
       await page.evaluate(`(() => {
       const text = document.querySelector(${js(LAST)}).firstChild;
@@ -1122,9 +1037,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await roundTrip(page);
     });
 
-    // in this window no side of the new formula below the list has room in the canvas but the one
-    // above it, hence the sheet is put over the list, as R7.9 keeps it inside the canvas and off the
-    // inspector
     test(`the formula sheet of a new display formula below a list is kept above it, inside the canvas (${platform})`, async (t) => {
       const page = await open(platform);
       t.after(() => page.close?.());
@@ -1143,7 +1055,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
     });
   }
 
-  // the labels of the items of the open menu, with their dimmed state
   const menuLabels = (page) =>
     page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].map((m) => ({ label: m.querySelector('.label')?.textContent ?? m.textContent.trim(), disabled: m.getAttribute('aria-disabled') === 'true' }))`);
   const pick = (page, label) =>
@@ -1167,7 +1078,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.deepEqual(levels(popup), levels(bar));
       assert.deepEqual(levels(bar), ['25%', '33%', '50%', '67%', '75%', '100%', '125%', '150%', '200%', '300%', '400%']);
       assert.deepEqual(popup.slice(0, 3).map((i) => i.label), ['Fit Slide', 'Actual Size', 'Zoom to Selection']);
-      // Zoom to Selection is dimmed without a selection, as in the View menu
       assert.equal(popup[2].disabled, true);
       await click(page, '.beeson-edit-top [data-command="toolbar.zoom"]');
       await pick(page, 'Actual Size');
@@ -1185,25 +1095,21 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await pick(page, 'Zoom to Selection');
       await settle(page);
       assert.ok((await zoomOf(page)) > fit, `Zoom to Selection kept the zoom at ${fit}`);
-      // Zoom In goes on from 300 percent to 400 percent, the last level
       await page.evaluate('window.BeesonEditorShell.stage.setZoom(3)');
       await exec(page, 'zoom.in');
       assert.equal(await zoomOf(page), 4);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the video of the mode of the slide, its selector, and the name of its clip
   async function videoOfSlide(page) {
     const mode = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length && v.getBoundingClientRect().width).classList.contains('for-dark') ? 'dark' : 'light'`);
     return { mode, video: `.reveal section.present video.for-${mode}`, clip: `clip-${mode}` };
   }
   const clipOf = (mode) => `<video class="for-${mode}" src="demo/clip-${mode}.mp4" poster="demo/clip-${mode}.png" muted loop data-autoplay></video>`;
   const SLIDER = `${PANEL} input[name="poster-frame"]`;
-  // a hash of the bytes of the poster that the page shows, read from its object URL
   const posterBytes = (page, video) => page.evaluate(`fetch(document.querySelector(${js(video)}).poster).then((r) => r.arrayBuffer()).then((b) => [...new Uint8Array(b)].reduce((h, x) => (h * 31 + x) >>> 0, b.byteLength))`);
-  // a trusted click on the poster frame slider at a fraction of its length
   async function slideTo(page, fraction) {
     const r = await boxOf(page, SLIDER);
     await clickText(page, { x: r.left + 8 + (r.right - r.left - 16) * fraction, y: (r.top + r.bottom) / 2 });
@@ -1231,22 +1137,16 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Poster Frame');
       const edited = page.source.replace(clipOf(mode), clipOf(mode).replace(`poster="demo/${clip}.png"`, `poster="media/${clip}.png"`));
       assert.equal(await render(page), edited);
-      // the first frame of the video is another picture
       await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
       await press(page, 'Home');
       await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
       assert.notEqual(await posterBytes(page, video), half);
       await page.evaluate('window.BeesonEditor.undo()');
       await settle(page);
-      // the new posters are written into media/ of the folder of the saved deck, the root of the
-      // private file system of the page
       await page.evaluate('window.showDirectoryPicker = () => navigator.storage.getDirectory()');
       await roundTrip(page);
     });
 
-    // regression test of opus 13 and qwen3 34 of the juror of round 2: in a deck opened from a file,
-    // the browser keeps the frames of a video of the folder from the page, and the Video pane must
-    // still offer a way to set the poster
     test(`in a deck opened from a file, the Video pane offers a way to set the poster, and the slider captures through the chosen file (${platform})`, async (t) => {
       const page = await editorPage(browser, { query: `edit&still&edit-platform=${platform}`, page: { width: 1440, height: 900 }, clear: true });
       t.after(() => page.close?.());
@@ -1257,7 +1157,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await clickText(page, video);
       await settle(page);
       const before = (await page.evaluate('window.BeesonEditor.status()')).message;
-      // the Video pane is filled after the click, and under load later than one settle
       await page.waitFor(`!!document.querySelector(${js(SLIDER)}) || !!document.querySelector('${PANEL} [data-command="media.poster"]')`);
       if (await page.evaluate(`!!document.querySelector(${js(SLIDER)})`)) {
         await page.waitFor(`!document.querySelector(${js(SLIDER)}).disabled`);
@@ -1274,7 +1173,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await page.send('DOM.setFileInputFiles', { files: [resolve(`demo/${clip}.mp4`)], objectId: result.objectId });
       await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
       if (!(await page.evaluate(`!!document.querySelector(${js(SLIDER)})`))) return;
-      // a second move of the slider reads the chosen file again without asking
       const half = await posterBytes(page, video);
       await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
       await press(page, 'Home');
@@ -1283,11 +1181,10 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.notEqual(await posterBytes(page, video), half);
       const edited = page.source.replace(clipOf(mode), clipOf(mode).replace(`poster="demo/${clip}.png"`, `poster="media/${clip}-2.png"`));
       assert.equal(await render(page), edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the text of the cells of the table of the current slide, row by row
   const cells = (page) => page.evaluate(`[...document.querySelector('.reveal section.present table').rows].map((tr) => [...tr.cells].map((c) => c.textContent))`);
   const cellAt = (r, c) => `.reveal section.present table tr:nth-child(${r + 1}) > :nth-child(${c + 1})`;
 
@@ -1331,7 +1228,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       }
       await settle(page);
       const typed = await render(page);
-      // the range of rows 2 and 3, by a drag across its cells
       const from = middle(await boxOf(page, cellAt(1, 0)));
       const to = middle(await boxOf(page, cellAt(2, 2)));
       await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
@@ -1348,7 +1244,6 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       await page.waitFor(`window.BeesonEditor.state('edit.undo').label === 'Undo Autofill'`);
       await settle(page);
       assert.deepEqual((await cells(page)).slice(1), [['1', 'Step 1', 'orbit'], ['2', 'Step 2', 'tube'], ['3', 'Step 3', 'orbit'], ['4', 'Step 4', 'tube']]);
-      // the range is the source with the cells filled from it
       assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-table-bars .bar.rows > .on')].map((d) => d.textContent)`), ['2', '3', '4', '5']);
       const filled = await render(page);
       assert.match(filled, /<tr><td>3<\/td><td>Step 3<\/td><td>orbit<\/td><\/tr>/);
@@ -1359,7 +1254,7 @@ describe('popovers, zoom levels, and the poster frame slider', () => {
       assert.equal(await render(page), filled);
       const { text } = await saveAndReopen(page, `r6-3-${++saves}.html`);
       assert.equal(text, filled);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

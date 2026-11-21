@@ -1,8 +1,3 @@
-// the figures of a plate that holds several of them, e.g. the two videos of a plate of the class row:
-// the first click selects the plate, a second click on one of them selects it by itself, one level
-// down, and it is then dragged, resized, and nudged by itself, with its offset in its own style,
-// while Esc selects the plate again. a figure of one picture with its caption is still one object
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -21,14 +16,11 @@ after(async () => {
 
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-// the selected elements, each by its tag and id
 const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : ''))`);
-// the selection, once it is expected or after 5 s, asserted to be expected
 async function selects(page, expected, message) {
   await page.waitFor(`JSON.stringify(window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : ''))) === ${JSON.stringify(JSON.stringify(expected))}`, 5000).catch(() => {});
   assert.deepEqual(await selected(page), expected, message);
 }
-// the start tag of the element with id in the text
 const tagOf = (text, id) => text.match(new RegExp(`<[a-z]+[^>]*\\bid="${id}"[^>]*>`))?.[0] ?? '';
 const plateTag = (text, slide) => text.split('<section').slice(1)[slide].match(/<div class="plate[^"]*"[^>]*>/)?.[0] ?? '';
 
@@ -41,8 +33,6 @@ async function load(t, slide) {
   return page;
 }
 
-// two clicks on the element of selector, the second after the time of a double click, which
-// select the outer and then the inner element
 async function secondClick(page, selector, outer, inner) {
   await click(page, selector);
   await selects(page, outer, 'the first click');

@@ -1,7 +1,3 @@
-// the Version History mode of a session, whose pane is drawn by theme/session.js: File > Version
-// History with its key, the chrome made inert, and the commands, pastes, and drops of the person
-// refused while the mode is on, so that the deck changes only by the applies of the others
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import type { HistoryShell } from '../../session/client/handover.ts';
@@ -9,27 +5,24 @@ import type { HistoryShell } from '../../session/client/handover.ts';
 let on = false;
 let esc: (() => void) | null = null;
 
-// added when editor.js is evaluated, hence before the listeners of the installs, e.g. the keys of
-// commands.ts and the drop of media/drop.ts
 const refuse = (ev: Event) => {
   if (!on || ev.target instanceof HTMLInputElement) return;
   ev.preventDefault();
   ev.stopImmediatePropagation();
 };
 for (const type of ['paste', 'cut', 'drop', 'dragover']) window.addEventListener(type, refuse, true);
-window.addEventListener('keydown', (ev) => {
-  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-  esc();
-}, true);
 
-// the commands that run in the mode
 const FREE = ['file.history', 'file.save'];
 
 export function historyShell(app: App): HistoryShell {
   const run = app.commands.run.bind(app.commands);
-  app.commands.run = (id, arg) => (on && !FREE.includes(id) ? Promise.resolve() : run(id, arg));
+  app.commands.run = (id, arg, ev) => (on && !FREE.includes(id) ? Promise.resolve() : run(id, arg, ev));
+  app.commands.intercept((ev) => {
+    if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return false;
+    ev.preventDefault();
+    esc();
+    return true;
+  });
   let opener = () => {};
   app.commands.define({
     id: 'file.history',

@@ -1,7 +1,3 @@
-// the layer of a new element: a new text box given a layer only when a shape drawn over it meets
-// its box, new shapes, lines, formulas, and figures drawn in front of their slide, and the layer
-// commands, which stay fast on a slide with many children
-
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -10,10 +6,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// regression tests of R28.1 on both platforms: a new text box is given a layer only when a shape
-// drawn over it meets its box, a new shape and a new line are put in front of their slide in the
-// entry of their insert, and copies pasted again on a slide without their sources are 20 px apart.
-// after each edit an undo gives the file back byte for byte
 describe('layers of new elements and repeated pastes', () => {
   const PLATFORMS = ['mac', 'other'];
   const DECK = 'test/pages/editor-r28-1.html';
@@ -35,12 +27,10 @@ describe('layers of new elements and repeated pastes', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}, ${js(arg ?? null)} ?? undefined)).then(() => true)`);
-  // the section of the file whose heading is title
   const section = (text, title) => [...text.matchAll(/<section>[\s\S]*?<\/section>/g)].map((m) => m[0]).find((s) => s.includes(`<h2>${title}</h2>`));
 
   async function load(t, platform, slide) {
@@ -60,7 +50,6 @@ describe('layers of new elements and repeated pastes', () => {
     return page;
   }
 
-  // a new text box with a word, typed and left with Esc twice, and the box of its word in slide px
   async function textBox(page) {
     await click(page, '.beeson-edit-top [data-command="insert.text"]');
     await sleep(300);
@@ -79,8 +68,6 @@ describe('layers of new elements and repeated pastes', () => {
   })()`);
   }
 
-  // the element drawn on top at the middle of the word of the text box, or at the middle of the
-  // stroke of the last line of the slide: the word, the last shape, the last line, or another one
   const topAt = (page, what) => page.evaluate(`(() => {
   const sl = Reveal.getCurrentSlide();
   const word = [...sl.querySelectorAll(':scope > p')].find((p) => p.textContent === 'words');
@@ -98,9 +85,6 @@ describe('layers of new elements and repeated pastes', () => {
 })()`);
 
   for (const platform of PLATFORMS) {
-    // the steps of the reviewer: a shape far from the column, a new text box, and a rectangle drawn
-    // 20 px around its word. the text box is newer than the shape, hence layered over it wherever it
-    // is dragged later, and the rectangle is newer still, hence drawn over the word
     test(`1: a text box far from a shape is layered over it, and a rectangle drawn over it is in front (${platform})`, async (t) => {
       const page = await load(t, platform, FAR);
       const b = await textBox(page);
@@ -115,11 +99,9 @@ describe('layers of new elements and repeated pastes', () => {
       await redo(page);
       assert.equal(await render(page), drawn);
       await saveAndReopen(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // a text box under a shape is put over it, and a shape and a line drawn over the text box later
-    // are put in front of it, each in the entry of its insert
     test(`1: a text box under a shape is layered, and a new shape and a new line are put in front (${platform})`, async (t) => {
       const page = await load(t, platform, NEAR);
       const b = await textBox(page);
@@ -147,12 +129,9 @@ describe('layers of new elements and repeated pastes', () => {
       assert.equal(await render(page), lined);
       await saveAndReopen(page);
       assert.equal(await topAt(page, 'line'), 'new line');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the copies of a shape, of a line, and of both, pasted three times on a slide without their
-    // sources by the key and by the Edit menu: the first at the place of its source, and each later
-    // one 20 px further. the count starts again on a third slide and at a new copy
     for (const what of ['shape', 'line', 'both']) {
       test(`2: a ${what} pasted again on another slide is put 20 px from the copy before it, by the key and the menu (${platform})`, async (t) => {
         for (const route of ['key', 'menu']) {
@@ -186,7 +165,6 @@ describe('layers of new elements and repeated pastes', () => {
             await frames(page);
             await sleep(200);
           };
-          // the offsets of the shapes and the lines of the current slide
           const places = () => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll(':scope > .shape, :scope > svg.line')].map((e) => (e.localName === 'svg' ? 'L ' : 'S ') + e.style.translate)`);
           const S = (d) => `S ${1200 + d}px ${300 + d}px`, L = (d) => `L ${1200 + d}px ${700 + d}px`;
           const of = (d) => (what === 'shape' ? [S(d)] : what === 'line' ? [L(d)] : [S(d), L(d)]);
@@ -209,17 +187,14 @@ describe('layers of new elements and repeated pastes', () => {
           await redo(page);
           await redo(page);
           assert.equal(await render(page), three);
-          // a third slide starts the count again
           await go(THIRD);
           await paste();
           await paste();
           assert.deepEqual(await places(), [...of(0), ...of(20)], `the count does not start again on a third slide, ${why}`);
-          // and once the first paste on a slide is undone
           await undo(page);
           await undo(page);
           await paste();
           assert.deepEqual(await places(), of(0), `the count does not start again after an undo of the first paste, ${why}`);
-          // and so does a new copy
           await go(FROM);
           await pick();
           await copy();
@@ -231,7 +206,7 @@ describe('layers of new elements and repeated pastes', () => {
           const { text } = await saveAndReopen(page);
           const saved = [...section(text, 'Target').matchAll(/translate: [^;"]+/g)].map((m) => m[0]);
           assert.deepEqual(saved, [0, 20, 40, 0, 20].flatMap(of).map((p) => `translate: ${p.slice(2)}`), `the saved offsets differ, ${why}`);
-          assert.deepEqual(errors(page), []);
+          assert.deepEqual(page.errors, []);
           await page.close();
         }
       });
@@ -239,12 +214,6 @@ describe('layers of new elements and repeated pastes', () => {
   }
 });
 
-// regression tests of R20.11 on both platforms with trusted input. the layer commands of
-// commands/order.ts stay fast on a slide with many children (F1) and keep a caption in its place
-// (F2). a new text box, formula, or figure is drawn in front of the shapes of its slide, and Send
-// to Back of a shape draws the words of the text column over it. Reset Slide keeps the place of a
-// line. Reset Rotation of a group gives the file back after many turns and a nudge (F12, O4, N3),
-// and Esc during a drag does not revive an older turn (F13) or change the selection (F14)
 describe('fast layer commands and new elements in front', () => {
   const SOURCE = readFileSync('test-deck.html', 'utf8');
   const DECK = 'test/pages/editor-r20-11.html';
@@ -280,7 +249,6 @@ describe('fast layer commands and new elements in front', () => {
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg ? `, ${js(arg)}` : ''})).then(() => true)`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName).join(',')`);
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
@@ -290,7 +258,6 @@ describe('fast layer commands and new elements in front', () => {
     return Math.round(performance.now() - t0);
   };
 
-  // the deck text opened with the editor at slide n, from a file of the root where file is given
   async function load(t, platform, text, n, file = null, theme = '') {
     if (file) {
       writeFileSync(file, text);
@@ -311,8 +278,6 @@ describe('fast layer commands and new elements in front', () => {
     return page;
   }
 
-  // the object list shown, and the point of its row whose name starts with which, or of the row at
-  // the index which
   const showList = async (page, platform) => {
     await press(page, LIST_KEY[platform]);
     await frames(page);
@@ -324,11 +289,8 @@ describe('fast layer commands and new elements in front', () => {
 })()`);
   const rowNames = (page) => page.evaluate(`[...document.querySelectorAll(${js(ROW)})].map((r) => r.querySelector('.name').textContent)`);
 
-  // the top left corners of the elements of the selectors, in CSS px
   const corners = (page, selectors) => page.evaluate(`${js(selectors)}.map((s) => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; })`);
 
-  // what is drawn at a point of the words of the element of a inside the box of the element of b,
-  // with the shapes taking the pointer, which the theme gives to the elements under them
   const drawnAt = (page, a, b) => page.evaluate(`(() => {
   const el = document.querySelector(${js(a)});
   const box = document.querySelector(${js(b)}).getBoundingClientRect();
@@ -348,8 +310,6 @@ describe('fast layer commands and new elements in front', () => {
   return hit === el || el.contains(hit) ? 'words' : hit?.closest('.shape') ? 'shape' : hit?.localName ?? 'nothing';
 })()`);
 
-  // the kind of what is drawn at the center of the element of selector, with the shapes taking the
-  // pointer
   const drawnAtCenter = (page, selector) => page.evaluate(`(() => {
   const r = document.querySelector(${js(selector)}).getBoundingClientRect();
   const style = document.createElement('style');
@@ -360,8 +320,6 @@ describe('fast layer commands and new elements in front', () => {
   return hit?.closest('.shape') ? 'shape' : hit?.closest('.math, .figure-box, p') ? 'new' : hit?.localName ?? 'nothing';
 })()`);
 
-  // a drag of the element of selector onto the center of the shape of the slide, by the move handle
-  // of a text block, which a drag of its words would select, and else from its center
   async function dragOntoShape(page, selector) {
     const mid = (s) => page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(s)})].find((e) => !e.hidden && e.getClientRects().length)?.getBoundingClientRect(); return r && { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const [from, to] = [await mid(selector), await mid(`${S} > .shape`)];
@@ -372,14 +330,11 @@ describe('fast layer commands and new elements in front', () => {
     assert.ok(Math.abs(now.x - to.x) < 4 && Math.abs(now.y - to.y) < 4, `the drag did not put the element onto the shape: ${js([from, now, to])}`);
   }
 
-  // the opened deck again after the undo of each entry, which are at most six
   async function undoAll(page) {
     for (let i = 0; i < 6 && (await render(page)) !== page.source; i++) await undo(page);
     assert.equal(await render(page), page.source);
   }
 
-  // a slide with a heading, n paragraphs in the flow, m translated figures, and a foot, put before
-  // the closing slide of source, and its index
   function manyChildren(n, m, source = SOURCE, title = 'Many children') {
     const ps = Array.from({ length: n }, (_, i) => `  <p style="font-size: 22px; margin: 0">Paragraph number ${i} of a long slide.</p>`).join('\n');
     const figs = Array.from({ length: m }, (_, i) => `  <div class="figure-box" style="translate: ${-900 + i * 40}px ${-300 + i * 30}px"><img src="demo/figure-dark.png" alt="f${i}"></div>`).join('\n');
@@ -388,9 +343,6 @@ describe('fast layer commands and new elements in front', () => {
     return { text, n: slideOf(text, (s) => s.includes(title)) };
   }
 
-  // the times in ms on the slide n, with the object list shown: the Arrange menu opened with the
-  // first figure selected, the four Order commands on it, Shift-clicks on the rows of the next four
-  // figures, and Bring to Front of the five. the slide is given back after each command
   async function layerTimes(page, platform, n) {
     await page.evaluate(`Reveal.slide(${n})`);
     await frames(page);
@@ -440,18 +392,10 @@ describe('fast layer commands and new elements in front', () => {
     return { rows: names.length, menu, command: Math.max(...Object.values(commands)), shift: Math.max(...shifts), front };
   }
 
-  // each time on a slide with 47 rows is bounded by RATIO times the same time on a slide with 9 rows,
-  // and SLACK ms for the pauses of a machine that other tests load at once. the bound thus scales
-  // with a slower machine. before the fix of F1, the menu took about 970 ms, a command 700 ms, a
-  // Shift-click 5 to 12 s, and Bring to Front of 5 about 45 s on the slide with 47 rows, i.e. over
-  // 100 times its time with 9 rows. the rows are 5.2 times as many, and on the runners of GitHub
-  // Bring to Front took 2 to 5.8 times as long, hence a bound of 4 times failed there
   const RATIO = 8;
   const SLACK = 150;
 
   for (const platform of PLATFORMS) {
-    // F1: every place among the siblings was tried for each moved element, by each of the four Order
-    // commands at each refresh of the inspector
     test(`the Arrange menu, a layer command, and a Shift-click run without a pause on a slide with 47 rows (${platform})`, { timeout: 180000 }, async (t) => {
       const few = manyChildren(2, 5, SOURCE, 'Few children');
       const { text, n } = manyChildren(25, 20, few.text);
@@ -460,12 +404,9 @@ describe('fast layer commands and new elements in front', () => {
       const names = await rowNames(page);
       assert.ok(names.filter((r) => !r.startsWith('Backdrop')).length >= 47, `the slide has ${names.length} rows`);
       assert.equal(names.filter((r) => /^(Figure|Image|Picture)/.test(r)).length, 20, js(names));
-      // the slide with few rows is measured first, after which the code of the editor is warm
       await layerTimes(page, platform, few.n);
       const small = await layerTimes(page, platform, few.n);
       const large = await layerTimes(page, platform, n);
-      // a time over its bound is measured again, twice at most, and the lowest one counts, since one
-      // time on a machine that runs other tests at once holds the pauses of the machine too
       const TIMES = ['menu', 'command', 'shift', 'front'];
       const over = () => TIMES.filter((k) => large[k] >= RATIO * small[k] + SLACK);
       for (let again = 0; again < 2 && over().length; again++) {
@@ -476,11 +417,9 @@ describe('fast layer commands and new elements in front', () => {
       for (const k of TIMES) {
         assert.ok(large[k] < RATIO * small[k] + SLACK, `${k} took ${large[k]} ms with ${large.rows} rows, and ${small[k]} ms with ${small.rows} rows`);
       }
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // F2: Bring Forward and Bring to Front moved the tag of the caption after the list, and its words
-    // from y 363 to y 642
     for (const o of ['forward', 'front']) {
       test(`Bring ${o === 'front' ? 'to Front' : 'Forward'} of a caption on a content slide keeps its words in their place (${platform})`, async (t) => {
         const page = await load(t, platform, SOURCE, STEPS);
@@ -502,11 +441,10 @@ describe('fast layer commands and new elements in front', () => {
         assert.equal(await render(page), base);
         await redo(page);
         assert.equal(await render(page), edited);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
-    // a new element was written before the shape in the file, hence drawn under it once dragged onto it
     test(`a new text box dragged onto a shape is drawn in front of it (${platform})`, async (t) => {
       const page = await load(t, platform, DECK_SOURCE, ROOM);
       await click(page, '.beeson-edit-top [data-command="insert.text"]');
@@ -521,7 +459,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, box);
       assert.equal(await drawnAtCenter(page, box), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new formula dragged onto a shape is drawn in front of it, and its undo gives the file back (${platform})`, async (t) => {
@@ -530,7 +468,6 @@ describe('fast layer commands and new elements in front', () => {
       await sleep(300);
       await type(page, 'x^2 + y^2 = r^2');
       await sleep(300);
-      // a click on the pasteboard closes the TeX field and leaves the slide without a selection
       await clickText(page, { x: 8, y: 500 });
       await sleep(300);
       const inserted = await render(page);
@@ -539,7 +476,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, `${math} mjx-container`);
       assert.equal(await drawnAtCenter(page, `${math} mjx-container`), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new figure dragged onto a shape is drawn in front of it (${platform})`, { timeout: 60000 }, async (t) => {
@@ -557,7 +494,7 @@ describe('fast layer commands and new elements in front', () => {
       await dragOntoShape(page, img);
       assert.equal(await drawnAtCenter(page, img), 'new');
       await undoAll(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Send to Back of a shape over the words of the text column draws the words over it and keeps the layout (${platform})`, async (t) => {
@@ -578,10 +515,9 @@ describe('fast layer commands and new elements in front', () => {
       assert.equal(await drawnAt(page, `${S} > ul`, shape), 'words');
       await undo(page);
       assert.equal(await render(page), DECK_SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // Reset Slide took the translate off a line, which moved it to the upper left corner of its slide
     test(`Reset Slide leaves the place of a line (${platform})`, async (t) => {
       const page = await load(t, platform, DECK_SOURCE, LINED);
       const line = `${S} > svg.line`;
@@ -594,11 +530,10 @@ describe('fast layer commands and new elements in front', () => {
       assert.deepEqual(await corners(page, [line]), was, 'the line moved');
       await undo(page);
       assert.equal(await render(page), DECK_SOURCE);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // a typed value of a field of the Arrange pane
   const PANEL = '#beeson-edit-panel-format';
   async function typeField(page, id, value) {
     await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-tabs button')].find((b) => b.textContent === 'Arrange')?.click()`);
@@ -609,7 +544,6 @@ describe('fast layer commands and new elements in front', () => {
     await frames(page);
   }
 
-  // a drag of the shown rotate handle by deg degrees about the center of the frame of the selection
   async function dragRotor(page, deg) {
     const o = await page.evaluate(`(() => {
     const mid = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
@@ -630,8 +564,6 @@ describe('fast layer commands and new elements in front', () => {
     await frames(page);
   }
 
-  // the paragraph and the figure of the figures slide made one group, with the figure turned by 20
-  // degrees by itself first where own is set
   async function groupOnFigures(page, platform, own) {
     await clickText(page, IMG);
     if (own) {
@@ -644,8 +576,6 @@ describe('fast layer commands and new elements in front', () => {
     await frames(page);
   }
 
-  // the group selected anew by a click on the pasteboard and a click on the picture, since a click
-  // on a member of a selected group selects the member
   async function reselect(page) {
     await clickText(page, { x: 8, y: 500 });
     await frames(page);
@@ -653,8 +583,6 @@ describe('fast layer commands and new elements in front', () => {
     await frames(page);
   }
 
-  // a step of a run of turns: f and an angle types the angle, h and a number of degrees drags the
-  // rotate handle by them, and nudge moves the group by 1 px to the right
   async function step(page, s) {
     if (s.startsWith('f')) await typeField(page, 'angle', Number(s.slice(1)));
     else if (s.startsWith('h')) await dragRotor(page, Number(s.slice(1)));
@@ -665,8 +593,6 @@ describe('fast layer commands and new elements in front', () => {
     }
   }
 
-  // F12, O4, and N3: Reset Rotation after three or more turns of a group with a member turned by
-  // itself, or after a nudge between two turns, left a translate of 1 to 4 px on a member
   const RUNS = [
     [true, ['f30', 'f75', 'f140']],
     [true, ['f30', 'f75', 'f140', 'f200', 'f260']],
@@ -681,7 +607,6 @@ describe('fast layer commands and new elements in front', () => {
         const page = await load(t, platform, SOURCE, FIGURES, null, '&theme=light');
         await groupOnFigures(page, platform, own);
         assert.match(await render(page), /data-group="g1"/);
-        // the file of the nudges of the run alone, without the turns
         const nudges = steps.filter((s) => s === 'nudge');
         for (const s of nudges) await step(page, s);
         const expected = await render(page);
@@ -691,19 +616,16 @@ describe('fast layer commands and new elements in front', () => {
         await exec(page, 'arrange.resetRotation');
         await frames(page);
         assert.equal(await render(page), expected);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
-    // F13: the cancel of a move drag set the offset of a stale rest of the turn to the nudged one,
-    // hence Reset Rotation dropped the nudge
     test(`a move drag cancelled by Esc does not change what Reset Rotation gives back after a nudge (${platform})`, { timeout: 60000 }, async (t) => {
       const results = [];
       for (const cancel of [false, true]) {
         const page = await load(t, platform, SOURCE, FIGURES, null, '&theme=light');
         await clickText(page, IMG);
         await typeField(page, 'angle', 30);
-        // Esc leaves the field with the figure selected, and a click would select its picture
         await press(page, 'Escape');
         await frames(page);
         assert.equal(await selected(page), 'figure');
@@ -721,17 +643,13 @@ describe('fast layer commands and new elements in front', () => {
         await exec(page, 'arrange.resetRotation');
         await frames(page);
         results.push(await render(page));
-        assert.deepEqual(errors(page), []);
-        // a page left open keeps its draft 1 s after its last edit, and on a slow machine this draft
-        // was kept after the next page emptied the storage, whose dialog then took the click on IMG
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
       assert.match(results[0], /<figure class="figure-box" style="translate: [^"]+">/);
       assert.equal(results[1], results[0]);
     });
 
-    // F14: Esc in a drag of a line end emptied the selection, and in a drag of a line selected with a
-    // figure it left the line alone selected
     test(`Esc during a drag of a line end or of a line keeps the selection of the press (${platform})`, async (t) => {
       const page = await load(t, platform, SOURCE, FIGURES, null, '&theme=light');
       await exec(page, 'insert.line', { from: { x: 200, y: 900 }, to: { x: 700, y: 950 } });
@@ -759,7 +677,7 @@ describe('fast layer commands and new elements in front', () => {
       assert.equal(both.split(',').length, 2);
       assert.deepEqual(await held(mid, 50, -40), [both, both], 'the selection after Esc in a drag of the line with the figure');
       assert.equal(await render(page), base);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

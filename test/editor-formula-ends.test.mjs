@@ -1,9 +1,3 @@
-// the caret goes past an inline formula at the end of a text, with
-// End, the right arrow, and a click behind the formula, and words typed there are written after
-// the formula. the same holds mirrored at the start of a text, with Home and the left arrow. the
-// caret was held before a formula at the end, since a formula is not editable and a text does not
-// have a place after it
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -32,14 +26,12 @@ async function load(t, platform) {
   return page;
 }
 
-// a click on the words of paragraph i, left of its formula at the end or right of it at the start
 async function clickWords(page, i) {
   const at = await page.evaluate(`(() => { const r = ${para(i)}.getBoundingClientRect(); const m = ${para(i)}.querySelector('mjx-container').getBoundingClientRect(); return { x: ${i ? 'm.right + 60' : 'r.left + 60'}, y: m.top + m.height / 2 }; })()`);
   await clickText(page, at);
   await page.waitFor(`document.activeElement === ${para(i)} && getSelection().isCollapsed`);
 }
 
-// the text typed and the paragraph saved with it
 async function typed(page, text, i, html) {
   await typeKeys(page, text);
   await page.waitFor(`${para(i)}.textContent.includes(${js(text)})`);
@@ -72,7 +64,6 @@ for (const platform of ['mac', 'other']) {
     await typed(page, 'x', 0, END.replace('</p>', 'x</p>'));
   });
 
-  // Firefox puts the caret inside the formula at End and at a click behind it, where typing is lost
   test(`a caret inside a formula at the end of a text, as Firefox puts it, is moved after the formula (${platform})`, async (t) => {
     const page = await load(t, platform);
     await clickWords(page, 0);

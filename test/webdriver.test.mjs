@@ -1,5 +1,3 @@
-// checks of the driver lookup and the local server in scripts/webdriver.mjs
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -51,6 +49,16 @@ test('a folder is served on a local port, without the files outside it', async (
     assert.equal(page.headers.get('content-type'), 'text/css');
     assert.equal((await fetch(`${origin}/missing.js`)).status, 404);
     assert.equal((await fetch(`${origin}/..%2fpackage.json`)).status, 404);
+  } finally {
+    close();
+  }
+});
+
+test('a missing /favicon.ico is answered with no content, which a page without an icon does not log as an error', async () => {
+  const { origin, close } = await serve('theme');
+  try {
+    assert.equal((await fetch(`${origin}/favicon.ico`)).status, 204);
+    assert.equal((await fetch(`${origin}/vendor/favicon.ico`)).status, 404);
   } finally {
     close();
   }

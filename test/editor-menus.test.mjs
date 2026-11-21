@@ -1,6 +1,3 @@
-// the items of the menu bar and of the context menus, i.e. the Edit menu, Paste and Match Style,
-// File > Revert to Saved, Open Recent, Export To, Save as Picture…, and the search of the Help menu
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,12 +6,6 @@ import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, center, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// the inserts of the toolbar, the clipboard commands, and the keys, on both platforms: Cut and
-// Copy on a collapsed caret, Paste in the menu of a text, the keys of every command in the menus
-// and in the sheet of shortcuts, the error color of the formula sheet, the insert cluster of the
-// toolbar with its split buttons, and the keys moved off the keys that a browser takes before the
-// page. each edit is checked byte for byte, after an undo and a redo, and after a save and an open
-// of the saved text
 describe('clipboard commands and keys in the menus', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -32,9 +23,7 @@ describe('clipboard commands and keys in the menus', () => {
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
-  // the editor on a deck served over HTTP, with the storage of the origin emptied first
   async function load(t, platform, { deck = 'test-deck.html', size = { width: 1600, height: 1000 }, scheme } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -51,16 +40,13 @@ describe('clipboard commands and keys in the menus', () => {
     return page;
   }
 
-  // window.app is set to the app of the editor by the run of a command that the test defines
   async function grabApp(page) {
     await page.evaluate(`window.BeesonEditorShell.define({ id: 'test.app', label: 'App', run: (a) => { window.app = a; } })`);
     await page.evaluate(`window.BeesonEditor.exec('test.app')`);
   }
 
-  // the command, label, keys, and enabled state of each item of the last open menu
   const menuRows = (page) => page.evaluate(`(() => { const m = [...document.querySelectorAll('.beeson-edit-menu')].at(-1); return m ? [...m.querySelectorAll('.item')].map((i) => ({ id: i.dataset.command ?? '', label: i.querySelector('.label')?.textContent ?? '', keys: i.querySelector('.keys')?.textContent ?? '', enabled: i.getAttribute('aria-disabled') !== 'true' })) : []; })()`);
 
-  // barMenu opens the menu of a title of the menu bar with a click, and returns its rows
   async function barMenu(page, title) {
     await page.evaluate('window.BeesonEditorShell.closeMenus()');
     await sleep(30);
@@ -70,7 +56,6 @@ describe('clipboard commands and keys in the menus', () => {
     return menuRows(page);
   }
 
-  // caretInTitle collapses the caret in the heading of the title slide after its first n characters
   async function caretInTitle(page, n = 4) {
     await page.evaluate('Reveal.slide(0)');
     await sleep(200);
@@ -93,7 +78,6 @@ describe('clipboard commands and keys in the menus', () => {
       const enabled = Object.fromEntries(rows.map((r) => [r.id, r.enabled]));
       assert.deepEqual([enabled['edit.cut'], enabled['edit.copy'], enabled['edit.paste']], [false, false, true], 'the Edit menu offers Cut or Copy on a collapsed caret');
       await page.evaluate('window.BeesonEditorShell.closeMenus()');
-      // Shift+F10 opens the menu of the text at the caret
       await press(page, 'Shift+F10');
       await sleep(150);
       const context = await menuRows(page);
@@ -104,19 +88,17 @@ describe('clipboard commands and keys in the menus', () => {
       await sleep(50);
       assert.equal((await state(page, 'edit.cut')).enabled, true, 'Cut is disabled on a range');
       assert.equal((await state(page, 'edit.copy')).enabled, true, 'Copy is disabled on a range');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Paste is a command of the menu of a text, and pastes there as Edit > Paste does (${platform})`, async (t) => {
       const page = await load(t, platform);
       await grabApp(page);
       assert.ok((await page.evaluate(`window.app.commands.forContext('text').map((c) => c.id)`)).includes('edit.paste'), 'Paste is not declared for the menu of a text');
-      // the clipboard of the system is shared with the other tests, hence readText is a stub
       await page.evaluate(`navigator.clipboard.readText = async () => ' pasted'`);
       await caretInTitle(page, 10);
       await press(page, 'Shift+F10');
       await sleep(150);
-      // Cut and Copy are disabled, hence Paste is the first item highlighted
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-menu .item.hi')?.dataset.command`), 'edit.paste');
       await press(page, 'Enter');
       await sleep(300);
@@ -125,7 +107,6 @@ describe('clipboard commands and keys in the menus', () => {
       await page.evaluate('window.BeesonEditor.undo()');
       await sleep(150);
       assert.equal(await render(page), page.source);
-      // Edit > Paste at the same caret writes the same file
       await caretInTitle(page, 10);
       await barMenu(page, 'Edit');
       await click(page, await center(page, '.beeson-edit-menu .item[data-command="edit.paste"]'));
@@ -139,15 +120,13 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), fromContext);
       const { text } = await saveAndReopen(page, `r5-3-paste-${platform}.html`);
       assert.equal(text, fromContext);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every command shows the keys it runs on, in its menu and in the sheet of shortcuts, each key once (${platform})`, async (t) => {
       const page = await load(t, platform);
       const mac = platform === 'mac';
       const slide = Object.fromEntries((await barMenu(page, 'Slide')).map((r) => [r.label, r.keys]));
-      // ⌘D and ⌫ are the keys of Edit > Duplicate and Edit > Delete. with nothing selected on the
-      // canvas, ⌘D duplicates the slide and ⌫ does nothing, hence only Duplicate Slide lists its key
       assert.equal(slide['Duplicate Slide'], mac ? '⌘D' : 'Ctrl+D');
       assert.equal(slide['Delete Slide'], '');
       assert.equal(slide['Move Slide Up'], mac ? '⌥↑' : 'Alt+Up Arrow');
@@ -168,7 +147,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.ok(keysOf('Move Slide Down').includes(mac ? '⌥↓' : 'Alt+Down Arrow'), JSON.stringify(keysOf('Move Slide Down')));
       assert.ok(keysOf('Add Row Above').includes(mac ? '⌥↑' : 'Alt+Up Arrow'), 'Add Row Above lost its key');
       for (const r of rows) assert.equal(new Set(r.keys).size, r.keys.length, `${r.label} lists a key twice: ${r.keys}`);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     for (const scheme of ['light', 'dark']) {
@@ -193,19 +172,16 @@ describe('clipboard commands and keys in the menus', () => {
         assert.ok(colors.defined, 'the chrome does not define --ed-error');
         assert.equal(colors.error, colors.token);
         await press(page, 'Escape');
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the buttons of the insert group of the toolbar, with the command, the text, the shown label, and
-  // whether each is the main part of a split button
   const insertGroup = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-top .group[data-group="insert"] .tb')].map((b) => ({ id: b.dataset.command, text: b.textContent, label: getComputedStyle(b.querySelector('.label')).display !== 'none', split: !!b.closest('.beeson-edit-split') }))`);
 
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const MATH = readFileSync(LAYOUTS, 'utf8').split(/<section\b/).slice(1).findIndex((s) => s.includes('<h2>Math, an ordered list, and a zone</h2>'));
 
-  // a point of the slide given in slide px, in CSS px of the viewport
   const screen = (page, x, y) => page.evaluate(`(() => {
   const s = document.querySelector('.reveal .slides');
   const r = s.getBoundingClientRect(), k = r.width / s.offsetWidth;
@@ -229,7 +205,7 @@ describe('clipboard commands and keys in the menus', () => {
         const top = await page.evaluate(`(() => { const t = document.querySelector('.beeson-edit-top'); return { scroll: t.scrollWidth - t.clientWidth, h: t.getBoundingClientRect().height }; })()`);
         assert.ok(top.scroll <= 0, `${width}: the toolbar overflows by ${top.scroll} px`);
         assert.equal(top.h, 52);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
         await page.close();
       }
     });
@@ -256,7 +232,7 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-qr-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Shape draws a rounded rectangle from its main part and an arrow from its list, and is pressed while one is drawn (${platform})`, async (t) => {
@@ -281,7 +257,6 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await pressed(), 'true', 'Shape is not pressed while an arrow is drawn');
       const a = await screen(page, 200, 300);
       const b = await screen(page, 600, 330);
-      // the drag is made with the modifier of a move without the snap, Meta on a Mac and Alt elsewhere
       const bits = platform === 'mac' ? 4 : 1;
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, modifiers: bits });
       await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, modifiers: bits });
@@ -300,13 +275,10 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-arrow-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // keys that a browser on the platform takes before the page, from the table of keys.md of R5.3:
-  // the reserved commands of Chromium and the keys of Firefox marked reserved. Cmd+R and Cmd+L,
-  // which Safari alone keeps, are listed after their fallbacks in Safari only, as editor-r8-4 tests
   const TAKEN = {
     mac: ['Mod+N', 'Mod+Shift+N', 'Mod+T', 'Mod+Shift+T', 'Mod+W', 'Mod+Shift+W', 'Mod+Q', 'Mod+Shift+P', 'Ctrl+Tab', 'Ctrl+Shift+Tab', 'Ctrl+PageUp', 'Ctrl+PageDown', 'Ctrl+Home', 'Mod+Alt+ArrowLeft', 'Mod+Alt+ArrowRight', 'Mod+Shift+[', 'Mod+Shift+]', 'Mod+Shift+{', 'Mod+Shift+}'],
     other: ['Mod+N', 'Mod+Shift+N', 'Mod+T', 'Mod+Shift+T', 'Mod+W', 'Mod+Shift+W', 'Mod+Shift+P', 'Mod+Shift+Q', 'Mod+F4', 'Alt+F4', 'F11', 'Ctrl+Tab', 'Ctrl+Shift+Tab', 'Ctrl+PageUp', 'Ctrl+PageDown'],
@@ -319,7 +291,6 @@ describe('clipboard commands and keys in the menus', () => {
       await grabApp(page);
       const keys = await page.evaluate(`window.app.commands.list().filter((c) => c.keys?.${platform}).map((c) => ({ id: c.id, keys: c.keys.${platform} }))`);
       for (const c of keys) {
-        // a key taken by Safari alone may stay behind the key shown, for Chrome and Firefox
         const shown = mac ? c.keys.slice(0, 1) : c.keys;
         for (const k of shown) assert.ok(!TAKEN[platform].includes(k), `${c.id} shows ${k}, which a browser takes before the page`);
       }
@@ -347,7 +318,6 @@ describe('clipboard commands and keys in the menus', () => {
         await frames(page);
         assert.equal((await state(page, 'view.rulers')).checked, rulers);
       }
-      // Lock on its new key writes data-locked on the QR code of the title slide, byte for byte
       await page.evaluate('Reveal.slide(0)');
       await sleep(200);
       await clickText(page, await center(page, '.reveal section.present > .qr'));
@@ -365,22 +335,15 @@ describe('clipboard commands and keys in the menus', () => {
       assert.equal(await render(page), edited);
       const { text } = await saveAndReopen(page, `r5-3-lock-${platform}.html`);
       assert.equal(text, edited);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R6.1 on both platforms with trusted input: the Edit menu in the order of the
-// Edit menu of Keynote, Delete of the selected words of a text, the list buttons on a selected
-// block, a key that runs one command in each state, every row of the keyboard sheet in a window
-// of 1280 by 800, and the context menu of the picture of a figure without Edit Text. after each
-// edit the text is checked byte for byte, after an undo and a redo, and after a save and an open
 describe('the Edit menu in the order of Keynote', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
   const PANEL = '#beeson-edit-panel-format';
-  // the slide of the deck of layouts with a paragraph and a list, and the slide with an ordered
-  // list and a figure with a caption
   const TEXT = 2;
   const MATH = 3;
 
@@ -400,9 +363,7 @@ describe('the Edit menu in the order of Keynote', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-  // the editor on the slide n of a deck served over HTTP, with the Format tab shown
   async function load(t, platform, { deck = LAYOUTS, n = 0, size = { width: 1600, height: 1000 } } = {}) {
     const page = await browser.newPage(size);
     t.after(() => page.close().catch(() => {}));
@@ -418,8 +379,6 @@ describe('the Edit menu in the order of Keynote', () => {
     return page;
   }
 
-  // the edits applied to the text, then an undo gives the text before byte for byte, a redo gives
-  // the edit, and a save of the edit is opened again without problems
   let saves = 0;
   async function roundTrip(page, edits) {
     await byteExact(page, edits);
@@ -433,7 +392,6 @@ describe('the Edit menu in the order of Keynote', () => {
     page.source = text;
   }
 
-  // the words text selected in the first element at selector, with its block focused
   const selectWords = (page, selector, text) =>
     page.evaluate(`(() => {
     const el = document.querySelector(${js(selector)});
@@ -452,14 +410,11 @@ describe('the Edit menu in the order of Keynote', () => {
     return false;
   })()`);
 
-  // the items of a menu of the menu bar as labels, with a submenu as its label in braces and a rule
-  // as a bar
   const menuLabels = (page, bar) => page.evaluate(`(() => {
   const E = window.BeesonEditor;
   return window.BeesonEditorShell.menuItems(${js(bar)}).map((i) => i.rule ? '|' : i.command ? E.state(i.command).label : '{' + i.label + '}');
 })()`);
 
-  // the center of the item labeled label of the open menu, or null
   const itemAt = (page, label) => page.evaluate(`(() => {
   const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)});
   if (!item) return null;
@@ -475,22 +430,15 @@ describe('the Edit menu in the order of Keynote', () => {
     await frames(page);
   }
 
-  // the Edit menu of Keynote 15.4 in references/keynote-menus.txt of the council: Undo and Redo, the
-  // clipboard and Delete, Duplicate Selection and the selection, then Find. the labels are those of
-  // the commands of the editor, e.g. Duplicate for Duplicate Selection and Select Figure for Select
-  // Parent
   const EDIT = ['Undo', 'Redo', '|', 'Cut', 'Copy', 'Paste', 'Paste and Match Style', 'Delete', '|', 'Duplicate', 'Select All', 'Deselect', 'Select Figure', '|', 'Find…', 'Find Next', 'Find Previous', 'Use Selection for Find', 'Replace…', '|', '{Spelling and Grammar}', '{Substitutions}', '{Speech}'];
 
   for (const platform of PLATFORMS) {
-    // finding opus 10 of round 2: Select All and Find were listed before Cut
     test(`the Edit menu reads Undo, the clipboard and Delete, Duplicate and Select All, then Find (${platform})`, async (t) => {
       const page = await load(t, platform);
       assert.deepEqual(await menuLabels(page, 'Edit'), EDIT);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding glm 29 of round 2: Edit > Delete was dimmed in a text. both apps delete the selected
-    // words, and both dim Delete with a bare caret
     test(`Edit > Delete deletes the selected words of a text and is dimmed with a bare caret (${platform})`, async (t) => {
       const page = await load(t, platform, { n: TEXT });
       const p = '.reveal section.present > p:not(.small)';
@@ -508,11 +456,9 @@ describe('the Edit menu in the order of Keynote', () => {
       assert.equal(await page.evaluate(`document.querySelector(${js(p)}).textContent.startsWith('A with ')`), true);
       assert.equal((await state(page, 'element.delete')).enabled, false);
       await roundTrip(page, [['<p>A paragraph with', '<p>A with']]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // findings opus 17, gemini 17, and qwen3 26 of round 2: the list buttons of the Text pane were
-    // dimmed for a paragraph selected as a block
     test(`the list buttons of the Text pane make a selected paragraph a list and a selected list paragraphs (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
       const p = '.reveal section.present > p:first-of-type';
@@ -524,7 +470,6 @@ describe('the Edit menu in the order of Keynote', () => {
       await click(page, `${PANEL} [data-command="text.list.ul"]`);
       await frames(page);
       await roundTrip(page, [['<p>The lead-in of a display</p>', '<ul>\n    <li>The lead-in of a display</li>\n  </ul>']]);
-      // the new list is selected as a block again, and Numbers makes it an ordered list
       await clickText(page, '.reveal section.present > ul > li');
       await press(page, 'Escape');
       await frames(page);
@@ -532,7 +477,6 @@ describe('the Edit menu in the order of Keynote', () => {
       await click(page, `${PANEL} [data-command="text.list.ol"]`);
       await frames(page);
       await roundTrip(page, [['<ul>\n    <li>The lead-in of a display</li>\n  </ul>', '<ol>\n    <li>The lead-in of a display</li>\n  </ol>']]);
-      // Paragraphs on a selected list makes each item a paragraph with the attributes of the item
       await clickText(page, '.reveal section.present > ol:last-of-type > li');
       await press(page, 'Escape');
       await frames(page);
@@ -543,16 +487,13 @@ describe('the Edit menu in the order of Keynote', () => {
         '<ol>\n    <li class="fragment" data-fragment-index="3">A first step</li>\n    <li class="fragment" data-final>A final step</li>\n  </ol>',
         '<p class="fragment" data-fragment-index="3">A first step</p>\n  <p class="fragment" data-final>A final step</p>',
       ]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding gemini 19 of round 2: Shift+F3 ran Find Previous and Change Case on Windows and
-    // Linux. in each state below, every key of the sheet runs one enabled command at most
     test(`no key of the keyboard sheet runs two commands in one state of the editor (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
       const clashes = async (where) => (await page.evaluate('window.BeesonEditorShell.keyClashes()')).map((c) => `${where}: ${c}`);
       const found = [];
-      // a query of the find panel enables Find Next and Find Previous after the panel is closed
       await exec(page, 'find.open', 'step');
       await exec(page, 'find.close');
       await frames(page);
@@ -582,11 +523,9 @@ describe('the Edit menu in the order of Keynote', () => {
       await frames(page);
       found.push(...(await clashes('the navigator')));
       assert.deepEqual(found, []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // Find Previous keeps a key on every platform, Ctrl+Shift+F3 on Windows and Linux, and Shift+F3
-    // is Change Case, as in PowerPoint
     test(`Find Previous and Change Case each have their key (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
       await exec(page, 'find.open', 'step');
@@ -608,12 +547,9 @@ describe('the Edit menu in the order of Keynote', () => {
       await frames(page);
       const text = await page.evaluate(`document.querySelector(${js(p)}).textContent`);
       assert.notEqual(text, 'The lead-in of a display', 'Shift+F3 did not change the case of the words');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // finding gemini 19 of round 2: the group Other of the keyboard sheet was cut at the bottom of
-    // the sheet on Windows and Linux. in a window of 768 px or more, every row is shown without a
-    // scroll, and in a smaller window the sheet scrolls to its last row
     for (const [width, height] of [[1280, 800], [1366, 768], [1600, 1000], [1024, 700]]) {
       test(`every row of the keyboard sheet is shown in a window of ${width} by ${height} (${platform})`, async (t) => {
         const page = await load(t, platform, { size: { width, height } });
@@ -645,12 +581,10 @@ describe('the Edit menu in the order of Keynote', () => {
           await frames(page);
           assert.equal((await sheet()).lastsShown, true, 'the last row of a column is not shown at the end of the scroll');
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
-    // finding glm 30 of round 2: the context menu of the image of a figure listed Edit Text, which
-    // edits its caption, where the context menu of an image in Keynote does not have an item for text
     test(`the context menu of the picture of a figure has no Edit Text, and the caption is still edited (${platform})`, async (t) => {
       const page = await load(t, platform, { n: MATH });
       const img = '.reveal section.present figure.figure-box img:not([hidden])';
@@ -659,8 +593,6 @@ describe('the Edit menu in the order of Keynote', () => {
       const labels = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item .label')].map((l) => l.textContent)`);
       assert.ok(labels.includes('Copy'), JSON.stringify(labels));
       assert.ok(!labels.includes('Edit Text'), `the context menu of the picture lists Edit Text: ${JSON.stringify(labels)}`);
-      // Esc closes the menu. a click on the image selects it, and Esc selects its figure, on which
-      // Return puts the caret into the caption
       await press(page, 'Escape');
       await frames(page);
       await clickText(page, img);
@@ -672,24 +604,17 @@ describe('the Edit menu in the order of Keynote', () => {
       assert.equal(await page.evaluate(`document.activeElement?.closest('figcaption')?.textContent ?? null`), 'A caption under a zone.');
       await press(page, 'Escape');
       await press(page, 'Escape');
-      // a click on the caption edits it too
       await clickText(page, '.reveal section.present figure.figure-box figcaption');
       await frames(page);
       assert.equal(await page.evaluate(`document.activeElement?.closest('figcaption')?.textContent ?? null`), 'A caption under a zone.');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// tests of R7.2 on both platforms with trusted input: Edit > Paste and Match Style in the Edit menu
-// and in the menu of a text, File > Revert to Saved, File > Open Recent with the decks kept in
-// IndexedDB and on the dialog of a deck that cannot read itself, and File > Export To with PDF… and
-// HTML…. after each edit the text is checked byte for byte, after an undo and a redo, and after a
-// save and an open. the system clipboard is shared with the other tests, hence readText is a stub
 describe('Paste and Match Style and Open Recent', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // the slide of the deck of layouts with a paragraph and a list
   const TEXT = 2;
   const P = '.reveal section.present > p:not(.small)';
   const PARAGRAPH = '<p>A paragraph with <strong>bold</strong>, <em>italic</em>, <code>code</code>, and \\(x^2\\) inline.</p>';
@@ -710,11 +635,8 @@ describe('Paste and Match Style and Open Recent', () => {
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const status = (page) => page.evaluate('window.BeesonEditor.status()');
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
-  // two frames, or a moment in a tab hidden by the tab of the print view, which does not get frames
   const frames = (page) => page.evaluate('new Promise((d) => document.hidden ? setTimeout(() => d(true), 50) : requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  // the names of the decks of Open Recent kept in the database of the editor, which the menus show
-  // before the write, hence a reload waits for them
   const storedRecents = (page) => page.evaluate(`new Promise((done) => {
   const ask = indexedDB.open('beeson-editor', 1);
   ask.onsuccess = () => {
@@ -727,11 +649,8 @@ describe('Paste and Match Style and Open Recent', () => {
     for (let i = 0; i < 100 && JSON.stringify(await storedRecents(page)) !== JSON.stringify(names); i++) await wait(page, 50);
     assert.deepEqual(await storedRecents(page), names);
   }
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
 
-  // the editor on the slide n of a deck served over HTTP. with drafts, the page keeps its unsaved
-  // edits in the storage of the browser
   async function load(t, platform, { deck = LAYOUTS, n = TEXT, open = true, drafts = false } = {}) {
     const page = await browser.newPage({ width: 1600, height: 1000, drafts });
     t.after(() => page.close().catch(() => {}));
@@ -746,8 +665,6 @@ describe('Paste and Match Style and Open Recent', () => {
     return page;
   }
 
-  // the edits applied to the text, then an undo gives the text before byte for byte, a redo gives
-  // the edit, and a save of the edit is opened again without problems
   let saves = 0;
   async function roundTrip(page, edits) {
     await byteExact(page, edits);
@@ -761,14 +678,11 @@ describe('Paste and Match Style and Open Recent', () => {
     page.source = text;
   }
 
-  // the items of a menu of the menu bar as labels, with a submenu as its label in braces and a rule
-  // as a bar
   const menuLabels = (page, bar, submenu) => page.evaluate(`(() => {
   const E = window.BeesonEditor;
   return window.BeesonEditorShell.menuItems(${js(bar)}${submenu ? `, ${js(submenu)}` : ''}).map((i) => i.rule ? '|' : i.command ? E.state(i.command).label : '{' + i.label + '}');
 })()`);
 
-  // the rows of the open menus, the last opened last, each with its label, keys, and dimmed state
   const rows = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].map((m) => [...m.querySelectorAll('.item')].map((i) => ({
   label: i.querySelector('.label')?.textContent ?? '',
   keys: i.querySelector('.keys')?.textContent ?? '',
@@ -776,7 +690,6 @@ describe('Paste and Match Style and Open Recent', () => {
   submenu: i.getAttribute('aria-haspopup') === 'menu',
 })))`);
 
-  // the center of the last item labeled label of the open menus, or null
   const itemAt = (page, label) => page.evaluate(`(() => {
   const item = [...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.querySelector('.label')?.textContent === ${js(label)}).at(-1);
   if (!item) return null;
@@ -792,8 +705,6 @@ describe('Paste and Match Style and Open Recent', () => {
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu .item')`, 3000);
   }
 
-  // a trusted click on each label of a path of the menus, e.g. File, Export To, PDF…, with the
-  // pointer moved onto a submenu row so that it opens
   async function choose(page, bar, ...path) {
     await openBar(page, bar);
     for (const [i, label] of path.entries()) {
@@ -807,7 +718,6 @@ describe('Paste and Match Style and Open Recent', () => {
     await frames(page);
   }
 
-  // a trusted click on the button labeled label of the open dialog with class name
   async function cardButton(page, name, label) {
     const at = await page.evaluate(`(() => {
     const b = [...document.querySelectorAll('dialog.beeson-edit-dialog.${name}:not([hidden]) button')].find((b) => b.textContent === ${js(label)});
@@ -825,8 +735,6 @@ describe('Paste and Match Style and Open Recent', () => {
   return c && !c.hidden ? { title: c.querySelector('h3').textContent, text: c.querySelector('p')?.textContent ?? '', buttons: [...c.querySelectorAll('button')].map((b) => b.textContent) } : null;
 })()`);
 
-  // the caret at the end of the paragraph of the slide, put there by a trusted click just past its
-  // last character, since a click on its formula opens the editor of the formula
   async function caretInParagraph(page) {
     await clickText(page, await page.evaluate(`(() => {
     const p = document.querySelector(${js(P)});
@@ -842,7 +750,6 @@ describe('Paste and Match Style and Open Recent', () => {
 
   const paragraph = (page) => page.evaluate(`document.querySelector(${js(P)}).textContent`);
 
-  // readText gives text, and writeText keeps the clipboard of the page
   const clipboard = (page, text) => page.evaluate(`(() => {
   window.__clip = ${js(text)};
   navigator.clipboard.readText = async () => window.__clip;
@@ -866,18 +773,14 @@ describe('Paste and Match Style and Open Recent', () => {
       await frames(page);
       assert.equal(await paragraph(page), 'A paragraph with bold, italic, code, and  inline. and plain words');
       await roundTrip(page, [[PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline. and plain words</p>')]]);
-      // the key is not bound twice in a region, nor shared with a key of the browser outside a text
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
       assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes(true)'), []);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the menu of a text has Paste and Match Style after Paste, and it pastes the words of copied elements (${platform})`, async (t) => {
       const page = await load(t, platform);
-      // a list item copied in the editor is pasted into a text as its words, which Paste does not do
       await clipboard(page, '<!--beeson-->\n<ul>\n  <li class="fragment">Copied <strong>bold</strong> item</li>\n</ul>');
-      // the menu of a right-click on the paragraph, and the same menu opened with Shift+F10 at the
-      // caret, which a right-click moves
       await clickText(page, await page.evaluate(`(() => {
       const r = document.querySelector(${js(P)}).getBoundingClientRect();
       return { x: r.right - 4, y: r.top + r.height / 2 };
@@ -898,13 +801,12 @@ describe('Paste and Match Style and Open Recent', () => {
       await frames(page);
       assert.equal(await paragraph(page), 'A paragraph with bold, italic, code, and  inline.Copied bold item');
       await roundTrip(page, [[PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline.Copied bold item</p>')]]);
-      // Paste leaves a text of elements out of a text
       await caretInParagraph(page);
       await openBar(page, 'Edit');
       await click(page, await itemAt(page, 'Paste'));
       await frames(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Paste and Match Style on the slide pastes the copied block${mac ? ', and ⌥⇧⌘V is left to the browser in a text' : ''} (${platform})`, async (t) => {
@@ -912,7 +814,6 @@ describe('Paste and Match Style and Open Recent', () => {
       await clipboard(page, '');
       await page.evaluate(`window.__keys = []; document.addEventListener('keydown', (ev) => window.__keys.push(ev.key + (ev.defaultPrevented ? ':prevented' : '')))`);
       if (mac) {
-        // in a text, the browser pastes as its Paste and Match Style, which text/typing.ts makes plain
         await caretInParagraph(page);
         await press(page, 'Mod+Alt+Shift+V');
         await frames(page);
@@ -923,8 +824,6 @@ describe('Paste and Match Style and Open Recent', () => {
         await clickText(page, P);
         await press(page, 'Escape');
       }
-      // the paragraph selected as a block is copied, and pasted on the slide after it, drawn 20 px off
-      // it, while the list and the small paragraph after it are kept at their places
       await frames(page);
       assert.equal((await status(page)).dirty, false);
       await exec(page, 'edit.copy');
@@ -936,7 +835,7 @@ describe('Paste and Match Style and Open Recent', () => {
         [`${PARAGRAPH}\n  <ul>`, `${PARAGRAPH}\n  ${PARAGRAPH.replace('<p>', '<p style="translate: 20px -141px">')}\n  <ul style="translate: 0px -161px">`],
         [`${SMALL}>`, `${SMALL} style="translate: 0px -161px">`],
       ]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Revert to Saved asks first, then shows the file again on the same slide without the draft (${platform})`, async (t) => {
@@ -952,7 +851,6 @@ describe('Paste and Match Style and Open Recent', () => {
       await page.waitFor('window.BeesonEditor.status().draft', 5000);
       assert.equal((await state(page, 'file.revert')).enabled, true);
 
-      // Cancel and Esc keep the edits
       await choose(page, 'File', 'Revert to Saved');
       assert.deepEqual(await card(page, 'revert'), {
         title: 'Do you want to revert to the most recently saved version?',
@@ -969,8 +867,6 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.ok((await paragraph(page)).endsWith(' typed'));
       assert.equal((await status(page)).dirty, true);
 
-      // Revert loads the page again from the file. a read that Chrome has not answered when the new
-      // page is shown fails with this error, which is thus not a failure of the click on Revert
       await page.evaluate('window.__before = true');
       await choose(page, 'File', 'Revert to Saved');
       await cardButton(page, 'revert', 'Revert').catch((error) => {
@@ -986,7 +882,7 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.equal(await paragraph(page), 'A paragraph with bold, italic, code, and  inline.');
       assert.equal(await render(page), page.source);
       assert.equal(await card(page, 'recover'), null);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Open Recent lists the decks opened here by name, opens one without the picker, and ends with Clear Menu (${platform})`, async (t) => {
@@ -998,7 +894,6 @@ describe('Paste and Match Style and Open Recent', () => {
         { label: 'Open Recent', keys: '', dimmed: true, submenu: false },
       ]);
       await press(page, 'Escape');
-      // two files of the deck in the origin private file system, chosen with the pickers
       const a = `recent-a-${platform}.html`;
       const b = `recent-b-${platform}.html`;
       await page.evaluate(`(async () => {
@@ -1021,7 +916,6 @@ describe('Paste and Match Style and Open Recent', () => {
       const file = await menuLabels(page, 'File');
       assert.deepEqual(file.slice(0, 3), ['Open…', '{Open Recent}', '|']);
 
-      // the deck kept in a, opened from the submenu, is the file of the next save
       await caretInParagraph(page);
       await type(page, '!');
       await choose(page, 'File', 'Open Recent', a);
@@ -1039,7 +933,6 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.equal(saved, page.source.replace(PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline.!</p>')));
       assert.equal(await page.evaluate('window.__picked'), 2);
 
-      // the list is kept through a reload, and it is not offered without the open picker
       await written(page, [a, b]);
       await page.goto(page.url);
       await page.waitFor(ready);
@@ -1052,7 +945,6 @@ describe('Paste and Match Style and Open Recent', () => {
       await page.waitFor(ready);
       await page.waitFor(`window.BeesonEditorShell.menuItems('File', 'Open Recent').length === 4`);
 
-      // Clear Menu empties the list, also after a reload
       await choose(page, 'File', 'Open Recent', 'Clear Menu');
       assert.deepEqual((await menuLabels(page, 'File')).slice(0, 2), ['Open…', 'Open Recent']);
       await written(page, []);
@@ -1060,7 +952,7 @@ describe('Paste and Match Style and Open Recent', () => {
       await page.waitFor(ready);
       await wait(page, 300);
       assert.deepEqual((await menuLabels(page, 'File')).slice(0, 2), ['Open…', 'Open Recent']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Clear Menu empties Open Recent at once, while its list is still being written to the database (${platform})`, async (t) => {
@@ -1076,7 +968,6 @@ describe('Paste and Match Style and Open Recent', () => {
     })()`);
       await choose(page, 'File', 'Open…');
       await page.waitFor(`window.BeesonEditorShell.menuItems('File', 'Open Recent').length === 3`);
-      // a database that does not answer, as one under load answers late
       const labels = await page.evaluate(`(() => {
       indexedDB.open = () => ({});
       window.BeesonEditor.exec('file.recent.clear');
@@ -1084,7 +975,7 @@ describe('Paste and Match Style and Open Recent', () => {
       return window.BeesonEditorShell.menuItems('File').slice(0, 2).map((i) => i.command ? E.state(i.command).label : '{' + i.label + '}');
     })()`);
       assert.deepEqual(labels, ['Open…', 'Open Recent']);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Clear Menu at the start of the editor is kept when the read of Open Recent answers after it (${platform})`, async (t) => {
@@ -1100,8 +991,6 @@ describe('Paste and Match Style and Open Recent', () => {
     })()`);
       await choose(page, 'File', 'Open…');
       await written(page, [name]);
-      // the database answers 1 s late, as on a slow runner, hence the menu is cleared while the
-      // read of the start is in flight
       const { identifier } = await page.send('Page.addScriptToEvaluateOnNewDocument', {
         source: `{
         const open = IDBFactory.prototype.open;
@@ -1136,7 +1025,6 @@ describe('Paste and Match Style and Open Recent', () => {
     })()`);
       await choose(page, 'File', 'Open…');
       await page.waitFor(`window.BeesonEditor.state('file.recent.1').label === ${js(name)}`);
-      // a page whose fetch of itself fails asks for its file, as a deck opened from file: does
       const { identifier } = await page.send('Page.addScriptToEvaluateOnNewDocument', {
         source: 'window.fetch = () => Promise.reject(new TypeError("offline")); window.showOpenFilePicker = async () => { window.__picked = true; throw new DOMException("cancelled", "AbortError"); };',
       });
@@ -1157,17 +1045,13 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.deepEqual((await status(page)).problems, []);
       assert.equal(await page.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog')].some((c) => !c.hidden)`), false);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page).filter((e) => !e.includes('offline')), []);
+      assert.deepEqual(page.errors.filter((e) => !e.includes('offline')), []);
     });
 
-    // the deck of layers does not have a video, which the test server sends without ranges, hence
-    // the videos of the deck of layouts hold every connection of the print view and its fonts do not load
     test(`File > Export To > PDF… prints the print view of the saved deck with a page per step (${platform})`, async (t) => {
-      const deck = 'test/pages/layers.html';
-      const page = await load(t, platform, { deck, n: 2 });
+      const page = await load(t, platform);
       assert.deepEqual((await menuLabels(page, 'File')).slice(-4), ['|', '{Export To}', '|', 'Print…']);
       assert.deepEqual(await menuLabels(page, 'File', 'Export To'), ['PDF…', 'HTML…', 'PowerPoint…']);
-      // the tab of the print view is kept for the test, and its print is recorded
       await page.evaluate(`(() => {
       const real = window.open;
       window.__printed = 0;
@@ -1176,7 +1060,6 @@ describe('Paste and Match Style and Open Recent', () => {
         const win = real.apply(window, a);
         if (!win) return win;
         window.__view = win;
-        // a method of the window is bound to it, and the global Reveal, also a function, is not
         const native = (f) => typeof f === 'function' && Function.prototype.toString.call(f).includes('[native code]');
         return new Proxy(win, { get: (w, k) => k === 'print' ? () => { window.__printed++; } : native(w[k]) ? w[k].bind(w) : w[k] });
       };
@@ -1184,25 +1067,23 @@ describe('Paste and Match Style and Open Recent', () => {
       await choose(page, 'File', 'Export To', 'PDF…');
       await page.waitFor('window.__printed === 1', 60000);
       const url = new URL(await page.evaluate('window.__url'));
-      assert.equal(url.pathname, `/${deck}`);
+      assert.equal(url.pathname, `/${LAYOUTS}`);
       assert.deepEqual([...url.searchParams.keys()].sort(), ['edit-platform', 'print-pdf', 'still']);
       const pages = await page.evaluate(`window.__view.document.querySelectorAll('.pdf-page').length`);
-      assert.match((await status(page)).message, /^The print view of layers\.html is open in a new tab, with one page per step/);
+      assert.match((await status(page)).message, /^The print view of editor-layouts\.html is open in a new tab, with one page per step/);
       await page.evaluate('window.__view.close()');
-      // npm run pdf prints the same pages, one per step of each slide
       const print = await browser.newPage();
       t.after(() => print.close().catch(() => {}));
-      await printView(print, `${server.origin}/${deck}?print-pdf&still`);
+      await printView(print, `${server.origin}/${LAYOUTS}?print-pdf&still`);
       assert.equal(pages, await print.evaluate(`document.querySelectorAll('.pdf-page').length`));
-      assert.ok(pages > 3, `${pages} pages for the 3 slides of the deck`);
-      // the editor is shown again in front of the print view, since a hidden tab does not get frames
+      const slides = await page.evaluate('Reveal.getTotalSlides()');
+      assert.ok(pages > slides, `${pages} pages for the ${slides} slides of the deck`);
       await page.send('Page.bringToFront');
 
-      // with unsaved changes, the saved file is printed, and the edits are kept
-      const step = '<p id="plain-1" class="fragment" data-fragment-index="1">The first step.</p>';
-      const edited = step.replace('step.</p>', 'step!</p>');
+      const step = '<p class="small fragment" data-fragment-index="3">A small paragraph.</p>';
+      const edited = step.replace('paragraph.</p>', 'paragraph!</p>');
       await clickText(page, await page.evaluate(`(() => {
-      const p = document.getElementById('plain-1');
+      const p = document.querySelector('.reveal section.present > p.small');
       const r = document.createRange();
       r.setStart(p.firstChild, p.firstChild.length - 1);
       r.setEnd(p.firstChild, p.firstChild.length);
@@ -1220,12 +1101,12 @@ describe('Paste and Match Style and Open Recent', () => {
       });
       await cardButton(page, 'ask', 'Export the saved file');
       await page.waitFor('window.__printed === 2', 60000);
-      assert.equal(await page.evaluate(`[...window.__view.document.querySelectorAll('#plain-1')].every((p) => p.textContent === 'The first step.')`), true);
+      assert.deepEqual(await page.evaluate(`[...new Set([...window.__view.document.querySelectorAll('p.small')].map((p) => p.textContent))]`), ['A small paragraph.']);
       await page.evaluate('window.__view.close()');
       await page.send('Page.bringToFront');
       assert.equal((await status(page)).dirty, true);
       await roundTrip(page, [[step, edited]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`File > Export To > HTML… writes a copy of the deck with its edits, and the deck keeps its file (${platform})`, async (t) => {
@@ -1246,19 +1127,14 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.equal((await status(page)).dirty, true);
       assert.equal(readFileSync(LAYOUTS, 'utf8'), page.source);
       await roundTrip(page, [[PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline.!</p>')]]);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// tests of R7.3 on both platforms with trusted input: Save as Picture… and Size and Position… in
-// the menu of a figure, the Grid and Guides submenu in the menu of a slide, Edit > Spelling and
-// Grammar > Check Spelling While Typing with the menu of the browser on a second right-click, and
-// the search field of the Help menu
 describe('Save as Picture…, Grid and Guides, Spelling', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
-  // slides of the deck of layouts: a paragraph and a list, a figure with a raster image, and a video
   const TEXT = 2;
   const WHITE_FIGURE = 6;
   const VIDEO = 7;
@@ -1278,16 +1154,12 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
   const js = (v) => JSON.stringify(v);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
   const menus = (page) => page.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`);
   const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-  // a listener that runs before those of the editor and records, after each contextmenu event,
-  // whether its default was prevented, i.e. whether the menu of the browser was kept from opening
   const RECORD = `window.__context = []; addEventListener('contextmenu', (e) => setTimeout(() => window.__context.push(e.defaultPrevented)), true);`;
 
-  // the editor on the slide n of a deck served over HTTP
   async function load(t, platform, { deck = LAYOUTS, n = TEXT, record = false, page: reuse } = {}) {
     const page = reuse ?? (await browser.newPage({ width: 1600, height: 1000 }));
     if (!reuse) t.after(() => page.close().catch(() => {}));
@@ -1295,8 +1167,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
     await page.waitFor(ready);
-    // the choice of spelling of a test that failed is not left to the next, and a page reloaded
-    // keeps it
     if (!reuse && (await page.evaluate(`localStorage.getItem('beeson-spelling') !== null`))) {
       await page.evaluate(`localStorage.removeItem('beeson-spelling')`);
       return load(t, platform, { deck, n, page });
@@ -1308,7 +1178,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
     return page;
   }
 
-  // the rows of the open menus, the last opened last
   const rows = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].map((m) => [...m.querySelectorAll('.item')].map((i) => ({
   label: i.querySelector('.label')?.firstChild?.textContent ?? '',
   path: i.querySelector('.label .path')?.textContent ?? '',
@@ -1319,7 +1188,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
 })))`);
   const labels = (list) => list.map((r) => r.label);
 
-  // the center of the last item labeled label of the open menus, or null
   const itemAt = (page, label) => page.evaluate(`(() => {
   const item = [...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.querySelector('.label')?.firstChild?.textContent === ${js(label)}).at(-1);
   if (!item) return null;
@@ -1335,8 +1203,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu .item')`, 3000);
   }
 
-  // a trusted click on each label of a path of the open menu, with the pointer moved onto a submenu
-  // row so that it opens
   async function pick(page, ...path) {
     const open = await menus(page);
     for (const [i, label] of path.entries()) {
@@ -1350,7 +1216,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
     await frames(page);
   }
 
-  // a trusted right-click at a point, and the menus open after it
   async function rightClick(page, at, modifiers = '') {
     await click(page, at, { button: 'right', modifiers });
     await frames(page);
@@ -1361,14 +1226,12 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
   return { x: r.left + r.width * ${fx}, y: r.top + r.height * ${fy} };
 })()`);
 
-  // the Help menu opened again with text typed into its search field
   async function search(page, text) {
     await press(page, 'Escape');
     await openBar(page, 'Help');
     await type(page, text);
   }
 
-  // a point of the slide shown away from every element, in its lower left corner
   const empty = (page) => page.evaluate(`(() => { const r = document.querySelector('.reveal section.present').getBoundingClientRect(); return { x: r.left + 20, y: r.bottom - 20 }; })()`);
 
   for (const platform of PLATFORMS) {
@@ -1386,8 +1249,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const menu = labels((await rows(page))[0]);
       assert.equal(menu[menu.indexOf('Replace Image…') + 1], 'Save as Picture…');
       assert.ok(menu.indexOf('Size and Position…') > menu.indexOf('Save as Picture…'));
-      // the fetches of the picture by a script alone, since another file of the deck may be answered
-      // during the save, and the picture may be drawn again by an img
       const fetches = () => page.evaluate(`performance.getEntriesByType('resource').filter((r) => r.name.endsWith('/demo/figure-light.png') && ['fetch', 'xmlhttprequest'].includes(r.initiatorType)).length`);
       const fetched = await fetches();
       await pick(page, 'Save as Picture…');
@@ -1401,7 +1262,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const bytes = await page.evaluate(`fetch(${js(saved[0].href)}).then((r) => r.arrayBuffer()).then((b) => [...new Uint8Array(b)])`);
       assert.equal(sha(Buffer.from(bytes)), sha(readFileSync('demo/figure-light.png')));
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Save Media as… in the menu of a video downloads the video of the mode shown (${platform})`, async (t) => {
@@ -1417,7 +1278,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const shown = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getBoundingClientRect().width).getAttribute('src')`);
       assert.equal(saved[0].name, shown.split('/').pop());
       assert.ok(['clip-dark.mp4', 'clip-light.mp4'].includes(saved[0].name));
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Size and Position… opens the Arrange tab with the focus on W, or on X when W is set by the layout (${platform})`, async (t) => {
@@ -1434,7 +1295,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       assert.ok(focus.selected && focus.shown);
       await press(page, 'Escape');
 
-      // an image with its own width gets the focus on W
       const figureBox = await load(t, platform, { n: 3 });
       await rightClick(figureBox, await point(figureBox, '.reveal section.present figure img', 0.5, 0.4));
       await pick(figureBox, 'Size and Position…');
@@ -1443,7 +1303,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       const width = await figureBox.evaluate(`!document.querySelector('#beeson-edit-num-width').disabled`);
       assert.equal(id, width ? 'beeson-edit-num-width' : 'beeson-edit-num-x');
       await byteExact(figureBox);
-      assert.deepEqual([...errors(page), ...errors(figureBox)], []);
+      assert.deepEqual([...page.errors, ...figureBox.errors], []);
     });
 
     test(`the menu of a slide has Grid and Guides with Gridlines, Snap to Grid, and Grid Settings…, then Rulers (${platform})`, async (t) => {
@@ -1473,7 +1333,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await pick(page, 'Rulers');
       assert.equal((await state(page, 'view.rulers')).checked, !rulers);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Check Spelling While Typing is kept in the browser, set only in the page, and a save leaves the file as it was (${platform})`, async (t) => {
@@ -1502,7 +1362,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       assert.equal(await page.evaluate(`document.querySelector(${js(P)}).spellcheck`), true);
       assert.equal(await page.evaluate(`localStorage.getItem('beeson-spelling')`), null);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a second right-click in a text, or a right-click with ${mac ? '⌥' : 'Alt'} held, opens the menu of the browser (${platform})`, async (t) => {
@@ -1519,7 +1379,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await page.waitFor('window.__context.length === 2');
       assert.deepEqual(await page.evaluate('window.__context'), [true, false]);
 
-      // a right-click after the menu of the browser opens the menu of the editor again
       await rightClick(page, at);
       assert.equal(await menus(page), 1);
       await press(page, 'Escape');
@@ -1530,7 +1389,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await page.waitFor('window.__context.length === 5');
       assert.deepEqual(await page.evaluate('window.__context'), [true, false, true, false, true]);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`the search field of the Help menu lists the commands with their path and keys, Return runs one, and Esc closes the menu (${platform})`, async (t) => {
@@ -1539,7 +1398,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       assert.equal(await page.evaluate(`document.activeElement.matches('.beeson-edit-menu .search input')`), true);
       assert.deepEqual(labels((await rows(page))[0]), ['Keyboard Shortcuts']);
 
-      // a key of the editor is typed into the field, e.g. G, which jumps to a slide outside it
       await press(page, 'g');
       assert.equal(await page.evaluate(`document.activeElement.value`), 'g');
       await press(page, 'Backspace');
@@ -1562,7 +1420,6 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await search(page, 'zzzq');
       assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-menu .results .note')?.textContent`), 'The search does not match any menu item');
 
-      // the arrow keys move the highlight through the results, and Return runs the highlighted one
       await search(page, 'spelling');
       found = (await rows(page))[0];
       assert.equal(found[0].label, 'Check Spelling While Typing');
@@ -1594,7 +1451,7 @@ describe('Save as Picture…, Grid and Guides, Spelling', () => {
       await frames(page);
       assert.equal(await menus(page), 0);
       await byteExact(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });

@@ -1,8 +1,3 @@
-// the TikZ figures of test/pages/tikz.html in the editor, with trusted input: every part shown, a
-// figure in a figure box and a bare div.tikz selected and moved by themselves as figures, the file
-// written back with every byte outside the moved tag, the rows of the parts in the Steps pane, which
-// make a part a step, and the width and the height of a div.tikz in the scope rule of the editor
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -28,7 +23,6 @@ const js = (v) => JSON.stringify(v);
 const wait = (page, ms = 300) => page.evaluate(`new Promise((d) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => d(true))), ${ms}))`);
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const selected = (page, sel) => page.evaluate(`window.BeesonEditor.selection().map((e) => e.matches(${js(sel)}))`);
-// the errors of a page, apart from the failed load of the output of the figure named missing
 const errors = (page) => page.errors.filter((e) => !e.includes('missing'));
 
 async function open(t, slide) {
@@ -52,7 +46,6 @@ test('a TikZ figure is shown with every part in the editor, moved as a figure, a
   await byteExact(page, [[BOX, moved[0]]]);
   assert.ok(!(await render(page)).includes('<svg'), 'the SVG of the figure is written into the file');
 
-  // a div.tikz outside a figure box is moved by itself as well
   await page.evaluate('Reveal.slide(2)');
   await wait(page);
   await click(page, `${SLIDE} div.tikz:not(.figure-box)`);
@@ -66,7 +59,6 @@ test('a TikZ figure is shown with every part in the editor, moved as a figure, a
   assert.deepEqual(errors(page), []);
 });
 
-// the center of the shown grip of handle, in CSS pixels of the viewport, or null without one
 const grip = (page, handle) => page.evaluate(`(() => {
   const g = [...document.querySelectorAll('.beeson-grip[data-handle="${handle}"]')].find((g) => !g.hidden && g.getClientRects().length && !g.classList.contains('locked'));
   if (!g) return null;
@@ -81,14 +73,12 @@ test('a TikZ figure is resized with its grips, which write its new box in px int
   const se = await grip(page, 'se');
   assert.ok(se, 'a selected TikZ figure does not have a grip at its lower right corner');
   const scale = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
-  // the box is not held at its proportions, since the next compile fits the figure to it
   await drag(page, se, { dx: 100 * scale, dy: -50 * scale });
   await wait(page);
   const resized = (await render(page)).match(/<div class="figure-box tikz" data-figure="two" style="width: (\d+)px; height: (\d+)px">/);
   assert.ok(resized, 'the resize does not write the width and the height of the figure');
   assert.ok(Math.abs(Number(resized[1]) - 700) <= 2 && Math.abs(Number(resized[2]) - 350) <= 2, resized[0]);
   await byteExact(page, [[BOX, resized[0]]]);
-  // the Size fields of the Arrange pane give the box, one axis at a time
   await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { w: 640 })`);
   await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { h: 480 })`);
   await wait(page);
@@ -122,7 +112,6 @@ test('the Steps pane lists the parts of the selected figure without a step as ro
   const listed = (await rows()).filter((r) => r.text.startsWith('Part'));
   assert.deepEqual(listed, [{ step: '0', text: 'Part a' }, { step: '1', text: 'Part b' }, { step: '', text: 'Part c' }]);
 
-  // the chip of the row opens the steps that the part can be made
   const chip = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.text').textContent === 'Part c'); const b = r.querySelector('.chip').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   await click(page, chip);
   await wait(page);
@@ -143,6 +132,5 @@ test('the scope rule of the editor allows a width and a height in px on a div.ti
   assert.deepEqual(editProblems('div', attrs('<div class="tikz" data-figure="decay">'), { style: { width: '600px', height: '480px' } }, theme), []);
   assert.deepEqual(editProblems('div', attrs('<div class="tikz" data-figure="decay">'), { style: { width: '50%' } }, theme), ['width 50% on a TikZ figure']);
   assert.deepEqual(textProblems(`${BOX}<span class="fragment" data-part="a" data-fragment-index="1"></span></div>`, theme), []);
-  // a div that is not a TikZ figure keeps the rule
   assert.deepEqual(editProblems('div', attrs('<div class="figure-box">'), { style: { height: '480px' } }, theme), ['height 480px on a div']);
 });

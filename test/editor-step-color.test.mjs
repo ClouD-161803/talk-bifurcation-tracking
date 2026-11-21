@@ -1,9 +1,3 @@
-// the color of words at a step, set in the Text pane and in Format > Text Color > Color at a Step…,
-// on the slide of stepped math of test-deck.html. the words are wrapped in a span of a class, and
-// the chosen step is given data-highlight with the class and data-tone, as a symbol of a formula
-// is colored by math.color. after each edit an undo gives the file byte for byte, a redo gives the
-// edit, and a save is opened again without problems
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -35,9 +29,7 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
 const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-// the editor on the slide of stepped math, found by its heading, served over HTTP for the saves
 async function open(t, platform) {
   const page = await browser.newPage();
   t.after(() => page.close().catch(() => {}));
@@ -56,8 +48,6 @@ async function open(t, platform) {
   return page;
 }
 
-// words selected in the paragraph of the current slide that holds them. the focus is moved out
-// first, since an open of a save keeps it in a text without a selection of the editor
 async function selectWords(page, words) {
   await page.evaluate(`(() => {
     document.activeElement?.blur();
@@ -70,13 +60,11 @@ async function selectWords(page, words) {
   await frames(page);
 }
 
-// the Text pane of the Format tab shown
 async function textPane(page) {
   if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
   await page.waitFor(`!!document.querySelector('${PANEL} [aria-label="Step of the color"]')`);
 }
 
-// the item of the open menu whose label starts with label chosen
 async function choose(page, label) {
   const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].find((i) => i.textContent.trim().startsWith(${js(label)}))`;
   await page.waitFor(`!!${item}`);
@@ -85,7 +73,6 @@ async function choose(page, label) {
   await frames(page);
 }
 
-// the colored words listed in the Text pane, each as its words, its tone, and its step
 const listed = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-colored li')].map((l) => l.querySelector('.sym').textContent + ': ' + l.querySelector('.at').textContent)`);
 
 let saves = 0;
@@ -109,7 +96,6 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} [aria-label="Step of the color"]').textContent`), 'From the Start');
     await click(page, `${PANEL} [aria-label="Step of the color"]`);
     await choose(page, 'Step 2');
-    // the tones that a step does not take are dimmed
     const dimmed = await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-swatches button:disabled')].map((b) => b.title)`);
     assert.deepEqual(dimmed, ['Text', 'Subtle', 'Muted']);
     await click(page, `${PANEL} .ed-swatches [data-command="text.tone.violet"]`);
@@ -124,7 +110,6 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`document.querySelectorAll('${PANEL} .ed-colored li').length === 1`);
     assert.deepEqual(await listed(page), ['equation boxes: Violet, Step 2']);
     await roundTrip(page);
-    // the color taken off in the pane gives the words and the paragraph of step 2 back
     await selectWords(page, 'equation');
     await textPane(page);
     await page.waitFor(`!!document.querySelector('${PANEL} .ed-colored button')`);
@@ -134,7 +119,7 @@ for (const platform of PLATFORMS) {
       [SPANNED, LEAD],
       ['<p class="fragment" data-fragment-index="2" data-highlight="hl-equation-boxes" data-tone="violet">', STEP2],
     ]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -170,7 +155,6 @@ test('after a color at a new step, the next color is set at the step that was ma
   await page.waitFor(`${button}.textContent.startsWith('New Step')`);
   await click(page, `${PANEL} .ed-swatches [data-command="text.tone.violet"]`);
   await page.waitFor(`${colored}?.dataset.tone === 'violet'`);
-  // the pane shows the step that was made, with its tone
   await page.waitFor(`/^Step \\d/.test(${button}.textContent)`);
   await page.waitFor(`document.querySelector('${PANEL} .ed-swatches [data-command="text.tone.violet"]').getAttribute('aria-pressed') === 'true'`);
   await selectWords(page, 'matplotlib figure');
@@ -178,7 +162,7 @@ test('after a color at a new step, the next color is set at the step that was ma
   await page.waitFor(`${colored}?.dataset.tone === 'red'`);
   assert.match(await page.evaluate(`${button}.textContent`), /^Step \d/);
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-swatches [data-command="text.tone.red"]').getAttribute('aria-pressed')`), 'true');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('Format > Text Color > Color at a Step… opens the steps of the Text pane, and a step of another color is refused', async (t) => {
@@ -187,7 +171,6 @@ test('Format > Text Color > Color at a Step… opens the steps of the Text pane,
   await exec(page, 'text.color');
   await page.waitFor(`[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].some((i) => i.textContent.trim() === 'From the Start')`);
   await press(page, 'Escape');
-  // step 3 colors in orange, hence violet is refused there, and orange adds the class to its names
   await assert.rejects(exec(page, 'text.color', { tone: 'violet', step: 2 }), /Orange/);
   await byteExact(page);
   await selectWords(page, 'equation boxes');
@@ -195,7 +178,6 @@ test('Format > Text Color > Color at a Step… opens the steps of the Text pane,
   const joined = '<p class="fragment" data-fragment-index="3" data-highlight="coriolis hl-equation-boxes">';
   await byteExact(page, [[LEAD, SPANNED], [STEP3, joined]]);
   await roundTrip(page);
-  // the same words colored again at step 4 keep their class, which moves to the paragraph of step 4
   await selectWords(page, 'equation boxes');
   await exec(page, 'text.color', { tone: 'violet', step: 3 });
   await byteExact(page, [
@@ -203,7 +185,7 @@ test('Format > Text Color > Color at a Step… opens the steps of the Text pane,
     [STEP4, '<p class="fragment" data-fragment-index="4" data-highlight="potential hl-equation-boxes" data-tone="violet">'],
   ]);
   await roundTrip(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('two text elements selected as objects are colored at a step with one class, as one entry of the history', async (t) => {
@@ -219,5 +201,5 @@ test('two text elements selected as objects are colored at a step with one class
   assert.ok(name?.startsWith('hl-'), 'the paragraph of step 4 does not highlight a new class');
   assert.equal(edited.split(`<span class="${name}">`).length, 3, 'the two paragraphs are not wrapped in spans of the class');
   await roundTrip(page);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

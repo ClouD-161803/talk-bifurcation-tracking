@@ -1,6 +1,3 @@
-// the kind of a list, i.e. Arrows, Dots, Dashes, Numbers, and Paragraphs, its levels by Tab, its
-// start number in Start at, and a moved list kept whole
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -9,12 +6,6 @@ import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { editProblems, themeClasses } from '../src/editor/model/scope.ts';
 
-// regression tests of R12.6 on both platforms with trusted input: the text and the lists of a slide,
-// i.e. Italic after Tab over a whole list, the selection kept by a list style, the caret after an
-// undo in a nested list, Tab on a new empty item, Tab in a paragraph or a heading, the entries of a
-// paste and a cut, the paragraph that ends a moved list, Backspace at the start of a list, and the
-// check of the paragraph style menu over mixed blocks. after each edit the text is checked byte for
-// byte after an undo, the edit again after a redo, and after a save and an open
 describe('Tab, Italic, and list styles on lists', () => {
   const PLATFORMS = ['mac', 'other'];
 
@@ -32,7 +23,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -57,8 +47,6 @@ describe('Tab, Italic, and list styles on lists', () => {
     return page;
   }
 
-  // roundTrip checks page.source byte for byte after undos undos, the edit after as many redos, and
-  // an open of the saved edit without problems
   async function roundTrip(page, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -68,13 +56,12 @@ describe('Tab, Italic, and list styles on lists', () => {
     assert.equal(await render(page), edited);
     const { text } = await saveAndReopen(page, `r12-6-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
   const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
 
-  // the client point of the character at offset k of needle, 2 px inside its left edge with edge
   const pointOf = (page, selector, needle, k = 0, edge = false) => page.evaluate(`(() => {
   const el = ${find(selector, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -93,8 +80,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   const PARA = '.reveal section.present > p';
   const HEAD = '.reveal section.present > h2';
 
-  // caretAtEnd puts the caret at the end of the own text of item i of the slide, counted in page
-  // order, i.e. before a nested list of the item
   const caretAtEnd = (page, i) => page.evaluate(`(() => {
   const li = document.querySelectorAll(${js(ITEM)})[${i}];
   const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
@@ -104,8 +89,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   getSelection().collapse(last, last.length);
 })()`);
 
-  // caretIn gives the tag and the text of the element of the focus of the window, the active element,
-  // and whether the window is collapsed
   const caretIn = (page) => page.evaluate(`(() => {
   const s = getSelection();
   const n = s.focusNode;
@@ -113,14 +96,11 @@ describe('Tab, Italic, and list styles on lists', () => {
   return { tag: el?.localName ?? null, text: el?.textContent.trim().slice(0, 29) ?? null, editing: !!el?.closest('[contenteditable="true"]'), active: document.activeElement.localName, collapsed: s.isCollapsed };
 })()`);
 
-  // the part of the file from the h2 of slide 5 to its figure
   const listPart = (text) => {
     const at = text.indexOf('<h2>Figures are first');
     return text.slice(at, text.indexOf('<figure class="figure-box">', at));
   };
 
-  // pressCommand sends a key with the editing command of the browser, which a key event of the
-  // DevTools protocol runs only when the command is named
   async function pressCommand(page, keys, command) {
     const modifiers = page.platform === 'mac' ? 4 : 2;
     const key = keys.slice(-1);
@@ -129,7 +109,6 @@ describe('Tab, Italic, and list styles on lists', () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   }
 
-  // pressKey sends Mod+], which press() does not know, and else passes keys to press()
   async function pressKey(page, keys) {
     if (keys !== 'Mod+]') return press(page, keys);
     const base = { key: ']', code: 'BracketRight', windowsVirtualKeyCode: 221, modifiers: page.platform === 'mac' ? 4 : 2 };
@@ -138,7 +117,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // text-lists-find-1: Italic after Tab on the whole list wrote one more empty item with step 3
     test(`Italic after Tab on a whole list selected with the command A formats the items and adds no item (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
@@ -154,7 +132,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await roundTrip(page, 2);
     });
 
-    // text-lists-find-2: Numbers, Dashes, and Paragraphs collapsed the selection to a caret
     test(`Numbers and then Paragraphs act on every item of a list selected with the command A (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
@@ -182,7 +159,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await roundTrip(page, 2);
     });
 
-    // text-lists-find-3: the caret was left in the white space of a nested list after an undo
     test(`after the undo of an outdented empty nested item, Shift+Tab and Return act on the item of the caret (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'You should', 0, true));
@@ -206,7 +182,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await roundTrip(page, 3);
     });
 
-    // feel-1: the text typed after Tab on a new empty item went to the item above
     for (const key of ['Tab', 'Mod+]']) {
       test(`text typed after ${key} on a new empty item goes into the nested item (${platform})`, async (t) => {
         const page = await load(t, platform, 2);
@@ -221,7 +196,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       });
     }
 
-    // feel-2 and text-lists-find-4: Tab outside a list moved the focus out of the text
     for (const [name, n, selector, needle] of [['the paragraph', 4, PARA, 'Export'], ['the heading', 4, HEAD, 'Figures'], ['the heading of a section slide', 1, '.reveal section.present h2', 'Chapter']]) {
       test(`Tab and Shift+Tab in ${name} keep the caret in its text (${platform})`, async (t) => {
         const page = await load(t, platform, n);
@@ -237,7 +211,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       });
     }
 
-    // text-lists-find-5: a paste and a cut were part of the entry of the typing
     test(`a paste after typing and a cut are entries of their own, named Paste and Cut (${platform})`, async (t) => {
       const page = await load(t, platform);
       await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => {});
@@ -248,7 +221,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await type(page, ' abc ');
       await pressCommand(page, 'Mod+v', 'paste');
       const pasted = await render(page);
-      // a double-click on Windows selects the space after the word as well, and it is copied with it
       assert.match(pasted, /frameless\. abc matplotlib ?<\/p>/, `the paste is not in the text: ${pasted.match(/frameless\.[^<]*/)?.[0]}`);
       assert.equal(await undoLabel(page), 'Undo Paste');
       await undo(page);
@@ -266,7 +238,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await byteExact(page);
     });
 
-    // text-lists-find-6: the paragraph that ends a list with a translate was drawn over the list
     test(`the paragraph that Return makes after a moved list is moved with it (${platform})`, async (t) => {
       const page = await load(t, platform);
       await caretAtEnd(page, 2);
@@ -285,7 +256,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       await roundTrip(page, 3);
     });
 
-    // text-lists-find-8: Backspace at the start of the first item did nothing
     test(`Backspace at the start of the first item of a list takes its dash off, and a second joins it to the paragraph (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, ITEM, 'Dark and light', 0, true));
@@ -302,7 +272,6 @@ describe('Tab, Italic, and list styles on lists', () => {
       assert.match(listPart(await render(page)), /frameless\.Dark and light mode/);
     });
 
-    // plots-objects-outline-6: the menu of the paragraph style checked Body over a heading and a paragraph
     test(`the paragraph style menu checks no style over a heading and a paragraph selected as blocks (${platform})`, async (t) => {
       const page = await load(t, platform);
       await clickText(page, await pointOf(page, HEAD, 'Figures', 3));
@@ -315,11 +284,6 @@ describe('Tab, Italic, and list styles on lists', () => {
   }
 });
 
-// tests of R20.4 on both platforms with trusted input: the bullet kinds of a list, i.e. the chevron
-// of a ul, the ring of a ul.dots, and the dash of a ul.dashes, drawn by the theme in the show and
-// in the print view, and written by Dots and Dashes of Format > Text and of the Text pane. after
-// each edit of the file the text is checked byte for byte after an undo, the edit again after a
-// redo, and after a save and an open
 describe('the chevron, ring, and dash of lists', () => {
   const DECK = 'test/pages/editor-r20-4.html';
   const PLATFORMS = ['mac', 'other'];
@@ -346,7 +310,6 @@ describe('the chevron, ring, and dash of lists', () => {
     await page.evaluate('new Promise((d) => setTimeout(() => d(true), 120))');
     await frames(page);
   };
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -354,7 +317,6 @@ describe('the chevron, ring, and dash of lists', () => {
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   let saves = 0;
 
-  // the editor on slide n of the deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -373,8 +335,6 @@ describe('the chevron, ring, and dash of lists', () => {
     return page;
   }
 
-  // the edit checked against base after an undo, again after a redo, and after a save and an open,
-  // whose text becomes page.source
   async function roundTrip(page, base = page.source) {
     const edited = await render(page);
     assert.notEqual(edited, base, 'the action does not change the file');
@@ -384,16 +344,14 @@ describe('the chevron, ring, and dash of lists', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r20-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     page.source = text;
     return edited;
   }
 
-  // the shown element of selector with a text node of its own that holds needle, as an expression
   const find = (selector, needle) => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && [...el.childNodes].some((n) => n.nodeType === 3 && n.data.includes(${js(needle)})))`;
   const TEXT = '.reveal section.present li, .reveal section.present p';
 
-  // the caret put after needle in the item or paragraph that holds it
   async function caretIn(page, needle) {
     await page.evaluate(`(() => {
     const el = ${find(TEXT, needle)};
@@ -404,7 +362,6 @@ describe('the chevron, ring, and dash of lists', () => {
     await settle(page);
   }
 
-  // the client point of the middle of the text needle
   const pointOf = (page, needle) => page.evaluate(`(() => {
   const el = ${find(TEXT, needle)};
   const n = [...el.childNodes].find((n) => n.nodeType === 3 && n.data.includes(${js(needle)}));
@@ -415,8 +372,6 @@ describe('the chevron, ring, and dash of lists', () => {
   return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
 })()`);
 
-  // the box and the look of the ::before of each item of selector, in px, and whether its
-  // background is the color of --accent, read from a probe in the first slide
   const marks = (page, selector) => page.evaluate(`(() => {
   const probe = document.createElement('div');
   probe.style.background = 'var(--accent)';
@@ -437,9 +392,6 @@ describe('the chevron, ring, and dash of lists', () => {
   });
 })()`);
 
-  // checkMarks tests the marks of the items Alpha, Dot one, Dash one, and Inner arrow of the first
-  // slide: a chevron, a hollow ring, a dash, and a chevron, each in --accent and centered on the
-  // middle of the dash, with the text of each item at 54 px
   function checkMarks(all) {
     const by = Object.fromEntries(all.map((m) => [m.text, m]));
     const arrow = by.Alpha;
@@ -572,7 +524,6 @@ describe('the chevron, ring, and dash of lists', () => {
       const both = await render(page);
       assert.match(part(both), /^<li>One\s*<ul class="dashes">\s*<li>Two<\/li>\s*<li>Three<\/li>\s*<\/ul>\s*<\/li>/, `Tab does not join the nested list: ${part(both)}`);
       await roundTrip(page);
-      // Shift+Tab on Two, whose follower Three goes into a list at the end of Two
       await caretIn(page, 'Two');
       await press(page, 'Shift+Tab');
       await settle(page);
@@ -597,7 +548,6 @@ describe('the chevron, ring, and dash of lists', () => {
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName + "." + el.className)'), ['ul.dashes'], 'the list is not selected again');
       assert.equal((await state(page, 'text.list.dashes')).checked, true);
       await roundTrip(page);
-      // Arrows takes the class off at both levels
       await clickText(page, await pointOf(page, 'Top two'));
       await press(page, 'Escape');
       await settle(page);
@@ -625,7 +575,6 @@ describe('the chevron, ring, and dash of lists', () => {
 
     test(`the Text pane chooses the kind of text and the bullet in two selectors, and the bullets are drawn large (${platform})`, async (t) => {
       const page = await load(t, platform, KINDS);
-      // the Text pane of the item of the caret
       const textPane = async () => {
         if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
         await page.waitFor(`!!document.querySelector('.beeson-edit-inspector .ed-tabs button')`);
@@ -635,7 +584,6 @@ describe('the chevron, ring, and dash of lists', () => {
       };
       await caretIn(page, 'Bravo');
       await textPane();
-      // the buttons of the selector of aria-label, with their words, state, and the size of their mark
       const selector = (label) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-inspector [role="group"][aria-label="${label}"] button')].map((b) => {
       const r = b.getBoundingClientRect();
       const mark = b.querySelector('svg')?.getBoundingClientRect();
@@ -648,7 +596,6 @@ describe('the chevron, ring, and dash of lists', () => {
       assert.deepEqual(bullets.map((s) => s.text), ['Arrows', 'Dots', 'Dashes']);
       assert.deepEqual(bullets.map((s) => s.id), ['text.list.ul', 'text.list.dots', 'text.list.dashes']);
       assert.deepEqual(bullets.map((s) => s.pressed), ['true', 'false', 'false']);
-      // each bullet is drawn at 20 px beside its name, and every target is at least 24 px high
       assert.ok(bullets.every((s) => s.mark >= 20 && !s.disabled), `a bullet is not drawn large: ${js(bullets)}`);
       assert.ok([...kinds, ...bullets].every((s) => s.height >= 24), `a target is less than 24 px high: ${js([...kinds, ...bullets])}`);
       await click(page, bullets[2]);
@@ -658,12 +605,10 @@ describe('the chevron, ring, and dash of lists', () => {
       assert.deepEqual((await selector('List')).map((s) => s.pressed), ['false', 'true', 'false']);
       assert.deepEqual((await selector('Bullet')).map((s) => s.pressed), ['false', 'false', 'true']);
       assert.ok(await page.evaluate(`!!getSelection().anchorNode?.parentElement?.closest('li')`), 'the caret left the text');
-      // Bullets keeps the dashes of the list
       const dashed = await render(page);
       await click(page, (await selector('List'))[1]);
       await settle(page);
       assert.equal(await render(page), dashed);
-      // Numbers dims the bullets, and Bullets on the numbered list sets the default bullet, Arrows
       await click(page, (await selector('List'))[2]);
       await settle(page);
       bullets = await selector('Bullet');
@@ -677,7 +622,7 @@ describe('the chevron, ring, and dash of lists', () => {
       await click(page, (await selector('List'))[0]);
       await settle(page);
       await roundTrip(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Bullets on a dot list and a dash list selected together keeps the bullet of each (${platform})`, async (t) => {
@@ -693,7 +638,7 @@ describe('the chevron, ring, and dash of lists', () => {
       await click(page, await page.evaluate(`(() => { const r = ${bullets}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
       await settle(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`Format > Text lists Dots and Dashes between Arrows and Numbers, disabled in the notes, and Dashes in a new text box is written once its text is typed (${platform})`, async (t) => {
@@ -709,7 +654,6 @@ describe('the chevron, ring, and dash of lists', () => {
       const at = text.indexOf('Arrows');
       assert.deepEqual(text.slice(at - 1, at + 4), ['Paragraphs', 'Arrows', 'Dots', 'Dashes', 'Numbers']);
       for (const id of ['text.list.dots', 'text.list.dashes']) assert.equal((await state(page, id)).enabled, true, `${id} is dimmed in a list`);
-      // the notes take only arrows
       if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');
       await frames(page);
       await clickText(page, '.reveal section.present > aside.notes');
@@ -718,7 +662,6 @@ describe('the chevron, ring, and dash of lists', () => {
       for (const id of ['text.list.dots', 'text.list.dashes']) assert.equal((await state(page, id)).enabled, false, `${id} is enabled in the notes`);
       await exec(page, 'view.notes');
       await frames(page);
-      // a new text box on the last slide
       await page.evaluate(`Reveal.slide(${DASHES})`);
       await frames(page);
       await exec(page, 'insert.text');
@@ -733,10 +676,6 @@ describe('the chevron, ring, and dash of lists', () => {
   }
 });
 
-// regression tests of R32.2 on both platforms: a list made of a moved paragraph is moved as a whole,
-// i.e. the translate and the width of the paragraph go on its ol or ul, and its items are written
-// without them, also after Enter. the laptop test of round 10 saved a numbered list of twelve items
-// typed into a new text box with style="translate: 0px 24px" on each item
 describe('a moved list kept whole', () => {
   const PLATFORMS = ['mac', 'other'];
   const SLIDE = '.reveal .slides > section.present';
@@ -758,15 +697,12 @@ describe('a moved list kept whole', () => {
   const js = (v) => JSON.stringify(v);
   const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
   const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
 
-  // the editor on slide n of a deck, by default the demo deck, served over HTTP, with the storage of
-  // the origin emptied
   async function load(t, platform, n, deck = DECK) {
     const source = readFileSync(deck, 'utf8');
     const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -784,8 +720,6 @@ describe('a moved list kept whole', () => {
     return page;
   }
 
-  // the boxes in slide px of the elements of the current slide that are drawn, by selector, keyed by
-  // their tag and first words, those of its first item for a list, rounded to 0.1 px
   const boxes = (page, selector) => page.evaluate(`(() => {
   const slides = document.querySelector('.reveal .slides');
   const s = slides.getBoundingClientRect();
@@ -801,22 +735,17 @@ describe('a moved list kept whole', () => {
   return out;
 })()`);
 
-  // asserts that a list is drawn at the place of the paragraph that it is made of, i.e. with its left
-  // edge and its width, and with its top edge moved only by the margins of a list of the theme, which
-  // differ from those of a paragraph by 10 px
   function samePlace(list, p, what) {
     assert.ok(list, `${what} is not drawn`);
     assert.deepEqual([list.left, list.width], [p.left, p.width], `${what} is not drawn at the left edge and with the width of the paragraph`);
     assert.ok(Math.abs(list.top - p.top) <= 10, `${what} is drawn ${list.top - p.top} px under the paragraph`);
   }
 
-  // the lines of the rendered file that are not lines of the source
   const added = (page, text) => {
     const old = new Set(page.source.split('\n'));
     return text.split('\n').filter((l) => !old.has(l));
   };
 
-  // a new text box of the Text button on the current slide, with words typed into it
   async function newBox(page, words) {
     await click(page, '.beeson-edit-top [data-command="insert.text"]');
     await sleep(300);
@@ -824,7 +753,6 @@ describe('a moved list kept whole', () => {
     await sleep(250);
   }
 
-  // the start tag of the new box, a p with the translate and the width of its place
   async function boxTag(page) {
     const tags = added(page, await render(page)).filter((l) => l.includes('<p'));
     assert.equal(tags.length, 1, `the new box is not one paragraph: ${tags.join(' | ')}`);
@@ -833,7 +761,6 @@ describe('a moved list kept whole', () => {
     return tag;
   }
 
-  // the lines of the rendered list of words, i.e. its start tag, its items, and its end tag
   const listLines = (text, words) => {
     const lines = text.split('\n');
     const first = lines.findIndex((l) => l.includes(`>${words}`));
@@ -844,9 +771,6 @@ describe('a moved list kept whole', () => {
     return lines.slice(start, end + 1).map((l) => l.trim());
   };
 
-  // items 1, 2, and 3 of the observation: the tester's flow, i.e. a new text box made a numbered list
-  // with Numbers of the Text pane, twelve items typed with Enter, and the last item emptied with
-  // Backspace. the list takes the place of the box, and its items are written without it
   for (const platform of PLATFORMS) {
     test(`1: a new text box made a numbered list of twelve items by the Text pane is moved as a list, and its items are written without a translate (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -860,13 +784,11 @@ describe('a moved list kept whole', () => {
       await frames(page);
       const listed = await render(page);
       assert.deepEqual(listLines(listed, 'item 1'), [`<ol style="${style}">`, '<li>item 1</li>', '</ol>'], 'the list does not take the place of the box');
-      // the list is drawn where the box was, and the other elements of the slide keep their places
       const list = (await boxes(page, `${SLIDE} > ol`))['ol item 1'];
       samePlace(list, placed, 'the list');
       const kept = await boxes(page, `${SLIDE} > *`);
       for (const [k, v] of Object.entries(others)) assert.deepEqual(kept[k], v, `${k} is moved`);
       const headingBefore = await boxes(page, `${SLIDE} > h2`);
-      // one undo gives the box back byte for byte, and a redo the list
       assert.equal((await state(page, 'edit.undo')).label, 'Undo List Style');
       await undo(page);
       await frames(page);
@@ -874,7 +796,6 @@ describe('a moved list kept whole', () => {
       await redo(page);
       await frames(page);
       assert.equal(await render(page), listed, 'the redo does not give the list back');
-      // the caret is put back into the item for the typing that goes on
       await page.evaluate(`(() => { const li = document.querySelector(${js(`${SLIDE} > ol > li`)}); li.closest('[contenteditable="true"]')?.focus(); getSelection().collapse(li.firstChild, li.firstChild.data.length); })()`);
       for (let i = 2; i <= 12; i++) {
         await press(page, 'Enter');
@@ -883,8 +804,6 @@ describe('a moved list kept whole', () => {
       for (let i = 0; i < 'item 12'.length; i++) await press(page, 'Backspace');
       await sleep(300);
       const typedOut = await render(page);
-      // the list keeps its left edge and its width, and its top edge moves with the heading of the
-      // slide, whose column is centered by the theme
       const heading = await boxes(page, `${SLIDE} > h2`);
       const items = Array.from({ length: 11 }, (_, i) => `<li>item ${i + 1}</li>`);
       assert.deepEqual(listLines(typedOut, 'item 1'), [`<ol style="${style}">`, ...items, '<li></li>', '</ol>'], 'an item is written with a translate');
@@ -892,12 +811,10 @@ describe('a moved list kept whole', () => {
       assert.deepEqual((await boxes(page, `${SLIDE} > ol`))['ol item 1'], { ...list, top: Math.round((list.top + shift) * 10) / 10 }, 'the list is moved by Enter');
       const { text } = await saveAndReopen(page, `r32-2-1-${platform}.html`);
       assert.equal(text, typedOut);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the same with Numbers of the Format menu chosen before the first key, as a typing style, and with
-  // Paragraphs of the Format menu, after which the box is written with its start tag again
   for (const platform of PLATFORMS) {
     test(`1: Numbers chosen in a new text box before the first key makes a list moved as a whole, and Paragraphs gives the box back (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -914,7 +831,6 @@ describe('a moved list kept whole', () => {
       assert.match(lines[0], /^<ol style="width: \d+px; translate: -?\d+px -?\d+px">$/, 'the list is not moved as a whole');
       assert.deepEqual(lines.slice(1), ['<li>first</li>', '<li>second</li>', '</ol>'], 'an item is written with a translate');
       const style = /style="([^"]*)"/.exec(lines[0])[1];
-      // Paragraphs on the list selected as a block gives each item the place of the list
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((e) => e.localName)'), ['ol']);
@@ -925,12 +841,10 @@ describe('a moved list kept whole', () => {
       await undo(page);
       await frames(page);
       assert.equal(await render(page), text, 'the undo does not give the list back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 1 of the observation: a text box selected as a block and made a list, and made a paragraph
-  // again, is written with the bytes of the box
   for (const platform of PLATFORMS) {
     test(`1: a text box selected as a block, made a list and a paragraph again, is written byte for byte (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -948,12 +862,10 @@ describe('a moved list kept whole', () => {
       await exec(page, 'text.list.none');
       await frames(page);
       assert.equal(await render(page), typed, 'the paragraph is not written with the bytes of the box');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // a paragraph with a translate in the file, made a list at the caret, and an item of a moved list
-  // made a paragraph at the caret, which takes the translate of the list
   for (const platform of PLATFORMS) {
     test(`1: a paragraph with a translate in the file made a list at the caret gives its translate to the list, and an item made a paragraph takes it back (${platform})`, async (t) => {
       const page = await load(t, platform, 0, MOVED);
@@ -968,8 +880,6 @@ describe('a moved list kept whole', () => {
       assert.deepEqual(listLines(listed, 'A moved paragraph of words.'), ['<ol style="translate: 0px 24px">', '<li>A moved paragraph of words.</li>', '</ol>']);
       const list = (await boxes(page, `${SLIDE} > ol`))['ol A moved paragraph of wor'];
       samePlace(list, placed, 'the list');
-      // the paragraph after the list follows it by the margins of a list of the theme, and the
-      // elements before it keep their places
       const kept = await boxes(page, `${SLIDE} > *`);
       for (const [k, v] of Object.entries(others)) {
         if (k.startsWith('p A moved')) continue;
@@ -981,7 +891,6 @@ describe('a moved list kept whole', () => {
       await sleep(250);
       assert.deepEqual(listLines(await render(page), 'A moved paragraph of words.'), ['<ol style="translate: 0px 24px">', '<li>A moved paragraph of words.</li>', '<li>Second</li>', '</ol>'], 'the new item is written with a translate');
       const second = (await boxes(page, `${SLIDE} li`))['li Second'];
-      // Paragraphs at the caret in the second item takes it off the list, with the translate of the list
       await exec(page, 'text.list.none');
       await frames(page);
       const out = await render(page);
@@ -989,12 +898,10 @@ describe('a moved list kept whole', () => {
       assert.equal((await boxes(page, `${SLIDE} > p`))['p Second'].top, second.top, 'the paragraph is not drawn at the height of the item');
       const { text } = await saveAndReopen(page, `r32-2-4-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 3: a list whose items have a translate in the file is opened as it is, and Enter in it moves
-  // the translate of its items to the list, where every item keeps its place
   for (const platform of PLATFORMS) {
     test(`3: items with a translate in the file are kept until the list is edited, and Enter writes it on the list (${platform})`, async (t) => {
       const page = await load(t, platform, 1, MOVED);
@@ -1011,7 +918,6 @@ describe('a moved list kept whole', () => {
       const now = await boxes(page, `${SLIDE} li`);
       for (const k of ['li Alpha', 'li Beta']) assert.deepEqual(now[k], placed[k], `${k} is moved`);
       assert.equal(now['li Gamma'].left, placed['li Beta'].left, 'the new item is not under the item before it');
-      // the undo of the typing and of Enter gives the file back byte for byte, and the redo the list
       await undo(page);
       await undo(page);
       await frames(page);
@@ -1022,13 +928,10 @@ describe('a moved list kept whole', () => {
       assert.equal(await render(page), out, 'the redo does not give the list back');
       const { text } = await saveAndReopen(page, `r32-2-5-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 2: the moved list of slide 5 selected as a block and made paragraphs gives each paragraph
-  // its translate, and the paragraphs are one text, which Dashes over all of them makes the list
-  // again, byte for byte
   for (const platform of PLATFORMS) {
     test(`2: a moved list made paragraphs gives each its translate, and Dashes over them gives the list back byte for byte (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
@@ -1043,8 +946,6 @@ describe('a moved list kept whole', () => {
       const paragraphs = added(page, await render(page)).map((l) => l.trim());
       assert.equal(paragraphs.length, 3);
       for (const p of paragraphs) assert.match(p, /^<p class="fragment" data-fragment-index="\d" style="translate: 0px 20px">/, 'a paragraph does not take the translate of the list');
-      // the first paragraph is drawn where the first item was, and the others under it by the gap of
-      // the theme between two paragraphs, which is wider than that between two items
       const now = Object.values(await boxes(page, `${SLIDE} > p.fragment`)).map((b) => b.top);
       assert.equal(now[0], tops[0], 'the first paragraph is not drawn where the first item was');
       await clickText(page, await page.evaluate(`(() => { const r = document.querySelector(${js(`${SLIDE} > p.fragment`)}).getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; })()`));
@@ -1053,11 +954,10 @@ describe('a moved list kept whole', () => {
       await exec(page, 'text.list.ul');
       await frames(page);
       assert.equal(await render(page), page.source, 'Dashes does not give the list back');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // puts the caret at the start of the item of the current slide whose text starts with words
   const caretAtStart = (page, words) => page.evaluate(`(() => {
   const li = [...document.querySelectorAll(${js(`${SLIDE} li`)})].find((el) => el.textContent.startsWith(${js(words)}));
   li.closest('[contenteditable="true"]')?.focus();
@@ -1065,9 +965,6 @@ describe('a moved list kept whole', () => {
   return true;
 })()`);
 
-  // item 2, the repair: Backspace at the start of the first item of a text box made a list takes the
-  // dash off, and the paragraph gets the place of the list back. a list of one item is thus written
-  // with the bytes of the box, and the first of two items is written before the list with its place
   for (const platform of PLATFORMS) {
     test(`2: Backspace at the start of the first item of a text box made a list gives the paragraph the place of the list (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -1091,7 +988,6 @@ describe('a moved list kept whole', () => {
       await redo(page);
       await frames(page);
       assert.equal(await render(page), typed, 'the redo does not give the box back');
-      // with two items, the first is written before the list, with the place of the list
       await undo(page);
       await frames(page);
       await caretAtStart(page, 'alpha');
@@ -1108,12 +1004,10 @@ describe('a moved list kept whole', () => {
       samePlace((await boxes(page, `${SLIDE} > p`))['p alpha'], list, 'the paragraph');
       const { text } = await saveAndReopen(page, `r32-2-6-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // item 2, the repair: Enter on the empty last item of a text box made a list ends the list with a
-  // paragraph that takes the width of the list together with its translate
   for (const platform of PLATFORMS) {
     test(`2: Enter on the empty last item of a text box made a list writes the paragraph with the width and the translate of the list (${platform})`, async (t) => {
       const page = await load(t, platform, 2);
@@ -1136,16 +1030,11 @@ describe('a moved list kept whole', () => {
       assert.deepEqual([drawn['p gamma'].left, drawn['p gamma'].width], [drawn['ol alpha'].left, drawn['ol alpha'].width], 'the paragraph is not drawn at the left edge and with the width of the list');
       const { text } = await saveAndReopen(page, `r32-2-7-${platform}.html`);
       assert.equal(text, out);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R15.4 on both platforms with trusted input: a value under 1 refused by the
-// field Start at, the start of a list cut off by Return kept in step with the count of the list
-// before it, and a paste of several lines with blank lines into a list item. after each edit the
-// text is checked byte for byte after an undo, the edit again after a redo, and after a save and
-// an open
 describe('Start at and starts of cut lists', () => {
   const LISTS = 'test/pages/editor-r13-3.html';
   const PLATFORMS = ['mac', 'other'];
@@ -1164,7 +1053,6 @@ describe('Start at and starts of cut lists', () => {
   const js = (v) => JSON.stringify(v);
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
   const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
   const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
@@ -1172,7 +1060,6 @@ describe('Start at and starts of cut lists', () => {
   const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})`);
   let saves = 0;
 
-  // the editor on slide n of deck, served over HTTP, with the storage of the origin emptied
   async function load(t, platform, deck, n) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
@@ -1190,8 +1077,6 @@ describe('Start at and starts of cut lists', () => {
     return page;
   }
 
-  // the edit checked against base after a number of undos, again after as many redos, and after a
-  // save and an open
   async function roundTrip(page, base, undos = 1) {
     const edited = await render(page);
     assert.notEqual(edited, base, 'the action does not change the file');
@@ -1201,14 +1086,13 @@ describe('Start at and starts of cut lists', () => {
     assert.equal(await render(page), edited, 'the redo does not write the edit again');
     const { text } = await saveAndReopen(page, `r15-4-${++saves}.html`);
     assert.equal(text, edited);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
     return edited;
   }
 
   const find = (selector, needle = '') => `[...document.querySelectorAll(${js(selector)})].find((el) => el.getBoundingClientRect().width && el.textContent.includes(${js(needle)}))`;
   const ITEM = '.reveal section.present ol > li, .reveal section.present ul > li';
 
-  // the client point of the middle of the text needle in an item of the current slide
   const pointOf = (page, needle) => page.evaluate(`(() => {
   const el = ${find(ITEM, needle)};
   const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -1223,7 +1107,6 @@ describe('Start at and starts of cut lists', () => {
   }
 })()`);
 
-  // the caret put at the end, or with end false at the start, of the item that holds needle
   const caretIn = (page, needle, end = true) => page.evaluate(`(() => {
   const li = ${find(ITEM, needle)};
   const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
@@ -1234,10 +1117,8 @@ describe('Start at and starts of cut lists', () => {
   getSelection().collapse(n, ${end} ? n.length : 0);
 })()`);
 
-  // the start of each numbered list of the current slide, as the page has it
   const starts = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present > ol')].map((ol) => ol.start)`);
 
-  // the tab of the inspector named name shown, with the Format pane open
   async function showTab(page, name) {
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await frames(page);
@@ -1249,7 +1130,6 @@ describe('Start at and starts of cut lists', () => {
   const START = '.beeson-edit-inspector input[name="Start at"]';
   const field = (page) => page.evaluate(`document.querySelector(${js(START)}).value`);
 
-  // value typed over the text of the field Start at, and Return
   async function typeStart(page, value) {
     await click(page, START, { count: 3 });
     await type(page, value);
@@ -1258,7 +1138,6 @@ describe('Start at and starts of cut lists', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D33: a 0 typed into Start at took the attribute start off and showed 1
     test(`the field Start at refuses a value under 1 and keeps the value before (${platform})`, async (t) => {
       const page = await load(t, platform, LISTS, 0);
       await click(page, await pointOf(page, 'Bravo'));
@@ -1280,10 +1159,8 @@ describe('Start at and starts of cut lists', () => {
     });
   }
 
-  // the part of the file of the first slide of the deck of lists from Alpha to Echo
   const cutPart = (text) => text.slice(text.indexOf('<li>Alpha'), text.indexOf('<li>Echo'));
 
-  // Return twice at the end of Bravo, which cuts the list of Alpha to Echo after Bravo
   async function cutAfterBravo(page) {
     await caretIn(page, 'Bravo');
     await press(page, 'Enter');
@@ -1294,7 +1171,6 @@ describe('Start at and starts of cut lists', () => {
   }
 
   for (const platform of PLATFORMS) {
-    // D32: the list cut off by Return kept start="3" after an item was added to the list before it
     test(`the start of a list cut off by Return goes on with the count of the list before it, at an added and a removed item (${platform})`, async (t) => {
       const page = await load(t, platform, LISTS, 0);
       const cut = await cutAfterBravo(page);
@@ -1305,7 +1181,6 @@ describe('Start at and starts of cut lists', () => {
       assert.match(cutPart(added), /<li>Ab<\/li>\n {4}<li>Bravo<\/li>\n {2}<\/ol>\n {2}<p><\/p>\n {2}<ol start="4">\n {4}<li>Charlie<\/li>/, `the second list does not go on from 3: ${cutPart(added)}`);
       assert.deepEqual(await starts(page), [1, 4, 7]);
       await roundTrip(page, cut, 2);
-      // Backspace at the start of Bravo joins it to Ab, which takes an item off the first list
       await caretIn(page, 'Bravo', false);
       await press(page, 'Backspace');
       const joined = await render(page);
@@ -1338,14 +1213,12 @@ describe('Start at and starts of cut lists', () => {
       await caretIn(page, 'Alpha');
       await press(page, 'Enter');
       assert.deepEqual(await starts(page), [1, 10, 7], 'a typed start is changed');
-      // the list of Seventh has start="7" in the file, which an item added before it does not change
       await caretIn(page, 'Delta');
       await press(page, 'Enter');
       assert.deepEqual(await starts(page), [1, 10, 7], 'the start of the file is changed');
     });
   }
 
-  // the part of the file of slide 3 of the demo deck from its ul to its backdrop
   const listPart = (text) => {
     const at = text.indexOf('<h2>Show your steps one at a time');
     return text.slice(text.indexOf('<ul>', at), text.indexOf('<div class="backdrop"', at));
@@ -1353,7 +1226,6 @@ describe('Start at and starts of cut lists', () => {
   const ITEM_2 = '<li class="fragment" data-fragment-index="2">';
 
   for (const platform of PLATFORMS) {
-    // D14: a blank line pasted into a list ended the list and split it in two around a paragraph
     for (const [name, text] of [['one blank line', ' one\n\ntwo'], ['two blank lines', ' one\n\n\ntwo'], ['a line of spaces', ' one\n  \ntwo']]) {
       test(`a paste of several lines with ${name} into a list item makes an item for each line with text, in the same list (${platform})`, async (t) => {
         const page = await load(t, platform, 'test-deck.html', 2);

@@ -1,26 +1,17 @@
-// the navigator at the left, as the slide navigator of Keynote: a thumbnail of each slide with its
-// number, its place in the show, three dots on a slide with steps, a corner at the lower right
-// of a slide with a transition other than the default Fade or None, as the corner of Keynote, and a
-// hidden slide collapsed to a thin double bar without a number. a click selects a slide, Shift extends the selection to a
-// range, and the command modifier adds or removes one slide. a drag moves the selected slides, with
-// a line at the place where they are dropped. image and video files dropped onto a row make a new
-// figure slide after it with the files in its plate, as a drop onto the navigator of Keynote. a
-// preview of a slide at 320 px is shown while the pointer rests on its row
-
 import type { App, Pane } from '../app.ts';
 import { rangesOf, showRange } from '../shown-steps.ts';
 import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { drawBackdrops, drawInto, stillViewers, type Thumbs } from './thumbs.ts';
+import { insertFiles } from '../media/actions.ts';
+import { kindOf } from '../media/store.ts';
 
 const KEY = 'beeson-nav';
 const LAYOUTS = ['title', 'section', 'closing', 'figure', 'split'];
 const PEEK_WIDTH = 320;
 const PEEK_DELAY = 300;
-// the distance in CSS px by which a press is moved before it is a drag
 const DRAG_START = 4;
-// the band at the top and the bottom of the list in which a drag scrolls it, in CSS px
 const SCROLL_BAND = 28;
 
 export function describe(slide: Element): { title: string; kind: string } {
@@ -30,7 +21,6 @@ export function describe(slide: Element): { title: string; kind: string } {
   return { title, kind };
 }
 
-// the name of the transition of slide, or null for the default Fade and for None
 function transitionName(app: App, slide: Element): string | null {
   const t = transitionOf(app, slide);
   if (t === 'magic') return 'Magic Move';
@@ -40,13 +30,8 @@ function transitionName(app: App, slide: Element): string | null {
 
 export const isHidden = (slide: Element): boolean => slide.getAttribute('data-visibility') === 'hidden';
 
-// a slide with a step, outside its notes
 const hasSteps = (slide: Element): boolean => [...slide.querySelectorAll('.fragment')].some((f) => !f.closest('aside.notes'));
 
-// the number of each slide as the theme shows it: a title, section, or closing slide and a slide
-// with data-visibility="uncounted" in the file are not numbered, the slides after the closing slide
-// are numbered A1, A2, and so on, and a hidden slide is left out, since it is not in the show.
-// written is the data-visibility of a slide in the file, since the theme sets uncounted at run time
 export function numbers(slides: Element[], written: (slide: Element) => string | null): string[] {
   let n = 0;
   let a = 0;
@@ -61,26 +46,18 @@ export function numbers(slides: Element[], written: (slide: Element) => string |
   });
 }
 
-// the place of each slide in the show, 1 to N, as the navigators of Keynote and PowerPoint number
-// the slides. a hidden slide is not in the show, and it is given the place that it would take
 export function showPlaces(slides: Element[]): number[] {
   let n = 0;
   return slides.map((s) => (isHidden(s) ? n + 1 : ++n));
 }
 
-// the number of each slide in the navigator, and none on a hidden slide, which is drawn as the bar
-// of a skipped slide of Keynote
 export function places(slides: Element[]): string[] {
   const at = showPlaces(slides);
   return slides.map((s, i) => (isHidden(s) ? '' : String(at[i])));
 }
 
-// the width in px from which a thumbnail is read without a preview, as in Keynote, whose thumbnails
-// are about as wide as those of the navigator at its usual width
 const READABLE = 120;
 
-// whether the thumbnail of row is large enough to read and inside the visible part of its list, in
-// which case a hover preview would only repeat it
 function shownWhole(row: HTMLElement): boolean {
   const pic = row.querySelector('.frame')?.getBoundingClientRect();
   const list = row.closest('.rows')?.getBoundingClientRect();
@@ -135,16 +112,12 @@ html.beeson-nav .beeson-edit-nav { display: flex; }
 
 type Row = { el: HTMLButtonElement; no: HTMLElement; pic: HTMLElement; dots: HTMLElement; trans: HTMLElement; num: HTMLElement; title: HTMLElement; kind: HTMLElement };
 
-// the current slide, the selected slides, and whether the focus is in the navigator
 type Place = { current: Element | null; slides: Element[]; nav: boolean };
 
 type Drag = { slide: Element; x: number; y: number; id: number; on: boolean; slides: Element[]; gap: number; ghost: HTMLElement | null; scroll: number };
 
-// what a drag in the navigator asks for: the slides moved to the gap before the slide at gap, in
-// the order of the list before the move
 export type MoveTo = { slides: Element[]; gap: number };
 
-// the order of list after the slides of a drag are dropped at gap
 export function droppedOrder(list: Element[], moved: Element[], gap: number): Element[] {
   const set = new Set(moved);
   const rest = list.filter((s) => !set.has(s));
@@ -167,13 +140,9 @@ export class Navigator implements Pane {
   private anchor: Element | null = null;
   private drag: Drag | null = null;
   private eatClick = false;
-  // the slides changed in the file since they were last shown, see file/follow.ts, and the slide
-  // shown at the last paint, whose mark is taken off once another slide is shown
   private changed = new Set<Element>();
   private last: Element | null = null;
-  // the Slide Sorter of sorter.ts, whose tile takes the focus in place of a row while it is shown
   table: { shown: boolean; focus(slide: Element | null): void } | null = null;
-  // called after each refresh of the rows or the tiles, e.g. by theme/session.js
   refreshed: (() => void) | null = null;
 
   constructor(app: App) {
@@ -195,7 +164,6 @@ export class Navigator implements Pane {
     this.peek.hidden = true;
     this.peek.setAttribute('aria-hidden', 'true');
     this.peek.setAttribute('inert', '');
-    // the + button opens the chooser of New Slide over itself
     this.foot.className = 'foot';
     const add = document.createElement('button');
     add.type = 'button';
@@ -220,7 +188,6 @@ export class Navigator implements Pane {
     this.list.addEventListener('dragleave', (ev) => {
       if (!this.drag && !(ev.relatedTarget instanceof Node && this.list.contains(ev.relatedTarget))) this.drop.hidden = true;
     });
-    // the drop of media/drop.ts stops the drop at the window, hence it is taken there
     window.addEventListener('drop', (ev) => this.onFileDrop(ev), true);
     new ResizeObserver(() => this.measure()).observe(this.list);
     this.on = stored(KEY) !== '0';
@@ -231,8 +198,6 @@ export class Navigator implements Pane {
     return this.on;
   }
 
-  // whether the navigator is drawn, i.e. on and not hidden for the width of the window beside the
-  // inspector
   get seen(): boolean {
     return this.on && this.pane.getClientRects().length > 0;
   }
@@ -244,8 +209,6 @@ export class Navigator implements Pane {
   }
 
   toggle(): void {
-    // while the navigator is on but hidden for the width of the window beside the inspector, it is
-    // shown with the inspector closed in its place
     if (this.on && this.pane.isConnected && !this.pane.getClientRects().length) {
       void this.app.commands.run(this.app.steps.shown ? 'view.steps' : 'shell.format').catch((e) => this.app.fail(e));
       return;
@@ -268,13 +231,11 @@ export class Navigator implements Pane {
     return [...this.app.slides().querySelectorAll(':scope > section')];
   }
 
-  // the numbers of the slides marked as changed in the file, from 1
   get marked(): number[] {
     const slides = this.slides();
     return [...this.changed].map((s) => slides.indexOf(s) + 1).filter((n) => n > 0).sort((a, b) => a - b);
   }
 
-  // marks the slides of the numbers, from 1, as changed in the file
   mark(numbers: number[]): void {
     const slides = this.slides();
     for (const n of numbers) if (slides[n - 1]) this.changed.add(slides[n - 1]);
@@ -282,7 +243,6 @@ export class Navigator implements Pane {
     this.refresh();
   }
 
-  // the selected slides in the order of the deck, or the current slide when no slide is selected
   selected(): Element[] {
     const sel = this.app.selection;
     if (sel?.kind === 'slides') {
@@ -293,7 +253,6 @@ export class Navigator implements Pane {
     return current ? [current] : [];
   }
 
-  // the slides set as the selection, the anchor of a range, and the slide shown
   select(slides: Element[], current: Element | null = slides.at(-1) ?? null, anchor: Element | null = current): void {
     this.app.selection.set('slides', slides);
     this.anchor = anchor;
@@ -305,9 +264,6 @@ export class Navigator implements Pane {
     if (slide) this.select([slide], slide);
   }
 
-  // fn as a part of the history after whose undo the current slide, the selected slides, and the
-  // focus in the navigator are those before fn, and after whose redo those after it, as the
-  // selecting() of history.ts keeps the elements
   keeping<T>(label: string, fn: () => T | Promise<T>): Promise<T> {
     const take = (): Place => ({ current: this.app.current(), slides: this.selected(), nav: this.app.region() === 'navigator' });
     return this.app.history.keeping(label, take, (p) => this.restore(p), fn);
@@ -317,8 +273,6 @@ export class Navigator implements Pane {
     const slides = p.slides.filter((s) => s.isConnected);
     const current = p.current?.isConnected ? p.current : (slides.at(-1) ?? null);
     if (!current) return;
-    // a caret that stays in a text of the slide, out of the navigator, keeps the text as the
-    // selection, e.g. after an undo of Hide Slide
     const host = p.nav ? null : this.app.caretHost();
     if (host && current.contains(host)) {
       this.app.showSlide(current);
@@ -328,7 +282,6 @@ export class Navigator implements Pane {
     this.select(slides.length ? slides : [current], current);
     const table = this.table?.shown ? this.table : null;
     if (table) {
-      // the tiles are drawn again at the refresh that the undo or the redo has made due
       queueMicrotask(() => {
         this.app.flush();
         table.focus(current);
@@ -338,8 +291,6 @@ export class Navigator implements Pane {
     if (p.nav || this.app.region() === 'navigator' || document.activeElement === document.body) this.focus(current);
   }
 
-  // the row of slide gets the focus, e.g. after a command run in the navigator, or its tile while
-  // the Slide Sorter is shown
   focus(slide: Element | null = this.app.current()): void {
     if (this.table?.shown) {
       this.app.flush();
@@ -350,7 +301,6 @@ export class Navigator implements Pane {
     row?.el.scrollIntoView({ block: 'nearest' });
   }
 
-  // the row and the thumbnail of slide, e.g. as the place of the gallery of a new slide
   rowOf(slide: Element | null): HTMLElement | null {
     return (slide && this.rows.get(slide)?.el) || null;
   }
@@ -396,10 +346,7 @@ export class Navigator implements Pane {
     return { el, no, pic, dots, trans, num, title, kind };
   }
 
-  // the rows follow the slides of the deck, their numbers, titles, steps, and hidden state, and
-  // the selection. a row is kept with its thumbnail while its slide is on the page
   refresh(): void {
-    // a focused row moved in the list loses the focus, e.g. by Move Slide Up
     const focusIn = this.list.contains(document.activeElement);
     const slides = this.slides();
     const nums = places(slides);
@@ -444,8 +391,6 @@ export class Navigator implements Pane {
     this.refreshed?.();
   }
 
-  // the current row and the selected rows are marked, the current row is kept in view, and the
-  // focus follows the current slide while it is in the list
   private paint(focusIn = this.list.contains(document.activeElement)): void {
     const current = this.app.current();
     if (current !== this.last) {
@@ -495,9 +440,6 @@ export class Navigator implements Pane {
     this.focus(this.app.current());
   }
 
-  // the arrows move to the previous or next slide, with Shift the selection is extended, and Home
-  // and End move to the first and the last slide. a key taken by the dispatch of the registry is
-  // left alone
   private onKey(ev: KeyboardEvent): void {
     if (ev.defaultPrevented || ev.altKey || ev.metaKey || ev.ctrlKey) return;
     if (this.drag && ev.key === 'Escape') {
@@ -555,16 +497,13 @@ export class Navigator implements Pane {
     d.on = true;
     if (!this.selected().includes(d.slide) || this.app.selection.kind !== 'slides') this.selectOnly(d.slide);
     d.slides = this.selected();
-    // a refused move, e.g. of a slide that another person types on, ends at its first move
     if (this.app.commands.refused('slide.moveTo', { slides: d.slides, gap: -1 })) {
       this.endDrag(false);
       return;
     }
     try {
       this.list.setPointerCapture(d.id);
-    } catch {
-      // a synthetic pointer is not captured
-    }
+    } catch {}
     for (const s of d.slides) this.rows.get(s)?.el.classList.add('dragged');
     const row = this.rows.get(d.slide);
     const ghost = document.createElement('div');
@@ -593,7 +532,6 @@ export class Navigator implements Pane {
     g.style.top = `${y - 18}px`;
   }
 
-  // the gap nearest to y, between two rows, and the line drawn in it
   private placeDrop(y: number): void {
     const d = this.drag;
     if (!d) return;
@@ -637,7 +575,6 @@ export class Navigator implements Pane {
     this.endDrag(d.on);
   }
 
-  // the gap after the row under y, where a drop of files puts its slide
   private fileGap(y: number): number {
     return this.slides().filter((s) => this.rows.get(s)!.el.getBoundingClientRect().top <= y).length;
   }
@@ -651,8 +588,6 @@ export class Navigator implements Pane {
     this.drawDrop(this.fileGap(ev.clientY));
   }
 
-  // the new slide and its files are one entry of the history. the media modules are loaded at the
-  // drop, since they read the location of the page, and the node tests load this module
   private onFileDrop(ev: DragEvent): void {
     if (this.drag || !(ev.target instanceof Node) || !this.list.contains(ev.target)) return;
     this.drop.hidden = true;
@@ -661,7 +596,6 @@ export class Navigator implements Pane {
     ev.preventDefault();
     const before = this.slides()[this.fileGap(ev.clientY)] ?? null;
     const run = async () => {
-      const [{ insertFiles }, { kindOf }] = await Promise.all([import('../media/actions.ts'), import('../media/store.ts')]);
       const files = dropped.filter((f) => kindOf(f));
       if (!files.length) return;
       await this.app.history.transact(files.length > 1 ? 'Media' : 'New Slide', () => this.keeping('New Slide', async () => {
@@ -673,7 +607,6 @@ export class Navigator implements Pane {
     run().catch((e) => this.app.fail(e));
   }
 
-  // a drop moves the slides of the drag to its gap through the command slide.moveTo, as one entry
   private endDrag(dropped: boolean): void {
     const d = this.drag;
     if (!d) return;
@@ -698,9 +631,6 @@ export class Navigator implements Pane {
     this.peek.replaceChildren();
   }
 
-  // a clone of the slide, scaled into the preview from its upper left, with every step shown. the
-  // canvases of a backdrop are painted from the originals, since a cloned canvas is blank, a backdrop
-  // that is not drawn on its slide yet is drawn by the theme, and a tycho viewer shows a still of its scene
   private showPeek(slide: Element, row: HTMLElement): void {
     if (this.drag || !slide.isConnected || isHidden(slide) || shownWhole(row)) return;
     const stage = slide.parentElement as HTMLElement;
@@ -711,9 +641,7 @@ export class Navigator implements Pane {
     clone.querySelectorAll('canvas').forEach((canvas, i) => {
       try {
         canvas.getContext('2d')?.drawImage(from[i], 0, 0);
-      } catch {
-        // a canvas of zero size is left blank
-      }
+      } catch {}
     });
     clone.querySelectorAll('aside.notes').forEach((n) => n.remove());
     stillViewers(slide, clone, PEEK_WIDTH / width);
@@ -748,8 +676,6 @@ export class Navigator implements Pane {
   }
 }
 
-// the selection follows the current slide while slides are selected, e.g. after a change of the
-// slide with the keys
 export function install(app: App): void {
   const nav = app.nav as Navigator;
   app.selection.listen(() => nav.refresh());
@@ -757,7 +683,6 @@ export function install(app: App): void {
     const current = app.current();
     if (current && app.selection.kind === 'slides' && !app.selection.items.includes(current)) nav.select([current], current);
   });
-  // a press on the slide takes the keys to the canvas, also where the canvas does not take the focus
   document.addEventListener(
     'pointerdown',
     (ev) => {

@@ -1,7 +1,3 @@
-// inserts: every key typed right after an insert of a text box, a code box, a formula, or a
-// footnote lands, a new formula is one entry Insert Formula, and inserts stay off the placeholders
-// of a new slide
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
@@ -10,11 +6,6 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
-// the fixes of R5.7 on both platforms: every key typed back to back into a new text box, code box,
-// formula, and footnote lands, the Format Painter is dimmed in a code box, the running head of the
-// Slide pane does not leave typeset items of MathJax behind, and a change of layout to Split fits
-// the text of the text column of every slide changed. each edit of the file is checked byte for byte, after an
-// undo and a redo, and after a save and an open
 describe('keys typed right after an insert', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
@@ -32,7 +23,6 @@ describe('keys typed right after an insert', () => {
 
   let last = null;
 
-  // the editor on the slide at index of a deck, served over HTTP
   async function editor(platform, index = 2, deck = LAYOUTS, size) {
     await last?.close().catch(() => {});
     const page = await browser.newPage(size);
@@ -41,8 +31,6 @@ describe('keys typed right after an insert', () => {
     await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
     await page.waitFor(deckSettled);
     await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-    // on a loaded runner, the unsaved edits of the page before are kept in the storage of the browser
-    // before the page is closed, and they would then be offered on a dialog over the slide
     await page.evaluate('localStorage.clear()');
     page.source = readFileSync(deck, 'utf8');
     const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
@@ -59,14 +47,10 @@ describe('keys typed right after an insert', () => {
   const render = (page) => page.evaluate('window.BeesonEditor.render()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const wait = (page, ms) => page.evaluate(`new Promise((d) => setTimeout(() => d(true), ${ms}))`);
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
-  // on a loaded runner, the keys of a burst are written seconds later, hence a state is read until
-  // it is the expected one, for 15 s at most
   const until = async (page, expr, ms = 15000) => {
     for (const end = Date.now() + ms; Date.now() < end; await wait(page, 50)) if (await page.evaluate(expr)) return true;
     return false;
   };
-  // the text rendered by the editor once it has the pattern, or the last text read
   const renderedWith = async (page, pattern, ms = 15000) => {
     let text = await render(page);
     for (const end = Date.now() + ms; !pattern.test(text) && Date.now() < end; text = await render(page)) await wait(page, 50);
@@ -81,8 +65,6 @@ describe('keys typed right after an insert', () => {
     return text;
   }
 
-  // the trusted key events of a text, with a newline sent as Enter, all sent over the DevTools
-  // protocol before the first one is handled
   function burst(page, text) {
     const sent = [];
     for (const c of text) {
@@ -95,7 +77,6 @@ describe('keys typed right after an insert', () => {
     return Promise.all(sent);
   }
 
-  // undoes every entry down to the text of the deck, and redoes them all, back to the text edited
   async function undoAll(page, source) {
     const text = await render(page);
     let n = 0;
@@ -108,9 +89,6 @@ describe('keys typed right after an insert', () => {
     assert.equal(await render(page), text);
   }
 
-  // each new text written into the file by its first key, with the slide it is put on, the text
-  // typed, and a pattern of the elements that every key must reach in the file. Enter in a text box
-  // starts a new paragraph, as in an existing one, and in a footnote it starts a new line
   const NEW_TEXTS = [
     { id: 'insert.code', slide: 5, keys: 'a\nbc\n\nd', written: /<pre><code class="language-python">a\nbc\n\nd\n?<\/code><\/pre>/ },
     { id: 'insert.text', slide: 2, keys: 'a\nbc d', written: /<p>a<\/p>\s*<p>bc d<\/p>/ },
@@ -124,8 +102,6 @@ describe('keys typed right after an insert', () => {
         const source = page.source;
         await exec(page, id);
         await frames(page);
-        // the write of the new element is slowed as on a loaded machine, so that the keys after the
-        // first one come while it is written
         await page.evaluate(`(() => { const t = MathJax.typesetPromise.bind(MathJax); MathJax.typesetPromise = (n) => new Promise((d) => setTimeout(d, 150)).then(() => t(n)); })()`);
         await burst(page, keys);
         await wait(page, 600);
@@ -133,7 +109,7 @@ describe('keys typed right after an insert', () => {
         assert.match(text, written, `a key is lost: ${JSON.stringify(text.split('\n').filter((l) => !source.includes(l)))}`);
         await undoAll(page, source);
         await saved(page);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
 
@@ -156,7 +132,7 @@ describe('keys typed right after an insert', () => {
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present pre code').length`), 1);
       await undoAll(page, page.source);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`every key typed back to back after Insert > Formula reaches its TeX field on ${platform}`, async () => {
@@ -167,11 +143,29 @@ describe('keys typed right after an insert', () => {
       await until(page, `(() => { const f = document.querySelector('.beeson-math textarea'); return !!f && f.value === 'abc d' && f === document.activeElement; })()`);
       const field = await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); return f && { value: f.value, focused: f === document.activeElement }; })()`);
       assert.deepEqual(field, { value: 'abc d', focused: true });
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
-    // the keys come while the formula is written, before its TeX field is open, and D, which flips
-    // the mode of the slide on the canvas, is a key of the TeX
+    test(`every key typed back to back after Insert > Formula in a text, after a click of the Formula button, reaches the TeX field of its inline formula on ${platform}`, async () => {
+      const page = await editor(platform, 2);
+      const P = '.reveal section.present > p:not(.small)';
+      const before = await page.evaluate(`document.querySelector(${JSON.stringify(P)}).textContent`);
+      await clickText(page, P);
+      await press(page, 'End');
+      await frames(page);
+      const { x, y } = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-top [data-command="insert.formula"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await Promise.all([
+        page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 }),
+        page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }),
+        burst(page, 'abc d'),
+      ]);
+      await until(page, `document.querySelector('.beeson-math textarea')?.value === 'abc d'`);
+      const field = await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); return f && { value: f.value, focused: f === document.activeElement }; })()`);
+      assert.deepEqual(field, { value: 'abc d', focused: true });
+      assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(P)}).textContent`), before);
+      assert.deepEqual(page.errors, []);
+    });
+
     test(`every key typed while Insert > Formula writes its formula reaches its TeX field on ${platform}`, async () => {
       const page = await editor(platform, 5);
       const source = page.source;
@@ -190,12 +184,10 @@ describe('keys typed right after an insert', () => {
       assert.match(await render(page), /<div class="math">\\\[abc d\\\]<\/div>/);
       await undoAll(page, source);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the caret put at the end of the first element at selector, or the whole text of it selected,
-  // with its block focused
   const caretIn = (page, selector, whole = false) =>
     page.evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
@@ -207,8 +199,6 @@ describe('keys typed right after an insert', () => {
     getSelection().addRange(r);
     return true;
   })()`);
-  // the change of the selection is reported to the editor in a later task, hence the state of the
-  // painter is read until it is the expected one
   const painterIs = (page, on) => until(page, `window.BeesonEditor.state('text.formatPainter').enabled === ${on}`);
 
   for (const platform of PLATFORMS) {
@@ -224,7 +214,6 @@ describe('keys typed right after an insert', () => {
       await caretIn(page, '.reveal section.present pre code', true);
       await frames(page);
       assert.ok(await painterIs(page, false), 'the painter is live with the code of a box selected');
-      // Esc leaves the text of the code box and selects the box
       await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await frames(page);
@@ -233,7 +222,6 @@ describe('keys typed right after an insert', () => {
       await caretIn(page, '.reveal section.present td');
       await frames(page);
       assert.ok(await painterIs(page, true), 'the painter is dimmed in a cell after a code box');
-      // a painter armed in a text does not paint a code box
       await caretIn(page, '.reveal section.present h2', true);
       await exec(page, 'text.formatPainter');
       assert.equal((await state(page, 'text.formatPainter')).checked, true);
@@ -241,11 +229,10 @@ describe('keys typed right after an insert', () => {
       await page.evaluate(`document.querySelector('.reveal section.present pre code').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))`);
       await wait(page, 100);
       assert.equal(await render(page), source, 'the painter wrote a style into a code box');
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the typeset items in the list of MathJax, and those of them whose formula is off the page
   const mathItems = (page) =>
     page.evaluate(`(() => { const items = Array.from(MathJax.startup.document.math); return { all: items.length, gone: items.filter((m) => !m.typesetRoot?.isConnected).length }; })()`);
 
@@ -267,11 +254,10 @@ describe('keys typed right after an insert', () => {
       const now = await mathItems(page);
       assert.equal(now.gone, 0, `MathJax keeps ${now.gone} typeset items of running heads that are off the page`);
       assert.equal(now.all, first.all);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the center of the row of the navigator whose title starts with title
   const rowOf = (page, title) =>
     page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-nav .row')].find((r) => r.querySelector('.title').textContent.startsWith(${JSON.stringify(title)}));
@@ -282,15 +268,12 @@ describe('keys typed right after an insert', () => {
   const showSlide = (page, title) =>
     page.evaluate(`Reveal.slide(Reveal.getIndices([...document.querySelectorAll('.reveal section h2')].find((h) => h.textContent.startsWith(${JSON.stringify(title)})).closest('section')).h)`);
 
-  // the texts of the text column of the current slide that run past its bottom, and the texts marked by
-  // overflow.ts
   const textColumnFit = (page) =>
     page.evaluate(`(() => {
     const panel = document.querySelector('.reveal section.present > .text-column');
     if (!panel) return null;
     const p = panel.getBoundingClientRect();
     const out = [...panel.children].filter((el) => !el.matches('.foot, aside')).filter((el) => el.getBoundingClientRect().bottom > p.bottom + 1).map((el) => el.localName);
-    // a text that the theme draws over the footnote of the panel is marked, and no other text is
     const f = panel.querySelector(':scope > .foot')?.getBoundingClientRect();
     const onFoot = (el) => { const r = el.getBoundingClientRect(); return !!f && f.height > 0 && !el.closest('.foot') && r.bottom > f.top + 1 && r.top < f.bottom - 1; };
     const texts = [...panel.querySelectorAll('[contenteditable="true"]')];
@@ -298,17 +281,12 @@ describe('keys typed right after an insert', () => {
     return { out, wrong };
   })()`);
 
-  // the text of the slide of a deck whose heading starts with title
   const slideText = (text, title) => text.split('<section').find((t) => t.includes(`<h2>${title}`)) ?? null;
 
-  // four slides in a row selected with Shift, since a Ctrl click is a right click in Chrome on the
-  // Mac. the last is shown, and the first is more than two slides away from it, where reveal.js
-  // does not lay out a slide
   const FOUR = ['Show your steps', 'Equations are first', 'Figures are first', 'Code boxes', 'Chapter two', 'Explain concepts', 'Color the terms'];
 
   for (const platform of PLATFORMS) {
     test(`a change of layout to Split of slides selected in the navigator fits the text of the text column of each as on the slide shown on ${platform}`, async () => {
-      // the text of each slide changed to Split alone, while it is shown
       const alone = {};
       for (const title of FOUR) {
         const page = await editor(platform, 0, 'test-deck.html', { width: 1600, height: 1000 });
@@ -336,28 +314,20 @@ describe('keys typed right after an insert', () => {
       await showSlide(page, FOUR[0]);
       await wait(page, 300);
       assert.deepEqual(await textColumnFit(page), { out: [], wrong: [] }, `a text runs past the bottom of the panel of ${FOUR[0]}, or its mark is wrong`);
-      // the fit is a part of the change of layout, undone and redone with it
       await undo(page);
       assert.equal(await render(page), source);
       await redo(page);
       assert.equal(await render(page), split);
       await saved(page);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 });
 
-// regression tests of R8.6 on both platforms with trusted input, for three gaps that R8.3 and R8.4
-// left. a new formula is one entry of the history, Insert Formula, from the command to the close
-// of its TeX field, and an empty or cancelled one leaves no entry. a block converted by the Text
-// pane or the Format menu is selected again after an undo and after a redo. the element of every
-// insert is kept off the empty placeholders of a new slide. after each edit the text is checked
-// byte for byte, after an undo and a redo, and after a save and an open
 describe('a new formula as one history entry', () => {
   const LAYOUTS = 'test/pages/editor-layouts.html';
   const PLATFORMS = ['mac', 'other'];
   const PANEL = '#beeson-edit-panel-format';
-  // the slide of the layouts deck with a paragraph, a list, and a small paragraph
   const TEXT = 2;
   const P = '.reveal section.present > p:not(.small)';
 
@@ -380,15 +350,11 @@ describe('a new formula as one history entry', () => {
   const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
   const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
   const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
-  // the editor on slide n of a deck, the layouts by default, opened from its file without problems,
-  // with the Format tab shown
   async function load(t, platform, n = TEXT, deck = LAYOUTS) {
     const page = await browser.newPage({ width: 1600, height: 1000 });
     t.after(() => page.close().catch(() => {}));
-    // without this, headless Chrome cancels the file chooser, and the cancel races the file of choose
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
     const url = `${server.origin}/${deck}?edit&still&edit-platform=${platform}`;
     await page.goto(url);
@@ -405,8 +371,6 @@ describe('a new formula as one history entry', () => {
     return page;
   }
 
-  // the labels of the first two items of the Edit menu, i.e. Undo and Redo, read from the menu
-  // opened with a click on the menu bar
   async function editLabels(page) {
     await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === 'Edit').getBoundingClientRect();
@@ -420,9 +384,6 @@ describe('a new formula as one history entry', () => {
   }
 
   let saves = 0;
-  // the edited text, the text before byte for byte after one undo, the labels of the Edit menu
-  // before and after the undo, the edit again after one redo, checked further by redone, and an
-  // open of the saved text
   async function oneEntry(page, label, redone = async () => {}) {
     const edited = await render(page);
     assert.notEqual(edited, page.source, 'the action does not change the file');
@@ -445,18 +406,14 @@ describe('a new formula as one history entry', () => {
 
   const sheetOpen = (page) => page.waitFor(`!!document.querySelector('.beeson-math textarea') && document.activeElement === document.querySelector('.beeson-math textarea')`);
   const sheetClosed = (page) => page.waitFor(`!document.querySelector('.beeson-math')`);
-  // the file as it was, with nothing to undo or redo
   async function noEntry(page) {
     await sleep(300);
     await byteExact(page);
     assert.equal((await state(page, 'edit.undo')).enabled, false, 'the formula left an entry to undo');
     assert.equal((await state(page, 'edit.redo')).enabled, false, 'the formula left an entry to redo');
   }
-  // a point of the canvas under the slide, where a click selects nothing
   const outside = (page) => page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return { x: r.left + 6, y: r.bottom + 12 }; })()`);
 
-  // the key of Insert > Formula, ⌥⌘E on a Mac and Alt+= elsewhere, the second of which press() of
-  // the helpers does not type
   async function formulaKey(page, platform) {
     if (platform === 'mac') return press(page, 'Mod+Alt+E');
     const key = { key: '=', code: 'Equal', windowsVirtualKeyCode: 187, modifiers: 1 };
@@ -464,7 +421,6 @@ describe('a new formula as one history entry', () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
   }
 
-  // gap 1 of R8.6: Insert > Formula on a slide was two entries, the insert and its TeX
   for (const platform of PLATFORMS) {
     test(`a new display formula is one entry Insert Formula up to its close with the commit key (${platform})`, async (t) => {
       const page = await load(t, platform);
@@ -478,7 +434,7 @@ describe('a new formula as one history entry', () => {
         assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + '.' + e.classList[0])`), ['div.math'], 'the formula is not selected after the redo');
       });
       assert.match(edited, /<div class="math">\\\[x\^2 \+ y\^2\\\]<\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new display formula closed with a click away keeps its TeX as one entry Insert Formula (${platform})`, async (t) => {
@@ -492,25 +448,22 @@ describe('a new formula as one history entry', () => {
       await sleep(200);
       const edited = await oneEntry(page, 'Insert Formula');
       assert.match(edited, /<div class="math">\\\[\\alpha\\\]<\/div>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new display formula closed with Esc or left empty is taken off without an entry (${platform})`, async (t) => {
       const page = await load(t, platform);
-      // Esc after a TeX is typed
       await exec(page, 'insert.formula');
       await sheetOpen(page);
       await type(page, 'x');
       await press(page, 'Escape');
       await sheetClosed(page);
       await noEntry(page);
-      // a click away with the field empty
       await exec(page, 'insert.formula');
       await sheetOpen(page);
       await clickText(page, await outside(page));
       await sheetClosed(page);
       await noEntry(page);
-      // the commit key with the field empty, which leaves the sheet open as Insert is dimmed
       await exec(page, 'insert.formula');
       await sheetOpen(page);
       await press(page, 'Mod+Enter');
@@ -519,7 +472,7 @@ describe('a new formula as one history entry', () => {
       await sheetClosed(page);
       await noEntry(page);
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present div.math').length`), 0);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
 
     test(`a new inline formula of Insert > Formula in a text is one entry, and none after Esc (${platform})`, async (t) => {
@@ -540,20 +493,14 @@ describe('a new formula as one history entry', () => {
       await press(page, 'Mod+Enter');
       await sheetClosed(page);
       await frames(page);
-      // the entry is named for the inline formula, as its item of the Insert menu is
       const edited = await oneEntry(page, 'Insert Inline Formula');
       assert.match(edited, /<p>A paragraph with [^\n]*\\\(z\\\)[^\n]*<\/p>/);
-      assert.deepEqual(errors(page), []);
+      assert.deepEqual(page.errors, []);
     });
   }
 
-  // the selection, each element as its tag, its style class, and its first words
   const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e) => [e.localName, ...[...e.classList].filter((c) => ['small', 'caption', 'foot'].includes(c))].join('.') + ' ' + e.textContent.trim().slice(0, 18))`);
 
-  // gap 2 of R8.6: an undo and a redo dropped the selection of a list made with Dashes of the Text
-  // pane from a paragraph selected as a block. each conversion of the Text pane and of the Format
-  // menu is checked on the same paragraph, as [name, label of the entry, control, block made]. since
-  // R9.6, the entry of a list is named List Style and that of a paragraph style Paragraph Style
   const CONVERSIONS = [
     ['Dashes of the Text pane', 'List Style', { pane: 'text.list.ul' }, 'ul'],
     ['Numbers of the Text pane', 'List Style', { pane: 'text.list.ol' }, 'ol'],
@@ -590,19 +537,16 @@ describe('a new formula as one history entry', () => {
         await frames(page);
         assert.equal(await render(page), edited);
         assert.deepEqual(await selected(page), made, `the block made by ${label} is not selected after the redo`);
-        // the block selected again takes the next command, Paragraphs or Body
         await exec(page, tag === 'ul' || tag === 'ol' ? 'text.list.none' : 'text.style.body');
         await frames(page);
         assert.deepEqual(await selected(page), block, 'the block selected after the redo does not take the next command');
         const { text } = await saveAndReopen(page, `r8-6-${++saves}.html`);
         assert.equal(text, page.source);
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }
 
-  // the box in slide px of the prompt of each empty block of the current slide that shows its
-  // placeholder, i.e. of the text of the placeholder as it is drawn
   const promptBoxes = (page) => page.evaluate(`(() => {
   const slides = document.querySelector('.reveal .slides');
   const s = slides.getBoundingClientRect();
@@ -616,7 +560,6 @@ describe('a new formula as one history entry', () => {
     return { name: el.localName + (el.className ? '.' + el.classList[0] : ''), left, top: (r.top - s.top) / k, right: left + ctx.measureText(JSON.parse(before.content)).width, bottom: (r.bottom - s.top) / k };
   });
 })()`);
-  // the box in slide px of the first shown element of selector
   const slideRect = (page, selector) => page.evaluate(`(() => {
   const slides = document.querySelector('.reveal .slides');
   const s = slides.getBoundingClientRect();
@@ -627,7 +570,6 @@ describe('a new formula as one history entry', () => {
   return { left: (r.left - s.left) / k, top: (r.top - s.top) / k, right: (r.right - s.left) / k, bottom: (r.bottom - s.top) / k };
 })()`);
 
-  // the file chosen for an insert of a picture, given to the file chooser of the page
   async function choose(page, id, file) {
     const chosen = exec(page, id);
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
@@ -636,7 +578,6 @@ describe('a new formula as one history entry', () => {
     await chosen;
   }
 
-  // each insert as its name, its run on the current slide, and the selector of the element it makes
   const NEW = '.reveal section.present';
   const INSERTS = [
     ['a table', (page) => exec(page, 'insert.table', { rows: 3, columns: 3 }), `${NEW} table`],
@@ -654,9 +595,6 @@ describe('a new formula as one history entry', () => {
     ['a video', (page) => choose(page, 'insert.video', 'demo/clip-dark.mp4'), `${NEW} video`],
   ];
 
-  // gap 3 of R8.6: an empty block that shows its placeholder counted as taken space for a new table
-  // only. each insert is run on a new slide of each layout with two placeholders, with nothing
-  // selected, and its element is kept off both placeholders and inside the slide
   for (const platform of PLATFORMS) {
     for (const layout of ['content', 'split', 'figure']) {
       test(`every insert on a new ${layout} slide keeps its element off the two placeholders (${platform})`, async (t) => {
@@ -664,7 +602,6 @@ describe('a new formula as one history entry', () => {
         for (const [what, run, selector] of INSERTS) {
           await exec(page, `slide.new.${layout}`);
           await frames(page);
-          // the caret of the new slide is in its title, and the second Esc leaves its block
           await press(page, 'Escape');
           await press(page, 'Escape');
           await frames(page);
@@ -680,7 +617,7 @@ describe('a new formula as one history entry', () => {
           await page.evaluate(`Reveal.slide(0)`);
           await frames(page);
         }
-        assert.deepEqual(errors(page), []);
+        assert.deepEqual(page.errors, []);
       });
     }
   }

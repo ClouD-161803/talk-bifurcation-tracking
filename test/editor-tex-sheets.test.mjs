@@ -1,12 +1,3 @@
-// the Preamble and Bibliography sheets of the File menu on test/pages/tex-sheets/index.html: the
-// definitions of preamble.tex and of the files that it follows, with the skipped lines, an edit of
-// the preamble that defines a macro and a kind of theorem on the open deck as one entry of the
-// history, the entries of references.bib as references with a search, an edit of an entry that
-// redraws its reference on the slide, and the save of preamble.tex, references.bib, and tex.js
-// through the folder of the deck, by a download without the pickers, and with a followed file that
-// is not read. on file: without the folder permission, as in Firefox and Safari, the folder of the
-// deck is chosen with a file input. the sheets close with Esc and are stacked on a phone
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -41,8 +32,7 @@ const status = (page) => page.evaluate('window.BeesonEditor.status()');
 const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const value = (page) => page.evaluate(`document.querySelector('${SHEET} textarea').value`);
-// a server answers 404 for a package of the preamble that is not next to the deck, e.g. physics.sty
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico') && !/404/.test(e));
+const errors = (page) => page.errors.filter((e) => !/404/.test(e));
 
 async function open(platform = 'mac', page = null) {
   page ??= await browser.newPage();
@@ -56,13 +46,11 @@ async function open(platform = 'mac', page = null) {
   return page;
 }
 
-// the sheet of the File menu with id opened, once its source is read
 async function sheet(page, id) {
   await exec(page, id);
   await page.waitFor(`!!document.querySelector('${SHEET}:not([aria-busy])')`);
 }
 
-// text typed at the end of the source of the open sheet, or in place of the first match of find
 async function typeInto(page, text, find = null) {
   await page.evaluate(`(() => {
     const t = document.querySelector('${SHEET} textarea');
@@ -78,8 +66,6 @@ const rows = (page, selector) => page.evaluate(`[...document.querySelectorAll('$
 const red = (page, name) => page.evaluate(`!!document.querySelector('tr[data-case="${name}"]').querySelector('[fill="red"], [data-mjx-error]')`);
 const headOf = (page, kind) => page.evaluate(`document.querySelector('.reveal .slides p.theorem[data-kind="${kind}"]').dataset.head ?? null`);
 
-// the text of the files that npm run tex reads for the deck, with the saved sources in place of
-// the files of the deck, and the tex.js that it writes from them
 function npmRunTex(files) {
   const dir = mkdtempSync(join(tmpdir(), 'tex-sheets-'));
   try {
@@ -91,8 +77,6 @@ function npmRunTex(files) {
   }
 }
 
-// a save into a folder of the private file system, which the stub of showDirectoryPicker gives as
-// the folder that the person chooses, and the files of the folder after it
 const SAVE_INTO = (folder) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${js(folder)}, { create: true });
@@ -106,8 +90,6 @@ const SAVE_INTO = (folder) => `(async () => {
   return { files, picked: window.__picked };
 })()`;
 
-// the save of SAVE_INTO into a folder that holds the files of seed before the save, as an agent
-// leaves them next to a deck that is open in the editor
 const SAVE_ONTO = (folder, seed) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${js(folder)}, { create: true });
@@ -119,10 +101,8 @@ const SAVE_ONTO = (folder, seed) => `(async () => {
   return true;
 })()`;
 
-// a macro added to the preamble next to the deck while the deck is open in the editor
 const EXTERNAL = '\\newcommand{\\Z}{\\mathbb{Z}}\n';
 
-// a citation of a paper of references.bib that the tex.js of the deck does not have
 const CITE_MISSING = `{
   const p = [...document.querySelectorAll('.reveal .slides p')].at(-1);
   const cite = document.createElement('cite');
@@ -130,10 +110,7 @@ const CITE_MISSING = `{
   p.append(cite);
   true;
 }`;
-// the folder of the deck refused, as by Cancel in the folder picker
 const REFUSED = `window.showDirectoryPicker = async () => { throw new DOMException('The user aborted a request.', 'AbortError'); }, true`;
-// a save of a deck of file:, which does not have the private file system, into a handle in memory,
-// given 10 s to end
 const SAVE_IN_MEMORY = `(async () => {
   let text = ${js(SOURCE)};
   const deck = {
@@ -150,7 +127,6 @@ const SAVE_IN_MEMORY = `(async () => {
   return { done, text };
 })()`;
 
-// the pickers taken away, as in Firefox and Safari, and each download kept with its name and text
 const NO_PICKERS = `{
   window.showOpenFilePicker = undefined;
   window.showSaveFilePicker = undefined;
@@ -171,7 +147,7 @@ test('File > Preamble… lists the definitions of preamble.tex and of the files 
   assert.deepEqual(await rows(page, '[data-kind]'), ['theorem Theorem, plain, numbered']);
   const skipped = await rows(page, '.skipped');
   assert.equal(skipped.length, 1);
-  assert.match(skipped[0], /^preamble\.tex:4 \\usepackage\{tikz\} MathJax does not have an extension for the package tikz$/);
+  assert.match(skipped[0], /^preamble\.tex:2 \\usepackage\{tikz\} MathJax does not have an extension for the package tikz$/);
   assert.deepEqual(await rows(page, '[data-unread]'), []);
   assert.deepEqual(errors(page), []);
 });
@@ -182,7 +158,6 @@ test('an edit of the preamble defines a macro and a kind of theorem on the open 
   assert.equal(await red(page, 'a macro that is not defined yet'), true);
   assert.equal(await headOf(page, 'conjecture'), 'conjecture.');
   await sheet(page, 'file.preamble');
-  // two inputs less than a second apart are one entry
   await typeInto(page, ADDED.slice(0, 10));
   await typeInto(page, ADDED.slice(10));
   assert.equal(await value(page), PREAMBLE + ADDED);
@@ -259,7 +234,6 @@ test('a save writes preamble.tex, references.bib, and tex.js into the folder of 
   assert.match(saved.files['tex.js'], /"Q": "\\\\mathbb\{Q\}"/);
   assert.match((await status(page)).message, /preamble\.tex, references\.bib, and tex\.js written/);
   assert.equal((await status(page)).dirty, false);
-  // a second save does not write them again
   const again = await page.evaluate(SAVE_INTO('tex-save-again'));
   assert.deepEqual(Object.keys(again.files), ['index.html']);
   assert.deepEqual(errors(page), []);
@@ -353,11 +327,9 @@ test('a citation taken out of the deck without a sheet open is taken out of tex.
   assert.doesNotMatch(saved.files['index.html'], /gomez2004/);
   assert.equal(saved.files['tex.js'], npmRunTex({ 'index.html': saved.files['index.html'] }));
   assert.match((await status(page)).message, /tex\.js written/);
-  // a second save does not write it again
   const again = await page.evaluate(SAVE_INTO('tex-uncited-again'));
   assert.deepEqual(Object.keys(again.files), ['index.html']);
 
-  // without the pickers, tex.js is downloaded with the deck
   const other = await open('other');
   t.after(() => other.close());
   await other.evaluate(NO_PICKERS);
@@ -376,14 +348,12 @@ test('a source changed next to the deck after the sheets read it is read again b
   await page.evaluate(`document.querySelector('${SHEET} button[data-key="koon2000"]').click()`);
   await typeInto(page, '{2001}', '{2000}');
   await press(page, 'Escape');
-  // the preamble is changed next to the deck while it is open, e.g. by an agent
   await page.evaluate(SAVE_ONTO('tex-reread', { 'preamble.tex': PREAMBLE + EXTERNAL }));
   const saved = await page.evaluate(SAVE_INTO('tex-reread'));
   assert.equal(saved.files['preamble.tex'], PREAMBLE + EXTERNAL);
   assert.equal(saved.files['tex.js'], npmRunTex({ 'preamble.tex': PREAMBLE + EXTERNAL, 'references.bib': saved.files['references.bib'] }));
   assert.match(saved.files['tex.js'], /"Z": "\\\\mathbb\{Z\}"/);
 
-  // an edit of the preamble in its sheet is not written over a preamble changed next to the deck
   const edited = await open();
   t.after(() => edited.close());
   await sheet(edited, 'file.preamble');

@@ -1,11 +1,3 @@
-// checks of the tycho viewers of src/viewers.ts in Chrome, on the slides of test/pages/viewer-play.html:
-// a kiosk viewer of the fragment style play, held at its first frame and started at its step, two
-// viewers of a plate of the class row started together, and a viewer in a figure box of the style play.
-// The pages are shown without reduced motion, under which the runtime starts a kiosk viewer once
-// its scene is loaded, so that the hold before the step is checked. After a step, each state is
-// waited for rather than read after a fixed time. The tests share one Chrome, and each closes its
-// page, as the tests of the videos do
-
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -33,13 +25,11 @@ async function open(t, hash) {
   return page;
 }
 
-// the state of the viewer of an id: whether its clock runs, the time of its scene in s, and its opacity
 const stateOf = (id) => `(() => {
   const viewer = document.getElementById('${id}');
   return { playing: viewer.playing, time: viewer.time, opacity: getComputedStyle(viewer).opacity };
 })()`;
 
-/** Waits until the viewer of the id has the given values of its state, and fails with the values it has after 15 s. */
 async function until(page, id, expected) {
   const matches = `(() => { const state = ${stateOf(id)}; return Object.entries(${JSON.stringify(expected)}).every(([key, value]) => state[key] === value); })()`;
   await page.waitFor(matches).catch(() => {});
@@ -54,7 +44,6 @@ async function until(page, id, expected) {
 test('a kiosk viewer of the style play holds the first frame of its scene until its step, and is played from its start at it', { timeout: 120000 }, async (t) => {
   const page = await open(t, '/0');
   const held = { playing: false, time: 0, opacity: '1' };
-  // the runtime starts a kiosk viewer once its scene is loaded, and the viewer is held again
   await until(page, 'play', held);
   await sleep(500);
   await until(page, 'play', held);
@@ -80,7 +69,6 @@ test('two viewers of one step are started together, side by side in a plate of t
   await until(page, 'right', { playing: false, time: 0 });
   await page.evaluate('Reveal.next()');
   await page.waitFor('left.playing && right.playing && left.time > 0.2');
-  // within three frames at 60 frames per second
   const [left, right] = await page.evaluate('[left.time, right.time]');
   assert.ok(Math.abs(left - right) < 0.05, `the scenes are at ${left} s and ${right} s`);
   const [a, b] = await page.evaluate(`[left, right].map((viewer) => viewer.getBoundingClientRect().toJSON())`);
@@ -91,11 +79,8 @@ test('two viewers of one step are started together, side by side in a plate of t
   assert.deepEqual(page.errors, []);
 });
 
-// record inside.play() in the page, since host round trips on a slow runner can finish more than
-// 1 s after playback starts from 0
 async function checkRestart(page, waitBeforeRead = '') {
   await page.waitFor('inside.time > 0.2');
-  // a viewer that is left would be resumed where it stopped when its slide is shown again
   await page.evaluate('Reveal.slide(1)');
   await until(page, 'inside', { playing: false, time: 0 });
   await page.evaluate(`(() => {
@@ -108,7 +93,6 @@ async function checkRestart(page, waitBeforeRead = '') {
     };
     return true;
   })()`);
-  // the first step of the slide, which reveal.js numbers from 0
   await page.evaluate('Reveal.slide(2, 0, 0)');
   await until(page, 'inside', { playing: true });
   await page.waitFor('inside.time > 0.2');
@@ -132,8 +116,6 @@ test('a viewer in a fragment of the style play is not dimmed at a later step, an
   assert.deepEqual(page.errors, []);
 });
 
-// on a Windows runner, more than 1 s can pass between Reveal.slide(2, 0, 0) and the host read of
-// inside.time, so this test waits until inside.time > 1.2 before reading
 test('a viewer restarted in a fragment of the style play is checked from its start even when the host reads late', { timeout: 120000 }, async (t) => {
   const page = await open(t, '/2');
   await until(page, 'inside', { playing: false, time: 0 });
@@ -143,12 +125,10 @@ test('a viewer restarted in a fragment of the style play is checked from its sta
   assert.deepEqual(page.errors, []);
 });
 
-// the pages of the three slides: five with the step added to restore the dimmed paragraph, two, and three
 test('the print view shows the still of each viewer of the style play on every step of its slide, in the box of its viewer', { timeout: 120000 }, async (t) => {
   const page = await browser.newPage();
   t.after(() => page.close());
   await printView(page, deckUrl(DECK, 'print-pdf&still'));
-  // a still is shown at full opacity when its box and every element up to its slide are, i.e. no fragment around it is dimmed
   const stills = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => [...p.querySelectorAll('img[alt="A still of a tycho scene"]')]
     .filter((image) => { for (let e = image.parentElement; e && e.localName !== 'section'; e = e.parentElement) {
       const style = getComputedStyle(e);

@@ -1,22 +1,10 @@
-// the model of a table of the slides, as the editor writes it: a table with an explicit tbody, one
-// row per line, a first row of th as the header row, and the cells of a column of numbers set at
-// the right with the declaration text-align, the one style of a cell that the scope rule allows.
-// the text of a new table is built here from a size or from the cells of a paste. a paste is
-// either tab-separated text, as a spreadsheet or a table of Keynote or PowerPoint is put on the
-// clipboard, or an HTML table. the cells of a table on the page are laid out in a grid with their
-// colspan and rowspan. the functions without a page are tested under node
-
 import type { TextStyle } from './model/templates.ts';
 
-// the size of the grid of the Insert Table popover, 10 columns by 8 rows as in PowerPoint, and the
-// largest table of the Insert Table dialog
 export const GRID = { columns: 10, rows: 8 };
 export const MOST = { columns: 30, rows: 75 };
 
 export const CELL = 'td, th';
 
-// a number of a table, e.g. 42, -3.5, 1,200, $9.99, 12 %, (10.00), or 3.2e-4, which is set at the
-// right of its cell
 const NUMBER = /^[(−+-]?[$€£¥]?\s?[−+-]?(\d{1,3}(,\d{3})+|\d+)?([.,]\d+)?([eE][−+-]?\d+)?\s?(%|‰)?\)?$/;
 
 export function isNumeric(text: string): boolean {
@@ -24,9 +12,6 @@ export function isNumeric(text: string): boolean {
   return /^[^eE]*\d/.test(t) && NUMBER.test(t);
 }
 
-// the cells of tab-separated text, with a row per line and a tab between two cells. a cell in
-// double quotes, as a spreadsheet writes a cell with a tab or a line break, is read without its
-// quotes. null when the text does not have a tab, since a paste of plain lines is a paste of text
 export function parseTabular(text: string): string[][] | null {
   const t = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
   if (!t.includes('\t')) return null;
@@ -66,16 +51,12 @@ export function parseTabular(text: string): string[][] | null {
   return square(rows);
 }
 
-// rows padded with empty cells to the width of the widest one, or null with fewer than two cells
-// or without a text
 function square(rows: string[][]): string[][] | null {
   const width = Math.max(0, ...rows.map((r) => r.length));
   if (!rows.length || rows.length * width < 2 || !rows.some((r) => r.some((c) => c.trim()))) return null;
   return rows.map((r) => [...r, ...Array<string>(width - r.length).fill('')]);
 }
 
-// the text of a cell of a pasted table, with the white space of the markup collapsed and a br read
-// as a line break
 function cellText(el: Element): string {
   const parts: string[] = [];
   const walk = (n: Node) => {
@@ -89,8 +70,6 @@ function cellText(el: Element): string {
   return parts.join('').split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).join('\n').trim();
 }
 
-// the cells of the first table of an HTML text, e.g. from a web page or a spreadsheet, with a cell
-// of colspan followed by empty cells. null without a table of two cells
 export function parseHtmlTable(html: string): string[][] | null {
   if (!/<table[\s>]/i.test(html)) return null;
   const table = new DOMParser().parseFromString(html, 'text/html').querySelector('table');
@@ -99,12 +78,8 @@ export function parseHtmlTable(html: string): string[][] | null {
   return square(rows.filter((r) => r.length));
 }
 
-// the mark of a table that a cut or a copy of a range of cells of the editor writes
 export const CELLS = 'data-beeson="cells"';
 
-// the HTML of the children of el with only the inline elements of the theme, i.e. strong, em, u, s,
-// a span of one class tone-*, and br. every other element is reduced to its text, without a script
-// or a style
 function inlineHtml(el: Element): string {
   let out = '';
   for (const n of el.childNodes) {
@@ -119,8 +94,6 @@ function inlineHtml(el: Element): string {
   return out;
 }
 
-// the inner HTML of each cell of a table marked with CELLS, kept to the inline elements of the
-// theme and to formulas, with a cell of colspan followed by empty cells. null without such a table
 export function parseEditorTable(html: string): string[][] | null {
   const table = editorTable(html);
   if (!table) return null;
@@ -128,8 +101,6 @@ export function parseEditorTable(html: string): string[][] | null {
   return square(rows.filter((r) => r.length));
 }
 
-// whether each cell of a table marked with CELLS is a th, laid out as parseEditorTable lays out
-// its cells, with a cell of colspan followed by cells of its kind
 export function editorHeads(html: string): boolean[][] | null {
   const table = editorTable(html);
   if (!table) return null;
@@ -141,8 +112,6 @@ function editorTable(html: string): HTMLTableElement | null {
   return new DOMParser().parseFromString(html, 'text/html').querySelector(`table[${CELLS}]`);
 }
 
-// the columns of rows that hold numbers, i.e. every cell below the header row that is not empty is
-// a number, and at least one is
 export function numericColumns(rows: string[][]): boolean[] {
   const width = rows[0]?.length ?? 0;
   return Array.from({ length: width }, (_, c) => {
@@ -151,8 +120,6 @@ export function numericColumns(rows: string[][]): boolean[] {
   });
 }
 
-// the value of a number of a table, e.g. -1200 for (1,200) or 0.12 for 12 %, or null for a text.
-// a comma is read as a separator of thousands when it is followed by three digits
 export function numberOf(text: string): number | null {
   const t = text.trim();
   if (!isNumeric(t)) return null;
@@ -165,9 +132,6 @@ export function numberOf(text: string): number | null {
   return Number.isFinite(n) ? (negative ? -Math.abs(n) : n) : null;
 }
 
-// the order of the rows of a sort by their keys, as Sort Ascending and Sort Descending of a column
-// of Keynote: numbers by value before texts in the order of the language, and empty cells last in
-// either direction. rows with equal keys keep their order
 export function sortOrder(keys: string[], descending = false): number[] {
   const words = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   const values = keys.map((k) => ({ text: k.trim(), number: numberOf(k) }));
@@ -184,7 +148,6 @@ export function sortOrder(keys: string[], descending = false): number[] {
 
 const escape = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// a cell with its text, or with markup its HTML, set at the right in a column of numbers
 export function cellHtml(tag: 'td' | 'th', text = '', right = false, markup = false): string {
   return `<${tag}${right ? ' style="text-align: right"' : ''}>${markup ? text : escape(text).replace(/\n/g, '<br>')}</${tag}>`;
 }
@@ -193,11 +156,6 @@ export function rowHtml(cells: { tag: 'td' | 'th'; text?: string; right?: boolea
   return `<tr>${cells.map((c) => cellHtml(c.tag, c.text, c.right, c.markup)).join('')}</tr>`;
 }
 
-// the text of a table of rows of cells, with the first row as the header row, indented at base in
-// the style of the deck, as the template of model/templates.ts writes an empty table. with markup,
-// each cell is HTML of parseEditorTable, whose text decides the columns of numbers. with heads,
-// a cell is a th where heads holds true, and a cell past the end of its row of heads takes the
-// kind of the first cell of the row
 export function tableHtml(rows: string[][], style: TextStyle, base: string, markup = false, heads: boolean[][] | null = null): string {
   const numeric = numericColumns(markup ? rows.map((r) => r.map((h) => h.replace(/<[^>]*>/g, ''))) : rows);
   const head = (i: number, c: number) => (heads ? (heads[i]?.[c] ?? heads[i]?.[0] ?? false) : i === 0);
@@ -211,9 +169,6 @@ export function tableHtml(rows: string[][], style: TextStyle, base: string, mark
   return lines.map(([depth, text], i) => (i ? base + style.step.repeat(depth) : '') + text).join(style.eol);
 }
 
-// the fill of count cells after the cells of a line, as Autofill of Keynote fills them: a line of
-// numbers in a step goes on in that step, also with the same words before and after the numbers,
-// e.g. Step 1 and Step 2, and any other line is repeated, each new cell a copy of a cell of line
 export type Fill = { text: string } | { copy: number };
 const SERIES = /^(\D*?)(-?\d+(?:\.\d+)?)(\D*)$/;
 
@@ -235,11 +190,9 @@ export function fillLine(line: string[], count: number): Fill[] {
   return Array.from({ length: count }, (_, k) => ({ copy: k % line.length }));
 }
 
-// the cells of an empty table of a size, the header row included
 export const emptyRows = (rows: number, columns: number): string[][] =>
   Array.from({ length: Math.max(1, rows) }, () => Array<string>(Math.max(1, columns)).fill(''));
 
-// the letters of a column as Keynote shows them, A to Z and then AA
 export function columnName(i: number): string {
   let n = i + 1;
   let out = '';
@@ -251,14 +204,9 @@ export function columnName(i: number): string {
   return out;
 }
 
-// a cell of a grid with its first row and column, and the rows and the columns that it covers
 export type Spot<T> = { cell: T; row: number; col: number; rows: number; span: number };
 export type Grid<T> = { spots: Spot<T>[][]; grid: (Spot<T> | undefined)[][]; width: number };
 
-// the cells of rows laid out as HTML lays out a table. a cell takes the first column of its row
-// that a cell of a row above does not cover, and covers the columns of its colspan and the rows of
-// its rowspan, where a rowspan of 0 or past the last row reaches the last row. grid[r][c] is the
-// spot over row r and column c, or undefined at the end of a short row
 export function layoutCells<T>(rows: T[][], size: (cell: T) => { rows: number; cols: number }): Grid<T> {
   const grid: (Spot<T> | undefined)[][] = rows.map(() => []);
   const spots = rows.map((cells, row) => {
@@ -276,15 +224,12 @@ export function layoutCells<T>(rows: T[][], size: (cell: T) => { rows: number; c
   return { spots, grid, width: Math.max(0, ...grid.map((r) => r.length)) };
 }
 
-// a range of the cells of a grid, from row r0 and column c0 to row r1 and column c1
 export type Box = { r0: number; c0: number; r1: number; c1: number };
 
 export const boxOf = (s: Spot<unknown>): Box => ({ r0: s.row, c0: s.col, r1: s.row + s.rows - 1, c1: s.col + s.span - 1 });
 
-// the smallest box around a and b
 export const around = (a: Box, b: Box): Box => ({ r0: Math.min(a.r0, b.r0), c0: Math.min(a.c0, b.c0), r1: Math.max(a.r1, b.r1), c1: Math.max(a.c1, b.c1) });
 
-// the box grown until each cell that it meets is inside it, as a merged cell is selected whole
 export function grow<T>(g: Grid<T>, box: Box): Box {
   let out = box;
   for (let changed = true; changed;) {
@@ -300,7 +245,6 @@ export function grow<T>(g: Grid<T>, box: Box): Box {
   return out;
 }
 
-// the cells that a box meets, in the order of reading
 export function spotsIn<T>(g: Grid<T>, box: Box): Spot<T>[] {
   const out = new Set<Spot<T>>();
   for (let r = box.r0; r <= box.r1; r++) for (let c = box.c0; c <= box.c1; c++) {
@@ -310,7 +254,6 @@ export function spotsIn<T>(g: Grid<T>, box: Box): Spot<T>[] {
   return [...out].sort((a, b) => a.row - b.row || a.col - b.col);
 }
 
-// the grid of a table on the page
 export type Place = Spot<HTMLTableCellElement>;
 export const gridOf = (table: HTMLTableElement): Grid<HTMLTableCellElement> =>
   layoutCells([...table.rows].map((tr) => [...tr.cells]), (c) => ({ rows: c.rowSpan, cols: c.colSpan }));
@@ -324,11 +267,9 @@ export function placeOf(cell: HTMLTableCellElement): Place | null {
   return null;
 }
 
-// the cell over a row and a column, or null at the end of a short row
 export const cellOver = (table: HTMLTableElement, row: number, col: number): HTMLTableCellElement | null =>
   gridOf(table).grid[row]?.[col]?.cell ?? null;
 
-// the cell after or before cell in the order of reading, row by row
 export function cellAfter(cell: HTMLTableCellElement, way: 1 | -1): HTMLTableCellElement | null {
   const table = cell.closest('table');
   if (!table) return null;
@@ -336,7 +277,6 @@ export function cellAfter(cell: HTMLTableCellElement, way: 1 | -1): HTMLTableCel
   return all[all.indexOf(cell) + way] ?? null;
 }
 
-// the cell above or below cell in its first column, or the last cell of a shorter row
 export function cellBeside(cell: HTMLTableCellElement, way: 1 | -1): HTMLTableCellElement | null {
   const p = placeOf(cell);
   const table = cell.closest('table');
@@ -346,13 +286,11 @@ export function cellBeside(cell: HTMLTableCellElement, way: 1 | -1): HTMLTableCe
   return tr ? cellOver(table, row, p.col) ?? tr.cells[tr.cells.length - 1] ?? null : null;
 }
 
-// whether the first row of a table is a header row, i.e. a row of th only
 export function hasHeader(table: HTMLTableElement): boolean {
   const first = table.rows[0];
   return !!first && first.cells.length > 0 && [...first.cells].every((c) => c.localName === 'th');
 }
 
-// the columns of a table on the page that hold numbers, read from the text of its cells by read
 export function numericOf(table: HTMLTableElement, read: (cell: Element) => string = (c) => c.textContent ?? ''): boolean[] {
   const width = columnsOf(table);
   const rows = placesOf(table).map((r) => {

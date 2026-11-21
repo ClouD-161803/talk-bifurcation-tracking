@@ -1,11 +1,3 @@
-// the commands of Align, Distribute, and the size and position fields of the Arrange tab of the
-// inspector, in the Arrange menu. Align to Slide and Align to Selection is a switch of Align, as in
-// PowerPoint. with Align to Slide, the default, two objects or more are aligned to the slide as one
-// ensemble that keeps their places relative to each other. with Align to Selection, they are
-// aligned to each other. a single object is aligned to the slide in either case, as in Keynote.
-// every command of a selection is one entry of the history, with the offsets written as translate
-// and the widths as width, in slide pixels, by writePlace of canvas/drag.ts
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { BOXED, CONTAINER, LINE, RESIZABLE, STRETCHED, aspectOf, captionEls, captionsOf, pictureReach, constrained, cssWidth, frameOf, frameRect, isTextSized, kindOf, movableOf, objectsOf, orientedBox, pictureOf, pictureSize, sizedOf, snapBoxOf, toSlide, unturnedRect } from '../canvas/hit.ts';
@@ -20,15 +12,10 @@ export type Side = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 export const SIDES: Side[] = ['left', 'center', 'right', 'top', 'middle', 'bottom'];
 const SIDE_LABELS: Record<Side, string> = { left: 'Left', center: 'Center', right: 'Right', top: 'Top', middle: 'Middle', bottom: 'Bottom' };
 
-// the reference of Align, kept for the session
 let reference: 'slide' | 'selection' = 'slide';
 
-// the last typed size of objects on the axis w or h: the values that its field showed before, the
-// changes of the places, and the pictures given object-fit contain for their box
 let lastSize: { axis: 'w' | 'h'; objects: Element[]; shown: number[]; changes: Change[]; fitted: Element[] } | null = null;
 
-// the fraction with the least denominator from lo to hi, found down the Stern-Brocot tree, or the
-// middle of both where it is not found in 100 steps
 function simplest(lo: number, hi: number): number {
   let [a, b, c, d] = [0, 1, 1, 0];
   for (let i = 0; i < 100; i++) {
@@ -40,8 +27,6 @@ function simplest(lo: number, hi: number): number {
   return (lo + hi) / 2;
 }
 
-// the elements selected on the canvas, or the text element of a text that has the caret. a backdrop is
-// left out, since only its grips write its box
 export function selectedTargets(app: App): Element[] {
   if (app.selection.kind === 'text') {
     const host = app.selection.items[0];
@@ -51,39 +36,28 @@ export function selectedTargets(app: App): Element[] {
   return app.selection.elements().filter((el) => app.pairing?.elements.get(el)?.open && !el.matches('.backdrop'));
 }
 
-// the elements that the commands of this file act on: the selected ones, with the figure of a
-// picture selected inside it, since a picture with its caption is one object. arg.els, given by a
-// field of the inspector, is taken in their place
 export function targetsOf(app: App, arg?: unknown): Element[] {
   const given = (arg as { els?: Element[] } | undefined)?.els;
   if (given) return given.filter((el) => el.isConnected && !el.matches('.backdrop'));
   return objectsOf(app, selectedTargets(app));
 }
 
-// the element whose size is set for el: the shown picture of a figure, or el
 export const sizedTarget = (el: Element): Element => (el.matches(CONTAINER) ? pictureOf(el) : el);
 
-// the box of el in slide pixels at its frame, as the frames draw it
 export const boxOf = (app: App, el: Element): Box => toSlide(frameOf(app), frameRect(el));
 
-// the box in slide pixels of els when they are one whole group, at the frame of the group, or null
 export function groupBoxOf(app: App, els: Element[]): Box | null {
   const id = els.length > 1 ? groupOf(els[0]) : null;
   if (!id || !els.every((el) => groupOf(el) === id)) return null;
   return toSlide(frameOf(app), groupReach(els));
 }
 
-// the frame of els when they are one whole group, in slide pixels without its rotation about its
-// center, and the angle of its first member that it is turned by, or null
 export function groupFrameOf(app: App, els: Element[]): { box: Box; deg: number } | null {
   if (!groupBoxOf(app, els)) return null;
   const deg = groupAngle(app, els) ?? 0;
   return { box: toSlide(frameOf(app), groupFrame(els, deg)), deg };
 }
 
-// the members of a group scaled by kx and ky along the axes of its frame, turned by deg, about the
-// upper left corner of the frame, as a drag of its corner grip scales them. a picture is stretched
-// where kx and ky differ, and a text element keeps the place of its top under its wrapped text
 function scaleGroup(app: App, els: Element[], frame: { box: Box; deg: number }, kx: number, ky: number): Change[] {
   const f = frameOf(app);
   const corner = turned(frame.box, frame.deg, frame.box.left, frame.box.top);
@@ -91,7 +65,6 @@ function scaleGroup(app: App, els: Element[], frame: { box: Box; deg: number }, 
   const changes: Change[] = [];
   for (const el of els.filter((el) => !locked(el) && !els.some((o) => o !== el && o.contains(el)))) {
     const s = sizedTarget(el), pic = pictureOf(el), deg = angleOf(el);
-    // the center of the member, or the middle of the top of a text element, turned with it
     const point = () => {
       const b = toSlide(f, orientedBox(pic, f.scale, deg)), up = isTextSized(pic) ? b.height / 2 : 0, r = (deg * Math.PI) / 180;
       return { b, x: b.left + b.width / 2 + up * Math.sin(r), y: b.top + b.height / 2 - up * Math.cos(r) };
@@ -101,7 +74,6 @@ function scaleGroup(app: App, els: Element[], frame: { box: Box; deg: number }, 
       const stretch = s.matches(STRETCHED) && (kx !== ky || (size.height ?? null) !== null || s.matches(BOXED));
       writePlace(app, s, { ...size, width: Math.max(1, cssWidth(s, was.b.width * kx)), height: stretch ? Math.max(1, was.b.height * ky) : size.height });
     }
-    // the point of the member in the axes of the frame, scaled from the corner
     const vx = was.x - corner.x, vy = was.y - corner.y;
     const lx = (vx * cos + vy * sin) * kx, ly = (vy * cos - vx * sin) * ky;
     const now = point(), at = placeOf(el);
@@ -122,8 +94,6 @@ const union = (boxes: Box[]): Box => {
   return { left, top, width: Math.max(...boxes.map((b) => b.left + b.width)) - left, height: Math.max(...boxes.map((b) => b.top + b.height)) - top };
 };
 
-// the objects that Align and Distribute move: each whole group of the targets is one object at the
-// box of its frame, whose members are moved together, as a group of Keynote is one object
 function objects(app: App): { els: Element[]; b: Box }[] {
   const byGroup = new Map<string | Element, Element[]>();
   for (const el of targetsOf(app)) {
@@ -133,7 +103,6 @@ function objects(app: App): { els: Element[]; b: Box }[] {
   return [...byGroup.values()].map((els) => ({ els, b: groupBoxOf(app, els) ?? boxOf(app, els[0]) }));
 }
 
-// each element moved by its offset dx and dy, as one entry of the history
 function shift(app: App, label: string, moves: { el: Element; dx: number; dy: number }[]): void {
   const changes = moves.map(({ el, dx, dy }) => {
     const from = placeOf(el);
@@ -164,11 +133,6 @@ function align(app: App, side: Side): void {
   shift(app, `align ${side}`, items.flatMap((i) => i.els.map((el) => ({ el, ...at(toEach ? i.b : whole) }))));
 }
 
-// the objects spaced evenly along an axis in the order of their start, as in Keynote: the first and
-// the last of them are kept in place, and the gaps between them are made equal. objects that do
-// not fit between the two have their centers spaced evenly instead, and each is kept inside the
-// span of the selection. one object is spaced evenly across the slide, i.e. centered on it, since
-// PowerPoint distributes one object on the slide. Distribute does not follow the switch of Align
 function distribute(app: App, axis: 'x' | 'y'): void {
   const items = objects(app);
   if (!items.length) return;
@@ -183,8 +147,6 @@ function distribute(app: App, axis: 'x' | 'y'): void {
   const to = new Map<Box, number>(n === 1 ? [[first, lo + (size(ref) - size(first)) / 2]] : [[first, f], [last, z]]);
   const inner = items.slice(1, -1).map((i) => i.b);
   const gap = n === 1 ? 0 : (z - f - size(first) - inner.reduce((s, b) => s + size(b), 0)) / (n - 1);
-  // the gaps are kept equal where they are negative too, as in PowerPoint, hence a column of
-  // objects at one margin is left in place
   let at = f + size(first) + gap;
   inner.forEach((b) => {
     to.set(b, Math.min(Math.max(at, lo), Math.max(lo, hi - size(b))));
@@ -197,28 +159,19 @@ function distribute(app: App, axis: 'x' | 'y'): void {
   shift(app, `distribute ${axis === 'x' ? 'horizontally' : 'vertically'}`, moves);
 }
 
-// Distribute acts on one object, which is centered on the slide, and is dimmed for two objects, which
-// it would leave in place
 const canDistribute = (app: App) => {
   const n = objects(app).length;
   return n === 1 || n >= 3;
 };
 
-// whether the width of every target is written by the editor, by the scope rule, and whether its
-// height is set by the field H, i.e. every target is a picture and none a text element
 export const resizable = (els: Element[]) => els.length > 0 && els.map(sizedTarget).every((el) => el.matches(RESIZABLE) || isTextSized(el));
 export const heightSet = (els: Element[]) => els.length > 0 && els.map(sizedTarget).every((el) => el.matches(RESIZABLE));
 
-// the offset of an element from its place in the file, i.e. its translate
 export function offsetOf(el: Element): { x: number; y: number } {
   const t = placeOf(el).translate;
   return { x: t?.x ?? 0, y: t?.y ?? 0 };
 }
 
-// the box of el in slide pixels that the fields X and Y give, as in Keynote and PowerPoint, where a
-// turn about the center of an object does not change them: the box without its rotation of a
-// turned figure with its caption, picture, or text, about its center as it is seen, else the box of
-// the readout of a move
 export function unturnedBoxOf(app: App, el: Element): Box {
   const deg = el.matches(LINE) ? 0 : angleOf(el);
   if (!deg) return snapBoxOf(app, el);
@@ -226,23 +179,15 @@ export function unturnedBoxOf(app: App, el: Element): Box {
   return toSlide(f, captionsOf(el).length ? unturnedRect(el).box : orientedBox(pictureOf(el), f.scale, deg));
 }
 
-// the box whose upper left corner the fields X and Y give for the moved elements els, which the
-// readout of a move gives too: the frame of a whole group without its rotation, else the box of
-// lead without its rotation
 export const cornerBoxOf = (app: App, els: Element[], lead: Element): Box => groupFrameOf(app, els)?.box ?? unturnedBoxOf(app, lead);
 
-// the upper left corner of an element on the slide in slide pixels, which the X and Y fields show
 export function positionOf(app: App, el: Element): { x: number; y: number } {
   const b = unturnedBoxOf(app, el);
   return { x: Math.round(b.left), y: Math.round(b.top) };
 }
 
-// the size of an element in slide pixels, unscaled, at its picture for an image, a video, or a figure
 export const sizeOf = (el: Element): { w: number; h: number } => pictureSize(sizedTarget(el));
 
-// the height that the caption of a figure adds to its picture, in slide pixels, which the field H
-// of the figure selected as one object gives with the picture, as its frame holds both. it is taken
-// before the picture is turned, hence it is the same at every angle
 export function captionHeight(app: App, el: Element): number {
   if (!el.matches(CONTAINER) || !captionsOf(el).length) return 0;
   const { box, picture } = unturnedRect(el);
@@ -268,7 +213,6 @@ export function commands(): Command[] {
       label: ref === 'slide' ? 'Align to Slide' : 'Align to Selection',
       menu: { bar: 'Arrange', group: 'reference', order: 30 + i, submenu: 'Align' },
       context: ['element'],
-      // one object is aligned to the slide, hence Align to Selection is dimmed for it, as in PowerPoint
       enabled: (app) => ref === 'slide' || objects(app).length !== 1,
       checked: (app) => (objects(app).length === 1 ? ref === 'slide' : reference === ref),
       run: (app) => {
@@ -288,7 +232,6 @@ export function commands(): Command[] {
       run: (app) => distribute(app, axis),
     });
   }
-  // Evenly spaces the selection in both directions at once, as Distribute Objects > Evenly of Keynote
   list.push({
     id: 'arrange.distribute.evenly',
     label: 'Distribute Evenly',
@@ -301,8 +244,6 @@ export function commands(): Command[] {
       distribute(app, 'y');
     },
   });
-  // arg is { x, y, els }, the position on the slide, with x or y left out to keep it. it is written
-  // as the offset that reaches it
   list.push({
     id: 'arrange.setPosition',
     label: 'Position',
@@ -311,8 +252,6 @@ export function commands(): Command[] {
     run: (app, arg) => {
       const a = (arg ?? {}) as { x?: number; y?: number };
       const els = targetsOf(app, arg);
-      // a group is moved as one element, by the offset of the corner of its frame without its
-      // rotation, as the fields give it
       const group = groupFrameOf(app, els)?.box;
       const changes = els.map((el) => {
         const from = placeOf(el);
@@ -326,11 +265,6 @@ export function commands(): Command[] {
       app.invalidate('content');
     },
   });
-  // arg is { w, h, els }. an image or a video with its switch Constrain Proportions on keeps the
-  // aspect that it has, and with the switch off it is stretched, with its height written. for any
-  // other picture, a height is written as the width at its aspect, and a text element takes a width.
-  // a whole group is scaled about the upper left corner of its frame, on both axes where every
-  // picture of it keeps its aspect, else on the axis typed
   list.push({
     id: 'arrange.setSize',
     label: 'Size',
@@ -343,8 +277,6 @@ export function commands(): Command[] {
       if (frame) {
         const all = targetsOf(app, arg);
         const keep = all.flatMap(sizedOf).filter((m) => m.matches(STRETCHED) && m.getClientRects().length).every(constrained);
-        // an upright caption and rewrapped text do not scale with a turned frame, hence the frame
-        // is scaled again from its measured size until it reads as typed, in at most four passes
         const changes = new Map<Element, Change>();
         const start = frame.deg ? frame.box : null;
         for (let pass = 0; frame && pass < 4; pass++) {
@@ -355,8 +287,6 @@ export function commands(): Command[] {
           for (const c of scaleGroup(app, all, frame, kx, ky)) changes.set(c.el, { ...c, from: changes.get(c.el)?.from ?? c.from });
           frame = groupFrameOf(app, all);
         }
-        // the scale keeps the turned corner on the screen, hence the members are moved back until
-        // the upper left corner of the frame without its rotation is where it was, as for a figure
         if (frame && start) {
           const dx = start.left - frame.box.left, dy = start.top - frame.box.top;
           for (const el of all.filter((el) => !locked(el) && !all.some((o) => o !== el && o.contains(el)))) {
@@ -375,9 +305,6 @@ export function commands(): Command[] {
       const caps = objects.map((o) => captionHeight(app, o));
       const axis = typed.w !== undefined ? 'w' : 'h';
       const value = typed[axis];
-      // the value that the field of axis showed before the last typed value is typed back: the
-      // places before it are written again, which the whole px of a size and another wrap of a
-      // caption would not give back
       const back = lastSize;
       lastSize = null;
       const same = (a: Place, b: Place) => JSON.stringify(a) === JSON.stringify(b);
@@ -390,25 +317,16 @@ export function commands(): Command[] {
       }
       const shown = objects.map((o, i) => (axis === 'w' ? sizeOf(o).w : sizeOf(o).h + caps[i]));
       const fitted: Element[] = [];
-      // the box of each object that the fields X and Y give, and its place, before the change, and
-      // the indexes of the objects whose picture keeps its box
       const corners = objects.map((o) => ({ o, box: unturnedBoxOf(app, o), from: placeOf(o) }));
       const kept = new Set<number>();
       const changes = withCorners(app, els, () => els.map((el, i) => {
         const from = placeOf(el);
         const now = sizeOf(el);
-        // a picture that object-fit contain draws inside a larger box, e.g. the image of a figure box
-        // without a width, keeps its box with the ratio of the box, which a width alone would
-        // shrink to the picture. the box is written with object-fit contain, since the theme
-        // stretches a picture with a width and a height to its box. the box is the content box, and
-        // pad is the padding and border around it, e.g. the frame of a white figure
         const cs = getComputedStyle(el);
         const edge = (side: string) => (parseFloat(cs.getPropertyValue(`padding-${side}`)) || 0) + (parseFloat(cs.getPropertyValue(`border-${side}-width`)) || 0);
         const pad = { w: edge('left') + edge('right'), h: edge('top') + edge('bottom') };
         const box = { w: (el as HTMLElement).offsetWidth - pad.w, h: (el as HTMLElement).offsetHeight - pad.h };
         const boxed = el.matches(STRETCHED) && constrained(el) && cs.objectFit === 'contain' && (box.w - now.w > 0.5 || box.h - now.h > 0.5);
-        // the height of the box is written in whole px, hence its ratio is the simplest within this
-        // rounding, which does not drift from one typed value to the next
         const ratio = boxed ? simplest((box.h - 0.5) / box.w, (box.h + 0.5) / box.w) : 0;
         if (boxed) kept.add(i);
         if (boxed && !(el as HTMLElement).style.objectFit) {
@@ -436,10 +354,6 @@ export function commands(): Command[] {
             writePlace(app, el, { ...from, width: Math.max(1, w) });
           }
         };
-        // a typed H of a figure with a caption is the height of its picture with its caption. the
-        // caption wraps anew at the new width of the picture, hence its height is measured again
-        // until it holds, in at most four passes. a caption that leaves less than 1 px gives the
-        // picture alone the typed height
         const h = typed.h;
         const left = (cap: number) => (h !== undefined && h - cap >= 1 ? { ...typed, h: h - cap } : typed);
         put(left(caps[i]));
@@ -448,35 +362,21 @@ export function commands(): Command[] {
           if (Math.abs(now - cap) < 0.5) break;
           put(left((cap = now)));
         }
-        // the width is written in whole px, which can put the height 1 px off, hence the width 1 px
-        // either side is taken where it gives the typed height
         const to = placeOf(el);
         if (h !== undefined && to.width != null && (boxed || (to.height ?? null) === null) && !isTextSized(el)) {
           const read = () => sizeOf(el).h + captionHeight(app, objects[i]);
           const wide = (d: number) => Math.max(1, to.width! + d);
-          // the place at the width w, with the height of the box at its ratio where it is kept
           const sized = (w: number | null): Place => ({ ...to, width: w, ...(boxed && { height: w === null ? null : Math.max(1, (w - pad.w) * ratio + pad.h) }) });
-          // the height under the picture that the caption adds, without the letterbox under the
-          // picture, which grows with the width
           const gap = () => (boxed ? ((el as HTMLElement).offsetHeight - pad.h - sizeOf(el).h) / 2 : 0);
           const best = [0, -1, 1].map((d) => {
             writePlace(app, el, sized(wide(d)));
             return { d, off: Math.abs(read() - h) };
           }).reduce((a, b) => (b.off + 0.01 < a.off ? b : a));
           writePlace(app, el, sized(wide(best.d)));
-          // the width of the layout, i.e. none written, is kept where it reads as typed, hence a
-          // height typed back gives the file back
           if (caps[i]) {
             writePlace(app, el, sized(null));
             if (Math.round(read()) !== Math.round(h)) writePlace(app, el, sized(wide(best.d)));
           }
-          // the caption wraps anew at some widths, where the height jumps, hence a height still off
-          // is searched for over the widths from 1 px to where the picture alone is past it. a
-          // wider caption is never higher, hence a span of widths whose ends have the same caption
-          // is one wrap, where the height grows by slope per px of width and is solved from its
-          // ends. a span with two wraps is halved, and a span that cannot read nearer than the
-          // nearest width found is dropped. the nearest height is kept, at the width nearest the
-          // solve where a width reads as typed, else at the smaller width of two
           if (caps[i] && Math.round(read()) !== Math.round(h)) {
             const w0 = wide(best.d), slope = (sizeOf(el).h + gap()) / w0;
             const seen = new Map<number, { h: number; cap: number }>();
@@ -488,19 +388,14 @@ export function commands(): Command[] {
               }
               return m;
             };
-            // the width from a0 to b0 whose height reads nearest t, with its distance d from t. b0
-            // of 0 is the width at which the picture alone is past t
             const solve = (t: number, a0: number, b0: number) => {
               const off = (w: number) => Math.abs(Math.round(at(w).h) - t);
-              // whether width w at the distance d from t is nearer than the width near
               const nearer = (w: number, d: number) => d < near.d || (d === near.d && (d === 0 ? Math.abs(w - w0) < Math.abs(near.w - w0) || (Math.abs(w - w0) === Math.abs(near.w - w0) && w < near.w) : w < near.w));
               const near = { w: w0, d: off(w0) };
               const take = (w: number) => {
                 const d = off(w);
                 if (nearer(w, d)) Object.assign(near, { w, d });
               };
-              // the least distance from t that a width of a to b can read, with 1% and 1 px to spare
-              // for the slope and the rounding of the picture, and whether a width there can be nearer
               const bound = (a: number, b: number) => {
                 const lo = (slope / 1.01) * a - 1 + at(b).cap, hi = slope * 1.01 * b + 1 + at(a).cap;
                 return Math.max(0, Math.ceil(lo - 0.5) - t, t - Math.floor(hi + 0.5));
@@ -525,18 +420,11 @@ export function commands(): Command[] {
                 }
                 const m = Math.floor((a + b) / 2);
                 take(m);
-                // the span nearer w0 is taken first, which narrows the nearest sooner
                 const halves: [number, number][] = [[a, m], [m, b]];
                 spans.push(...(m < w0 ? halves : halves.reverse()));
               }
               return near;
             };
-            // a narrower figure is a lower one down to the width at which its caption gains more
-            // height than its picture loses. under this width a narrower figure is a higher one,
-            // and the typed height would be read at a collapsed figure, e.g. at 110 by 752 for a
-            // figure of 600 by 875. the search thus starts at the lowest figure. the widths are
-            // stepped down by 15% to where the figure is 1.5 lines of its caption higher than at
-            // the lowest step, and the lowest figure is the nearest height to 0 from there to w0
             const words = captionEls(objects[i])[0];
             const style = words && getComputedStyle(words);
             const line = style ? parseFloat(style.lineHeight) || 1.2 * parseFloat(style.fontSize) : 0;
@@ -550,9 +438,6 @@ export function commands(): Command[] {
             const low = stop < w0 ? solve(0, stop, w0).w : w0;
             writePlace(app, el, sized(solve(h, low, 0).w));
           }
-          // the letterbox under the picture is half of what the box adds to it, hence a box up to
-          // 2 px higher or lower than its ratio gives, which moves the field by half as much, is
-          // taken where it reads nearer the typed height
           const at = placeOf(el);
           if (boxed && at.height != null) {
             const off = () => Math.abs(Math.round(read()) - Math.round(h));
@@ -567,10 +452,6 @@ export function commands(): Command[] {
         }
         return { el, from, to: placeOf(el) };
       }));
-      // withCorners keeps the corner of a picture. a turned figure turns its caption about the
-      // center of both, and a picture that keeps its box moves inside it, e.g. the pillarboxed
-      // picture under a caption that spans the box, hence such an object is moved back until X and
-      // Y read as before
       for (const [i, t] of corners.entries()) {
         if (!angleOf(t.o) && !kept.has(i)) continue;
         const b = unturnedBoxOf(app, t.o), dx = t.box.left - b.left, dy = t.box.top - b.top;
@@ -586,9 +467,6 @@ export function commands(): Command[] {
       app.invalidate('content');
     },
   });
-  // the switch Constrain Proportions of the size fields, as in Keynote and PowerPoint. it is kept
-  // per kind of picture in the browser and written nowhere in the file. it is held on for a QR code,
-  // whose height the scope rule does not write, since its square then follows its width
   list.push({
     id: 'arrange.constrainProportions',
     label: 'Constrain Proportions',
@@ -607,8 +485,6 @@ export function commands(): Command[] {
   return list;
 }
 
-// the shown images, videos, QR codes, and viewers whose size the fields of the selection set,
-// including those that a selected figure holds. the image of the other mode shares their kind
 const picturesOf = (app: App): Element[] => [...new Set(targetsOf(app).flatMap(sizedOf))].filter((m) => m.matches(RESIZABLE) && m.getBoundingClientRect().width > 0);
 const heightWritten = (el: Element): boolean => declarationProblem(el.localName, [...el.classList], 'height', '1px') === null;
 

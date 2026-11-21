@@ -1,20 +1,13 @@
-// the anchors of comments moved by an operation, each rule driven by the patches of the real diff
-// of two texts, as a Replica sends them: a shift, a start tag replaced, a move of an element and of
-// a slide, a removed element and slide, the re-insertion of what was removed, and the check of
-// anchors against a text at a start
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { apply, checkAnchors, checksum, diff, invert, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
 
-// a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
 
 const slideAround = (text, at) => {
   const s = slidesOf(text).find((x) => x.start <= at && at < x.end);
   return s ? { start: s.start, end: s.open, tag: 'section' } : null;
 };
-// a comment on the first element whose start tag begins with open, and one on the slide of it
 const onElement = (text, open) => {
   const at = text.indexOf(open);
   assert.ok(at >= 0, `${open} is in the text`);
@@ -24,16 +17,13 @@ const onSlide = (text, inside) => {
   const s = slideAround(text, text.indexOf(inside));
   return { anchor: s, slide: s };
 };
-// the whole text of the slide that holds inside
 const slideText = (text, inside) => {
   const at = text.indexOf(inside);
   const s = slidesOf(text).find((x) => x.start <= at && at < x.end);
   return text.slice(s.start, s.end);
 };
 const move = (before, after, items) => moveAnchors(before, diff(before, after), after, items);
-// the text of after from an anchor on, of the length of what
 const reads = (text, anchor, what) => assert.equal(anchor && text.slice(anchor.start, anchor.start + what.length), what);
-// the characters of the strings that slice returns while run runs, a count of the text read
 const sliced = (run) => {
   const slice = String.prototype.slice;
   let n = 0;
@@ -53,20 +43,17 @@ const sliced = (run) => {
 test('a patch that only passes an anchor shifts it', () => {
   const before = deck(['<h2>Alpha</h2>', '<p>One</p>'], ['<h2>Beta</h2>', '<p class="x">Two</p>']);
   const items = [onElement(before, '<p class="x">'), onSlide(before, 'Beta')];
-  // typing before the anchors
   const typed = before.replace('One', 'One and more');
   let r = move(before, typed, items);
   reads(typed, r.items[0].anchor, '<p class="x">Two</p>');
   reads(typed, r.items[0].slide, '<section>\n  <h2>Beta');
   reads(typed, r.items[1].anchor, '<section>\n  <h2>Beta');
   assert.deepEqual(r.changed, [false, false]);
-  // a slide inserted before them, and typing inside the element of the anchor
   const grown = typed.replace('<section>', '<section>\n  <h2>New</h2>\n</section>\n<section>').replace('Two', 'Two too');
   r = move(typed, grown, r.items);
   reads(grown, r.items[0].anchor, '<p class="x">Two too</p>');
   reads(grown, r.items[1].anchor, '<section>\n  <h2>Beta');
   assert.deepEqual(r.changed, [false, false]);
-  // a value of an attribute of the start tag of the anchor
   const restyled = grown.replace('class="x"', 'class="wide"');
   r = move(grown, restyled, r.items);
   assert.equal(restyled.slice(r.items[0].anchor.start, r.items[0].anchor.end), '<p class="wide">');
@@ -107,15 +94,12 @@ test('an element or a slide that moves is followed', async (t) => {
   await t.test('a slide moved after the next one, as the whole slide and as the rotation of a line diff that does not find the move', () => {
     const before = deck(['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Gamma</h2>']);
     const after = deck(['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Gamma</h2>']);
-    // diff() finds the move as the whole slide. in the rotation, the start tag of the first slide
-    // stays in place, and the text of Alpha is moved after the text of Beta
     const whole = diff(before, after), first = before.indexOf('<section>');
     assert.ok(whole.some((p) => p.start <= first && first < p.end), 'diff() removes the first start tag');
     const body = '  <h2>Alpha</h2>\n  <p>Uno</p>\n', seam = '</section>\n<section>\n';
     const from = before.indexOf(body), to = before.indexOf('  <p>Tres</p>\n') + '  <p>Tres</p>\n'.length;
     const rotation = [{ start: from, end: from + body.length + seam.length, text: '' }, { start: to, end: to, text: seam + body }];
     assert.equal(apply(before, rotation), after);
-    // Beta is moved by a shift alone when Alpha is removed whole before it
     for (const [patches, changed] of [[whole, [true, true, false, false]], [rotation, [true, true, true, true]]]) {
       const items = [onSlide(before, 'Alpha'), onElement(before, '<p>Uno'), onSlide(before, 'Beta'), onElement(before, '<p>Tres')];
       const r = moveAnchors(before, patches, after, items);
@@ -133,7 +117,6 @@ test('an element or a slide that moves is followed', async (t) => {
   await t.test('two elements of equal start tags swapped in a slide', () => {
     const before = deck(['<h2>Alpha</h2>', '<div>', '  <p>First</p>', '</div>', '<div>', '  <p>Second</p>', '</div>']);
     const after = before.replace('First', '#').replace('Second', 'First').replace('#', 'Second');
-    // the diff changes only the texts, and leaves both start tags in place
     assert.ok(diff(before, after).every((p) => !/[<>]/.test(p.text)));
     const first = before.indexOf('<div>');
     const second = before.indexOf('<div>', first + 1);
@@ -166,7 +149,6 @@ test('a removed element falls back to its slide, a removed slide to the deck, an
   assert.deepEqual(r.items[2], { anchor: null, slide: null, removed: { text: '<p>Two</p>', slide: '<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>' } });
   reads(v2, r.items[0].anchor, '<section>\n  <h2>Alpha');
   assert.deepEqual(r.changed, [false, true, true]);
-  // the undo of the removal of the slide, and then of the paragraph
   r = move(v2, v1, r.items);
   reads(v1, r.items[1].anchor, '<section>\n  <h2>Beta');
   assert.deepEqual(r.items[1].slide, r.items[1].anchor);
@@ -178,7 +160,6 @@ test('a removed element falls back to its slide, a removed slide to the deck, an
   assert.deepEqual(r.items, items);
   assert.deepEqual(r.changed, [true, false, false]);
 
-  // a removed slide larger than the limit is kept as its check, by which its re-insertion attaches it
   const big = deck(['<h2>Big</h2>', `<p>${'x'.repeat(REMOVED_MAX)}</p>`], ['<h2>Small</h2>']);
   const withoutBig = big.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
   r = move(big, withoutBig, [onSlide(big, 'Big')]);
@@ -203,7 +184,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const r2 = move(v1, v2, r.items);
     const v3 = v2.replace('  <p>After</p>', `  ${long}\n  <p>After</p>`);
     assert.deepEqual(move(v2, v3, r2.items).items, [onElement(v3, '<pre data-k="1">')]);
-    // a version restored: the element back, and the other edit undone, in one operation
     assert.deepEqual(move(v2, v0, r2.items).items, items);
     const changed = v1.replace('  <p>After</p>', `  ${long.replace('yy</code>', 'yz</code>')}\n  <p>After</p>`);
     const [stays] = move(v1, changed, r.items).items;
@@ -263,7 +243,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const r = move(v0, v1, items);
     assert.deepEqual(r.items.map((it) => !!it.removed), [false, true]);
     reads(v1, r.items[0].anchor, long);
-    // a paragraph added next to the twin that is left does not take the thread of the other
     const added = v1.replace('<p>End</p>', '<p>End</p>\n  <p>New</p>');
     assert.deepEqual(move(v1, added, r.items).items[1], r.items[1]);
     assert.deepEqual(move(v1, v0, r.items).items, items);
@@ -293,8 +272,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
       const v1 = v0.slice(0, s0[2].start) + v0.slice(s0[2].end + 1);
       const [removed] = move(v0, v1, [{ anchor: tag, slide: tag }]).items;
       assert.deepEqual(removed.removed, { text: checkOf('<section>', v0.slice(s0[2].start, s0[2].end)) });
-      // in one operation the removed slide inserted before the last one, and the slide after the first
-      // one removed by a patch that ends where it ends
       const s1 = slidesOf(v1);
       const patches = [
         { start: s1[1].start, end: s1[1].end, text: '' },
@@ -328,16 +305,12 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const v1 = v0.replace(`  ${long}\n  <p>A</p>`, '  <p>A</p>');
     const r = move(v0, v1, items);
     assert.deepEqual(r.items[0].removed, { text: checkOf('<pre data-k="1">', long) });
-    // the check of the element does not tell it from a twin that a patch takes, hence the thread
-    // stays on its slide. the element put back, and in one patch the element before the twin removed with the first
-    // character of the twin
     const v2 = v1.replace('  <p>A</p>', `  ${long}\n  <p>A</p>`).replace(`  ${other}\n  ${long}`, `  ${long.replace('<code>y', '<code>z')}`);
     const twin = v1.indexOf('<pre data-k="1">'), put = v1.indexOf('  <p>A</p>');
     const patches = [{ start: put, end: put, text: `  ${long}\n` }, { start: v1.indexOf(other), end: twin + 16, text: '<pre data-k="1">' }, { start: twin + 22, end: twin + 23, text: 'z' }];
     assert.equal(apply(v1, patches), v2);
     assert.ok(patches.some((p) => p.start <= twin && twin < p.end && p.end < twin + long.length && p.end - p.start >= long.length), 'a patch removes the start of the twin');
     assert.deepEqual(moveAnchors(v1, patches, v2, r.items).items, r.items);
-    // or with all of the twin but its last character
     const at = v1.indexOf('  <p>A</p>');
     const cut = [
       { start: at, end: at, text: `  ${long}\n` },
@@ -345,8 +318,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     ];
     const v3 = v1.slice(0, at) + cut[0].text + v1.slice(at, cut[1].start) + v1.slice(cut[1].end);
     assert.deepEqual(moveAnchors(v1, cut, v3, r.items).items, r.items);
-    // or with a patch that writes a character over the tail of an equal element before the twin and
-    // the start of the twin, which a line diff cannot move
     const same = long.replace('data-k="1"', 'data-k="2"');
     const w1 = v1.replace(other, same);
     const a = w1.indexOf(same) + same.length - 113;
@@ -356,8 +327,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     assert.deepEqual(moveAnchors(w1, edit, w2, r.items).items, r.items);
   });
 
-  // a patch takes a twin as a move does only when it holds the whole of a kept text, or the start tag
-  // of a check and as many characters as the element
   const startTag = '<pre data-k="1">';
   for (const [n, how, cutOf] of [
     [3000, 'the patch that removes the element before its twin removes the first character of the twin', (v1, other, at) => ({ start: v1.indexOf(`  ${other}`), end: at + 1, text: '' })],
@@ -378,8 +347,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     });
   }
 
-  // a line diff puts the element back and removes the start of its twin in Beta, and the way back
-  // removes the element again while it puts back the start of the twin
   for (const back of ['a restore of the version before', 'an exact Undo']) {
     await t.test(`a thread of an element of 12,000 characters stays on its slide at ${back} of a version that put the element back and cut the start of its twin`, () => {
       const other = `<pre data-k="2"><code>${'w'.repeat(12_000)}</code></pre>`;
@@ -399,11 +366,9 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
 
   await t.test('a thread fallen back to its slide stays there when a restore moves an equal column into the slide from behind a column that starts the same way', () => {
     const words = ['orbit', 'halo', 'manifold', 'lunar', 'apse', 'burn', 'thrust', 'phase', 'node', 'arc', 'gate', 'libration', 'cislunar', 'transfer', 'epoch'];
-    // a linear congruential generator, hence the columns are the same at every run
     let seed = 41;
     const r = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
     const lines = (n, end = '') => Array.from({ length: n }, () => `    <p>${Array.from({ length: 5 + Math.floor(r() * 16) }, () => words[Math.floor(r() * words.length)]).join(' ')}${end}</p>`);
-    // a column x, and a column y of about its length whose first 22 lines are those of x
     const head = lines(22);
     const x = ['<div class="column">', ...head, ...lines(187), '  </div>'].join('\n');
     const y = ['<div class="column">', ...head, ...lines(178, ' Z'), '  </div>'].join('\n');
@@ -412,7 +377,6 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
     const v1 = deck(['<h2>A</h2>', '<li>A</li>'], ['<h2>B</h2>', y, x, '<p>B</p>']);
     const [fell] = move(v0, v1, [onElement(v0, '<div class="column">')]).items;
     reads(v1, fell.anchor, '<section>\n  <h2>A');
-    // x moved to slide A, which the line diff gives as a move of y rotated by the lines they share
     const v2 = deck(['<h2>A</h2>', x, '<li>A</li>'], ['<h2>B</h2>', y, '<p>B</p>']);
     const turn = `  <div class="column">\n${head.join('\n')}\n`.length, from = v1.indexOf('  <div');
     const li = v1.indexOf('  <li>A</li>'), end = v1.indexOf(y) + y.length + 1, put = v1.lastIndexOf(x) + x.length - '  </div>'.length;
@@ -461,10 +425,8 @@ test('a thread of a removed slide is attached again only inside a re-insertion o
   const v2 = v1.replace('<section>\n  <h2>Beta</h2>\n  <p></p>\n</section>\n', '');
   const r2 = move(v1, v2, move(v0, v1, items).items);
   assert.ok(r2.items.every((it) => it.anchor === null && it.removed), JSON.stringify(r2.items));
-  // an empty paragraph added to another slide
   const added = v2.replace('<p>One</p>', '<p>One</p>\n  <p></p>');
   assert.deepEqual(move(v2, added, r2.items).items, r2.items);
-  // the undo of the removal of the slide, and then of the paragraph
   const [empty, gone] = move(v2, v1, r2.items).items;
   reads(v1, empty.anchor, '<p></p>');
   reads(v1, empty.slide, '<section>\n  <h2>Beta');
@@ -521,7 +483,6 @@ test('the slides of the text after are those that a whole read finds, also when 
     'a start tag of a slide': [{ start: at('<section>\n  <h2>Beta') + 8, end: at('<section>\n  <h2>Beta') + 8, text: ' class="title"' }],
     'a slide removed': [{ start: at('<section>\n  <h2>Beta'), end: at('<section>\n  <h2>Gamma'), text: '' }],
   };
-  // the cases where the slide of the patches is read alone, and the slides before it are kept as given
   const alone = new Set(['an element inserted', 'an element removed', 'an insertion at the end tag', 'a closed HTML comment']);
   const items = [onElement(before, '<p>Three'), onElement(before, '<h2>Alpha'), onSlide(before, 'Gamma')];
   for (const [name, patches] of Object.entries(cases)) {
@@ -533,7 +494,6 @@ test('the slides of the text after are those that a whole read finds, also when 
     assert.equal(r.slides[0] === given[0], alone.has(name), name);
     reads(after, r.items[1].anchor, '<h2>Alpha');
   }
-  // no items, no slides read
   assert.deepEqual(moveAnchors(before, cases['an element inserted'], before, [], slidesOf(before)), { items: [], changed: [], slides: null });
 });
 
@@ -541,13 +501,11 @@ test('an element longer than every inserted text and than 4 kB is not read to it
   const big = 'x'.repeat(REMOVED_MAX + 10);
   const before = deck(['<h2>Alpha</h2>', `<div><p>${big}</p></div>`, '<p>After</p>']);
   const items = [onElement(before, '<div>'), onElement(before, '<p>After')];
-  // a paragraph inserted inside the element: the start tag of the element is kept
   const grown = before.replace('</p></div>', '</p><p>New</p></div>');
   let r = move(before, grown, items);
   reads(grown, r.items[0].anchor, '<div><p>xxx');
   reads(grown, r.items[1].anchor, '<p>After');
   assert.deepEqual(r.changed, [false, false]);
-  // the element removed: it falls back to its slide with the check of its text
   const gone = before.replace(`  <div><p>${big}</p></div>\n`, '');
   r = move(before, gone, items);
   reads(gone, r.items[0].anchor, '<section>\n  <h2>Alpha');
@@ -556,7 +514,6 @@ test('an element longer than every inserted text and than 4 kB is not read to it
 });
 
 test('random operations keep the anchors on start tags of their slides, and the slides as a whole read finds them', () => {
-  // a seeded generator, so that a failure is found again
   const random = (seed) => () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -572,7 +529,6 @@ test('random operations keep the anchors on start tags of their slides, and the 
     let slides = slidesOf(text);
     let items = [];
     for (let step = 0; step < 300; step++) {
-      // new comments now and then, on start tags of the text and on its slides
       if (step % 50 === 0) {
         const tags = [];
         for (let i = text.indexOf('<'); i >= 0; i = text.indexOf('<', i + 1)) if (startTagAt(text, i)) tags.push(i);
@@ -608,7 +564,6 @@ test('random operations keep the anchors on start tags of their slides, and the 
   }
 });
 
-// the start tag at the k-th place where open begins
 const nth = (text, open, k) => {
   let at = -1;
   for (let i = 0; i <= k; i++) at = text.indexOf(open, at + 1);
@@ -664,13 +619,10 @@ test('a removed element is attached again only by a re-insertion into its slide'
   const v1 = v0.replace(`  ${logo}\n  <p>First.`, '  <p>First.');
   const fell = move(v0, v1, [onElement(v0, logo)]).items;
   fellBack(v1, fell[0], '<section>\n  <h2>Alpha', logo);
-  // the slide that holds an equal element moved to the front
   const moved = deck(['<h2>Gamma</h2>', logo, '<p>Third.</p>'], ['<h2>Alpha</h2>', '<p>First.</p>'], ['<h2>Beta</h2>', '<p>Second.</p>']);
   fellBack(moved, move(v1, moved, fell).items[0], '<section>\n  <h2>Alpha', logo);
-  // a copy pasted onto another slide
   const pasted = v1.replace('  <p>Second.', `  ${logo}\n  <p>Second.`);
   fellBack(pasted, move(v1, pasted, fell).items[0], '<section>\n  <h2>Alpha', logo);
-  // the undo
   const [back] = move(v1, v0, fell).items;
   assert.deepEqual(back, onElement(v0, logo));
 });
@@ -923,7 +875,6 @@ test('an inserting operation takes about as long with threads of removed element
     }
     return times.sort((x, y) => x - y)[3];
   };
-  // measured again before the test fails, since another process may take the processor for a while
   for (const [what, items] of [['short', removed], ['longer than 4 kB', long]]) {
     let ratio = Infinity;
     for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(items) / median(live);
@@ -940,7 +891,6 @@ test('a removal reads each element longer than 4 kB once for all of its threads'
   };
   for (const [what, v1] of Object.entries(removals)) {
     const patches = diff(v0, v1);
-    // n threads on each of the two elements
     const read = (n) =>
       sliced(() => {
         const items = [5, 6].flatMap((k) => Array.from({ length: n }, () => onElement(v0, `<div class="c${k}">`)));
@@ -963,7 +913,6 @@ test('a removal of an element, or a paragraph inserted after it in its slide, re
     for (const [what, v1] of Object.entries(operations)) {
       const patches = diff(v0, v1);
       const read = (n) => sliced(() => moveAnchors(v0, patches, v1, Array.from({ length: n }, () => onElement(v0, '<div class="big">'))));
-      // a thread of an element up to 4 kB keeps its text, which is sliced once for each thread
       const each = (read(101) - read(1)) / 100;
       assert.ok(each < Math.min(length, REMOVED_MAX) + 500, `${what} of ${length} characters: each thread after the first read ${each} characters`);
     }
@@ -1019,14 +968,12 @@ test('a restore that brings back removed columns longer than 4 kB reads each of 
     const bigs = Array.from({ length: kinds }, (_, k) => `<div class="column">${String.fromCharCode(97 + k).repeat(len - 27)}${k}</div>`);
     const v0 = deck(['<h2>Alpha</h2>', ...bigs], ['<h2>Omega</h2>']);
     const v1 = deck(['<h2>Alpha</h2>'], ['<h2>Omega</h2>']);
-    // 300 slides added, each with a column of the start tag of the removed ones
     const v2 = deck(['<h2>Alpha</h2>'], ...Array.from({ length: 300 }, (_, i) => [`<h2>S${i}</h2>`, `<div class="column">${'s'.repeat(1000)}</div>`]), ['<h2>Omega</h2>']);
     const items = bigs.map((b) => onElement(v0, b));
     const removed = move(v1, v2, move(v0, v1, items).items).items;
     assert.ok(removed.every((it) => typeof it.removed?.text === 'object'), 'every thread fell back with a check');
     const patches = diff(v2, v0);
     const n = sliced(() => assert.deepEqual(moveAnchors(v2, patches, v0, removed).items, items));
-    // the twins of a column in its own slide are read for each column, as known
     assert.ok(n < 2 * v2.length + 16 * len * kinds * kinds, `${kinds} columns of ${len} characters: ${n} characters sliced`);
   }
 });
@@ -1043,8 +990,6 @@ test('an operation reads no other slide for the threads of removed elements long
     'a slide inserted right after the end tag of slide 19': { start: slides[19].end, end: slides[19].end, text: '\n<section>\n  <h2>New</h2>\n</section>' },
     'a slide inserted right before the start tag of slide 21': { start: slides[21].start, end: slides[21].start, text: '<section>\n  <h2>New</h2>\n</section>\n' },
   };
-  // threads fallen back to slides 10 to 19 and 21 to 30 from removed elements of n characters, and to
-  // slide 20 when n is longer than it, with the check of the element or without a kept text
   const threads = (n, open, checked) =>
     [...slides.slice(10, 20), ...slides.slice(21, 31), ...(n > length ? [slides[20]] : [])].map((s, k) => {
       const tag = { start: s.start, end: s.open, tag: 'section' };
@@ -1053,7 +998,6 @@ test('an operation reads no other slide for the threads of removed elements long
     });
   for (const [what, p] of Object.entries(operations)) {
     const after = before.slice(0, p.start) + p.text + before.slice(p.end);
-    // 11 characters is one more than the Enter adds to slide 20
     for (const [n, open] of [
       [12_000, (k) => `<div class="u${k}">`],
       [length + 11, () => column],
@@ -1082,8 +1026,6 @@ const QUESTIONS = ['<h2>Questions?</h2>'];
 
 test('a slide edited in place keeps its threads next to slides inserted, removed, moved, or edited in place in the same operation', async (t) => {
   const BACKDROP = '<div class="backdrop" data-backdrop="orbits"></div>';
-  // the items are the thread of the slide that holds inside, then those of its elements in order.
-  // an element given by its text keeps its thread, and one given as null stays on the slide
   const stays = (after, r, inside, ...elements) => {
     const slide = slideAround(after, after.indexOf(inside));
     assert.ok(slide, `${inside} is on a slide`);
@@ -1190,7 +1132,6 @@ test('a slide whose first element is rewritten in an operation that edits anothe
 });
 
 test('the slides that lose their threads in an operation of several slides are those that the version history calls removed', () => {
-  // a seeded generator, so that a failure is found again
   const random = (seed) => () => {
     seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -1203,9 +1144,6 @@ test('the slides that lose their threads in an operation of several slides are t
   for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const next = random(seed);
     const pick = (list) => list[Math.floor(next() * list.length)];
-    // a sentence opens and ends with a word of its own. two slides that share half of their text
-    // across slides paired by place are thus left out, since matchSlides pairs them and slideChanges
-    // does not
     const name = () => Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(next() * 26))).join('');
     const sentence = () => [name(), ...Array.from({ length: 2 + Math.floor(next() * 3) }, () => pick(WORDS)), name()].join(' ');
     const fresh = () => {
@@ -1217,8 +1155,6 @@ test('the slides that lose their threads in an operation of several slides are t
     };
     const rewrite = (lines) => lines.map((l) => (l.startsWith('<p>') ? `<p>${sentence()}</p>` : l));
     for (let step = 0; step < 150; step++) {
-      // one slide rewritten, replaced by a picture, or emptied, and one or two others inserted,
-      // removed, moved alone or in a run, or rewritten
       const slides = Array.from({ length: 4 + Math.floor(next() * 6) }, fresh);
       const now = slides.map((lines) => ({ lines }));
       const target = pick(now);
@@ -1247,7 +1183,6 @@ test('the slides that lose their threads in an operation of several slides are t
       const after = deck(...now.map((x) => x.lines));
       const patches = diff(before, after);
       const s0 = slidesOf(before);
-      // an operation inside one slide is shifted rather than matched
       if (!patches.length || s0.some((s) => patches.every((p) => p.start >= s.open && p.end <= before.lastIndexOf('</', s.end - 1)))) continue;
       const tags = s0.map((s) => ({ start: s.start, end: s.open, tag: 'section' }));
       const r = moveAnchors(before, patches, after, tags.map((tag) => ({ anchor: tag, slide: tag })));

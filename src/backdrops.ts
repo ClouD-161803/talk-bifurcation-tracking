@@ -1,21 +1,15 @@
-// the built-in backdrops selected with the data-backdrop attribute of a `.backdrop`, computed on first use and
-// cached
-
 import { MU, closed, lagrange, lyapunovFamily, open, propagate, step } from './orbits.ts';
 import type { Member, Trajectory, Tone } from './orbits.ts';
 
-// the integration step, nondimensional
 const H = 0.004;
 
-// a flight is stopped at the surface of a body or far from the system. the radii of the Earth and
-// the Moon are 6378 km and 1738 km over 384400 km
+const EARTH_RADIUS = 0.0166;
+const MOON_RADIUS = 0.0045;
 const stopped = (u: Float64Array): boolean =>
-  Math.hypot(u[0] + MU, u[1]) < 0.0166 || Math.hypot(u[0] - 1 + MU, u[1]) < 0.0045 || Math.hypot(u[0] - 0.8, u[1]) > 2.4;
+  Math.hypot(u[0] + MU, u[1]) < EARTH_RADIUS || Math.hypot(u[0] - 1 + MU, u[1]) < MOON_RADIUS || Math.hypot(u[0] - 0.8, u[1]) > 2.4;
 
 const toned = (s: Trajectory, tone: Tone): Trajectory => ({ ...s, tone });
 
-// the same flight mirrored in the x axis with time reversed, which is the symmetry of the CR3BP
-// that turns an unstable manifold into a stable one
 function mirrored(s: Trajectory): Trajectory {
   const n = s.times.length, pts = new Float64Array(2 * n), times = new Float32Array(n);
   const end = s.times[n - 1];
@@ -27,14 +21,12 @@ function mirrored(s: Trajectory): Trajectory {
   return { pts, times, T: end };
 }
 
-// states of a closed Lyapunov orbit, sampled over one period
 function sampled(orbit: Member, T: number): Float64Array[] {
   const states: Float64Array[] = [], s = Float64Array.from(orbit.s);
   for (let t = 0; t < T; t += step(s, H)) states.push(Float64Array.from(s));
   return states;
 }
 
-// a copy of the state, kicked by plus or minus 1e-5 along its velocity
 function kicked(s0: Float64Array, sign: number): Float64Array {
   const v = Math.hypot(s0[3], s0[4]), k = Float64Array.from(s0);
   k[3] += (sign * 1e-5 * s0[3]) / v;
@@ -42,8 +34,6 @@ function kicked(s0: Float64Array, sign: number): Float64Array {
   return k;
 }
 
-// the stable and unstable manifold tubes of the Lyapunov orbit of amplitude A at Ln, from flights of
-// span periods out of the given number of phases. the orbit itself is the first trajectory
 function tubes(n: 1 | 2, A: number, phases: number, span: number): Trajectory[] {
   const orbit = lyapunovFamily(n, [A], H)[0];
   if (!orbit) return [];
@@ -61,16 +51,12 @@ function tubes(n: 1 | 2, A: number, phases: number, span: number): Trajectory[] 
   return out;
 }
 
-// unit directions of the unstable manifold along a Lyapunov orbit, one per sampled state: a small
-// offset is flown beside the orbit and rescaled at each step, hence after a period it is aligned
-// with the most unstable direction, and its sign is continuous along the orbit
 function unstable(orbit: Member, T: number): { states: Float64Array[]; dirs: Float64Array[] } {
   const e = 1e-7;
   let offset = new Float64Array(6);
   offset[0] = 1;
   const states: Float64Array[] = [], dirs: Float64Array[] = [];
   for (let lap = 0; lap < 3; lap++) {
-    // the orbit is unstable, hence the reference is restarted on it at each lap
     const a = Float64Array.from(orbit.s), b = Float64Array.from(orbit.s);
     for (let i = 0; i < 6; i++) b[i] += e * offset[i];
     for (let t = 0; t < T;) {
@@ -88,14 +74,11 @@ function unstable(orbit: Member, T: number): { states: Float64Array[]; dirs: Flo
   return { states, dirs };
 }
 
-// the tube of the L1 Lyapunov orbit of amplitude A toward the Earth, as a dense ribbon: one flight
-// from each of the given number of phases, ended at a crossing of the x axis, with its stable mirror
 function ribbon(A: number, phases: number, crossings: number, alpha: number, kick = 1e-5): Trajectory[] {
   const orbit = lyapunovFamily(1, [A], H)[0];
   if (!orbit) return [];
   const first = closed(orbit), { states, dirs } = unstable(orbit, first.T), out: Trajectory[] = [];
   const xL = lagrange(1);
-  // the branch toward the Earth is chosen from a trial flight
   let sign = 1;
   {
     const u = Float64Array.from(states[0]);
@@ -131,7 +114,6 @@ export const BUILT_IN_NAMES = Object.keys(BUILT_IN) as BuiltInName[];
 
 const cache = new Map<string, Trajectory[]>();
 
-// the trajectories of the built-in backdrop name, or an empty list for an unknown name
 export function builtIn(name: string): Trajectory[] {
   let out = cache.get(name);
   if (!out) {
