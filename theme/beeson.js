@@ -446,8 +446,8 @@
   var given = /* @__PURE__ */ new Map();
   var files = /* @__PURE__ */ new Map();
   function register(data) {
-    const script2 = document.currentScript;
-    if (script2 instanceof HTMLScriptElement && script2.src) given.set(script2.src, data);
+    const script = document.currentScript;
+    if (script instanceof HTMLScriptElement && script.src) given.set(script.src, data);
   }
   function read(url, path2) {
     if (!/\.js$/i.test(new URL(url).pathname)) {
@@ -465,11 +465,11 @@
     }
     if (given.has(url)) return Promise.resolve(given.get(url));
     return new Promise((done, fail2) => {
-      const script2 = document.createElement("script");
-      script2.src = url;
-      script2.onload = () => given.has(url) ? done(given.get(url)) : fail2(new Error(`${path2} does not call Beeson.trajectories`));
-      script2.onerror = () => fail2(new Error("it was not found"));
-      document.head.append(script2);
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = () => given.has(url) ? done(given.get(url)) : fail2(new Error(`${path2} does not call Beeson.trajectories`));
+      script.onerror = () => fail2(new Error("it was not found"));
+      document.head.append(script);
     });
   }
   function load(path2) {
@@ -1838,91 +1838,6 @@
     check();
   }
 
-  // src/expand.ts
-  var THEME_MACROS = { ensuremath: ["#1", 1], xspace: "", bm: ["\\boldsymbol{#1}", 1] };
-  var DEPTH = 10;
-  function deckMacros() {
-    const tex = globalThis.window?.beesonTex;
-    return tex ? { ...THEME_MACROS, ...tex.macros } : null;
-  }
-  function argument(s, i) {
-    if (s[i] === "{") {
-      let depth = 0, j = i;
-      for (; j < s.length; j++) {
-        if (s[j] === "{") depth++;
-        else if (s[j] === "}" && --depth === 0) break;
-      }
-      return [s.slice(i + 1, j), j + 1];
-    }
-    const command = /^\\(?:[A-Za-z]+|.)/.exec(s.slice(i));
-    if (command) return [command[0], i + command[0].length];
-    return [s[i] ?? "", i + 1];
-  }
-  function optional(s, i) {
-    if (s[i] !== "[") return null;
-    let depth = 0;
-    for (let j = i + 1; j < s.length; j++) {
-      if (s[j] === "{") depth++;
-      else if (s[j] === "}") depth--;
-      else if (s[j] === "]" && depth === 0) return [s.slice(i + 1, j), j + 1];
-    }
-    return null;
-  }
-  var skipSpaces = (s, i) => {
-    while (s[i] === " " || s[i] === "	" || s[i] === "\n") i++;
-    return i;
-  };
-  function expand(s, macros, depth, math) {
-    if (depth > DEPTH) return s;
-    let out = "";
-    let i = 0;
-    while (i < s.length) {
-      const c = s[i];
-      if (c === "$") {
-        math = !math;
-        out += c;
-        i++;
-        continue;
-      }
-      if (c !== "\\") {
-        out += c;
-        i++;
-        continue;
-      }
-      const name = /^\\([A-Za-z]+)/.exec(s.slice(i))?.[1];
-      const def = name !== void 0 && Object.hasOwn(macros, name) ? macros[name] : void 0;
-      if (name === void 0 || def === void 0) {
-        const keep = name !== void 0 ? name.length + 1 : 2;
-        out += s.slice(i, i + keep);
-        i += keep;
-        continue;
-      }
-      const [body, count = 0, preset] = typeof def === "string" ? [def] : def;
-      let j = i + 1 + name.length;
-      if (math || count) j = skipSpaces(s, j);
-      const args = [];
-      if (preset !== void 0 && count > 0) {
-        const given2 = optional(s, j);
-        args.push(given2 ? given2[0] : preset);
-        if (given2) j = given2[1];
-      }
-      while (args.length < count) {
-        j = skipSpaces(s, j);
-        const [arg, next] = argument(s, j);
-        args.push(arg);
-        j = next;
-      }
-      const filled = body.replace(/#([1-9])/g, (m, k) => args[Number(k) - 1] ?? m);
-      out += name === "ensuremath" && !math ? `$${expand(filled, macros, depth + 1, true)}$` : expand(filled, macros, depth + 1, math);
-      i = j;
-    }
-    return out;
-  }
-  function expandMacros(src, macros) {
-    const all = macros ? { ...THEME_MACROS, ...macros } : deckMacros();
-    return all && src.includes("\\") ? expand(src, all, 0, false) : src;
-  }
-
   // src/plot.ts
   var KINDS = ["points", "trace", "label", "events"];
   var PATCH = ["x", "y", "title", "regions", "curves", "labels"];
@@ -2231,144 +2146,69 @@
     const s = digits === void 0 ? String(Number(x.toPrecision(6))) : x.toFixed(digits);
     return s.replace(/^-(?=.*[1-9])/, MINUS).replace(/^-/, "");
   }
-  var SYMBOLS = {
-    alpha: "\u03B1",
-    beta: "\u03B2",
-    gamma: "\u03B3",
-    delta: "\u03B4",
-    epsilon: "\u03B5",
-    varepsilon: "\u03B5",
-    zeta: "\u03B6",
-    eta: "\u03B7",
-    theta: "\u03B8",
-    iota: "\u03B9",
-    kappa: "\u03BA",
-    lambda: "\u03BB",
-    mu: "\u03BC",
-    nu: "\u03BD",
-    xi: "\u03BE",
-    pi: "\u03C0",
-    rho: "\u03C1",
-    sigma: "\u03C3",
-    tau: "\u03C4",
-    upsilon: "\u03C5",
-    phi: "\u03C6",
-    varphi: "\u03C6",
-    chi: "\u03C7",
-    psi: "\u03C8",
-    omega: "\u03C9",
-    Gamma: "\u0393",
-    Delta: "\u0394",
-    Theta: "\u0398",
-    Lambda: "\u039B",
-    Xi: "\u039E",
-    Pi: "\u03A0",
-    Sigma: "\u03A3",
-    Phi: "\u03A6",
-    Psi: "\u03A8",
-    Omega: "\u03A9",
-    pm: "\xB1",
-    mp: "\u2213",
-    infty: "\u221E",
-    cdot: "\xB7",
-    times: "\xD7",
-    approx: "\u2248",
-    le: "\u2264",
-    ge: "\u2265",
-    ne: "\u2260",
-    to: "\u2192",
-    in: "\u2208"
-  };
-  var SCRIPT_GAPS = { B: "\u212C", E: "\u2130", F: "\u2131", H: "\u210B", I: "\u2110", L: "\u2112", M: "\u2133", R: "\u211B" };
-  var script = (c) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(119964 + c.charCodeAt(0) - 65) : c);
-  var STRUCK_GAPS = { C: "\u2102", H: "\u210D", N: "\u2115", P: "\u2119", Q: "\u211A", R: "\u211D", Z: "\u2124" };
-  var struck = (c) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(120120 + c.charCodeAt(0) - 65) : c);
-  var AS_IS = /* @__PURE__ */ new Set(["boldsymbol", "bm", "mathit", "mathop", "mathfrak", "ensuremath"]);
-  var UPRIGHT = /* @__PURE__ */ new Set(["mathrm", "text", "mathbf", "mathsf", "mathtt", "operatorname", "textrm", "textbf", "textit", "mathnormal"]);
-  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "", "\\": " " };
-  function parseMarkup(src, macros) {
-    const runs = [];
-    const push = (text, italic, shift) => {
-      const last = runs.at(-1);
-      if (last && last.italic === italic && last.shift === shift) last.text += text;
-      else runs.push({ text, italic, shift });
-    };
-    const parts = expandMacros(src, macros).split("$");
-    parts.forEach((part, k) => {
-      if (k % 2 === 0) {
-        if (part) push(part, false, null);
-        return;
-      }
-      math(part, false, null);
-    });
-    function group2(s, i) {
-      if (s[i] === "{") {
-        let depth = 0, j = i;
-        for (; j < s.length; j++) {
-          if (s[j] === "{") depth++;
-          else if (s[j] === "}" && --depth === 0) break;
-        }
-        return [s.slice(i + 1, j), j + 1];
-      }
-      if (s[i] === "\\") {
-        const m = /^\\[A-Za-z]+/.exec(s.slice(i));
-        if (m) return [m[0], i + m[0].length];
-      }
-      return [s[i] ?? "", i + 1];
-    }
-    function math(s, upright, shift) {
-      let i = 0;
-      while (i < s.length) {
-        const c = s[i];
-        if (c === "\\") {
-          const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
-          if (!m) {
-            push(SPACES[s[i + 1]] ?? s[i + 1] ?? "", false, shift);
-            i += 2;
-            continue;
-          }
-          i += m[0].length;
-          if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
-            const [g, j] = group2(s, i);
-            i = j;
-            math(g, upright || UPRIGHT.has(m[1]), shift);
-          } else if (m[1] === "mathcal" || m[1] === "mathbb") {
-            const [g, j] = group2(s, i);
-            i = j;
-            push([...g].map(m[1] === "mathcal" ? script : struck).join(""), false, shift);
-          } else {
-            const sym = SYMBOLS[m[1]] ?? m[0];
-            push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
-          }
-        } else if (c === "_" || c === "^") {
-          const [g, j] = group2(s, i + 1);
-          i = j;
-          math(g, upright, c === "_" ? "sub" : "sup");
-        } else if (c === "{" || c === "}") {
-          i++;
-        } else {
-          push(c === "-" ? MINUS : c, !upright && /[A-Za-zα-ω]/.test(c), shift);
-          i++;
-        }
-      }
-    }
-    return runs;
+  var mathjax = () => globalThis.MathJax;
+  var formulas = /* @__PURE__ */ new Map();
+  var queue = [];
+  var waiting = /* @__PURE__ */ new Map();
+  var typesetting = null;
+  function untypeset2(tex, reason) {
+    const span = document.createElement("span");
+    span.dataset.mjxError = reason;
+    span.textContent = `$${tex}$`;
+    return span;
   }
-  function setMarkup(el, src) {
-    el.replaceChildren(...parseMarkup(src).map((r) => {
-      let node = document.createTextNode(r.text);
-      if (r.italic) {
-        const i = document.createElement("i");
-        i.append(node);
-        node = i;
+  async function typesetQueue(before) {
+    await Promise.resolve(before).catch(() => void 0);
+    let since = performance.now();
+    while (queue.length) {
+      const tex = queue[0];
+      const mj = mathjax();
+      const node = mj?.tex2svgPromise ? await mj.tex2svgPromise(tex, { display: false }).catch((error) => untypeset2(tex, error instanceof Error ? error.message : String(error))) : untypeset2(tex, "MathJax is not loaded");
+      node.removeAttribute("tabindex");
+      formulas.set(tex, node);
+      queue.shift();
+      for (const [el, src] of waiting) if (fill2(el, src)) waiting.delete(el);
+      if (performance.now() - since > 8) {
+        await new Promise((done) => setTimeout(done));
+        since = performance.now();
       }
-      if (r.shift) {
-        const s = document.createElement(r.shift);
-        s.append(node);
-        node = s;
-      }
-      return node;
-    }));
+    }
+    typesetting = null;
+  }
+  function request(tex) {
+    if (formulas.has(tex) || queue.includes(tex)) return;
+    queue.push(tex);
+    if (typesetting) return;
+    const startup = mathjax()?.startup;
+    typesetting = typesetQueue(startup?.promise);
+    if (startup?.promise) startup.promise = typesetting;
+  }
+  function fill2(el, src) {
+    const parts = src.split("$");
+    if (parts.some((part, k) => k % 2 === 1 && !formulas.has(part))) return false;
+    el.replaceChildren(...parts.flatMap((part, k) => !part ? [] : k % 2 === 0 ? [part] : [formulas.get(part).cloneNode(true)]));
+    return true;
+  }
+  var panelTexts = (p) => [p.title, p.x?.title, p.y?.title, ...[...p.x?.ticks ?? [], ...p.y?.ticks ?? [], ...p.labels ?? []].map((t) => t.text)];
+  function plotTexts(plot) {
+    const marks = (tab) => plot.marks.flatMap((m) => {
+      const data = tab.data[m.id];
+      if (m.kind === "label") return data?.text ?? [];
+      return m.kind === "events" ? (data ?? []).map((e) => e.text) : [];
+    });
+    const texts = [plot.parameter.label, ...plot.panels.flatMap(panelTexts), ...plot.tabs.flatMap((t) => [t.label, ...Object.values(t.panels).flatMap(panelTexts), ...marks(t)])];
+    return [...new Set(texts.filter((s) => !!s))];
+  }
+  function prefetch(texts) {
+    for (const src of texts) src.split("$").forEach((part, k) => {
+      if (k % 2 === 1) request(part);
+    });
+  }
+  function setText(el, src) {
+    waiting.delete(el);
+    if (fill2(el, src)) return;
+    waiting.set(el, src);
+    prefetch([src]);
   }
   var SVG = "http://www.w3.org/2000/svg";
   function svg(tag, attrs, parent) {
@@ -2464,6 +2304,7 @@
         console.error(message);
         return;
       }
+      prefetch(plotTexts(this.spec));
       const only = words(el.dataset.plotPanels);
       this.panels = only.length ? this.spec.panels.filter((p) => only.includes(p.id)) : this.spec.panels;
       const names = words(el.dataset.plotTabs);
@@ -2503,7 +2344,7 @@
           const b = document.createElement("button");
           b.type = "button";
           b.setAttribute("role", "tab");
-          setMarkup(b, plot.tabs[i].label);
+          setText(b, plot.tabs[i].label);
           b.addEventListener("click", () => {
             b.blur();
             this.setTab(i);
@@ -2558,7 +2399,7 @@
       readout.className = "plot-readout";
       if (plot.parameter.label) {
         const name = document.createElement("span");
-        setMarkup(name, plot.parameter.label);
+        setText(name, plot.parameter.label);
         readout.append(name, " = ");
       }
       this.value = document.createElement("span");
@@ -2644,7 +2485,7 @@
     label(text, left, top, a, cls, names, tone) {
       const el = document.createElement("div");
       el.className = `plot-label ${cls}`.trim();
-      setMarkup(el, text);
+      setText(el, text);
       this.place(el, left, top, a);
       if (tone) el.style.color = toneColor(tone);
       this.overlay.append(el);
@@ -2860,7 +2701,7 @@
             this.place(el, this.XS(b, x) + m.dx, this.YS(b, y) + m.dy, m.anchor);
             const text = nearest(d.text, u);
             if (text !== shown) {
-              setMarkup(el, text);
+              setText(el, text);
               shown = text;
             }
           });
@@ -3660,10 +3501,10 @@
     let loading = loads.get(name);
     if (!loading) {
       loading = new Promise((done) => {
-        const script2 = document.createElement("script");
-        script2.src = `figures/${name}.js`;
-        script2.onload = script2.onerror = () => done();
-        document.head.append(script2);
+        const script = document.createElement("script");
+        script.src = `figures/${name}.js`;
+        script.onload = script.onerror = () => done();
+        document.head.append(script);
       });
       loads.set(name, loading);
     }
@@ -3737,13 +3578,13 @@
     if (window.beesonFigures?.[name]?.hash === hash) return true;
     const was = window.beesonFigures?.[name];
     const loading = new Promise((done) => {
-      const script2 = document.createElement("script");
-      script2.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
-      script2.onload = script2.onerror = () => {
-        script2.remove();
+      const script = document.createElement("script");
+      script.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
+      script.onload = script.onerror = () => {
+        script.remove();
         done();
       };
-      document.head.append(script2);
+      document.head.append(script);
     });
     loads.set(name, loading);
     await loading;
@@ -3815,8 +3656,8 @@
     band.setAttribute("aria-hidden", "true");
     const track = document.createElement("div");
     track.className = "scrub-track";
-    const fill2 = document.createElement("span");
-    track.append(fill2);
+    const fill3 = document.createElement("span");
+    track.append(fill3);
     const headingBox = document.createElement("div");
     headingBox.className = "scrub-heading";
     band.append(track, headingBox);
@@ -3909,7 +3750,7 @@
       }
     };
     const mark = () => {
-      fill2.style.transform = `scaleX(${deck.getTotalSlides() < 2 ? 0 : deck.getProgress()})`;
+      fill3.style.transform = `scaleX(${deck.getTotalSlides() < 2 ? 0 : deck.getProgress()})`;
       const current = deck.getCurrentSlide();
       for (const t of [...ticks, ...names]) t.el.classList.toggle("now", t.slide === current);
     };
@@ -5165,7 +5006,7 @@ void main() {
       const now = performance.now(), dt = (now - this.seenAt) / 1e3;
       this.seenAt = now;
       const lit = this.points.geometry.getAttribute("lit");
-      const fill2 = this.points.geometry.getAttribute("fill");
+      const fill3 = this.points.geometry.getAttribute("fill");
       const k = dt > 0.25 ? 1 : 1 - Math.exp(-dt / DIMMING);
       const f = !this.active || dt > 0.25 ? 1 : 1 - Math.exp(-dt / POINT_FADE);
       this.fn.points.forEach((m, i) => {
@@ -5176,9 +5017,9 @@ void main() {
         this.lit[i] += (this.litTo[i] - this.lit[i]) * f;
         lit.setX(i, this.lit[i]);
         for (let c = 0; c < 3; c++) this.fill[3 * i + c] += (this.fillTo[3 * i + c] - this.fill[3 * i + c]) * f;
-        fill2.setXYZ(i, this.fill[3 * i], this.fill[3 * i + 1], this.fill[3 * i + 2]);
+        fill3.setXYZ(i, this.fill[3 * i], this.fill[3 * i + 1], this.fill[3 * i + 2]);
       });
-      position.needsUpdate = seen.needsUpdate = lit.needsUpdate = fill2.needsUpdate = true;
+      position.needsUpdate = seen.needsUpdate = lit.needsUpdate = fill3.needsUpdate = true;
       for (const lab of this.labels) {
         const i = this.fn.points.findIndex((m) => m.name === lab.dataset.at);
         if (i < 0) continue;
@@ -6432,10 +6273,10 @@ void main() {
       running2.add(v);
       turns2.set(v, mine);
     }
-    const waiting2 = viewers.filter((v) => !loaded(v));
-    if (waiting2.length) {
+    const waiting3 = viewers.filter((v) => !loaded(v));
+    if (waiting3.length) {
       for (const v of viewers) hold(v);
-      await Promise.race([Promise.all(waiting2.map(whenLoaded)), sleep3(5e3)]);
+      await Promise.race([Promise.all(waiting3.map(whenLoaded)), sleep3(5e3)]);
     }
     const current = viewers.filter((v) => turns2.get(v) === mine && running2.has(v) && loaded(v));
     for (const v of current) v.seek(0);
@@ -6590,9 +6431,9 @@ void main() {
     }
     if (own.length) applySteps(slide);
   }
-  var waiting = (o) => o.el.classList.contains("fragment") && !o.el.classList.contains("visible");
+  var waiting2 = (o) => o.el.classList.contains("fragment") && !o.el.classList.contains("visible");
   function animated(o, slide = o.el.closest("section")) {
-    if (waiting(o)) return false;
+    if (waiting2(o)) return false;
     const loop = o.el.hasAttribute("data-loop");
     if (slide?.hasAttribute("data-auto-animate")) return loop;
     return loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide?.classList.contains(c));
@@ -6603,7 +6444,7 @@ void main() {
       o.complete();
       return;
     }
-    if (waiting(o)) {
+    if (waiting2(o)) {
       o.reset();
       return;
     }
@@ -6860,9 +6701,9 @@ void main() {
   initTheme();
   var self = document.currentScript;
   if (EDITING) {
-    const script2 = document.createElement("script");
-    script2.src = self?.src ? new URL("editor.js", self.src).href : "theme/editor.js";
-    document.head.append(script2);
+    const script = document.createElement("script");
+    script.src = self?.src ? new URL("editor.js", self.src).href : "theme/editor.js";
+    document.head.append(script);
   }
   var Beeson = {
     start: start3,

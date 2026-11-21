@@ -1,11 +1,11 @@
 // checks of the plot element of src/plot.ts, i.e. the parser of the JSON script, the interpolation
-// between frames, the loop, and the markup of the labels. a plot of a test deck is played and
+// between frames, the loop, and the texts of the labels. a plot of a test deck is played and
 // printed in Chrome
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
-import { cells, formatNumber, frameAt, framesAt, loopFade, loopFrame, nearest, parseMarkup, parsePlot, scaled, timeAt, traceTo, valueAt } from '../src/plot.ts';
+import { cells, formatNumber, frameAt, framesAt, loopFade, loopFrame, nearest, parsePlot, plotTexts, scaled, timeAt, traceTo, valueAt } from '../src/plot.ts';
 
 const minimal = () => ({
   panels: [{ id: 'p', x: { range: [0, 1] }, y: { range: [0, 1] } }],
@@ -186,27 +186,18 @@ test('a trace is read as a list of points, or with the last frame of its faint l
   assert.throws(() => parsePlot(plot({ points: points.slice(1) })), { message: /^tabs\[0\]\.data\.m: 2 frames are given, and the tab has 3 values/ });
 });
 
-test('a label is set in runs of the markup', () => {
-  assert.deepEqual(parseMarkup('$\\lambda_h = 3$'), [
-    { text: 'λ', italic: true, shift: null },
-    { text: 'h', italic: true, shift: 'sub' },
-    { text: ' = 3', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$\\mathrm{L}_{12}$ family'), [
-    { text: 'L', italic: false, shift: null },
-    { text: '12', italic: false, shift: 'sub' },
-    { text: ' family', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$\\mathcal{EH}^{+}$ and $\\mathcal{N}$'), [
-    { text: 'ℰℋ', italic: false, shift: null },
-    { text: '+', italic: false, shift: 'sup' },
-    { text: ' and 𝒩', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$-1$ and -1'), [{ text: '−1 and -1', italic: false, shift: null }]);
-  assert.deepEqual(parseMarkup('$x^{2}$'), [
-    { text: 'x', italic: true, shift: null },
-    { text: '2', italic: false, shift: 'sup' },
-  ]);
+test('every text of a plot is listed once, for its formulas to be typeset ahead', () => {
+  const spec = minimal();
+  spec.parameter = { label: '$A$' };
+  spec.panels[0].title = 'panel';
+  spec.panels[0].x = { range: [0, 1], ticks: [0, { at: 1, text: '$x_1$' }], title: '$x$' };
+  spec.panels[0].labels = [{ at: [0, 0], text: '$\\LL{1}$' }];
+  spec.marks.push({ id: 'l', panel: 'p', kind: 'label' }, { id: 'e', panel: 'p', kind: 'events' });
+  spec.tabs[0].label = 'first';
+  spec.tabs[0].panels = { p: { title: '$p$' } };
+  spec.tabs[0].data.l = { at: [0, 0], text: ['$t = 0$', '$t = 1$'] };
+  spec.tabs[0].data.e = [{ frame: 1, at: [0, 0], text: 'crossing' }, { frame: 1, at: [1, 1], text: '$A$' }];
+  assert.deepEqual(plotTexts(parsePlot(spec)), ['$A$', 'panel', '$x$', '0', '$x_1$', '$\\LL{1}$', 'first', '$p$', '$t = 0$', '$t = 1$', 'crossing']);
 });
 
 test('a number is written with a minus sign, and without the sign of a zero', () => {
@@ -472,7 +463,7 @@ const reveals = (id) => `(() => {
     panels: panels.length,
     tabs: buttons.map((b) => [b.textContent, b.disabled, b.classList.contains('plot-hidden')]),
     tab: buttons.find((b) => b.getAttribute('aria-selected') === 'true')?.textContent ?? null,
-    title: [...view.el.querySelectorAll('.plot-title')].map((t) => t.textContent),
+    title: [...view.el.querySelectorAll('.plot-title')].map((t) => t.querySelector('[data-latex]')?.getAttribute('data-latex') ?? t.textContent),
     ticks: [...view.el.querySelectorAll('.plot-tick-mark')].map((t) => t.style.background),
     dimmed: ['a', 'b'].map((t) => label(t)?.classList.contains('plot-off') ?? null),
     dot: Number(view.el.querySelector('.plot-dot')?.getAttribute('cx')),
