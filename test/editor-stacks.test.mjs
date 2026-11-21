@@ -284,3 +284,32 @@ test('Make Stack refuses an element shown in more than one tab, and one inside a
   assert.match(await refusal(page), /the paragraph “In a column\.”.*column/);
   assert.equal(await rendered(page), page.source);
 });
+
+test('Delete Tab and Show on Every Tab keep the elements below the stack in place', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  await page.evaluate('Reveal.slide(4)');
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Below' && document.querySelectorAll('.beeson-step-tabs button:not(.add)').length === 2`);
+  await showTab(page, 0);
+  const place = (id) => page.evaluate(`(() => { const r = document.getElementById(${JSON.stringify(id)}).getBoundingClientRect(); return [r.left, r.top]; })()`);
+  const near = (now, was) => now.forEach((v, i) => assert.ok(Math.abs(v - was[i]) <= 0.5, `${now} against ${was}`));
+  const outside = (text) => text.replace(/<h2>Below<\/h2>[\s\S]*?<\/section>/, '');
+  const below = await place('below');
+  const tall = await place('tall-3');
+  await click(page, await center(page, '#tall-3'));
+  await page.waitFor(`window.BeesonEditor.selection()[0]?.id === 'tall-3'`);
+  await run(page, 'arrange.everyTab');
+  await page.waitFor(`document.getElementById('tall-3').parentElement.localName === 'section'`);
+  near(await place('tall-3'), tall);
+  near(await place('below'), below);
+  assert.equal(outside(await rendered(page)), outside(page.source));
+  await run(page, 'edit.undo');
+  await page.waitFor(`document.getElementById('tall-3').parentElement.parentElement.id === 'tall'`);
+  await page.evaluate(`${tab(0)}.focus()`);
+  await press(page, 'Delete');
+  await page.waitFor(`!document.getElementById('tall-1')`);
+  near(await place('below'), below);
+  const text = await rendered(page);
+  assert.equal(outside(text), outside(page.source));
+  assert.match(text, /<p id="below" style="translate: [^"]+">Below the stack\.<\/p>/);
+  assert.deepEqual(page.errors, []);
+});

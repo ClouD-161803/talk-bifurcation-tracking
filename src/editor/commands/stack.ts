@@ -44,6 +44,11 @@ export const drawnOf = (app: App, slide: Element): Element[] =>
 
 const flowParents = (slide: Element): Element[] => [slide, ...slide.querySelectorAll(FLOW_PARENT)];
 
+const placedOf = (app: App, slide: Element): Element[] => [
+  ...flowParents(slide).flatMap((p) => [...p.children]).filter((el) => app.pairing?.elements.get(el)?.open && !el.matches('aside.notes, .backdrop')),
+  ...drawnOf(app, slide),
+];
+
 function stackOfChild(child: Element | null): Element | null {
   const up = child?.parentElement;
   return up?.classList.contains(STACK) ? up : null;
@@ -96,7 +101,7 @@ async function deleteTab(app: App, given: Element | null): Promise<void> {
   const k = kin.indexOf(child);
   const shown = kin[k + 1] ?? kin[k - 1];
   const lone = kin.length === 2;
-  const keep = keepBoxes(app, [...drawnOf(app, slide).filter((el) => !child.contains(el)), ...(lone ? contentOf(shown) : [])]);
+  const keep = keepBoxes(app, [...placedOf(app, slide).filter((el) => !child.contains(el)), ...(lone ? contentOf(shown) : [])]);
   await app.history.keeping('Delete Tab', () => tabs.shown(slide), (pick) => tabs.show(slide, pick), async () => {
     await app.doc.remove(child, 'delete tab');
     if (lone) await unwrap(app, stack);
@@ -120,7 +125,7 @@ async function insertStack(app: App): Promise<void> {
   const els = wrappable(app);
   const slide = app.current();
   if (!els.length || !slide) return;
-  const keep = keepBoxes(app, [...els, ...drawnOf(app, slide)]);
+  const keep = keepBoxes(app, [...els, ...placedOf(app, slide)]);
   const [stack] = await app.doc.insert(`<div class="${STACK}"><div></div></div>`, els[0].parentElement as Element, els[0], 'insert stack');
   const child = stack.firstElementChild as Element;
   for (const el of els) await app.doc.move(el, child, null, 'insert stack');
@@ -147,7 +152,7 @@ async function setEveryTab(app: App): Promise<void> {
   const el = everyTabTarget(app);
   const slide = app.current();
   if (!el || !slide) return;
-  const keep = keepBoxes(app, [el, ...drawnOf(app, slide)]);
+  const keep = keepBoxes(app, [el, ...placedOf(app, slide)]);
   const stack = stackOfChild(el.parentElement);
   if (stack) await app.doc.move(el, stack.parentElement as Element, stack.nextSibling, 'show on every tab');
   else await app.doc.move(el, shownChild(slide) as Element, null, 'show on one tab');
@@ -192,8 +197,7 @@ async function makeStack(app: App): Promise<void> {
   const { slide, parent, ranges, moved } = c;
   const all = fragmentsOf(slide);
   const indexAt = (step: number) => fragmentIndex(all.find((f) => f.step === step && f.el.classList.contains('fragment'))!.el);
-  const flow = [...parent.children].filter((el) => app.pairing?.elements.get(el)?.open && !el.matches('aside.notes, .backdrop'));
-  const keep = keepBoxes(app, [...flow, ...drawnOf(app, slide)]);
+  const keep = keepBoxes(app, placedOf(app, slide));
   const tabs = tabsOf(app);
   const was = tabs.shown(slide).i;
   const kids = ranges.map((r) => (r.from ? `<div class="fragment" data-fragment-index="${indexAt(r.from)}"></div>` : '<div></div>'));
