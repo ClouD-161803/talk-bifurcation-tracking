@@ -2079,7 +2079,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.equal(await popupText(page, 'System'), 'Earth–Moon L2');
       assert.equal(await popupText(page, 'Plane'), null);
       assert.deepEqual(await ticks(page), []);
-      assert.deepEqual(await popupItems(page, 'System'), [['Earth–Moon L2', true], ['Sun–Earth L1', false]]);
+      assert.deepEqual(await popupItems(page, 'System'), [['Earth–Moon L2', true], ['Sun–Earth L1', false], ['Bicircular L1 (Horizontal)', false], ['Bicircular L1 (Vertical)', false]]);
       await press(page, 'Escape');
       const sun = await choose(page, 'System', 'Sun–Earth L1');
       assert.equal(tagOf(sun, CHAPTER), '<div class="backdrop" data-backdrop="poincare" data-system="sun-earth-l1">');
