@@ -85,7 +85,7 @@ export interface Notes {
 
 export interface MathPop {
   isOpen(): boolean;
-  open(container: Element, into?: Entry): void;
+  open(container: Element, into?: Entry, closed?: () => void): void;
   close(back?: boolean): void;
   setMath(container: Element, tex: string): Promise<void>;
   hold(): () => void;
