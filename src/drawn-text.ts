@@ -84,8 +84,15 @@ function named(node: Element, name: string): Element {
 }
 
 export function setPlotText(el: HTMLElement, source: string): void {
+  if (!mathjax()) {
+    waiting.delete(el);
+    el.textContent = source;
+    return;
+  }
   typeset(el, plotTex(source), (node) => {
-    if (node || !source) el.replaceChildren(...(node ? [named(node, source.replaceAll('$', ''))] : []));
+    if (node?.hasAttribute('data-mjx-error')) node.textContent = source;
+    else if (node) named(node, source.replaceAll('$', ''));
+    if (node || !source) el.replaceChildren(...(node ? [node] : []));
   });
 }
 
@@ -97,9 +104,11 @@ export function labelSource(label: Element): string {
 
 const shownAs = (label: Element, source: string) => label.childNodes.length === 1 && label.firstElementChild?.getAttribute(LABEL_SOURCE) === source;
 
+const marked = (label: Element) => [...label.children].some((child) => !child.hasAttribute(LABEL_SOURCE));
+
 export function typesetLabel(label: Element): Promise<void> {
   const source = labelSource(label);
-  if (!mathjax() || shownAs(label, source) || !source.trim()) return Promise.resolve();
+  if (!mathjax() || marked(label) || shownAs(label, source) || !source.trim()) return Promise.resolve();
   return new Promise((done) => typeset(label, labelTex(source), (node) => {
     if (node && labelSource(label) === source && !label.contains(document.activeElement)) {
       node.setAttribute(LABEL_SOURCE, source);
