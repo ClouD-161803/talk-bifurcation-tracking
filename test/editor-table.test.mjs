@@ -1610,7 +1610,7 @@ describe('a table selected as an object', () => {
     const was = (await page.evaluate(TABLE)).box;
     const at = await center(page, cellOf(2, 1));
     const hit = await page.evaluate(`(() => { const e = document.elementFromPoint(${at.x}, ${at.y}); return e ? [e.localName, ...e.classList].join('.') + (e.title ? \`[\${e.title}]\` : '') : null; })()`);
-    await page.evaluate(`window.__seen = []; for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'scroll']) addEventListener(t, (e) => { const k = e.type + ':' + (e.target?.localName ?? 'doc'); if (window.__seen.at(-1) !== k) window.__seen.push(k); }, true)`);
+    await page.evaluate(`window.__seen = []; for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchend', 'mousedown', 'mouseup', 'focusin', 'click', 'scroll']) addEventListener(t, (e) => { let q = e.target; const ch = []; while (q && ch.length < 9) { ch.push([q.localName, ...(q.classList ?? [])].join('.') + (q === e.target && 'clientX' in e ? '@' + e.clientX + ',' + e.clientY + (e.defaultPrevented ? '!' : '') : '')); q = q.parentElement; } const k = e.type + ':' + (e.type === 'click' || e.type === 'focusin' || e.type === 'mousedown' || e.type === 'mouseup' ? ch.join('<') : (e.target?.localName ?? 'doc')); if (window.__seen.at(-1) !== k) window.__seen.push(k); }, true)`);
     const touch = (k) => [{ x: at.x + 3 * k, y: at.y + 2 * k, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
     await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(0) });
     for (let k = 1; k <= 10; k++) await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(k) });
