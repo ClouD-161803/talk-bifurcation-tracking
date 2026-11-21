@@ -120,7 +120,7 @@ const R29 = 'test/pages/editor-r29-1.html';
 const GLUED = readFileSync(R29, 'utf8')
   .replaceAll('"../../theme/', '"theme/')
   .replace('<table><tr>', '<table data-anchor="a2"><tr>')
-  .replace('translate: 1300px 700px"></div>', 'translate: 1300px 700px" data-anchor="a1"></div>\n  <svg class="line" width="1148" height="360" style="translate: 252px 400px; z-index: 1" data-from="a1 0.5 0.5" data-to="a2 1 0.5"><defs><marker id="line-1" orient="auto-start-reverse"><path d="M-4-2.5 1 0-4 2.5z"></path></marker></defs><line x1="1148" y1="360" x2="0" y2="0"></line></svg>');
+  .replace('translate: 1300px 700px"></div>', 'translate: 1300px 700px" data-anchor="a1"></div>\n  <svg class="line" width="1148" height="357" style="translate: 252px 403px; z-index: 1" data-from="a1 0.5 0.5" data-to="a2 1 0.5"><defs><marker id="line-1" orient="auto-start-reverse"><path d="M-4-2.5 1 0-4 2.5z"></path></marker></defs><line x1="1148" y1="357" x2="0" y2="0"></line></svg>');
 
 test('words that move an attached line, taken back by one Backspace, leave the line where it was (#67)', { timeout: 120000 }, async (t) => {
   const page = await editorPage(browser, { deck: freshDeck(t, GLUED), text: GLUED, page: { width: 1600, height: 1000 } });
