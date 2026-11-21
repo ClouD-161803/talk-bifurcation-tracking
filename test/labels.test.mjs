@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { labelTex, plotTex, wordsTex } from '../src/drawn-text.ts';
 import { byteExact, center, click, editorPage, press, type } from './helpers/editor.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 
 test('the words of a drawn text are set in \\text, with the characters that TeX reads escaped', () => {
   assert.equal(wordsTex('Moon'), '\\text{Moon}');
@@ -97,6 +99,47 @@ describe('the labels of a drawing', () => {
     await page.evaluate('window.BeesonEditor.undo()');
     await settle(page);
     await byteExact(page);
+    assert.deepEqual(page.errors, []);
+  });
+
+  const MARKUP = '<span class="label" data-at="L2" data-dy="-34">L<sub>2</sub></span>';
+  const markupDeck = (t) => {
+    const text = readFileSync(DECK, 'utf8').replaceAll('../../', '').replace(L2_SOURCE, MARKUP);
+    return { text, deck: freshDeck(t, text) };
+  };
+
+  test('a label written with markup, as in older talks, is left as written and not typeset', { timeout: 60000 }, async (t) => {
+    const { deck } = markupDeck(t);
+    const page = await browser.newPage();
+    t.after(() => page.close());
+    await page.goto(deckUrl(deck, '', `/${SLIDE}`));
+    await page.waitFor(deckSettled);
+    await page.evaluate('MathJax.startup.promise.then(() => true)');
+    const shown = await page.evaluate(`(() => { const l = document.querySelector(${JSON.stringify(L2)}); const sub = l.querySelector('sub'); return [l.innerHTML, sub && getComputedStyle(sub).fontSize]; })()`);
+    assert.deepEqual(shown, ['L<sub>2</sub>', '19.6px']);
+    assert.deepEqual(page.errors, []);
+  });
+
+  test('a label written with markup is edited as a text element, and a save keeps every other byte', { timeout: 60000 }, async (t) => {
+    const { text, deck } = markupDeck(t);
+    const page = await editorPage(browser, { deck, text });
+    t.after(() => page.close());
+    await page.evaluate(`Reveal.slide(${SLIDE})`);
+    await settle(page);
+    assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(L2)}).innerHTML`), 'L<sub>2</sub>');
+    await byteExact(page);
+    const at = await center(page, L2);
+    await click(page, at);
+    await frames(page);
+    assert.deepEqual(await selected(page), ['label']);
+    await click(page, at);
+    await frames(page);
+    await press(page, 'Home');
+    await type(page, 'Gate ');
+    await press(page, 'Enter');
+    await settle(page);
+    assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(L2)}).innerHTML`), 'Gate L<sub>2</sub>');
+    await byteExact(page, [[MARKUP, MARKUP.replace('>L<sub>', '>Gate L<sub>')]]);
     assert.deepEqual(page.errors, []);
   });
 
