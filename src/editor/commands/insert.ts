@@ -653,13 +653,10 @@ export function install(app: App): void {
   // with an empty TeX at the close of the field is taken off again without an entry to redo, as a
   // Cancel of the Insert Equation window of Keynote
   const openTex = (node: Element, math: Element, entry: Entry | null) => {
-    app.math.open(math, entry ?? undefined);
-    const wait = window.setInterval(() => {
-      if (app.math.isOpen()) return;
-      window.clearInterval(wait);
+    app.math.open(math, entry ?? undefined, () => {
       markEmpty();
       if (entry && node.isConnected && node.classList.contains('beeson-empty')) void app.history.retract(entry).catch(fail);
-    }, 100);
+    });
   };
 
   onCaptionBox({ begin: (host) => begin('caption', host, null), drop });

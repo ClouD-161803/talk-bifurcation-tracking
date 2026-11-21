@@ -114,7 +114,7 @@ export interface MathPop {
   // text/mathpop.ts: the TeX field of a formula
   isOpen(): boolean;
   // into is the entry of the insert of a new formula, which its TeX is written into
-  open(container: Element, into?: Entry): void;
+  open(container: Element, into?: Entry, closed?: () => void): void;
   close(back?: boolean): void;
   setMath(container: Element, tex: string): Promise<void>;
   // holds the keys typed until the next open, which types them into its field, and returns the

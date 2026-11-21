@@ -217,7 +217,7 @@ export function texEditor(options: { display(): boolean; label: string; placehol
 // error to be shown at the field. with made, the sheet of a new formula, a click away commits a
 // TeX that is not empty, and made is selected after the commit. left is run after a click away
 // that closes the sheet without a commit
-type Sheet = { title: string; tex: string; display: boolean; open: string; close: string; primary: string; textEl(): Element; commit(tex: string): Promise<void>; done?(): void; made?: Element; left?(): void };
+type Sheet = { title: string; tex: string; display: boolean; open: string; close: string; primary: string; textEl(): Element; commit(tex: string): Promise<void>; done?(): void; made?: Element; left?(): void; closed?(): void };
 
 // the sheet is put at the right of the text column, over the figure of the slide, or at the left,
 // and above or below a text element that fills the slide. its width of 440 px fits at the right of the
@@ -283,6 +283,7 @@ export function install(app: App): void {
   injectStyle('mathpop', CSS);
   let popover: HTMLElement | null = null;
   let back: (() => void) | null = null;
+  let ended: (() => void) | null = null;
   let unplace: (() => void) | null = null;
   // the commit of the open sheet at a click away, or null for a close
   let away: (() => Promise<void>) | null = null;
@@ -332,8 +333,11 @@ export function install(app: App): void {
     bound = null;
     const restore = back;
     back = null;
+    const end = ended;
+    ended = null;
     if (focus) restore?.();
     app.invalidate('selection');
+    end?.();
   }
 
   // a TeX with an error, or with a delimiter of a formula in it, is refused before the slide is
@@ -447,6 +451,7 @@ export function install(app: App): void {
           }
         : null;
     leftOf = sheet.left ?? null;
+    ended = sheet.closed ?? null;
     bound = sheet.textEl;
     openFor = target;
     opened = target ? { field, tex: sheet.tex } : null;
@@ -482,7 +487,7 @@ export function install(app: App): void {
 
   // with into, the entry of the insert of a new formula, the TeX is written into this entry, and a
   // click away commits it
-  function openMath(container: Element, into?: Entry): void {
+  function openMath(container: Element, into?: Entry, closed?: () => void): void {
     const info = mathLookup()(container);
     if (!info) return;
     const fresh = !info.tex.trim();
@@ -514,6 +519,7 @@ export function install(app: App): void {
           })
         : (tex) => setMath(now(), tex),
       made: into ? textEl : undefined,
+      closed,
     }, container);
   }
 
