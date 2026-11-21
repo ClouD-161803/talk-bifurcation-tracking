@@ -17,18 +17,19 @@ const texts = (root) => `[...${root}.querySelectorAll('.plot-label, .plot-readou
   faults: el.querySelectorAll('mjx-merror, [data-mjx-error], [fill="red"]').length,
 }))`;
 
-test('the formulas in the texts of a plot are typeset by MathJax with the macros of the deck before the deck is settled', { timeout: 60000 }, async (t) => {
+test('each text of a plot is typeset by MathJax as one formula, its words in \\text, with the macros of the deck before the deck is settled', { timeout: 60000 }, async (t) => {
   const page = await browser.newPage();
   t.after(() => page.close());
   await page.goto(deckUrl('test/pages/plot-math.html', '', '/1'));
   await page.waitFor(deckSettled);
   const shown = await page.evaluate(texts('document'));
   const find = (tex) => shown.find((s) => s.tex.includes(tex));
-  assert.deepEqual(find('\\delta x'), { words: ' in km', tex: ['\\delta x'], focusable: false, faults: 0 });
-  assert.deepEqual(find('\\sat'), { words: 'the | family', tex: ['\\sat'], focusable: false, faults: 0 });
+  assert.deepEqual(find('\\delta x\\text{ in km}'), { words: '', tex: ['\\delta x\\text{ in km}'], focusable: false, faults: 0 });
+  assert.deepEqual(find('\\text{the }\\sat\\text{ family}'), { words: '', tex: ['\\text{the }\\sat\\text{ family}'], focusable: false, faults: 0 });
+  assert.ok(find('-\\text{1}'), JSON.stringify(shown));
   assert.deepEqual(find('\\vb{r}'), { words: '', tex: ['\\vb{r}'], focusable: false, faults: 0 });
   for (const tex of ['\\LL{1}', '\\alpha = -2.932', '\\alpha = \\pm 2.334\\,i']) assert.ok(find(tex), `${tex} in ${JSON.stringify(shown)}`);
-  assert.ok(shown.every((s) => !s.words.includes('$') && s.faults === 0), JSON.stringify(shown));
+  assert.ok(shown.every((s) => s.words === '' && s.tex.length === 1 && s.faults === 0), JSON.stringify(shown));
   assert.deepEqual(page.errors, []);
 });
 
@@ -68,6 +69,43 @@ test('a formula that MathJax does not typeset is shown as its TeX with the reaso
   await page.waitFor(`document.querySelector('.plot-readout [data-mjx-error]')`);
   const shown = await page.evaluate(`(() => { const e = document.querySelector('.plot-readout [data-mjx-error]'); return [e.textContent, e.dataset.mjxError]; })()`);
   assert.deepEqual(shown, ['$q$', 'the extension is not loaded']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a text with a formula that MathJax does not typeset is shown as written, not as the TeX of the whole text', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/plot-math.html', '', '/1'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    const typeset = MathJax.tex2svgPromise;
+    MathJax.tex2svgPromise = (tex, options) => (tex.endsWith('q') ? Promise.reject(new Error('the extension is not loaded')) : typeset(tex, options));
+    const spec = JSON.parse(document.getElementById('data').textContent);
+    spec.parameter.label = 'Energy $q$';
+    Beeson.plots[0].reload(JSON.stringify(spec));
+    Beeson.plots[0].fit();
+  })()`);
+  await page.waitFor(`document.querySelector('.plot-readout [data-mjx-error]')`);
+  const shown = await page.evaluate(`(() => { const e = document.querySelector('.plot-readout [data-mjx-error]'); return [e.textContent, e.dataset.mjxError]; })()`);
+  assert.deepEqual(shown, ['Energy $q$', 'the extension is not loaded']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('in a deck without MathJax, each text of a plot is set as written, with its formulas left between dollars', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/editor-plot-cell.html'));
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    const spec = JSON.parse(document.getElementById('circle').textContent);
+    Object.assign(spec.panels[0], { axes: true, title: 'Energy $q$', x: { range: [-1.5, 1.5], ticks: [{ at: 0.5, text: '0.5' }], title: 'Distance' } });
+    spec.parameter = { label: 'time' };
+    Beeson.plots[0].reload(JSON.stringify(spec));
+    Beeson.plots[0].fit();
+  })()`);
+  await page.waitFor(`[...document.querySelectorAll('.plot-label')].some((el) => el.textContent === 'Energy $q$')`);
+  const shown = await page.evaluate(`[...document.querySelectorAll('.plot-label, .plot-readout > span:first-child')].map((el) => [el.textContent, el.childElementCount])`);
+  for (const text of ['Energy $q$', '0.5', 'Distance', '$\\lambda$', 'time']) assert.ok(shown.some(([words, elements]) => words === text && elements === 0), `${text} in ${JSON.stringify(shown)}`);
   assert.deepEqual(page.errors, []);
 });
 

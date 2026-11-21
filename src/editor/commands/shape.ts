@@ -59,12 +59,12 @@ const choiceOf = (el: Element, family: [string, string, string | null][]): strin
 const choose = (family: [string, string, string | null][], id: string): Record<string, boolean> =>
   Object.fromEntries(family.filter(([, , cls]) => cls).map(([k, , cls]) => [cls!, k === id]));
 
-const TONES: [string, string, string | null][] = LINE_TONES.map(([t, label]) => [t, label, t === 'text' ? null : `tone-${t}`]);
-export const toneOfShape = (el: Element): string => choiceOf(el, TONES);
-export const isShapeTone = (tone: string): boolean => TONES.some(([t]) => t === tone);
+const shapeTones = (): [string, string, string | null][] => LINE_TONES.map(([t, label]) => [t, label, t === 'text' ? null : `tone-${t}`]);
+export const toneOfShape = (el: Element): string => choiceOf(el, shapeTones());
+export const isShapeTone = (tone: string): boolean => shapeTones().some(([t]) => t === tone);
 
 export function setShapeTone(app: App, els: Element[], tone: string): void {
-  for (const el of els) app.doc.setTag(el, { classes: choose(TONES, tone) }, 'Shape Color');
+  for (const el of els) app.doc.setTag(el, { classes: choose(shapeTones(), tone) }, 'Shape Color');
 }
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -334,7 +334,7 @@ export function install(app: App): void {
         },
       });
     });
-  family('tone', TONES, 'Shape Color', 'shape-tone', 80);
+  family('tone', shapeTones(), 'Shape Color', 'shape-tone', 80);
   family('fill', FILLS, 'Shape Fill', 'shape-fill', 90);
   const translucent = (el: Element) => el.classList.contains('fill-translucent');
   family('weight', WEIGHTS, 'Outline', 'shape-weight', 100, (el, id) => id !== '3' || !translucent(el), (el) => (translucent(el) && choiceOf(el, WEIGHTS) === '3' ? 'none' : choiceOf(el, WEIGHTS)));

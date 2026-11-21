@@ -3,6 +3,7 @@ import { mathReady, setContentWithTex } from '../math.ts';
 import { hasTex } from '../typeset.ts';
 import { fromPoint } from './flow.ts';
 import { showTex } from './shown-tex.ts';
+import { isLabel } from './labels.ts';
 import { injectStyle } from '../ui/dom.ts';
 
 const CSS = `
@@ -351,6 +352,11 @@ export function install(app: App): void {
       void pasteItems(app, ev.dataTransfer?.getData('text/plain') ?? '').catch((e) => app.fail(e));
       return;
     }
+    if ((type === 'insertParagraph' || type === 'insertLineBreak') && isLabel(host)) {
+      ev.preventDefault();
+      void app.commands.run('selection.leaveText').catch((e) => app.fail(e));
+      return;
+    }
     if (type === 'insertParagraph' || type === 'insertLineBreak') history.break();
     history.beforeTyping(host, type === 'insertFromPaste' ? 'Paste' : type === 'deleteByCut' ? 'Cut' : 'typing');
     if (type === 'insertText' && ev.data && !host.closest('pre') && typeBeforeSpace(host, ev.data)) ev.preventDefault();
@@ -443,7 +449,7 @@ export function install(app: App): void {
   });
   document.addEventListener('click', (ev) => {
     const host = app.hostOf(ev.target);
-    if (!host || !getSelection()?.isCollapsed || mathAt(ev.target as Node)) return;
+    if (ev.defaultPrevented || !host || !getSelection()?.isCollapsed || mathAt(ev.target as Node)) return;
     const at = fromPoint(ev.clientX, ev.clientY);
     const math = mathAt(at?.[0]) ?? nextMath(true) ?? nextMath(false);
     if (!math || !host.contains(math)) return;

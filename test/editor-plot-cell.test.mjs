@@ -22,7 +22,7 @@ test('a deck with a plot in a table cell is opened in the editor with every text
   const page = await editorPage(browser, { deck: 'test/pages/editor-plot-cell.html' });
   await click(page, 'td');
   await page.waitFor(`document.activeElement.matches('td[contenteditable]')`);
-  await click(page, '.plot svg');
+  await click(page, '.plot-area > svg');
   await page.waitFor(`!document.activeElement.closest('table') && !document.querySelector('.plot').closest('td').isContentEditable`);
   assert.deepEqual(page.errors, []);
 });
