@@ -59,7 +59,7 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
   ```sh
   uv run --with matplotlib,numpy,scipy python demo/figures.py .
   uv run --project ../tycho/code python demo/broucke.py
-  uv run --with pytycho==0.3.0,scipy python demo/tycho-scene.py index.html
+  uv run --with pytycho==0.3.1,scipy python demo/tycho-scene.py index.html
   ```
 - The files of `theme/backdrops/` are written by `demo/poincare.py` and `demo/tori.py` from files of sections and of orbits computed by DyLAN. These inputs and the scripts that call DyLAN are not in the repository, since nothing here may be derived from DyLAN code. An input is an `npz` file of NumPy with the keys read in `section` of `demo/poincare.py` and in `tori` of `demo/tori.py`, and `demo/poincare.py` takes one file per system.
 
