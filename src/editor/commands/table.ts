@@ -1241,6 +1241,7 @@ function installBars(app: App): void {
     }
     resize.on = true;
     for (const [cell, w] of sized(ev)) cell.style.width = `${Math.round(w)}px`;
+    overlay().draw();
   });
   const drop = (ev: PointerEvent | null) => {
     const r = resize;
@@ -1365,6 +1366,7 @@ function installBars(app: App): void {
       }
       r.on = true;
       widen(ev);
+      overlay().draw();
     });
     const end = (ev: PointerEvent | null) => {
       const r = widening;
@@ -1415,6 +1417,7 @@ function installBars(app: App): void {
     r.on = true;
     const h = heightOf(ev);
     r.tr.style.height = h === null ? '' : `${h}px`;
+    overlay().draw();
   });
   const dropRow = (ev: PointerEvent | null) => {
     const r = heightening;
