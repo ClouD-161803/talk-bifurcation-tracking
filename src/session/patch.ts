@@ -149,11 +149,12 @@ export function combine(first: Patch[], second: Patch[], base?: string): Patch[]
   return out;
 }
 
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[] } {
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false, twice = true): { patches: Patch[]; conflicts: Patch[]; dropped?: Patch[] } {
   const out = merged(theirs, ours, wins, base, nested, keep, twice);
   if (!base || [...theirs, ...ours].every(plain(base)) || balanced(apply(base, out.patches)) || !balanced(apply(base, theirs) + apply(base, ours))) return out;
   const k = ours.filter((p) => plain(base)(p) && !theirs.some((t) => conflict(p, t)));
-  return { patches: combine(theirs, k, base), conflicts: ours.filter((o) => !k.includes(o)) };
+  const dropped = ours.filter((o) => !k.includes(o));
+  return { patches: combine(theirs, k, base), conflicts: dropped, dropped };
 }
 
 const plain = (base: string) => (p: Patch) => !/</.test(p.text + base.slice(p.start, p.end));
