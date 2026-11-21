@@ -65,6 +65,8 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
   ```sh
   uv run --with numpy python demo/poincare.py earth-moon-l2 sections-earth-moon-l2.npz
   uv run --with numpy python demo/poincare.py sun-earth-l1 sections-sun-earth-l1.npz
+  uv run --with numpy python demo/poincare.py bicircular-l1-horizontal sections-bicircular-l1-horizontal.npz
+  uv run --with numpy python demo/poincare.py bicircular-l1-vertical sections-bicircular-l1-vertical.npz
   uv run --with numpy python demo/tori.py tori.npz
   ```
 - The clips of the demo deck are exported with tycho, as described in its CONTRIBUTING.md.
