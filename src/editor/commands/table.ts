@@ -17,7 +17,7 @@ import { injectStyle, make } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { closeMenus, menuOpen, openMenu, type MenuItem } from '../ui/menu.ts';
 import { columnPlace, freeFigureBox, meets, slideBox, takenBox, type Box as SlideBox } from './insert.ts';
-import { centerPlace, drawnCells, framed, MARGIN, piecesOf, wordBox } from './place.ts';
+import { FLOW_KIDS, centerPlace, drawnCells, framed, MARGIN, piecesOf, wordBox } from './place.ts';
 import { checkOverlaps } from '../overflow.ts';
 import { MARK } from './slide.ts';
 
@@ -391,7 +391,7 @@ function placeTable(app: App, table: HTMLTableElement): void {
   const drawn = slide.matches('.title, .section, .closing') ? [] : [...slide.querySelectorAll(':scope > .backdrop')].flatMap((b) => drawnCells(app, b));
   const above = [...parent.children].slice(0, [...parent.children].indexOf(table)).filter((el) => !el.matches('.run, .foot, [data-generated]'));
   const before = taken(above.filter((el) => !ground(el)));
-  const kids = [...slide.querySelectorAll(':scope > *, :scope > .col > *, :scope > .text-column > *, :scope > .title-text > *, :scope > .sec > *')].filter((el) => !el.contains(table));
+  const kids = [...slide.querySelectorAll(FLOW_KIDS)].filter((el) => !el.contains(table));
   const others = taken(kids.flatMap((el) => (ground(el) ? [...el.children].filter((c) => c.getClientRects().length) : [el])));
   const tw = t.right - t.left;
   const th = t.bottom - t.top;
