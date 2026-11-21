@@ -1,4 +1,5 @@
 import { TAU, clamp, smooth, type Extent, type Frame, type Kind } from './dotkind.ts';
+import type { ColormapName } from './trajectories.ts';
 
 export type PoincareData = {
   unit: number;
@@ -9,13 +10,16 @@ export type PoincareData = {
   counts: number[];
   rotation: number[][];
   range: [number, number];
-  vertical: number[][];
+  colormap?: ColormapName;
+  saddle?: boolean;
+  center: number[][];
   halos: number[][];
   points: string;
 };
 
 type State = {
   data: PoincareData;
+  colormap: ColormapName;
   points: Int16Array;
   perEnergy: number;
   offsets: number[];
@@ -27,7 +31,7 @@ type State = {
   halves: number[];
 };
 
-export const SYSTEMS = ['earth-moon-l2', 'sun-earth-l1'];
+export const SYSTEMS = ['earth-moon-l2', 'sun-earth-l1', 'bicircular-l1-horizontal', 'bicircular-l1-vertical'];
 export const systemOf = (value: string | null | undefined): string => (value && SYSTEMS.includes(value) ? value : SYSTEMS[0]);
 
 const RISE = 13;
@@ -37,6 +41,9 @@ const FASTEST_DOT = 330;
 const DOT = 1.4;
 const FIXED_POINT = 5.5;
 const FEWEST_HALF = 4;
+const SLOWEST_TURN = 0.004;
+const CROSS = 5;
+const TRIMS: Partial<Record<ColormapName, { light: [number, number]; dark: [number, number] }>> = { Blues_r: { light: [0, 0.5], dark: [0, 0.9] } };
 
 function decode(text: string): Int16Array {
   const binary = atob(text);
@@ -79,7 +86,7 @@ function prepare(data: PoincareData): State {
     return sum / ((energies - 1 - first) / (energies - 1));
   });
   const u = data.unit;
-  return { data, points, perEnergy, offsets, lengths, turned, extent: { x0: x0 * u, x1: x1 * u, y0: y0 * u, y1: y1 * u }, now: new Float32Array(perEnergy), halvesFor: '', halves: [] };
+  return { data, colormap: data.colormap ?? 'plasma', points, perEnergy, offsets, lengths, turned, extent: { x0: x0 * u, x1: x1 * u, y0: y0 * u, y1: y1 * u }, now: new Float32Array(perEnergy), halvesFor: '', halves: [] };
 }
 
 function draw(frame: Frame<State>, seconds: number, duration: number): void {
@@ -113,13 +120,14 @@ function draw(frame: Frame<State>, seconds: number, duration: number): void {
   }
 
   const [lo, hi] = data.range;
-  const rotation = between(data.rotation);
+  const trim = TRIMS[state.colormap]?.[colors.light ? 'light' : 'dark'];
+  const rotation = between(data.rotation).map((turn) => Math.max(SLOWEST_TURN, turn));
   data.counts.forEach((n, c) => {
     const aboutHalo = c >= data.central;
     if (aboutHalo && !born) return;
     const o = state.offsets[c];
     g.globalAlpha = shown * (aboutHalo ? born : 1);
-    g.fillStyle = colors.map('plasma', (rotation[c] - lo) / (hi - lo));
+    g.fillStyle = colors.map(state.colormap, (rotation[c] - lo) / (hi - lo), trim);
     g.beginPath();
     const half = Math.max(state.halves[c], Math.ceil(0.5 / rotation[c]) + 1);
     for (let j = -half; j < half; j++) {
@@ -155,9 +163,25 @@ function draw(frame: Frame<State>, seconds: number, duration: number): void {
   g.globalAlpha = shown * born;
   const halos = between(data.halos);
   if (born) for (const i of [0, 2]) fixedPoint(halos[i], halos[i + 1], true);
-  g.globalAlpha = shown;
-  const vertical = between(data.vertical);
-  fixedPoint(vertical[0], vertical[1], false);
+  const center = between(data.center);
+  const saddle = data.saddle ? born : 0;
+  g.globalAlpha = shown * (1 - saddle);
+  if (saddle < 1) fixedPoint(center[0], center[1], false);
+  if (saddle) {
+    const cx = X(center[0]), cy = Y(center[1]);
+    g.globalAlpha = shown * saddle;
+    g.lineCap = 'round';
+    for (const [width, color] of [[5.5, colors.ground], [2.5, colors.mark]] as const) {
+      g.beginPath();
+      for (const s of [1, -1]) {
+        g.moveTo(cx - CROSS, cy - CROSS * s);
+        g.lineTo(cx + CROSS, cy + CROSS * s);
+      }
+      g.lineWidth = width;
+      g.strokeStyle = color;
+      g.stroke();
+    }
+  }
   g.globalAlpha = 1;
 }
 
