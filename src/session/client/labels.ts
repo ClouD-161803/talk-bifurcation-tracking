@@ -1,6 +1,8 @@
+import { COLORS } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { bdi, make } from './dom.ts';
-import { toneOf } from './people.ts';
+
+export const toneOf = (color: number): string => `var(${COLORS[((color % 4) + 4) % 4]})`;
 
 export function dayLabel(t: number): string {
   const d = new Date(t);

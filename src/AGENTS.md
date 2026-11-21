@@ -6,13 +6,14 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 
 ## Bundles and vendored files
 
-- Each bundle of `theme/` is compiled by `build.mjs` from an entry point under `src/`. `theme/editor-tex.js` is loaded when a sheet or the bibliography list is first opened, `theme/editor-pdf.js` with `theme/vendor/pdfjs/pdf.js` at the first PDF and by `npm run tex`, and `theme/editor-session.js` when a page starts or joins a session. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
+- Each bundle of `theme/` is compiled by `build.mjs` from an entry point under `src/`. `theme/editor-tex.js` is loaded when a sheet or the bibliography list is first opened, `theme/editor-pdf.js` with `theme/vendor/pdfjs/pdf.js` at the first PDF and by `npm run tex`, `theme/editor-session.js` when a page starts or joins a session, and `theme/session-history.js` a few seconds after a page joins a session or when Version History is first opened, so that it opens offline as well. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`. Nothing of the editor is loaded in decks opened without `edit`.
 - Decks are opened as files, and from a file a module script, a worker, and a fetch of a file next to the deck do not work. Hence each library and each generated file loaded by a deck, e.g. `tex.js`, `figures/name.js`, and the trajectories of a backdrop, is a classic script.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`. The editor is loaded from this file at each `edit`.
 - The budget of `theme/editor.js` is set to catch a library bundled by mistake. Do not shorten code to fit it.
-- Keep `theme/session.js` and `theme/edit.mjs` under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
+- Keep `theme/session.js`, `theme/session-history.js`, and `theme/edit.mjs` under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
 - Let `theme/session.js` reach the editor only through `src/session/client/handover.ts`. From `src/editor/`, import only `merge.ts`, `tokens.ts`, and types. Any other module would be a second copy with separate state, and `build.mjs` fails on it.
+- Let `theme/session-history.js` take the modules of `theme/session.js` that keep state, e.g. `toast.ts`, `follow.ts`, and `presence.ts`, only from `src/session/client/history.ts`. It may share with `theme/session.js` only `src/editor/tokens.ts`, `protocol.ts`, `slides.ts`, `dom.ts`, and `labels.ts`, and `build.mjs` fails on any other module.
 - Let the engine of the port reach the editor only through `src/editor/session/host.ts`. Import a module of the editor into `session.ts`, `apply.ts`, or `tree.ts` only with `import type`. `theme/editor-session.js` may not share any module with `theme/editor.js`, and `build.mjs` fails on one.
 - Add what the session client needs from the editor as a small hook in `src/editor/session/`. Keep the drawing, the texts, and the styles in `src/session/client/`.
 - Keep the edit command and the relay free of dependencies. They are run on Node 20 and later, on Windows, macOS, and Linux.

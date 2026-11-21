@@ -1,8 +1,9 @@
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
-import { COLORS, nameKey, type Person } from '../protocol.ts';
+import { nameKey, type Person } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { fitClass, make, style } from './dom.ts';
 import { askTaken, claimOnReload, initials, nameField, rename } from './join.ts';
+import { toneOf } from './labels.ts';
 
 export { initials };
 
@@ -41,7 +42,6 @@ const CSS = `
 
 const morePeople = (n: number) => `${n} more ${n === 1 ? 'person' : 'people'}`;
 
-export const toneOf = (color: number): string => `var(${COLORS[((color % 4) + 4) % 4]})`;
 export const inkOf = (color: number): string => (((color % 4) + 4) % 4 === 2 ? '#fff' : '#1d1d1f');
 
 export function everyone(client: Client): Someone[] {

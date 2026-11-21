@@ -34,6 +34,7 @@ export type HistoryShell = {
   onCommand(fn: () => void): void;
   setMode(on: boolean, back?: () => void): void;
   canvas(): DOMRect;
+  load(): Promise<void>;
 };
 
 export type CommentsShell = {
