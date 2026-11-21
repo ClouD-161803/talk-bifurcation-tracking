@@ -83,7 +83,7 @@ html.beeson-cell-range .reveal *{user-select:none!important;-webkit-user-select:
 const BAR = 18;
 const GAP = 6;
 const GRIP = 9;
-const coarsePointer = (): boolean => matchMedia('(pointer: coarse), (hover: none)').matches;
+const coarsePointer = (): boolean => matchMedia('(pointer: coarse), (hover: none) and (any-pointer: coarse)').matches;
 
 type Target = { table: HTMLTableElement; cell: HTMLTableCellElement | null; box: Box | null };
 type Size = { rows: number; columns: number };
