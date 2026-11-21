@@ -28,7 +28,7 @@ test('the files of the repository do not have comments, and a bundle has only it
 
 test('each bundle opens with its legal banner', () => {
   const bundles = tracked.filter((f) => BUNDLES.test(f));
-  assert.equal(bundles.length, 7);
+  assert.equal(bundles.length, 8);
   for (const file of bundles) assert.match(readFileSync(join(root, file), 'utf8'), /^\/\*! \S+ \d+\.\d+\.\d+\S*, .+ MIT license\./, file);
 });
 
