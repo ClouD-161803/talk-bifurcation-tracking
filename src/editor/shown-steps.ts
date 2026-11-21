@@ -1,3 +1,4 @@
+import type { TabPick } from './app.ts';
 import { injectStyle } from './ui/dom.ts';
 
 export type StepRange = { from: number; to: number };
@@ -91,11 +92,14 @@ const CSS = `
 .beeson-step-tabs button { min-width: 24px; height: 26px; padding: 0 10px; border: 1px solid var(--ed-line); border-radius: 6px; background: var(--ed-panel); color: var(--ed-text); font: inherit; white-space: nowrap; cursor: default; }
 .beeson-step-tabs button:hover { background: var(--ed-bg); }
 .beeson-step-tabs button[aria-pressed="true"] { border-color: var(--ed-select); background: var(--ed-select); color: var(--ed-on-select); }
+.beeson-step-tabs button.add { min-width: 26px; padding: 0 8px; font-size: 15px; }
 .beeson-step-tabs button:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 `;
 const GAP = 4;
+const HOLD_MS = 500;
+export type TabAction = 'add' | 'menu' | 'delete' | 'make';
 
-export type Pick = { child: Element | null; i: number };
+export type Pick = TabPick;
 
 export class ShownSteps {
   readonly tabs = document.createElement('div');
@@ -103,6 +107,8 @@ export class ShownSteps {
   private readonly onChange: () => void;
   private readonly chosen = new WeakMap<Element, Pick>();
   private key = '';
+  private pressed = false;
+  act: ((what: TabAction, at: DOMRect, child: Element | null) => void) | null = null;
 
   constructor(slide: () => Element | null, onChange: () => void) {
     this.slide = slide;
@@ -138,23 +144,66 @@ export class ShownSteps {
     showRange(slide, ranges[at]);
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
     this.tabs.hidden = false;
-    const key = labels.join('|');
+    const stacked = stacksOf(slide).length > 0;
+    const key = [...labels, stacked ? '+' : 'make'].join('|');
     if (key !== this.key) {
       this.key = key;
-      this.tabs.replaceChildren(...labels.map((text, i) => {
+      const tabs = labels.map((text, i) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = text;
         b.title = `Show the slide as it is at step ${ranges[i].to}, without the elements hidden by then and those shown after it`;
         b.addEventListener('click', (ev) => {
           if (ev.detail > 0) b.blur();
+          if (this.pressed) {
+            this.pressed = false;
+            return;
+          }
           const now = this.slide();
           if (now) this.choose(now, i);
         });
+        const menu = () => {
+          const now = this.slide();
+          if (now) this.act?.('menu', b.getBoundingClientRect(), this.childAt(now, i));
+        };
+        b.addEventListener('contextmenu', (ev) => {
+          ev.preventDefault();
+          menu();
+        });
+        b.addEventListener('keydown', (ev) => {
+          if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const now = this.slide();
+          if (now) this.act?.('delete', b.getBoundingClientRect(), this.childAt(now, i));
+        });
+        b.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType !== 'touch') return;
+          this.pressed = false;
+          const timer = setTimeout(() => {
+            this.pressed = true;
+            menu();
+          }, HOLD_MS);
+          const end = () => clearTimeout(timer);
+          b.addEventListener('pointerup', end, { once: true });
+          b.addEventListener('pointercancel', end, { once: true });
+          b.addEventListener('pointerleave', end, { once: true });
+        });
         return b;
-      }));
+      });
+      const extra = document.createElement('button');
+      extra.type = 'button';
+      extra.className = stacked ? 'add' : 'make';
+      extra.textContent = stacked ? '+' : 'Make Stack';
+      extra.title = stacked ? 'Add a tab with a copy of the tab shown, just before the next tab' : 'Make the elements replaced on this slide a stack, with a tab for each version';
+      extra.setAttribute('aria-label', stacked ? 'Add Tab' : 'Make Stack');
+      extra.addEventListener('click', (ev) => {
+        if (ev.detail > 0) extra.blur();
+        this.act?.(stacked ? 'add' : 'make', extra.getBoundingClientRect(), null);
+      });
+      this.tabs.replaceChildren(...tabs, extra);
     }
-    this.tabs.querySelectorAll('button').forEach((b, i) => {
+    this.tabs.querySelectorAll('button:not(.add, .make)').forEach((b, i) => {
       b.setAttribute('aria-pressed', String(i === at));
       b.classList.toggle('on', i === at);
     });
@@ -176,6 +225,12 @@ export class ShownSteps {
     const ranges = slide ? rangesOf(slide) : [];
     if (slide && ranges.length > 1) this.choose(slide, ranges.length - 1);
     else this.refresh();
+  }
+
+  childAt(slide: Element, i: number): Element | null {
+    const range = rangesOf(slide)[i];
+    const kids = new Set(stacksOf(slide).flatMap(childrenOf));
+    return (range && fragmentsOf(slide).find((f) => kids.has(f.el) && shownAt(f, range.to))?.el) || null;
   }
 
   shown(slide: Element): Pick {
