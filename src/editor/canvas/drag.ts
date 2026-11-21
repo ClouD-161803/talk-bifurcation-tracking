@@ -9,6 +9,7 @@ import { afterMove, relink } from '../model/attach.ts';
 import { copiedGroups, groupsOf, scopeOf, within } from '../model/groups.ts';
 import { cornerBoxOf } from '../commands/align.ts';
 import { backdropAt, pressBackdrop } from '../commands/backdrop.ts';
+import { selectedRange } from '../commands/table.ts';
 import { placeCaretAt } from '../selection.ts';
 import { injectStyle } from '../ui/dom.ts';
 
@@ -593,6 +594,7 @@ export function install(app: App): void {
 
   const boxFirst = (el: Element): boolean => !el.matches('table') || !!groupOf(el) || (scopeOf().length > 0 && within(el));
   const editingIn = (el: Element): boolean => !!app.hostOf(document.activeElement) && el.contains(document.activeElement);
+  const heldTable = (el: Element): boolean => el.matches('table') && app.selection.only() === el && !editingIn(el) && !selectedRange(app);
 
   const pressCanvas = (ev: PointerEvent, target: Element) => {
     const sel = app.selection;
@@ -611,7 +613,7 @@ export function install(app: App): void {
         return;
       }
       if (ev.shiftKey || commandHeld(ev) || (boxFirst(el) && sel.only() !== el && !editing)) pressElement(ev, el, target);
-      else if (boxFirst(el) && sel.only() === el && !editing && !locked(el)) {
+      else if ((boxFirst(el) || heldTable(el)) && sel.only() === el && !editing && !locked(el)) {
         const { clientX: x, clientY: y } = ev;
         pressElement(ev, el, target, () => placeCaretAt(host, x, y));
       }
@@ -1017,7 +1019,7 @@ export function install(app: App): void {
   let under: Element | null = null;
   const pickCursor = () => {
     const el = pickOf(app, under);
-    const box = !!el && !!app.hostOf(under) && boxFirst(el) && !editingIn(el);
+    const box = !!el && !!app.hostOf(under) && (boxFirst(el) || heldTable(el)) && !editingIn(el);
     document.documentElement.classList.toggle('beeson-pick', box && !locked(el));
     document.documentElement.classList.toggle('beeson-pick-locked', box && locked(el) && app.selection.only() !== el);
   };
