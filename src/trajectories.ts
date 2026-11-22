@@ -1,4 +1,5 @@
 import { deckFile, themeFile } from './files.ts';
+import { FILED } from './backdrop-files.ts';
 import type { Trajectory, Tone } from './orbits.ts';
 
 export type TrajectoryData = {
@@ -421,7 +422,6 @@ const given = new Map<string, unknown>();
 const files = new Map<string, Promise<TrajectoryFile | null>>();
 
 export const HOME = typeof document === 'undefined' ? '' : ((document.currentScript as HTMLScriptElement | null)?.src ?? '');
-export const FILED = ['saddle'];
 export const builtInFile = (name: string): string => themeFile(`backdrops/${name}.js`);
 
 export function fileOf(el: HTMLElement): string | null {
@@ -437,7 +437,7 @@ export function register(data: unknown): void {
 
 function read(url: string, path: string): Promise<unknown> {
   const src = deckFile(url);
-  if (src === url && !/\.js$/i.test(new URL(url).pathname)) {
+  if (src === url && !/^(data|blob):/.test(url) && !/\.js$/i.test(new URL(url).pathname)) {
     if (location.protocol === 'file:') {
       return Promise.reject(
         new Error(

@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { start } from '../theme/edit.mjs';
+import { FILED } from '../src/backdrop-files.ts';
 import { post, raw, startEdit, talkFolder, until } from './helpers/session.mjs';
 
 const MB = 1024 * 1024;
@@ -226,4 +227,36 @@ test('a single web page of a video larger than 64 MB holds under 1 MB in memory'
   assert.equal(made.status, 200, made.text);
   const grown = held() - before;
   assert.ok(grown < MB, `the single web page holds ${(grown / MB).toFixed(2)} MB`);
+});
+
+test('the single web page of a deck with each built-in backdrop of a data file, opened from a file without a network, draws it, and holds no data of a backdrop that the deck does not use', { timeout: 300_000 }, async (t) => {
+  const lines = readFileSync('test-deck.html', 'utf8').split('\n');
+  const open = lines.findIndex((l) => l === '<div class="slides">');
+  const close = lines.findIndex((l, i) => i > open && l === '</div>');
+  const slides = FILED.map((name) => `<section>\n  <h2>${name}</h2>\n  <div class="backdrop" data-backdrop="${name}"></div>\n</section>`);
+  const { root, talk } = talkFolder(t, [...lines.slice(0, open + 1), ...slides, ...lines.slice(close)].join('\n'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const name of ['theme', 'brand', 'tex.js']) cpSync(resolve(name), join(talk, name), { recursive: true });
+  const running = await start({ folder: talk, port: 0, log: () => {} });
+  t.after(() => running.close());
+  const host = await hello(t, running.port, running.key, 'Host');
+  const { name, missing, bytes } = await download(running.port, running.key, host);
+  assert.deepEqual(missing, []);
+  const single = join(root, name);
+  writeFileSync(single, bytes);
+
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(single, '?still'));
+  await page.waitFor('window.Reveal?.isReady?.()', 120_000);
+  assert.deepEqual(JSON.parse(await page.evaluate('JSON.stringify(Object.keys(window.beesonFiles).filter((k) => k.startsWith("theme/backdrops/")).sort())')), FILED.map((n) => `theme/backdrops/${n}.js`).sort());
+  for (const [i, backdrop] of FILED.entries()) {
+    await page.evaluate(`Reveal.slide(${i}), true`);
+    await page.evaluate(deckSettled);
+    const state = JSON.parse(await page.evaluate(drawn));
+    assert.equal(state.text.trim(), backdrop);
+    assert.equal(state.backdrops[0], true, `the ${backdrop} backdrop is drawn`);
+  }
+  assert.deepEqual(page.errors, []);
 });

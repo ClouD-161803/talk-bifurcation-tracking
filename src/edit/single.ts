@@ -1,7 +1,7 @@
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { decodeAttr, tokenize, type Attr } from '../editor/tokens.ts';
-import { systemOf } from '../systems.ts';
+import { dataFileOf } from '../backdrop-files.ts';
 import { fileInside, MIME, segmentsOf } from './http.ts';
 import { Changed } from './zip.ts';
 
@@ -188,8 +188,9 @@ export async function singleOf(root: string, html: string, tex: string | null, l
         if (at) await keep(at.name, at.file);
         else missing.push(`TikZ figure ${value}`);
       }
-      if (a.name === 'data-backdrop' && attr(t.attrs, 'data-trajectories') === null && (value === 'poincare' || value === 'tori' || value === 'saddle')) {
-        const name = `theme/backdrops/${value === 'poincare' ? `poincare-${systemOf(attr(t.attrs, 'data-system'))}` : value}.js`;
+      const data = a.name === 'data-backdrop' && attr(t.attrs, 'data-trajectories') === null ? dataFileOf(value, attr(t.attrs, 'data-system')) : null;
+      if (data) {
+        const name = `theme/backdrops/${data}.js`;
         const at = await locate(name);
         if (at) await keep(at.name, at.file);
         else missing.push(`backdrop ${name}`);
