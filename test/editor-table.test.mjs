@@ -302,6 +302,24 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(page.errors, []);
   });
 
+  test(`a paste onto a cell selected with a click writes over its text, and a paste of rows from a spreadsheet fills the cells from it on (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await click(page, cellSelector(1, 0));
+    await paste(page, { 'text/plain': 'Axial' });
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r) => r.replace('Lyapunov', 'Axial')))]]);
+    await press(page, 'Mod+Z');
+    await settle(page);
+    assert.equal(await render(page), page.source, 'one undo takes the paste back');
+    await click(page, cellSelector(1, 0));
+    await paste(page, { 'text/plain': 'Axial\t1\r\nVertical\t2\r\n', 'text/html': '<table><tr><td>Axial</td><td>1</td></tr><tr><td>Vertical</td><td>2</td></tr></table>' });
+    await settled(page);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.reveal section.present table tr')].slice(1, 3).map((r) => r.textContent)`), ['Axial1', 'Vertical2']);
+    assert.deepEqual(page.errors, []);
+  });
+
   test(`an arrow key at the edge of a cell goes to the cell beside it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
