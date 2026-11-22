@@ -32,6 +32,7 @@ const clip = (page, type) => page.evaluate(`(() => {
 })()`);
 
 async function choose(page, paths) {
+  await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
   await page.evaluate(`window.__done = window.BeesonEditor.exec('insert.image').then(() => true); 0`);
   await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
   const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
@@ -59,7 +60,8 @@ test('Insert Image on a selected cell puts the picture in the cell, as wide as i
   await click(page, body(2, 0));
   assert.equal(await clip(page, 'paste'), true, 'the paste onto the cell is not taken by the editor');
   await settle(page);
-  await page.waitFor(`!!document.querySelector(${js(`${body(2, 0)} img`)})`, 5000);
+  await page.waitFor(`document.querySelector(${js(`${body(2, 0)} img`)})?.naturalWidth > 0`, 5000);
+  await settle(page);
   text = await render(page);
   assert.match(text.match(/<tr><td>[^\n]*center/)[0], IMG, 'the pasted cell has no picture');
 
