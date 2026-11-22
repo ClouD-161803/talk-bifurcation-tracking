@@ -24,6 +24,7 @@ import { forDeck, get, initSwitcher, initTheme, set, toggle } from './switcher.t
 import { coverAll, initVideos } from './video.ts';
 import { typesetLabel } from './drawn-text.ts';
 import { initViewers } from './viewers.ts';
+import { exported, themeFile, unpackLarge } from './files.ts';
 import type { RevealOptions, SlideEvent } from './reveal.d.ts';
 
 function numberOf(slide: HTMLElement | null | undefined, counted: HTMLElement[]): [string, string, string] {
@@ -90,7 +91,8 @@ const surfaces: (Surface | Bundle)[] = [];
 onRestore(() => { for (const s of surfaces) s.draw(); });
 const plots: PlotView[] = [];
 
-const EDITING = new URLSearchParams(location.search).has('edit');
+if (exported()) unpackLarge();
+const EDITING = !exported() && new URLSearchParams(location.search).has('edit');
 const PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has('from-editor');
 const RECEIVER = window.parent !== window && /receiver/i.test(location.search);
 const TAB = !EDITING && window.parent === window && !!window.opener && new URLSearchParams(location.search).has('from-editor');
@@ -378,11 +380,17 @@ function syncViewers(theme: string): void {
 
 initTheme();
 
-const self = document.currentScript as HTMLScriptElement | null;
 if (EDITING) {
   const script = document.createElement('script');
-  script.src = self?.src ? new URL('editor.js', self.src).href : 'theme/editor.js';
+  script.src = themeFile('editor.js');
   document.head.append(script);
+} else if (exported() && new URLSearchParams(location.search).has('edit')) {
+  const told = document.createElement('dialog');
+  told.className = 'beeson-not-editable';
+  told.textContent = 'This single web page cannot be edited. To edit the talk, open index.html in its talk folder and add ?edit to its address.';
+  told.addEventListener('click', () => told.close());
+  document.body.append(told);
+  told.show();
 }
 
 const Beeson = {

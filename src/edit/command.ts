@@ -16,6 +16,7 @@ import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 import { deriveTex, TexWriter } from './tex.ts';
 import { FigureWatcher, type Box } from './figures.ts';
+import { Single, singleOf, SingleTooLarge } from './single.ts';
 import { Changed, MOST_FILES, TooLarge, zipOf, type Zip } from './zip.ts';
 
 export const DEFAULT_PORT = 8765;
@@ -299,7 +300,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     relay = next;
   }
 
-  const zips = new Map<string, { id: string; zip: Zip; timer: ReturnType<typeof setTimeout> }>();
+  const zips = new Map<string, { id: string; zip: Zip | Single; timer: ReturnType<typeof setTimeout> }>();
   const dropZip = (client: string) => {
     clearTimeout(zips.get(client)?.timer);
     zips.delete(client);
@@ -345,8 +346,28 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
       return json(200, { id, size: zip.size, name: `${zipName}.zip` });
     }
+    if (route === 'single') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const tex = deriveTex(root, authority.text);
+      let built;
+      try {
+        built = await singleOf(root, authority.text, tex.sources && !tex.unread.length ? tex.text : null, ZIP_MAX);
+      } catch (e) {
+        if (!(e instanceof SingleTooLarge)) throw e;
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The single web page would be ${size} MB, over the limit of ${Math.floor(ZIP_MAX / MB)} MB for a download.`);
+      }
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (zipsFull(built.single.held)) return error(503, 'The edit command is busy with other downloads. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      zips.set(client, { id, zip: built.single, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: built.single.size, name: `${zipName}.html`, missing: built.missing });
+    }
     const held = zips.get(client);
-    if (!held || held.id !== route.slice('zip/'.length)) return error(404, 'the zip is not kept any more');
+    if (!held || held.id !== route.slice(route.indexOf('/') + 1)) return error(404, 'the zip is not kept any more');
     if (request.method === 'DELETE') {
       dropZip(client);
       return json(200, {});
@@ -357,7 +378,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     clearTimeout(held.timer);
     held.timer = dropAfter(client, held.id, ZIP_KEPT);
     try {
-      return { status: 200, headers: { 'Content-Type': 'application/zip', 'Cache-Control': 'no-store' }, body: await held.zip.piece(at, ZIP_PIECE) };
+      return { status: 200, headers: { 'Content-Type': held.zip instanceof Single ? 'application/octet-stream' : 'application/zip', 'Cache-Control': 'no-store' }, body: await held.zip.piece(at, ZIP_PIECE) };
     } catch (e) {
       if (!(e instanceof Changed)) throw e;
       dropZip(client);
@@ -627,7 +648,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
-    if (route === 'zip' || route.startsWith('zip/')) return zipApi(route, request);
+    if (/^(zip|single)(\/|$)/.test(route)) return zipApi(route, request);
     if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
     if (route.startsWith('source/')) return sourceApi(route.slice('source/'.length), request);
     if (route === 'events') {

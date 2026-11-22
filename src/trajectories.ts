@@ -1,3 +1,4 @@
+import { deckFile, themeFile } from './files.ts';
 import type { Trajectory, Tone } from './orbits.ts';
 
 export type TrajectoryData = {
@@ -421,7 +422,7 @@ const files = new Map<string, Promise<TrajectoryFile | null>>();
 
 export const HOME = typeof document === 'undefined' ? '' : ((document.currentScript as HTMLScriptElement | null)?.src ?? '');
 export const FILED = ['saddle'];
-export const builtInFile = (name: string): string => (HOME ? new URL(`backdrops/${name}.js`, HOME).href : `theme/backdrops/${name}.js`);
+export const builtInFile = (name: string): string => themeFile(`backdrops/${name}.js`);
 
 export function fileOf(el: HTMLElement): string | null {
   if (el.dataset.trajectories !== undefined) return el.dataset.trajectories;
@@ -435,7 +436,8 @@ export function register(data: unknown): void {
 }
 
 function read(url: string, path: string): Promise<unknown> {
-  if (!/\.js$/i.test(new URL(url).pathname)) {
+  const src = deckFile(url);
+  if (src === url && !/\.js$/i.test(new URL(url).pathname)) {
     if (location.protocol === 'file:') {
       return Promise.reject(
         new Error(
@@ -448,12 +450,12 @@ function read(url: string, path: string): Promise<unknown> {
       return r.json();
     });
   }
-  if (given.has(url)) return Promise.resolve(given.get(url));
+  if (given.has(src)) return Promise.resolve(given.get(src));
   return new Promise((done, fail) => {
     const script = document.createElement('script');
-    script.src = url;
+    script.src = src;
     script.onload = () =>
-      given.has(url) ? done(given.get(url)) : fail(new Error(`${path} does not call Beeson.trajectories`));
+      given.has(src) ? done(given.get(src)) : fail(new Error(`${path} does not call Beeson.trajectories`));
     script.onerror = () => fail(new Error('it was not found'));
     document.head.append(script);
   });

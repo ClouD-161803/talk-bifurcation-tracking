@@ -631,7 +631,7 @@ test('the end of the session closes the dialog of a download that is on its way 
   assert.deepEqual(await refused.evaluate('window.__saved'), []);
 });
 
-test('a page that edits without a session does not have Talk Folder…, and Export To lists PDF…, HTML…, and PowerPoint…', { timeout: 300_000 }, async (t) => {
+test('a page that edits without a session does not have Talk Folder…, and Export To lists PDF…, Editable HTML…, and PowerPoint…', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const { root } = talkFolder(t);
@@ -650,7 +650,49 @@ test('a page that edits without a session does not have Talk Folder…, and Expo
       try { E.state('file.export.folder'); } catch { defined = false; }
       return { session: !!window.BeesonSession, defined, items: window.BeesonEditorShell.menuItems('File', 'Export To').map((i) => E.state(i.command).label) };
     })()`);
-    assert.deepEqual(seen, { session: false, defined: false, items: ['PDF…', 'HTML…', 'PowerPoint…'] }, url);
+    assert.deepEqual(seen, { session: false, defined: false, items: ['PDF…', 'Editable HTML…', 'PowerPoint…'] }, url);
     await page.close();
   }
+});
+
+test('a guest downloads the single web page through the relay with its last edit, the bytes that the host gets, and the deck of the file is shown alone', { timeout: 600_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const server = await zipTalk(t, { relay });
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const guest = await editorOn(browser, server.guestUrl, { name: 'Ben' });
+  const dir = join(server.root, 'guest downloads');
+  await downloadsTo(guest, dir);
+  await show(guest, 'Figures');
+  await caretAtEnd(guest, H2('Figures'));
+  await type(guest, ' and a guest');
+  await choose(guest, ['File', 'Export To', 'Single Web Page…']);
+  const single = await downloaded(dir, `${NAME}.html`);
+  const told = `${NAME}.html holds the whole talk. Open it with a double click, without the talk folder and without a network.`;
+  await guest.waitFor(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open]')].some((d) => d.querySelector('h3')?.textContent === 'Single Web Page' && d.querySelector('p').textContent === ${JSON.stringify(told)})`, 60_000);
+  assert.deepEqual(await guest.evaluate('window.__saved'), [`${NAME}.html`]);
+  const html = single.toString('utf8');
+  assert.match(html, /<h2>Figures are first class citizens, too and a guest<\/h2>/);
+  await until(() => relay.held() === 0, 'the relay to hold no bytes');
+
+  const hello = await fetch(`http://127.0.0.1:${server.edit.port}/${server.edit.key}/.session/hello`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Host' }) });
+  const { token } = await hello.json();
+  const made = await (await fetch(`http://127.0.0.1:${server.edit.port}/${server.edit.key}/.session/single?token=${token}`, { method: 'POST' })).json();
+  const pieces = [];
+  for (let at = 0; at < made.size; at += 2 * MB) pieces.push(Buffer.from(await (await fetch(`http://127.0.0.1:${server.edit.port}/${server.edit.key}/.session/single/${made.id}?token=${token}&at=${at}`)).arrayBuffer()));
+  assert.ok(Buffer.concat(pieces).equals(single), 'the guest gets the bytes of the host');
+
+  const alone = join(server.root, 'alone');
+  mkdirSync(alone);
+  writeFileSync(join(alone, `${NAME}.html`), single);
+  const offline = await launch();
+  t.after(() => offline.close());
+  const page = await offline.newPage();
+  await page.goto(deckUrl(join(alone, `${NAME}.html`), '?still'));
+  await page.waitFor('window.Reveal?.isReady?.()', 120_000);
+  await page.evaluate(deckSettled);
+  assert.equal(await page.evaluate('Reveal.getTotalSlides()'), 3);
+  assert.ok(await page.evaluate(`[...document.querySelectorAll('.reveal h2')].some((h) => h.textContent === 'Figures are first class citizens, too and a guest')`));
+  assert.deepEqual(page.errors, []);
 });

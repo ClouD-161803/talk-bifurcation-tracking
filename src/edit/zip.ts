@@ -29,8 +29,8 @@ const STORED = 0;
 const DEFLATED = 8;
 
 export class Changed extends Error {
-  constructor(name: string) {
-    super(`The file ${name} changed while the talk folder was downloaded. Try again.`);
+  constructor(name: string, what = 'the talk folder was downloaded') {
+    super(`The file ${name} changed while ${what}. Try again.`);
   }
 }
 
@@ -165,7 +165,8 @@ async function readRange(entry: Entry, from: number, to: number): Promise<Buffer
   const handle = await open(s.file, 'r').catch(() => null);
   if (!handle) throw new Changed(entry.name);
   try {
-    if ((await handle.stat()).size !== fileBytes) throw new Changed(entry.name);
+    const info = await stat(s.file).catch(() => null);
+    if (!info || info.size !== fileBytes || info.mtime.getTime() !== s.mtime.getTime()) throw new Changed(entry.name);
     for (let at = a; at < b; ) {
       const { bytesRead } = await handle.read(out, at - from, b - at, at - head);
       if (bytesRead === 0) throw new Changed(entry.name);

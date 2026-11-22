@@ -426,6 +426,12 @@ One `section` of the deck, shown one at a time in the show.
 
 Avoid "page" for a slide, since a page is a page of the browser or of `slides.pdf`.
 
+## Single web page
+
+One HTML file that holds the whole talk, with every file that the deck draws written in it, so that it is shown without the talk folder and without a network. It is downloaded in a session with File > Export To > Single Web Page…, after the Single File Web Page of PowerPoint, and it cannot be edited.
+
+Avoid "HTML…" for File > Export To > Editable HTML…, which saves a copy of `index.html` that can be edited.
+
 ## Slide Sorter
 
 The view of the editor in which every slide is shown as a thumbnail in a grid, grouped by section, to select and reorder the slides and the sections, as in PowerPoint and Keynote.

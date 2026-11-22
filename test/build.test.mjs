@@ -118,16 +118,16 @@ test('theme/editor-session.js is under 40 kB', () => {
   assert.ok(size < 40 * 1024, `theme/editor-session.js is ${Math.round(size / 1024)} kB`);
 });
 
-test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', () => {
+test('theme/edit.mjs is under 260 kB and starts nothing when it is imported', () => {
   const size = statSync(resolve('theme/edit.mjs')).size;
-  assert.ok(size < 256 * 1024, `theme/edit.mjs is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 260 * 1024, `theme/edit.mjs is ${Math.round(size / 1024)} kB`);
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', "const m = await import(process.argv[1]); console.log(typeof m.Authority, typeof m.Replica, typeof m.diff)", pathToFileURL(resolve('theme/edit.mjs')).href], { encoding: 'utf8', timeout: 30_000 });
   assert.equal(out.trim(), 'function function function');
 });
 
-test('theme/session.js is under 266 kB', () => {
+test('theme/session.js is under 268 kB', () => {
   const size = statSync(resolve('theme/session.js')).size;
-  assert.ok(size < 266 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 268 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
 });
 
 test('theme/session-history.js is under 41 kB', () => {
