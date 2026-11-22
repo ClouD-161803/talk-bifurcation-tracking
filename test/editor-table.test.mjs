@@ -344,6 +344,29 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
+  test(`Smaller on words selected in a cell sets them small and gray, and Bigger sets them back (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await clickText(page, cellSelector(1, 0));
+    const pick = () => page.evaluate(`(() => { const text = document.querySelector(${js(cellSelector(1, 0))}).firstChild; const r = document.createRange(); r.setStart(text, 3); r.setEnd(text, 8); getSelection().removeAllRanges(); getSelection().addRange(r); document.dispatchEvent(new Event('selectionchange')); })()`);
+    await pick();
+    await settle(page);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.bigger')`)).enabled, false);
+    await page.evaluate(`window.BeesonEditor.exec('text.smaller')`);
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r) => r.replace('Lyapunov', 'Lya<span class="small">punov</span>')))]]);
+    const look = await page.evaluate(`(() => { const s = getComputedStyle(document.querySelector('.reveal section.present td .small')); const c = getComputedStyle(document.querySelector(${js(cellSelector(1, 0))})); return { small: parseFloat(s.fontSize) < parseFloat(c.fontSize), gray: s.color !== c.color }; })()`);
+    assert.deepEqual(look, { small: true, gray: true });
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.smaller')`)).enabled, false, 'Smaller is enabled on words already small');
+    await roundTrip(page);
+    await page.evaluate(`(() => { const span = document.querySelector('.reveal section.present td .small'); const r = document.createRange(); r.selectNodeContents(span); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+    await settle(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.bigger')`);
+    await settle(page);
+    assert.equal(await render(page), page.source, 'Bigger does not take the small words back');
+  });
+
   test(`an arrow key at the edge of a cell goes to the cell beside it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
