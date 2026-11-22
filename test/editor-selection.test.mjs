@@ -586,7 +586,7 @@ describe('the move cursor and the I-beam', () => {
     await settle(page);
     assert.notDeepEqual(await handle(page), to, 'the list left of the handle is not hovered');
 
-    await click(page, await words(page, 'td'));
+    await clickText(page, await words(page, 'td'));
     await settle(page);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('td')`), true, 'the cell does not take the caret');
     await toHandle(page);
