@@ -385,7 +385,7 @@ export class Frames {
     this.entered.hidden = !inside.length;
     if (inside.length) place(this.entered, grow(groupFrame(inside, 0), 1));
     const host = app.hostOf(document.activeElement);
-    const typed = host?.closest('.reveal .slides') && !host.closest('aside.notes') && !selected.some((el) => el.contains(host)) ? host : null;
+    const typed = host?.closest('.reveal .slides') && !host.closest('aside.notes') && !host.matches('td, th') && !selected.some((el) => el.contains(host)) ? host : null;
     this.caret.hidden = !typed;
     if (typed) place(this.caret, grow(typed.getBoundingClientRect(), 6));
 

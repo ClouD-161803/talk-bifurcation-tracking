@@ -326,6 +326,47 @@ describe('popovers, the fill handle, and cell frames', () => {
     });
   }
 
+  for (const theme of ['dark', 'light']) {
+    test(`the bars and frames of a table take the tones of the slide in ${theme} mode under a dark editor, without the violet of the menus`, async (t) => {
+      const page = await browser.newPage({ width: 1400, height: 860 });
+      t.after(() => page.close().catch(() => {}));
+      await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+      await page.goto(`${server.origin}/test/pages/editor-tables.html?edit&still&theme=${theme}`);
+      await page.waitFor(deckSettled);
+      await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+      await page.evaluate('Reveal.slide(1)');
+      await frames(page);
+      await clickText(page, '.reveal section.present tr:nth-child(3) > td');
+      await page.waitFor(`!!document.querySelector('.beeson-table-bars:not([hidden]) .cell')`);
+      const shown = (sel) => `[...document.querySelectorAll('.beeson-table-bars ${sel}')].filter((e) => e.getClientRects().length)`;
+      const cols = await rectOf(page, '.beeson-table-bars .bar.cols > [data-index="1"]');
+      await click(page, middle(cols));
+      await page.waitFor(`${shown('.bar.cols > .on')}.length === 1`);
+      const read = await page.evaluate(`(() => {
+        const lum = (c) => { const k = c.startsWith('color(srgb') ? 1 : 255; const [r, g, b] = c.match(/[\\d.]+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / k; };
+        const style = (el, pseudo) => getComputedStyle(el, pseudo);
+        const els = [...${shown('.bar')}, ...${shown('.round')}, ...${shown('.cell')}, ...${shown('.corner')}, ...${shown('.grip')}];
+        const paints = els.flatMap((el) => [null, '::after'].map((p) => { const s = style(el, p); return [s.color, s.backgroundColor, s.borderTopColor, s.boxShadow].join(' '); }));
+        const probe = document.createElement('div');
+        probe.style.color = 'var(--ed-select)';
+        document.body.append(probe);
+        const violet = style(probe).color;
+        probe.remove();
+        return {
+          bar: lum(style(${shown('.bar.cols')}[0]).backgroundColor),
+          bg: lum(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().replace(/^#(..)(..)(..)$/, (m, r, g, b) => 'rgb(' + [r, g, b].map((h) => parseInt(h, 16)).join(',') + ')')),
+          violet: paints.filter((p) => p.includes(violet)).length,
+          violetColor: violet,
+          frames: ${shown('.cell')}.length + document.querySelectorAll('.beeson-overlay .beeson-frame.caret:not([hidden])').length,
+        };
+      })()`);
+      assert.equal(read.violet, 0, `a control of the table is painted in ${read.violetColor}`);
+      assert.ok(Math.abs(read.bar - read.bg) < 0.12, `the bars at a luminance of ${read.bar} are not near the slide at ${read.bg}`);
+      assert.equal(read.frames, 1, 'the cell is framed twice');
+      assert.deepEqual(page.errors, []);
+    });
+  }
+
   const sizeFields = (page) => page.evaluate(`Object.fromEntries([...document.querySelectorAll('dialog.beeson-table-size input')].map((i) => [i.name, i.value]))`);
 
   for (const platform of PLATFORMS) {
