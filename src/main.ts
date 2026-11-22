@@ -152,7 +152,7 @@ function animated(o: Backdrop, slide: Element | null = o.el.closest('section')):
   if (waiting(o) || held(o, slide)) return false;
   const loop = o.el.hasAttribute('data-loop');
   if (slide?.hasAttribute('data-auto-animate')) return loop;
-  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c)) || cuesOf(slide).length > 0 || !!slide?.querySelector('.fragment[data-backdrop-state]');
+  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c)) || cuesOf(slide).length > 0 || (o instanceof Dots && o.stated && !!slide?.querySelector('.fragment[data-backdrop-state]'));
 }
 
 function playBackdrop(o: Backdrop, slide: HTMLElement): void {

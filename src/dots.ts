@@ -241,6 +241,10 @@ export class Dots {
     this.redraw();
   }
 
+  get stated(): boolean {
+    return !!this.kind.states;
+  }
+
   sync(animate: boolean): void {
     const { states, initial, sync } = this.kind;
     if (!states || !initial || !sync || this.state === null) return;

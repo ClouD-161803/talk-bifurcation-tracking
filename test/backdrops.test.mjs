@@ -851,6 +851,23 @@ test('the normal form is moved to the state of each step as it is shown, and its
   assert.deepEqual(page.errors, []);
 });
 
+test('a fragment with a backdrop state does not trace a backdrop that has no states', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(DOTS));
+  await page.waitFor(deckSettled);
+  const animated = await page.evaluate(`(() => {
+    const o = Beeson.backdrops.find((b) => b.el.dataset.system === 'sun-earth-l1');
+    const f = document.createElement('p');
+    f.className = 'fragment';
+    f.dataset.backdropState = 'linear';
+    o.el.closest('section').append(f);
+    return Beeson.animated(o);
+  })()`);
+  assert.equal(animated, false);
+});
+
 test('each page of the print view draws the normal form in the state of its step', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
