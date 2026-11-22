@@ -146,6 +146,16 @@ export function install(app: App): void {
   format('underline', 'Underline', 11.5, { mac: ['Mod+U'], other: ['Mod+U'] });
   format('code', 'Code', 12, {});
   format('strike', 'Strikethrough', 13, { mac: ['Mod+Shift+X'], other: ['Alt+Shift+5'] });
+  define({
+    id: 'text.boxed',
+    label: 'Boxed',
+    in: FORMAT,
+    menu: menu('font', 13.5),
+    undoable: true,
+    enabled: (a) => !onMath(a) && inline.inlineTargets(a).length > 0,
+    checked: (a) => inline.boxedOn(a),
+    run: (a) => inline.toggleBoxed(a),
+  });
   format('superscript', 'Superscript', 20, { mac: ['Ctrl+Mod++', 'Ctrl+Mod+='], other: ['Mod+.'] }, 'Baseline');
   format('subscript', 'Subscript', 21, { mac: ['Ctrl+Mod+-'], other: ['Mod+,'] }, 'Baseline');
 
@@ -156,9 +166,9 @@ export function install(app: App): void {
     in: FORMAT,
     menu: menu('size', 30),
     undoable: true,
-    enabled: (a) => textElements.canStep(a, true) || carry.canStep(a, true) || carry.canSizeCode(a, true),
+    enabled: (a) => inline.canSizeInCell(a, true) || textElements.canStep(a, true) || carry.canStep(a, true) || carry.canSizeCode(a, true),
     why: (a) => textElements.styleWhy(a, 'Bigger', true),
-    run: (a) => (carry.canSizeCode(a, true) ? carry.sizeCode(a, true) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, true)) : textElements.setStyle(a, (s) => textElements.stepped(s, true))),
+    run: (a) => (inline.canSizeInCell(a, true) ? inline.sizeInCell(a, true) : carry.canSizeCode(a, true) ? carry.sizeCode(a, true) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, true)) : textElements.setStyle(a, (s) => textElements.stepped(s, true))),
   });
   define({
     id: 'text.smaller',
@@ -167,9 +177,9 @@ export function install(app: App): void {
     in: FORMAT,
     menu: menu('size', 31),
     undoable: true,
-    enabled: (a) => textElements.canStep(a, false) || carry.canStep(a, false) || carry.canSizeCode(a, false),
+    enabled: (a) => inline.canSizeInCell(a, false) || textElements.canStep(a, false) || carry.canStep(a, false) || carry.canSizeCode(a, false),
     why: (a) => textElements.styleWhy(a, 'Smaller', false),
-    run: (a) => (carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
+    run: (a) => (inline.canSizeInCell(a, false) ? inline.sizeInCell(a, false) : carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
   });
 
   const boxes = (a: App) => a.selection.elements().filter(isShape);

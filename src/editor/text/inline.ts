@@ -24,7 +24,11 @@ export type FormatName = keyof typeof FORMATS;
 
 export const isLink: Match = tagIs('a');
 
-export const CLEARED: Match = (el) => tagIs('strong', 'b', 'em', 'i', 'sup', 'sub', 'code', 'u', 's', 'strike', 'mark')(el) || isTone(el);
+export const isSmall: Match = (el) => el.localName === 'span' && el.classList.length === 1 && el.classList[0] === 'small';
+
+export const isBoxed: Match = (el) => el.localName === 'span' && el.classList.length === 1 && el.classList[0] === 'boxed';
+
+export const CLEARED: Match = (el) => tagIs('strong', 'b', 'em', 'i', 'sup', 'sub', 'code', 'u', 's', 'strike', 'mark')(el) || isTone(el) || isSmall(el) || isBoxed(el);
 
 const BREAKING = 'ul, ol, li, p, div, table, pre, h1, h2, h3, h4, h5, h6, mjx-container';
 const INNER = 'li, p, div, td, th, pre, h1, h2, h3, h4, h5, h6';
@@ -241,6 +245,46 @@ export function toggle(app: App, name: FormatName): void {
     if (on) return setFormat(host, range, f.match, null);
     const match: Match = pair ? (el) => f.match(el) || pair(el) : f.match;
     return setFormat(host, range, match, () => document.createElement(f.tag));
+  });
+}
+
+const cellTargets = (app: App): Target[] => inlineTargets(app).filter((t) => t.host.matches('td, th'));
+
+export function canSizeInCell(app: App, up: boolean): boolean {
+  const targets = cellTargets(app);
+  return targets.length > 0 && targets.every((t) => formatted(t.host, t.range, isSmall)) === up;
+}
+
+export function sizeInCell(app: App, up: boolean): void {
+  edit(app, cellTargets(app), (host, range) => setFormat(host, range, isSmall, up ? null : () => {
+    const span = document.createElement('span');
+    span.className = 'small';
+    return span;
+  }));
+}
+
+export function boxedOn(app: App): boolean {
+  const targets = inlineTargets(app);
+  return targets.length > 0 && targets.every((t) => formatted(t.host, t.range, isBoxed));
+}
+
+export function toggleBoxed(app: App): void {
+  const on = boxedOn(app);
+  edit(app, inlineTargets(app), (host, range) => {
+    const nodes = setFormat(host, range, isBoxed, on ? null : () => {
+      const span = document.createElement('span');
+      span.className = 'boxed';
+      return span;
+    });
+    return nodes.map((n) => {
+      if (!(n instanceof Element) || !isBoxed(n) || n.childNodes.length !== 1) return n;
+      const tone = n.firstElementChild;
+      if (!tone || !isTone(tone)) return n;
+      n.replaceWith(tone);
+      n.append(...tone.childNodes);
+      tone.append(n);
+      return tone;
+    });
   });
 }
 

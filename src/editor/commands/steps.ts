@@ -2,6 +2,7 @@ import type { App } from '../app.ts';
 import { CHILD, moveTo, oneByOne, placedIndex, setFinal, setIndexReader, setStart, setStep, shift, stepAt, type Plan, type Start } from '../shown-steps.ts';
 import type { TagEdit } from '../tags.ts';
 import { docOf } from './slide.ts';
+import { selectedRows } from './table.ts';
 import { AFTER_DEFAULT, MIN_DELAY, WITH_SLIDE, afterable, carryDelays, classesOf, deliverPlan, deliveryOf, delaysOf, PLAYED, effectEdit, effectOf, indexIn, listItems, listOf, modelAt, modelOf, startAt, writePlan, type Delivery, type Effect, type Model, type StartKind, type Steps } from '../steps.ts';
 
 type Arg = { el?: Element } & Record<string, unknown>;
@@ -25,8 +26,9 @@ function change(app: App, arg: unknown, fn: (plan: Plan, i: number) => Plan): vo
 function itemsOf(app: App, arg: unknown): { m: Model; items: { el: Element; i: number }[] } | null {
   const sel = app.selection;
   const many = !((arg as Arg | undefined)?.el instanceof Element) && sel.kind === 'elements' && sel.items.length > 1;
-  const els = many ? [...new Set(sel.items.flatMap((el) => itemOf(app, { el }) ?? []))] : [itemOf(app, arg)].flatMap((el) => el ?? []);
-  const m = els.length ? modelOf(app, els[0].closest('section')) : null;
+  const rows = (arg as Arg | undefined)?.el instanceof Element ? null : selectedRows(app);
+  const els = rows ?? (many ? [...new Set(sel.items.flatMap((el) => itemOf(app, { el }) ?? []))] : [itemOf(app, arg)].flatMap((el) => el ?? []));
+  const m = els.length ? modelOf(app, els[0].closest('section'), rows ?? []) : null;
   const items = m ? els.map((el) => ({ el, i: indexIn(m, el) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i) : [];
   return m && items.length ? { m, items } : null;
 }
@@ -57,6 +59,7 @@ function listAt(app: App, arg: unknown): Element | null {
   const el = given instanceof Element ? given : sel.only() ?? (sel.kind === 'text' ? sel.items[0] ?? null : null);
   const list = listOf(el);
   const paired = (x: Element) => !!app.pairing?.elements.get(x)?.open;
+  if (list?.localName === 'table' && !listItems(list).length) return null;
   return list && paired(list) && listItems(list).every(paired) ? list : null;
 }
 
@@ -199,12 +202,15 @@ export function install(app: App): void {
       if (m) writePlan(a, m, setStep(m.plan, m.i, to));
     },
   });
-  const all = (a: App) => itemsOf(a, undefined)?.items ?? [];
+  const all = (a: App) => {
+    const s = itemsOf(a, undefined);
+    return s ? s.items.map(({ i }) => stepsIn(s.m, i).length > 0) : [];
+  };
   c.define({
     id: 'steps.add',
     label: 'Add as Last Step',
     context: ['element'],
-    enabled: (a) => all(a).some(({ el }) => !stepped(a, { el })),
+    enabled: (a) => all(a).some((on) => !on),
     undoable: true,
     run: (a, arg) => changeEach(a, arg, join('last')),
   });
@@ -212,7 +218,7 @@ export function install(app: App): void {
     id: 'steps.remove',
     label: 'Show with Slide',
     context: ['element'],
-    enabled: (a) => all(a).some(({ el }) => stepped(a, { el })),
+    enabled: (a) => all(a).some((on) => on),
     undoable: true,
     run: (a, arg) => {
       const s = itemsOf(a, arg);
@@ -276,7 +282,8 @@ export function install(app: App): void {
     id: 'steps.listDelivery',
     label: (a) => {
       const list = listAt(a, undefined);
-      return list && deliveryOf(a, list) === 'item' ? 'Show List All at Once' : 'Show List Item by Item';
+      const table = list?.localName === 'table';
+      return list && deliveryOf(a, list) === 'item' ? `Show ${table ? 'Table' : 'List'} All at Once` : table ? 'Show Table Row by Row' : 'Show List Item by Item';
     },
     context: ['element', 'text'],
     enabled: (a) => !!listAt(a, undefined),

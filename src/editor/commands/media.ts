@@ -1,7 +1,9 @@
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { display } from '../keymap.ts';
-import { ACCEPT, capturePoster, chooseFiles, insertFiles, ownColors, replaceFile, rerenderPdf } from '../media/actions.ts';
+import { ACCEPT, capturePoster, chooseFiles, insertFiles, ownColors, pictureText, replaceFile, rerenderPdf } from '../media/actions.ts';
+import { cellForPicture, pictureInCell } from './table.ts';
+import { isPdf, kindOf } from '../media/store.ts';
 import { install as installDrop } from '../media/drop.ts';
 import { install as installSave } from '../media/save.ts';
 import { media } from '../media/store.ts';
@@ -85,7 +87,11 @@ export function install(app: App): void {
   const ready = (a: App) => !!a.pairing?.root && !!a.current() && a.region() !== 'dialog';
   const insert = (accept: string, multiple: boolean) => async (a: App, arg: unknown) => {
     const files = filesOf(arg) ?? (await chooseFiles(accept, multiple));
-    if (files.length) await insertFiles(a, files);
+    if (!files.length) return;
+    const cell = files.length === 1 && kindOf(files[0]) === 'image' && !isPdf(files[0]) ? cellForPicture(a) : null;
+    const html = cell ? await pictureText(a, files[0]) : null;
+    if (cell && html) await a.history.transact('Insert Image', () => pictureInCell(a, cell, html));
+    else await insertFiles(a, files);
   };
   const list: Command[] = [
     {

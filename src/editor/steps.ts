@@ -142,12 +142,20 @@ function codeIndex(app: App, m: Model, plan: Plan, after: Item[], code: Element,
 
 export type Delivery = 'all' | 'item';
 export const DELIVERIES: [Delivery, string][] = [['all', 'List All at Once'], ['item', 'List Item by Item']];
+const ROW_DELIVERIES: [Delivery, string][] = [['all', 'Table All at Once'], ['item', 'Table Row by Row']];
+export const deliveriesOf = (list: Element): [Delivery, string][] => (list.localName === 'table' ? ROW_DELIVERIES : DELIVERIES);
 
-export const listItems = (list: Element): Element[] => [...list.children].filter((c) => c.localName === 'li');
+const bodyRow = (tr: HTMLTableRowElement) => !tr.closest('thead') && ![...tr.cells].every((c) => c.localName === 'th');
+
+export const listItems = (list: Element): Element[] =>
+  list instanceof HTMLTableElement ? [...list.rows].filter((tr) => tr.closest('table') === list && bodyRow(tr)) : [...list.children].filter((c) => c.localName === 'li');
 
 export function listOf(el: Element | null): Element | null {
+  let inList = false;
   for (let up = el; up && up.localName !== 'section'; up = up.parentElement) {
-    if (!up.matches('ul, ol')) continue;
+    if (up.localName === 'table' && inList) return null;
+    if (!up.matches('ul, ol, table')) continue;
+    inList ||= up.localName !== 'table';
     const outer = up.parentElement?.closest(`${CANDIDATES}, ${OUTSIDE}, section`);
     if (outer?.localName === 'section') return up;
   }
@@ -527,7 +535,7 @@ function runsOf(m: Model): Run[] {
   const out: Run[] = [];
   const seen = new Set<Element>();
   m.els.forEach((el) => {
-    const list = el.localName === 'li' ? el.parentElement : null;
+    const list = el.localName === 'li' ? el.parentElement : el.localName === 'tr' ? el.closest('table') : null;
     if (!list || seen.has(list) || listOf(el) !== list) return;
     seen.add(list);
     const items = listItems(list).map((li) => m.els.indexOf(li));
@@ -942,7 +950,7 @@ export class Steps {
     if (!list || !app.pairing?.elements.get(list)?.open) return [];
     const now = deliveryOf(app, list);
     const run = (by: Delivery | null) => () => void app.commands.run('steps.deliver', { el: list, by }).catch((e) => app.fail(e));
-    return DELIVERIES.map(([by, label]): MenuItem => ({ label, checked: now === by, run: run(by) }));
+    return deliveriesOf(list).map(([by, label]): MenuItem => ({ label, checked: now === by, run: run(by) }));
   }
 
   private openDelivery(h: Head, keyboard: boolean): void {

@@ -32,6 +32,12 @@ The file `references.bib` next to the deck, from which the references of its cit
 
 Avoid "library" and "references file".
 
+## Boxed text
+
+Words framed by a thin rounded box in their own color, over a faint tint of it, e.g. "open problem" in a cell of a table. It is the class `boxed` on a `span`.
+
+Avoid "badge", which is the count of the threads of an element, and avoid "chip" and "pill".
+
 ## Chip
 
 A small rounded tile with a short text, e.g. the initials of a person on a collapsed name flag, or the tint behind inline code.
