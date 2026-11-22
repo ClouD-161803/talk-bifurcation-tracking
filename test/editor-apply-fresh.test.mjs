@@ -82,6 +82,22 @@ test('a slide that becomes a vertical stack, and back, looks as on a fresh page'
   ]);
 });
 
+test('the code box of a slide made a stack on a page in the background is numbered before the page draws a frame', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const other = await editorPage(browser);
+  t.after(() => other.close());
+  await front(other);
+  const slide = slideWith(b.source, 'Code boxes');
+  assert.ok(slide?.includes('data-line-numbers'), 'the slide of the code box is found');
+  const text = once(b.source, slide, `<section>\n${slide}\n<section>\n  <h2>Below</h2>\n  <p>A slide below.</p>\n</section>\n</section>`);
+  const got = await b.evaluate(`${E}.loadSession().then(() => ${E}.apply(${JSON.stringify(text)})).then((r) => {
+    const pre = [...document.querySelectorAll('.reveal pre')].find((p) => p.querySelector(':scope > code[data-line-numbers]'));
+    return { reload: r.reload, visibility: document.visibilityState, lines: pre?.getAttribute('data-beeson-lines'), digits: pre?.getAttribute('data-beeson-digits') };
+  })`);
+  assert.deepEqual(got, { reload: false, visibility: 'hidden', lines: '1\n2\n3\n4\n5\n6\n7\n8\n9', digits: '1' });
+});
+
 test('a changed parameter or a new label of a surface asks for a reload, and a changed camera does not', async (t) => {
   await steps(t, [['a mass ratio', (s) => once(s, 'data-function="effective-potential" data-mu="0.05">', 'data-function="effective-potential" data-mu="0.3">'), true]]);
   await steps(t, [['a label', (s) => once(s, '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n  </div>\n  <aside class="notes">The mass ratio', '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n    <span class="label" data-at="L1">Extra</span>\n  </div>\n  <aside class="notes">The mass ratio'), true]]);

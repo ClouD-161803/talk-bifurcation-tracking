@@ -419,9 +419,12 @@ export function install(app: App): void {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      numberLines(app);
       paint(app);
     });
+  };
+  const refresh = () => {
+    numberLines(app);
+    later();
   };
   let pending: { code: Element; before: string; finish: () => void } | null = null;
   const settle = () => {
@@ -456,8 +459,8 @@ export function install(app: App): void {
     }
   }, true);
   window.addEventListener('input', settle);
-  app.onRefresh(['content', 'slide', 'structure'], later);
+  app.onRefresh(['content', 'slide', 'structure'], refresh);
   app.listen('slide', later);
-  document.addEventListener('input', later, true);
-  later();
+  document.addEventListener('input', refresh, true);
+  refresh();
 }
