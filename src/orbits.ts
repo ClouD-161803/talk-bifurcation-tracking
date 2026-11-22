@@ -755,7 +755,9 @@ export class Orbits {
   private draw(ctx: CanvasRenderingContext2D, c: Colors, now: number, inks = this.inks, trail: HTMLCanvasElement | null = null, above: HTMLCanvasElement | null = null): void {
     ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, this.W, this.H);
-    this.bodies(ctx, c);
+    const under = !!trail && !this.lead;
+    if (under) ctx.drawImage(trail, 0, 0);
+    else this.bodies(ctx, c);
     const tracing = this.midTrace;
     const paint = (i: number, from: number) => {
       const s = this.trajectories[i], n = s.times.length, j = this.drawn(i);
@@ -771,7 +773,7 @@ export class Orbits {
       this.stroke(ctx, i, n - 1, 0, from);
     };
     for (let i = 0; i < this.lead; i++) paint(i, 0);
-    if (trail) {
+    if (trail && !under) {
       ctx.globalAlpha = 1;
       ctx.drawImage(trail, 0, 0);
     }
@@ -792,6 +794,7 @@ export class Orbits {
       trail.height = this.H;
       const ctx = trail.getContext('2d');
       if (!ctx) return Orbits.drop(trail);
+      if (!this.lead) this.bodies(ctx, c);
       for (let i = this.lead; i < this.cached; i++) {
         if (!this.upTo[i]) continue;
         this.pen(ctx, c, i);
