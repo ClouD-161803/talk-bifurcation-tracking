@@ -96,7 +96,7 @@ async function load(n = 0, { query = 'edit&still&theme=light' } = {}) {
   await waitFor(deckSettled, 30000);
   await waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 30000);
   const s = await evaluate(`window.BeesonEditor.open(${js(SOURCE)})`);
-  if (s.problems.length) throw new Error(`blocks not paired: ${js(s.problems)}`);
+  if (s.problems.length) throw new Error(`elements not paired: ${js(s.problems)}`);
   if (n) await evaluate(`(Reveal.slide(${n}), true)`);
   await frames();
 }
@@ -233,7 +233,7 @@ try {
 
   for (const p of ['mac', 'other']) {
     platform = p;
-    await check(`present: after the show, the arrow keys nudge a selected block and Mod+Z undoes, without a click (${p})`, async () => {
+    await check(`present: after the show, the arrow keys nudge a selected element and Mod+Z undoes, without a click (${p})`, async () => {
       await load(2);
       await click('.reveal section.present > p');
       await press('Escape');
@@ -246,7 +246,7 @@ try {
       await press('ArrowRight');
       await frames();
       const style = await evaluate(`document.querySelector('.reveal section.present > p').getAttribute('style')`);
-      expect(/translate/.test(style ?? ''), `ArrowRight does not nudge the block (style ${style}, focus on ${await evaluate('document.activeElement?.localName')})`);
+      expect(/translate/.test(style ?? ''), `ArrowRight does not nudge the element (style ${style}, focus on ${await evaluate('document.activeElement?.localName')})`);
       await press('Mod+Z');
       await frames();
       await byteExact('after Mod+Z');
@@ -328,7 +328,7 @@ try {
     const left = b.left + (b.width - w) * px, top = b.top + (b.height - h) * py;
     return { left, top, right: left + w, bottom: top + h, width: w, height: h };
   })(${shownImg})`;
-  await check('smoke: a click on the picture of slide 5 selects its figure with its caption, in one frame', async () => {
+  await check('smoke: a click on the image of slide 5 selects its figure with its caption, in one frame', async () => {
     await load(4);
     await click(IMG);
     await frames();
@@ -340,10 +340,10 @@ try {
       const inside = (r) => r.left >= f.left - 1 && r.right <= f.right + 1 && r.top >= f.top - 1 && r.bottom <= f.bottom + 1;
       const cap = fig.querySelector('.caption, figcaption');
       const box = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round).join(',');
-      return inside(${drawn}) && (!cap || inside(cap.getBoundingClientRect())) ? true : 'frame ' + box(f) + ', picture ' + box(${drawn}) + ', caption ' + (cap ? box(cap.getBoundingClientRect()) : 'none');
+      return inside(${drawn}) && (!cap || inside(cap.getBoundingClientRect())) ? true : 'frame ' + box(f) + ', image ' + box(${drawn}) + ', caption ' + (cap ? box(cap.getBoundingClientRect()) : 'none');
     })()`);
-    expect(sel.length === 1 && n === 1 && holds === true, `selection ${js(sel)}, ${n} frames, picture and caption in the frame: ${holds}`);
-    return `selected ${sel[0]}, one frame around picture and caption`;
+    expect(sel.length === 1 && n === 1 && holds === true, `selection ${js(sel)}, ${n} frames, image and caption in the frame: ${holds}`);
+    return `selected ${sel[0]}, one frame around image and caption`;
   });
 
   await check('smoke: a drag moves the figure, and Mod+Z takes the move back', async () => {
@@ -355,7 +355,7 @@ try {
     await frames();
     const after = await centerOf(IMG);
     const moved = [after.x - before.x, after.y - before.y].map(Math.round);
-    expect(Math.abs(moved[0] + 80) <= 12 && Math.abs(moved[1] - 40) <= 12, `the picture moved by ${moved}`);
+    expect(Math.abs(moved[0] + 80) <= 12 && Math.abs(moved[1] - 40) <= 12, `the image moved by ${moved}`);
     const text = await render();
     expect(/translate/.test(text) && text !== SOURCE, 'the move is not written');
     await press('Mod+Z');
@@ -494,7 +494,7 @@ try {
     return `table ${shape[1]} by ${shape[0]}, Tab from ${js(c0)} to ${js(c1)}, Esc selects the table, undone`;
   });
 
-  await check('smoke: View > Object List lists the objects of the slide', async () => {
+  await check('smoke: View > Object List lists the elements of the slide', async () => {
     await load(4);
     await openBar('View');
     await choose('Object List');

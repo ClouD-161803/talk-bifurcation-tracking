@@ -215,7 +215,7 @@ test('a recording is on a slide of one still, and the pictures of the words need
   assert.throws(() => pptx([{ ...recorded(), images: [Buffer.from([1]), Buffer.from([2])] }]),
     /^Error: Recorded: a slide with a recording has one image, the still under it, and not 2$/);
   assert.throws(() => pptx([{ ...recorded(), recording: undefined }]),
-    /^Error: Recorded: a slide with tops, the pictures of its words, needs a recording under them$/);
+    /^Error: Recorded: a slide with tops, the images of its words, needs a recording under them$/);
 });
 
 test('every XML part of a file with a recording is well formed, as read by xmllint', (t) => {
