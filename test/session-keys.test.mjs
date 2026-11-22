@@ -27,7 +27,9 @@ const KNOWN = {
   'table.previousCell text.outdent text.tabBack | text Shift+Tab': 'Shift+Tab outdents an item of a list, moves to the cell before in a table, and is a tab elsewhere, which is off in a cell',
   'text.flow.delete text.joinBackward | text Backspace': 'a selection over several text elements is deleted first, and Backspace joins two paragraphs otherwise',
   'text.flow.delete text.joinForward | text Delete': 'a selection over several text elements is deleted first, and Delete joins two paragraphs otherwise',
-  'math.openFocused text.flow.newParagraph text.newParagraph | text Enter': 'Return opens the TeX of a formula with the focus first, a selection over several text elements is replaced by a new paragraph next, and Return splits the text element otherwise',
+  'math.openFocused table.enterBelow text.flow.newParagraph text.newParagraph | text Enter': 'Return opens the TeX of a formula with the focus first, selects the cell below with the caret in a cell, replaces a selection over several text elements by a new paragraph next, and splits the text element otherwise',
+  'selection.next table.selectNext | canvas Tab': 'a range of cells takes Tab first and selects the next cell, as Excel does, and Tab selects the next element otherwise',
+  'selection.previous table.selectPrevious | canvas Shift+Tab': 'a range of cells takes Shift+Tab first and selects the cell before, as Excel does, and Shift+Tab selects the element before otherwise',
 };
 
 const COMMANDS = `(() => {
