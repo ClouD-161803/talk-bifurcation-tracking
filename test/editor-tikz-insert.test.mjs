@@ -94,12 +94,12 @@ async function session(t, { tex = true } = {}) {
   return { page, read, talk: folder.talk };
 }
 
-test('Insert > TikZ Figure tells that TeX is not found on the computer of the host', { timeout: 120000 }, async (t) => {
+test('Insert > TikZ Figure tells that TeX is not found on the host machine', { timeout: 120000 }, async (t) => {
   const { page, read } = await session(t, { tex: false });
   for (const id of ['insert.tikzData', 'insert.tikzFile', 'insert.tikzBlank']) {
     await page.evaluate(`${E}.exec(${JSON.stringify(id)})`);
     await wait(page);
-    assert.equal(await message(page), 'TeX with latex and dvisvgm is not found on the computer of the host');
+    assert.equal(await message(page), 'TeX with latex and dvisvgm is not found on the host machine');
   }
   assert.equal(read('figures/figure.tex'), null);
 });

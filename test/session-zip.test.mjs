@@ -341,7 +341,7 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     assert.deepEqual(said.at(-1), { text: DONE, buttons: ['Done'] });
     const shown = texts(said);
     const size = (zip.length / MB).toFixed(1);
-    assert.deepEqual(shown.slice(0, 2), ['Sending your last changes…', 'The zip is being built on the computer of the host…']);
+    assert.deepEqual(shown.slice(0, 2), ['Sending your last changes…', 'The zip is being built on the host machine…']);
     const progress = shown.slice(2, -1);
     assert.ok(progress.length >= 2, `the progress reads ${JSON.stringify(progress)}`);
     for (const line of progress) assert.match(line, new RegExp(`^Downloading ${NAME}\\.zip: \\d+\\.\\d of ${size.replace('.', '\\.')} MB$`));

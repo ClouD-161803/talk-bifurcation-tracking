@@ -5,7 +5,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { clean, open, sessionUrl, STATE, talk } from './helpers/client.mjs';
 import { post } from './helpers/session.mjs';
 
-const WARNING = "The deck cannot be written on the computer of the host: ";
+const WARNING = "The deck cannot be written on the host machine: ";
 
 test('a page shows that the deck cannot be written on the host machine, until a write succeeds', { timeout: 120_000, skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'a folder without write permission' }, async (t) => {
   const browser = await launch({ offline: false });
