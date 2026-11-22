@@ -148,6 +148,16 @@ export function install(app: App): void {
   format('underline', 'Underline', 11.5, { mac: ['Mod+U'], other: ['Mod+U'] });
   format('code', 'Code', 12, {});
   format('strike', 'Strikethrough', 13, { mac: ['Mod+Shift+X'], other: ['Alt+Shift+5'] });
+  define({
+    id: 'text.boxed',
+    label: 'Boxed',
+    in: FORMAT,
+    menu: menu('font', 13.5),
+    undoable: true,
+    enabled: (a) => !onMath(a) && inline.inlineTargets(a).length > 0,
+    checked: (a) => inline.boxedOn(a),
+    run: (a) => inline.toggleBoxed(a),
+  });
   format('superscript', 'Superscript', 20, { mac: ['Ctrl+Mod++', 'Ctrl+Mod+='], other: ['Mod+.'] }, 'Baseline');
   format('subscript', 'Subscript', 21, { mac: ['Ctrl+Mod+-'], other: ['Mod+,'] }, 'Baseline');
 

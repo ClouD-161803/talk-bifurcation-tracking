@@ -367,6 +367,25 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await render(page), page.source, 'Bigger does not take the small words back');
   });
 
+  test(`Boxed draws a box around the words selected in a cell, in the color of the words (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await clickText(page, cellSelector(1, 0));
+    await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(document.querySelector(${js(cellSelector(1, 0))})); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+    await settle(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.tone.accent')`);
+    await settled(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.boxed')`);
+    await settle(page);
+    const edited = await render(page);
+    assert.ok(/<td><span class="tone-accent"><span class="boxed">Lyapunov<\/span><\/span><\/td>|<td><span class="boxed"><span class="tone-accent">Lyapunov<\/span><\/span><\/td>/.test(edited), edited.match(/<td>[^\n]*Lyapunov[^\n]*/)?.[0]);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.boxed')`)).checked, true);
+    const look = await page.evaluate(`(() => { const b = getComputedStyle(document.querySelector('.reveal section.present td .boxed')); return { width: b.borderTopWidth !== '0px', same: b.borderTopColor === getComputedStyle(document.querySelector('.reveal section.present td .tone-accent')).color }; })()`);
+    assert.deepEqual(look, { width: true, same: true });
+    await roundTrip(page, 2);
+  });
+
   test(`an arrow key at the edge of a cell goes to the cell beside it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
