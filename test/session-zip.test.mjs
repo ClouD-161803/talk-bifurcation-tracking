@@ -506,7 +506,7 @@ test('a tablet of Windows without a keyboard or a mouse downloads the zip at onc
   clean(tablet);
 });
 
-test('a guest whose talk folder is over the limit of a download through the relay is told its size and the limit, and nothing is downloaded', { timeout: 360_000 }, async (t) => {
+test('a guest whose talk folder is over the limit of a download is told its size and the limit, and nothing is downloaded', { timeout: 360_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const server = await zipTalk(t, { relay, env: { SLIDES_ZIP_MAX_BYTES: String(MB) } });
@@ -520,13 +520,32 @@ test('a guest whose talk folder is over the limit of a download through the rela
   const index = Buffer.byteLength(server.read()) + '.js'.length;
   const bytes = files(server.folder).filter((f) => f !== 'index.html' && !LEFT_OUT.includes(f)).reduce((n, f) => n + statSync(join(server.folder, f)).size, index);
   const size = (Math.ceil((bytes / MB) * 10) / 10).toFixed(1);
-  assert.deepEqual((await guest.evaluate('window.__said')).at(-1), { text: `The talk folder is ${size} MB, over the limit of 1 MB for a download through the relay.`, buttons: ['Close'] });
+  assert.deepEqual((await guest.evaluate('window.__said')).at(-1), { text: `The talk folder is ${size} MB, over the limit of 1 MB for a download.`, buttons: ['Close'] });
   assert.deepEqual(await guest.evaluate('window.__zip.map((r) => r.method)'), ['POST']);
   assert.deepEqual(await guest.evaluate('window.__saved'), []);
   assert.deepEqual(readdirSync(dir), []);
   await press(guest, BUTTON('Close'));
   await guest.waitFor('window.__said.at(-1) === null');
   clean(guest, [/status of 413/]);
+});
+
+test('a page whose file of the talk folder changes during the download is told the name of the file, and nothing is downloaded', { timeout: 360_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  const host = await editorOn(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const dir = join(server.root, 'downloads');
+  await downloadsTo(host, dir);
+  await host.evaluate('window.__hold.piece = true');
+  await choose(host, PATH);
+  await host.waitFor('window.__held.length > 0');
+  writeFileSync(join(server.folder, 'media/clip.mp4'), 'a shorter clip');
+  await host.evaluate('(window.__hold.piece = false, window.__release())');
+  await host.waitFor(`window.__said.at(-1)?.buttons?.join() === 'Close'`, 60_000);
+  assert.deepEqual((await host.evaluate('window.__said')).at(-1), { text: 'The file media/clip.mp4 changed while the talk folder was downloaded. Try again.', buttons: ['Close'] });
+  assert.deepEqual(await host.evaluate('window.__saved'), []);
+  assert.deepEqual(readdirSync(dir), []);
+  clean(host, [/status of 409/, /status of 404/]);
 });
 
 test('Cancel during a download closes the dialog, downloads nothing, and the edit command frees the zip', { timeout: 360_000 }, async (t) => {
@@ -543,10 +562,11 @@ test('Cancel during a download closes the dialog, downloads nothing, and the edi
   await host.waitFor('window.__said.at(-1) === null');
   const piece = (await host.evaluate('window.__zip')).find((r) => r.method === 'GET');
   await until(async () => (await host.evaluate(`window.__zip.some((r) => r.method === 'DELETE')`)) && (await fetch(piece.url)).status === 404, 'the zip to be freed');
+  const asked = await host.evaluate('window.__held.length');
   await host.evaluate('(window.__hold.piece = false, window.__release())');
   assert.deepEqual(await host.evaluate('window.__saved'), []);
   assert.deepEqual(readdirSync(dir), []);
-  assert.deepEqual(await host.evaluate('window.__zip.map((r) => r.method)'), ['POST', 'GET', 'DELETE']);
+  assert.deepEqual(await host.evaluate('window.__zip.map((r) => r.method)'), ['POST', ...Array(asked).fill('GET'), 'DELETE']);
   clean(host);
 });
 
@@ -559,7 +579,7 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   await choose(host, PATH);
   await host.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
   const seen = `({ buttons: window.__said.at(-1)?.buttons, focus: document.activeElement?.textContent, pressed: window.__pressed, zip: window.__zip.map((r) => r.method) })`;
-  const way = { buttons: ['Cancel'], focus: 'Cancel', pressed: [], zip: ['POST', 'GET'] };
+  const way = { buttons: ['Cancel'], focus: 'Cancel', pressed: [], zip: ['POST', ...Array(await host.evaluate('window.__held.length')).fill('GET')] };
   assert.deepEqual(await host.evaluate(seen), way);
   await key(host, 'Enter');
   assert.deepEqual(await host.evaluate(seen), way);
@@ -602,7 +622,7 @@ test('the end of the session closes the dialog of a download that is on its way 
     await page.waitFor(`${open}.length === 0`, 10_000);
     assert.equal(await page.evaluate(`document.activeElement === ${HOME}`), true, 'the focus is on the button that had it before Talk Folder…');
   }
-  await waiting.waitFor('window.__aborted === 1', 10_000);
+  await waiting.waitFor(`window.__aborted === window.__held.length`, 10_000);
   assert.deepEqual((await waiting.evaluate('window.__said')).filter((state) => state && state.buttons.join() !== 'Cancel'), []);
   await finished.waitFor(`${open}.join() === 'Talk Folder,The session has ended'`, 30_000);
   assert.deepEqual((await finished.evaluate('window.__said')).at(-1), { text: DONE, buttons: ['Done'] });

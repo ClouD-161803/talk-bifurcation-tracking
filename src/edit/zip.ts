@@ -1,12 +1,14 @@
-import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { lstat, open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { gzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+import { createGzip, gzip } from 'node:zlib';
 import { decodeAttr, REFERENCE_IN_ATTR, tokenize } from '../editor/tokens.ts';
 import { fileInside, hiddenSegment, segmentsOf, servedSegment } from './http.ts';
 
 const OUTPUTS = new Set(['check', 'slides.pdf', 'slides.pptx']);
 export const MOST_FILES = 0xffff;
-const PACKED = /\.(png|jpe?g|gif|webp|avif|mp4|m4v|webm|mov|ogv|woff2?|zip|gz)$/i;
+const PACKED = /\.(png|jpe?g|gif|webp|avif|mp4|m4v|webm|mov|ogv|woff2?|zip|gz|pdf)$/i;
 const LAUNCHER = /\.(command|sh)$/i;
 const AT = ['http://talk.invalid/t/', 'https://deck.invalid/d/'];
 const NAMED = /data-trajectories\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi;
@@ -26,7 +28,11 @@ const UTF8_NAMES = 0x800;
 const STORED = 0;
 const DEFLATED = 8;
 
-export type Zip = { parts: Buffer[]; size: number };
+export class Changed extends Error {
+  constructor(name: string) {
+    super(`The file ${name} changed while the talk folder was downloaded. Try again.`);
+  }
+}
 
 export class TooLarge extends Error {
   readonly bytes: number;
@@ -125,6 +131,169 @@ const BLOCK = 64 * 1024;
 const SPARE = 64;
 const AHEAD_FILES = 16;
 const AHEAD_BYTES = 8 * 1024 * 1024;
+const DEFLATED_MOST = 16 * 1024 * 1024;
+const ZIP_MOST = 0xffffffff;
+
+type Entry = {
+  name: string;
+  path: Buffer;
+  method: number;
+  time: number;
+  day: number;
+  run: boolean;
+  size: number;
+  packed: number;
+  crc: number | null;
+  summing?: Promise<number>;
+  data: Buffer | null;
+  source: Source | null;
+  at: number;
+};
+
+const wrapping = (s: Source) => (s.wrap ? OPEN.length + CLOSE.length : 0);
+
+async function readRange(entry: Entry, from: number, to: number): Promise<Buffer> {
+  const s = entry.source!;
+  const out = Buffer.allocUnsafe(to - from);
+  const fileBytes = entry.size - wrapping(s);
+  const head = s.wrap ? OPEN.length : 0;
+  const parts: [Buffer, number, number][] = s.wrap ? [[OPEN, 0, head], [CLOSE, head + fileBytes, entry.size]] : [];
+  for (const [bytes, start, end] of parts) if (from < end && to > start) bytes.copy(out, Math.max(0, start - from), Math.max(0, from - start), Math.min(end, to) - start);
+  const a = Math.max(from, head);
+  const b = Math.min(to, head + fileBytes);
+  if (a >= b) return out;
+  const handle = await open(s.file, 'r').catch(() => null);
+  if (!handle) throw new Changed(entry.name);
+  try {
+    if ((await handle.stat()).size !== fileBytes) throw new Changed(entry.name);
+    for (let at = a; at < b; ) {
+      const { bytesRead } = await handle.read(out, at - from, b - at, at - head);
+      if (bytesRead === 0) throw new Changed(entry.name);
+      at += bytesRead;
+    }
+  } finally {
+    await handle.close();
+  }
+  return out;
+}
+
+async function sumOf(entry: Entry): Promise<number> {
+  const s = entry.source!;
+  let read = 0;
+  let tail: Buffer = Buffer.alloc(0);
+  const counted = async function* (input: AsyncIterable<Buffer>) {
+    if (s.wrap) yield OPEN;
+    for await (const chunk of input) {
+      read += chunk.length;
+      yield chunk;
+    }
+    if (s.wrap) yield CLOSE;
+  };
+  const last = async (output: AsyncIterable<Buffer>) => {
+    for await (const chunk of output) tail = chunk.length >= GZIP_TRAILER ? chunk.subarray(-GZIP_TRAILER) : Buffer.concat([tail, chunk]).subarray(-GZIP_TRAILER);
+  };
+  try {
+    await pipeline(createReadStream(s.file), counted, createGzip({ level: 0 }), last);
+  } catch {
+    throw new Changed(entry.name);
+  }
+  if (read !== entry.size - wrapping(s)) throw new Changed(entry.name);
+  return tail.readUInt32LE(0);
+}
+
+function crcOf(entry: Entry): Promise<number> | number {
+  if (entry.crc !== null) return entry.crc;
+  entry.summing ??= sumOf(entry).then(
+    (crc) => (entry.crc = crc),
+    (e) => {
+      delete entry.summing;
+      throw e;
+    },
+  );
+  return entry.summing;
+}
+
+function localHeader(entry: Entry, crc: number): Buffer {
+  const local = Buffer.alloc(LOCAL_HEADER + entry.path.length);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(ZIP_VERSION, 4);
+  local.writeUInt16LE(UTF8_NAMES, 6);
+  local.writeUInt16LE(entry.method, 8);
+  local.writeUInt16LE(entry.time, 10);
+  local.writeUInt16LE(entry.day, 12);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(entry.packed, 18);
+  local.writeUInt32LE(entry.size, 22);
+  local.writeUInt16LE(entry.path.length, 26);
+  entry.path.copy(local, LOCAL_HEADER);
+  return local;
+}
+
+export class Zip {
+  readonly size: number;
+  readonly held: number;
+  private entries: Entry[];
+  private directoryAt: number;
+  private directory: Promise<Buffer> | null = null;
+
+  constructor(entries: Entry[], directoryAt: number, size: number, held: number) {
+    this.entries = entries;
+    this.directoryAt = directoryAt;
+    this.size = size;
+    this.held = held;
+  }
+
+  private async directoryBytes(): Promise<Buffer> {
+    const out: Buffer[] = [];
+    for (const entry of this.entries) {
+      const local = localHeader(entry, await crcOf(entry));
+      const central = Buffer.alloc(CENTRAL_HEADER + entry.path.length);
+      central.writeUInt32LE(0x02014b50, 0);
+      central.writeUInt16LE(MADE_ON_UNIX | ZIP_VERSION, 4);
+      local.copy(central, 6, 4, LOCAL_HEADER);
+      central.writeUInt32LE(((0o100000 | (entry.run ? 0o755 : 0o644)) << 16) >>> 0, 38);
+      central.writeUInt32LE(entry.at, 42);
+      entry.path.copy(central, CENTRAL_HEADER);
+      out.push(central);
+    }
+    const end = Buffer.alloc(END_RECORD);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(this.entries.length, 8);
+    end.writeUInt16LE(this.entries.length, 10);
+    end.writeUInt32LE(this.size - END_RECORD - this.directoryAt, 12);
+    end.writeUInt32LE(this.directoryAt, 16);
+    out.push(end);
+    return Buffer.concat(out);
+  }
+
+  async piece(start: number, length: number): Promise<Buffer> {
+    const end = Math.min(this.size, start + length);
+    const out: Buffer[] = [];
+    const take = (bytes: Buffer, at: number) => {
+      const a = Math.max(start, at);
+      const b = Math.min(end, at + bytes.length);
+      if (a < b) out.push(bytes.subarray(a - at, b - at));
+    };
+    let low = 0;
+    let high = this.entries.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      const e = this.entries[mid];
+      if (e.at + LOCAL_HEADER + e.path.length + e.packed <= start) low = mid + 1;
+      else high = mid;
+    }
+    for (let i = low; i < this.entries.length && this.entries[i].at < end; i++) {
+      const e = this.entries[i];
+      const dataAt = e.at + LOCAL_HEADER + e.path.length;
+      if (start < dataAt) take(localHeader(e, await crcOf(e)), e.at);
+      const a = Math.max(start, dataAt);
+      const b = Math.min(end, dataAt + e.packed);
+      if (a < b) out.push(e.data ? e.data.subarray(a - dataAt, b - dataAt) : await readRange(e, a - dataAt, b - dataAt));
+    }
+    if (end > this.directoryAt) take(await (this.directory ??= this.directoryBytes().catch((e) => ((this.directory = null), Promise.reject(e)))), this.directoryAt);
+    return Buffer.concat(out);
+  }
+}
 
 export async function zipOf(root: string, top: string, { html, bom, tex }: Deck, limit: number, admit: (most: number) => boolean): Promise<Zip | null> {
   const found: Source[] = [];
@@ -151,122 +320,96 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
   const sources = [...found, ...wraps].sort((a, b) => (a.name < b.name ? -1 : 1));
   const bytes = found.reduce((n, s) => n + s.size, index.length);
   if (bytes > limit || sources.length + 1 > MOST_FILES) throw new TooLarge(bytes, sources.length + 1);
-  const head = (name: string) => LOCAL_HEADER + CENTRAL_HEADER + 2 * Buffer.byteLength(`${top}/${name}`);
-  const most = sources.reduce((n, s) => n + head(s.name) + s.size, head('index.html') + index.length + END_RECORD);
+  const deflated = (s: Source) => !!s.content || (!PACKED.test(s.name) && s.size <= DEFLATED_MOST);
+  const most = sources.reduce((n, s) => n + (deflated(s) ? s.size : 0), index.length);
   if (!admit(most)) return null;
 
-  const parts: Buffer[] = [];
   let block = Buffer.allocUnsafeSlow(0);
-  let held = 0;
   let filled = 0;
-  const flush = () => {
-    if (filled > held) parts.push(block.subarray(held, filled));
-    held = filled;
-  };
-  const put = (bytes: Buffer) => {
+  let held = 0;
+  const keep = (bytes: Buffer): Buffer => {
+    held += bytes.length;
     if (bytes.length >= BLOCK / 8) {
-      flush();
-      if (bytes.buffer.byteLength - bytes.length <= SPARE) parts.push(bytes);
-      else {
-        const copy = Buffer.allocUnsafeSlow(bytes.length);
-        bytes.copy(copy);
-        parts.push(copy);
-      }
-      return;
+      if (bytes.buffer.byteLength - bytes.length <= SPARE) return bytes;
+      const copy = Buffer.allocUnsafeSlow(bytes.length);
+      bytes.copy(copy);
+      return copy;
     }
     if (filled + bytes.length > block.length) {
-      flush();
       block = Buffer.allocUnsafeSlow(BLOCK);
-      held = filled = 0;
+      filled = 0;
     }
+    const at = filled;
     filled += bytes.copy(block, filled);
+    return block.subarray(at, filled);
   };
-  const central: Buffer[] = [];
-  let at = 0;
-  const add = (name: string, content: Buffer, z: Buffer, mtime: Date, run: boolean) => {
-    if (z[3] !== 0) throw new Error('gzip wrote a header with a field');
-    const deflated = z.subarray(GZIP_HEADER, z.length - GZIP_TRAILER);
-    const stored = deflated.length >= content.length;
-    const data = stored ? content : deflated;
-    const path = Buffer.from(`${top}/${name}`, 'utf8');
+  const entries: Entry[] = [];
+  const add = (name: string, mtime: Date, run: boolean, size: number, packed: { data: Buffer | null; crc: number | null; method: number; length: number }, source: Source | null) => {
     const year = Math.min(mtime.getFullYear(), ZIP_LAST_YEAR);
-    const day = year < ZIP_FIRST_YEAR ? 0x21 : ((year - ZIP_FIRST_YEAR) << 9) | ((mtime.getMonth() + 1) << 5) | mtime.getDate();
-    const time = year < ZIP_FIRST_YEAR ? 0 : (mtime.getHours() << 11) | (mtime.getMinutes() << 5) | (mtime.getSeconds() >> 1);
-    const local = Buffer.alloc(LOCAL_HEADER + path.length);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(ZIP_VERSION, 4);
-    local.writeUInt16LE(UTF8_NAMES, 6);
-    local.writeUInt16LE(stored ? STORED : DEFLATED, 8);
-    local.writeUInt16LE(time, 10);
-    local.writeUInt16LE(day, 12);
-    local.writeUInt32LE(z.readUInt32LE(z.length - GZIP_TRAILER), 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(content.length, 22);
-    local.writeUInt16LE(path.length, 26);
-    path.copy(local, LOCAL_HEADER);
-    const entry = Buffer.alloc(CENTRAL_HEADER + path.length);
-    entry.writeUInt32LE(0x02014b50, 0);
-    entry.writeUInt16LE(MADE_ON_UNIX | ZIP_VERSION, 4);
-    local.copy(entry, 6, 4, LOCAL_HEADER);
-    entry.writeUInt32LE(((0o100000 | (run ? 0o755 : 0o644)) << 16) >>> 0, 38);
-    entry.writeUInt32LE(at, 42);
-    path.copy(entry, CENTRAL_HEADER);
-    put(local);
-    put(data);
-    central.push(entry);
-    at += local.length + data.length;
+    entries.push({
+      name,
+      path: keep(Buffer.from(`${top}/${name}`, 'utf8')),
+      method: packed.method,
+      day: year < ZIP_FIRST_YEAR ? 0x21 : ((year - ZIP_FIRST_YEAR) << 9) | ((mtime.getMonth() + 1) << 5) | mtime.getDate(),
+      time: year < ZIP_FIRST_YEAR ? 0 : (mtime.getHours() << 11) | (mtime.getMinutes() << 5) | (mtime.getSeconds() >> 1),
+      run,
+      size,
+      packed: packed.length,
+      crc: packed.crc,
+      data: packed.data,
+      source,
+      at: 0,
+    });
+  };
+  const squeezed = (content: Buffer, z: Buffer, lazy: boolean) => {
+    if (z[3] !== 0) throw new Error('gzip wrote a header with a field');
+    const deflate = z.subarray(GZIP_HEADER, z.length - GZIP_TRAILER);
+    const crc = z.readUInt32LE(z.length - GZIP_TRAILER);
+    if (deflate.length < content.length) return { data: keep(deflate), crc, method: DEFLATED, length: deflate.length };
+    return { data: lazy ? null : keep(content), crc, method: STORED, length: content.length };
   };
 
-  add('index.html', index, await gz(index, 6), now, false);
+  add('index.html', now, false, index.length, squeezed(index, await gz(index, 6), false), null);
   const ready: Promise<{ content: Buffer; z: Buffer } | null>[] = [];
   const prepare = async (s: Source) => {
     const read = s.content ?? (await readFile(s.file).catch(() => null));
     if (read === null) return null;
     const content = s.wrap ? Buffer.concat([OPEN, read, CLOSE]) : read;
-    return { content, z: await gz(content, PACKED.test(s.name) ? 0 : 6) };
+    return { content, z: await gz(content, 6) };
   };
   let grown = 0;
   let next = 0;
   let ahead = 0;
   for (const [i, s] of sources.entries()) {
-    while (next < sources.length && (next === i || (next < i + AHEAD_FILES && ahead + sources[next].size <= AHEAD_BYTES))) {
-      ahead += sources[next].size;
-      ready[next] = prepare(sources[next++]);
-      ready[next - 1].catch(() => {});
+    if (!deflated(s)) {
+      add(s.name, s.mtime, s.run, s.size, { data: null, crc: null, method: STORED, length: s.size }, s);
+      continue;
     }
-    const made = await ready[i];
+    while (next < sources.length && (next <= i || (next < i + AHEAD_FILES && ahead + (deflated(sources[next]) ? sources[next].size : 0) <= AHEAD_BYTES))) {
+      if (deflated(sources[next])) {
+        ahead += sources[next].size;
+        ready[next] = prepare(sources[next]);
+        ready[next].catch(() => {});
+      }
+      next++;
+    }
+    const prepared = await ready[i];
     delete ready[i];
     ahead -= s.size;
-    if (made === null) continue;
-    grown += Math.max(0, made.content.length - s.size);
+    if (prepared === null) continue;
+    grown += Math.max(0, prepared.content.length - s.size);
     if (bytes + grown > limit) throw new TooLarge(bytes + grown, sources.length + 1);
-    add(s.name, made.content, made.z, s.mtime, s.run);
+    const lazy = !s.content;
+    add(s.name, s.mtime, s.run, prepared.content.length, squeezed(prepared.content, prepared.z, lazy), lazy ? s : null);
   }
-  let directory = 0;
-  for (const entry of central) {
-    put(entry);
-    directory += entry.length;
-  }
-  const end = Buffer.alloc(END_RECORD);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(central.length, 8);
-  end.writeUInt16LE(central.length, 10);
-  end.writeUInt32LE(directory, 12);
-  end.writeUInt32LE(at, 16);
-  put(end);
-  flush();
-  return { parts, size: at + directory + end.length };
-}
-
-export function piece(zip: Zip, start: number, length: number): Buffer {
-  const end = Math.min(zip.size, start + length);
-  const out: Buffer[] = [];
   let at = 0;
-  for (const part of zip.parts) {
-    if (at >= end) break;
-    const next = at + part.length;
-    if (next > start) out.push(part.subarray(Math.max(0, start - at), Math.min(part.length, end - at)));
-    at = next;
+  let directory = 0;
+  for (const e of entries) {
+    e.at = at;
+    at += LOCAL_HEADER + e.path.length + e.packed;
+    directory += CENTRAL_HEADER + e.path.length;
   }
-  return Buffer.concat(out);
+  const size = at + directory + END_RECORD;
+  if (size > ZIP_MOST) throw new TooLarge(bytes + grown, sources.length + 1);
+  return new Zip(entries, at, size, held);
 }

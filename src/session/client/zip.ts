@@ -5,6 +5,8 @@ import { mayRetry } from './transport.ts';
 const TRIES = 5;
 const FAILED = 'The talk folder could not be downloaded. Try again.';
 const MB = 1024 * 1024;
+const PIECE = 2 * MB;
+const AT_ONCE = 4;
 
 const handheld = (): boolean =>
   (matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches && !/Win/.test(navigator.platform)) ||
@@ -29,7 +31,10 @@ async function sent(client: Client): Promise<void> {
   }
 }
 
-async function fetchZip(client: Client, signal: AbortSignal, progress: (made: Made, read: number) => void): Promise<{ made: Made; blob: Blob }> {
+async function fetchZip(client: Client, outer: AbortSignal, progress: (made: Made, read: number) => void): Promise<{ made: Made; blob: Blob }> {
+  const stopped = new AbortController();
+  const signal = stopped.signal;
+  outer.addEventListener('abort', () => stopped.abort(), { once: true });
   const query = { token: client.token };
   const built = await fetch(client.url('zip', query), { method: 'POST', cache: 'no-store', signal });
   const answer = (await built.json().catch(() => null)) as (Partial<Made> & { error?: string }) | null;
@@ -37,29 +42,37 @@ async function fetchZip(client: Client, signal: AbortSignal, progress: (made: Ma
   if (!built.ok || !answer || typeof answer.id !== 'string' || typeof answer.size !== 'number' || typeof answer.name !== 'string') throw new Error(`the zip was answered with ${built.status}`);
   const made = answer as Made;
   const at = client.url(`zip/${made.id}`, query);
-  const pieceAt = async (start: number): Promise<ArrayBuffer> => {
+  const pieceAt = async (start: number): Promise<Blob> => {
     for (let tries = 1; ; tries++) {
       const response = await fetch(`${at}&at=${start}`, { cache: 'no-store', signal }).catch(() => null);
-      const bytes = response?.ok ? await response.arrayBuffer().catch(() => null) : null;
+      if (response?.status === 409) throw new Told(((await response.json()) as { error: string }).error);
+      const bytes = response?.ok ? await response.blob().catch(() => null) : null;
       if (signal.aborted) throw new Error('the download was stopped');
-      if (bytes?.byteLength) return bytes;
+      if (bytes?.size) return bytes;
       if (tries >= TRIES || (response && !response.ok && !mayRetry(response.status))) throw new Error(`a piece of the zip was answered with ${response?.status ?? 'an error of the network'}`);
       await sleep(1000 * tries, signal);
     }
   };
   try {
-    const pieces: ArrayBuffer[] = [];
+    const pieces: Blob[] = [];
     let read = 0;
+    let asked = 0;
     progress(made, 0);
-    while (read < made.size) {
-      const piece = await pieceAt(read);
-      pieces.push(piece);
-      read += piece.byteLength;
-      progress(made, read);
-    }
+    const worker = async () => {
+      while (asked < made.size) {
+        const start = asked;
+        asked += PIECE;
+        const piece = await pieceAt(start);
+        pieces[start / PIECE] = piece;
+        read += piece.size;
+        progress(made, read);
+      }
+    };
+    await Promise.all(Array.from({ length: AT_ONCE }, worker));
     if (read !== made.size) throw new Error('the zip has another size than the edit command gave');
     return { made, blob: new Blob(pieces, { type: 'application/zip' }) };
   } finally {
+    stopped.abort();
     void fetch(at, { method: 'DELETE', cache: 'no-store', keepalive: true }).catch(() => {});
   }
 }
