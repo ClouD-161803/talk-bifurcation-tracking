@@ -137,7 +137,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - A touch sent with `Input.dispatchTouchEvent` on a grip may be given by Chrome to the text element beside it. Make the pointer events of a touch on a grip in the page.
 - IndexedDB does not answer a read while the virtual time of Chrome is paused.
 - Under the policy `advance` of virtual time without a budget, the 1 s interval of reveal.js is run back to back, and virtual time is advanced by days each second.
-- Under virtual time, a reading of `performance.now()` may be off by 0.1 ms, whereas `Date.now()` is advanced by each whole budget. Animation frames are not drawn while virtual time is paused.
+- Under virtual time, a reading of `performance.now()` may be off by 0.1 ms, and a reading of `Date.now()` by 1 ms, also at the end of a budget. Wait for the end of a budget with `page.next('Emulation.virtualTimeBudgetExpired')`, not for a reading of the clock. Animation frames are not drawn while virtual time is paused.
 - reveal.js blurs the focus when a page is shown again. In a test of a session, do not bring another page to the front, and send the edits of the other person over HTTP instead.
 - reveal.js answers `isReady()` one timer before `.reveal` is given the class `ready`, and an Esc in between opens its overview. Wait for `.reveal.ready` before you send a key.
 - A crash of a page may cancel the keepalive requests of the other pages of its renderer. In a test of a crash, send these requests by hand.

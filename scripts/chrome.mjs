@@ -252,21 +252,23 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
       return result.value;
     }
 
+    const next = (method) => new Promise((done) => {
+      const on = ({ method: event, params, sessionId: from }) => {
+        if (from !== sessionId || event !== method) return;
+        listeners.delete(on);
+        done(params);
+      };
+      listeners.add(on);
+    });
+
     return {
       errors,
       evaluate,
       send: call,
+      next: (method, limit = timeout) => answered(next(method), method, limit),
       async goto(url) {
         const once = async (method, params) => {
-          const loaded = new Promise((done) => {
-            const onLoad = ({ method: event, sessionId: from }) => {
-              if (from === sessionId && event === 'Page.loadEventFired') {
-                listeners.delete(onLoad);
-                done();
-              }
-            };
-            listeners.add(onLoad);
-          });
+          const loaded = next('Page.loadEventFired');
           const { errorText } = await call(method, params);
           if (errorText) throw new Error(`${url}: ${errorText}`);
           await answered(loaded, `the load of ${url}`).catch(async (error) => {

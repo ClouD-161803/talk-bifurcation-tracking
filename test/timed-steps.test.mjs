@@ -5,6 +5,7 @@ import { press } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const QUIET = 900;
+const DATE_NOW_SLIP = 1;
 
 let browser;
 before(async () => {
@@ -32,9 +33,9 @@ const onVirtualTime = new WeakSet();
 
 async function wait(page, ms) {
   if (!onVirtualTime.has(page)) return sleep(ms);
-  const end = await page.evaluate(`Date.now() + ${ms}`);
+  const expired = page.next('Emulation.virtualTimeBudgetExpired');
   await page.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget: ms });
-  await page.waitFor(`Date.now() >= ${end}`);
+  await expired;
 }
 
 async function inDelay(t, keys, at) {
@@ -210,6 +211,6 @@ test('a key that does not move the deck leaves the running delay alone', async (
   }, { slide: 6, shown: ['Slow'] });
   await wait(page, 2000);
   const times = await page.evaluate('window.times');
-  assert.equal(times['Slow timed'] - times.Slow, 1000);
+  assert.ok(Math.abs(times['Slow timed'] - times.Slow - 1000) <= DATE_NOW_SLIP, `the delay of 1000 ms took ${times['Slow timed'] - times.Slow} ms`);
   assert.deepEqual(page.errors, []);
 });
