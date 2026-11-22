@@ -397,7 +397,7 @@ A theorem is a paragraph with the class `theorem`, its kind in `data-kind`, and 
 
 A citation is an empty `cite` after the cited words, with the key of an entry of `references.bib` in `data-key`, e.g. `<cite data-key="koon2000"></cite>`, or the keys of several papers separated by commas. On each slide, the papers are numbered from 1 in the order of their first citation, and a paper cited twice keeps its number. The references of the slide are drawn in the line of a footnote, above the footnote of the slide, in a short form such as Koon et al., Chaos 10 (2000). A reference is shown with the step of its first citation, and a reference with a DOI is a link to its paper. Only the entries that the deck cites are written into `tex.js`. In the editor, cite a paper as described under The editor.
 
-The check fails on a macro that is not defined, a citation of a key that is not in `tex.js`, and a theorem of a kind that is not defined. It also fails when `tex.js` is not the one written from `preamble.tex` and `references.bib`. A deck without these three files is not checked for them.
+The check fails on a macro that is not defined, a citation of a key that is not in `tex.js`, and a theorem of a kind that is not defined. It also fails when `tex.js` is not the one written from `preamble.tex` and `references.bib`, and when a script of the deck changes `window.beesonTex` after `tex.js` is read. Such a change is lost in a session, since each page of a session reads `tex.js` again. Write it into `preamble.tex` or `references.bib` instead. A deck without these three files is not checked for them.
 
 ## Code
 

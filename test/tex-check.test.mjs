@@ -35,3 +35,9 @@ test('the check waits for the font of a TeX package that is ready seconds after 
   assert.equal(run.status, 1, run.stdout + run.stderr);
   assert.match(run.stderr, /behaviors: .*the font of mhchem is ready 3 s after its formula/);
 });
+
+test('the check names a script of the deck that changes what tex.js defines, since a page of a session reads tex.js again', { timeout: 120000 }, () => {
+  const run = check('test/pages/tex-check/script.html');
+  assert.equal(run.status, 1, run.stdout + run.stderr);
+  assert.match(run.stderr, /a script of the deck changes window\.beesonTex after tex\.js is read, and the editor in a session reads tex\.js again: write the change into preamble\.tex or references\.bib and run npm run tex\n/);
+});

@@ -37,7 +37,19 @@ const deckProblems = `[
   ...performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => /^https?:/.test(name) && !name.startsWith(location.origin)).map((name) => 'network load: ' + name),
 ]`;
 
-const videosWithoutPoster = `[...document.querySelectorAll('video:not([poster])')]
+const texAsWritten = (text) => `(() => {
+  const shown = window.beesonTex;
+  try {
+    new Function(${JSON.stringify(text)})();
+    return JSON.stringify(window.beesonTex ?? null) === JSON.stringify(shown ?? null);
+  } catch {
+    return true;
+  } finally {
+    window.beesonTex = shown;
+  }
+})()`;
+
+const videosWithoutPoster =`[...document.querySelectorAll('video:not([poster])')]
   .map((video) => video.getAttribute('src') ?? video.querySelector('source')?.getAttribute('src'))`;
 
 mkdirSync(options.out, { recursive: true });
@@ -98,6 +110,9 @@ async function checkDesktop() {
   if (offset > 1) failures.push(`pointer: the dot is ${offset.toFixed(1)} px from the pointer`);
   await page.evaluate(String.raw`window.MathJax?.tex2svgPromise('\\ce{H2O}').then(() => true)`);
   for (const error of [...page.errors, ...(await page.evaluate(deckProblems))]) failures.push(`behaviors: ${error}`);
+  if (written !== null && !(await page.evaluate(texAsWritten(written)))) {
+    failures.push('a script of the deck changes window.beesonTex after tex.js is read, and the editor in a session reads tex.js again: write the change into preamble.tex or references.bib and run npm run tex');
+  }
   for (const video of await page.evaluate(videosWithoutPoster)) {
     failures.push(`video without a poster: ${video}, give it a poster attribute, since it is printed in the PDF`);
   }
