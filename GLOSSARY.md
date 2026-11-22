@@ -52,7 +52,7 @@ Avoid "badge", which is the count of the threads of an element, and avoid "chip"
 
 ## Built-in backdrop
 
-A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, or `saddle`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, and Normal Form Saddle in the editor.
+A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, or `saddle`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, and Saddle Manifolds in the editor.
 
 ## Chip
 
