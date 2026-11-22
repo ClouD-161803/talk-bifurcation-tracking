@@ -423,6 +423,10 @@ export function install(app: App): void {
       paint(app);
     });
   };
+  const refresh = () => {
+    numberLines(app);
+    later();
+  };
   let pending: { code: Element; before: string; finish: () => void } | null = null;
   const settle = () => {
     const p = pending;
@@ -456,7 +460,7 @@ export function install(app: App): void {
     }
   }, true);
   window.addEventListener('input', settle);
-  app.onRefresh(['content', 'slide', 'structure'], later);
+  app.onRefresh(['content', 'slide', 'structure'], refresh);
   app.listen('slide', later);
   document.addEventListener('input', later, true);
   later();
