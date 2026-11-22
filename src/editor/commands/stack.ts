@@ -264,7 +264,7 @@ export function install(app: App): void {
       undoable: true,
       undo: 'Insert Stack',
       enabled: (a: App) => wrappable(a).length > 0,
-      why: () => 'Select the elements of the first version, side by side in the flow of the slide',
+      why: () => 'Select the elements of the first child of the stack, side by side in the flow of the slide',
       run: (a: App) => insertStack(a),
     },
     {

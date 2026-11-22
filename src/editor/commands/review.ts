@@ -41,7 +41,7 @@ export function install(app: App): void {
   });
   c.define({
     id: 'play.customizePresenter',
-    label: 'Customize Presenter Display…',
+    label: 'Customize Presenter View…',
     menu: play(21),
     enabled: (a) => ready(a) && !showing(),
     run: (a) => {

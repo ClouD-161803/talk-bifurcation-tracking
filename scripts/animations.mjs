@@ -333,7 +333,7 @@ export async function recordAnimation(page, i, from = null) {
       if (from !== null) {
         let poster = null;
         for (let end = -1; end < 0; k += fps) {
-          if (k > SETTLE * fps) throw new Error(`the change of stage of a surface did not end within ${SETTLE} s`);
+          if (k > SETTLE * fps) throw new Error(`the change of state of a surface did not end within ${SETTLE} s`);
           const part = await page.evaluate(`__animate.clip(${k}, ${k + fps})`);
           poster ??= part.poster;
           end = part.end;

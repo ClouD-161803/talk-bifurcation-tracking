@@ -336,25 +336,25 @@ describe('the parts of the presenter display', () => {
   };
 })()`;
   const KEY = `localStorage.getItem('beeson-presenter-parts:' + location.pathname)`;
-  const box = (label) => `.beeson-edit-presenter .parts label:nth-child(${['Current Slide', 'Next Slide', 'Presenter Notes', 'Clock', 'Timer'].indexOf(label) + 1})`;
+  const box = (label) => `.beeson-edit-presenter .parts label:nth-child(${['Current Slide', 'Next Slide', 'Speaker Notes', 'Clock', 'Timer'].indexOf(label) + 1})`;
   const count = (page) => page.evaluate(`document.querySelector('.beeson-edit-presenter .count').textContent`);
 
   for (const platform of PLATFORMS) {
-    test(`Customize Presenter Display… of the Play menu opens the display with a popover of its parts, and each part unchecked is hidden and kept for the deck (${platform})`, async (t) => {
+    test(`Customize Presenter View… of the Play menu opens the display with a popover of its parts, and each part unchecked is hidden and kept for the deck (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 1 });
       await page.evaluate(`(() => { window.__opened = 0; window.open = () => { window.__opened++; return null; }; return true; })()`);
       const play = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].findIndex((b) => b.textContent === 'Play')`);
       assert.ok(play >= 0, 'the menu bar does not have the Play menu');
       await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${play + 1})`);
-      const item = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].findIndex((i) => i.querySelector('.label')?.textContent === 'Customize Presenter Display…')`);
-      assert.ok(item >= 0, 'the Play menu does not have Customize Presenter Display…');
+      const item = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].findIndex((i) => i.querySelector('.label')?.textContent === 'Customize Presenter View…')`);
+      assert.ok(item >= 0, 'the Play menu does not have Customize Presenter View…');
       await click(page, `.beeson-edit-menu .item:nth-of-type(${item + 1})`);
       await page.waitFor(`!!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       let parts = await page.evaluate(PARTS);
       assert.equal(parts.open, true, 'the popover of the parts is not open');
-      assert.deepEqual(parts.boxes, ['Current Slide on', 'Next Slide on', 'Presenter Notes on', 'Clock on', 'Timer on']);
+      assert.deepEqual(parts.boxes, ['Current Slide on', 'Next Slide on', 'Speaker Notes on', 'Clock on', 'Timer on']);
       assert.equal(parts.shown, 5);
-      assert.equal(await page.evaluate('window.__opened'), 0, 'Customize Presenter Display… opened the show');
+      assert.equal(await page.evaluate('window.__opened'), 0, 'Customize Presenter View… opened the show');
       await click(page, box('Next Slide'));
       await click(page, box('Clock'));
       parts = await page.evaluate(PARTS);
@@ -371,7 +371,7 @@ describe('the parts of the presenter display', () => {
       await exec(page, 'play.customizePresenter');
       await page.waitFor(`!!document.querySelector('dialog.beeson-edit-presenter[open]')`);
       parts = await page.evaluate(PARTS);
-      assert.deepEqual(parts.boxes, ['Current Slide on', 'Next Slide off', 'Presenter Notes on', 'Clock off', 'Timer on']);
+      assert.deepEqual(parts.boxes, ['Current Slide on', 'Next Slide off', 'Speaker Notes on', 'Clock off', 'Timer on']);
       assert.deepEqual(parts.hidden, { current: false, next: true, notes: false, clock: true, timer: false });
       await click(page, box('Next Slide'));
       await click(page, box('Clock'));
@@ -393,7 +393,7 @@ describe('the parts of the presenter display', () => {
       await click(page, button);
       assert.equal((await page.evaluate(PARTS)).open, true, 'the button does not open the popover');
       assert.equal(await page.evaluate(`document.querySelector('${button}').getAttribute('aria-expanded')`), 'true');
-      for (const label of ['Current Slide', 'Presenter Notes', 'Timer']) await click(page, box(label));
+      for (const label of ['Current Slide', 'Speaker Notes', 'Timer']) await click(page, box(label));
       const parts = await page.evaluate(PARTS);
       assert.deepEqual(parts.hidden, { current: true, next: false, notes: true, clock: false, timer: true });
       assert.ok(await page.evaluate(`document.querySelector('.beeson-edit-presenter .shot:not(.current)').getBoundingClientRect().width > innerWidth * 0.8`), 'the next slide does not take the width of the stage');
