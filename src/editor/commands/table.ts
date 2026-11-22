@@ -162,6 +162,17 @@ function selectTable(app: App, table: HTMLTableElement): void {
   app.invalidate('selection');
 }
 
+export function selectCellOf(target: Element): boolean {
+  const cell = liveCell(target);
+  if (!current || !cell || opensInPlace(target)) return false;
+  selectCells(current, cell, cell);
+  return true;
+}
+
+const opensInPlace = (target: Element) => !!target.closest('.plot, img, video, figure, .figure-box, .qr, .shape, svg, math, mjx-container, .math');
+
+const soleCell = (app: App, cell: HTMLTableCellElement) => rangeHeld(app) && cellRange!.anchor === cell && cellRange!.focus === cell;
+
 const asObject = (app: App, table: HTMLTableElement) => app.selection.only() === table && !rangeHeld(app) && !cellAt(app);
 
 function liveCell(target: EventTarget | null): HTMLTableCellElement | null {
@@ -1648,6 +1659,10 @@ export function install(app: App): void {
     const hit = (x: Command | undefined) => !!x && keysOf(x, app.platform).some((k) => matches(ev, k, app.platform));
     const key = RANGE_KEYS.find(hit);
     if (!key && hit(c.get('edit.duplicate'))) ev.preventDefault();
+    if (!key && ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && cellRange && !cellRange.focus.closest('[data-locked]')) {
+      focusCell(cellRange.focus, 'all');
+      return false;
+    }
     if (!key) return false;
     ev.preventDefault();
     void c.run(key.id, undefined, ev).catch(fail);
@@ -1987,13 +2002,38 @@ export function install(app: App): void {
   RANGE_KEYS.push(c.define({
     id: 'table.editCell',
     label: 'Edit Cell',
-    keys: { mac: ['Enter'], other: ['Enter'] },
+    keys: { mac: ['Enter', 'F2'], other: ['Enter', 'F2'] },
     in: ['canvas'],
     enabled: rangeHeld,
     run: () => {
       if (cellRange) focusCell(cellRange.focus, 'end');
     },
   }));
+  for (const [way, label, key] of [[1, 'Next Cell', 'Tab'], [-1, 'Previous Cell', 'Shift+Tab']] as const) {
+    RANGE_KEYS.push(c.define({
+      id: `table.select${way > 0 ? 'Next' : 'Previous'}`,
+      label: `Select ${label}`,
+      keys: { mac: [key], other: [key] },
+      in: ['canvas'],
+      enabled: rangeHeld,
+      run: (a) => {
+        const to = cellRange && cellAfter(cellRange.focus, way);
+        if (to) selectCells(a, to, to);
+      },
+    }));
+  }
+  c.define({
+    id: 'table.enterBelow',
+    label: 'Select Cell Below',
+    keys: { mac: ['Enter'], other: ['Enter'] },
+    in: ['text'],
+    enabled: inCell,
+    run: (a) => {
+      const cell = cellAt(a)!;
+      const to = cellBeside(cell, 1) ?? cell;
+      selectCells(a, to, to);
+    },
+  });
   RANGE_KEYS.push(c.define({
     id: 'table.clearCells',
     label: 'Clear Cells',
@@ -2094,7 +2134,12 @@ export function install(app: App): void {
     }
     if (ev.button !== 0) return;
     if (!ev.shiftKey) {
-      if (!asObject(app, cell.closest('table') as HTMLTableElement)) press = cell;
+      if (asObject(app, cell.closest('table') as HTMLTableElement)) return;
+      press = cell;
+      if (cellAt(app) === cell || soleCell(app, cell) || !(ev.target instanceof Element) || opensInPlace(ev.target)) return;
+      held = true;
+      stop(ev);
+      selectCells(app, cell, cell);
       return;
     }
     const table = cell.closest('table');
