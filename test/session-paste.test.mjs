@@ -52,7 +52,7 @@ test('a slide pasted into a session comes without the file of trajectories of it
   assert.match(after, /<p>First slide typed<\/p>/);
   assert.match(after, /data-trajectories="data\/path\.js"/);
   assert.deepEqual(media(server), []);
-  assert.ok(message.includes('data/path.js was not copied: path.js cannot be sent to the others, since a session does not take .js files. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.'), message);
+  assert.ok(message.includes('data/path.js was not copied: path.js cannot be sent to the others, since a session does not take .js files. Save an image as a PNG or a JPEG, and a video as an MP4 or a WebM.'), message);
   assert.ok(!message.includes('..'), message);
   clean(ann, [PROBED]);
 });
