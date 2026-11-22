@@ -318,6 +318,12 @@ A panel of the editor in which a source is edited with a live preview, i.e. the 
 
 Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
+## Single web page
+
+One HTML file that holds the whole talk, with every file that the deck draws written in it, so that it is shown without the talk folder and without a network. It is downloaded in a session with File > Export To > Single Web Page…, after the Single File Web Page of PowerPoint, and it cannot be edited.
+
+Avoid "HTML…" for File > Export To > Editable HTML…, which saves a copy of `index.html` that can be edited.
+
 ## Slide Sorter
 
 The view of the editor in which every slide is shown as a thumbnail in a grid, grouped by section, to select and reorder the slides and the sections, as in PowerPoint and Keynote.

@@ -1,3 +1,4 @@
+import { deckFile } from './files.ts';
 export type FigureOutput = { hash: string; width: number; height: number; scale: number; parts: string[]; inputs: string[]; dark: string; light: string };
 
 declare global {
@@ -16,7 +17,7 @@ function load(name: string): Promise<void> {
   if (!loading) {
     loading = new Promise((done) => {
       const script = document.createElement('script');
-      script.src = `figures/${name}.js`;
+      script.src = deckFile(`figures/${name}.js`);
       script.onload = script.onerror = () => done();
       document.head.append(script);
     });

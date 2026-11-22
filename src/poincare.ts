@@ -1,5 +1,8 @@
 import { TAU, clamp, smooth, type Extent, type Frame, type Kind } from './dotkind.ts';
 import type { ColormapName } from './trajectories.ts';
+import { systemOf } from './systems.ts';
+
+export { SYSTEMS, systemOf } from './systems.ts';
 
 export type PoincareData = {
   unit: number;
@@ -31,8 +34,6 @@ type State = {
   halves: number[];
 };
 
-export const SYSTEMS = ['earth-moon-l2', 'sun-earth-l1', 'bicircular-l1-horizontal', 'bicircular-l1-vertical'];
-export const systemOf = (value: string | null | undefined): string => (value && SYSTEMS.includes(value) ? value : SYSTEMS[0]);
 
 const RISE = 13;
 const FADE = 0.7;

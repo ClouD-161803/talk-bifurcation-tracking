@@ -29,8 +29,8 @@ const STORED = 0;
 const DEFLATED = 8;
 
 export class Changed extends Error {
-  constructor(name: string) {
-    super(`The file ${name} changed while the talk folder was downloaded. Try again.`);
+  constructor(name: string, what = 'the talk folder was downloaded') {
+    super(`The file ${name} changed while ${what}. Try again.`);
   }
 }
 
