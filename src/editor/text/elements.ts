@@ -335,7 +335,7 @@ export function startList(app: App): HTMLOListElement | null {
 
 export function setStart(app: App, n: number): void {
   const list = startList(app);
-  if (!list || !Number.isInteger(n) || n < 1 || (n === list.start && !cutOff.has(list))) return;
+  if (!list || !Number.isInteger(n) || (n === list.start && !cutOff.has(list))) return;
   if (n !== list.start) app.doc.setTag(list, { attrs: { start: n === 1 ? null : String(n) } }, 'start at');
   if (!cutOff.delete(list)) return;
   app.history.push({ label: 'start at', undo: () => void cutOff.add(list), redo: () => void cutOff.delete(list) });

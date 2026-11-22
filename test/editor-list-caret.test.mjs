@@ -490,6 +490,24 @@ describe('the caret after undo of Return or typing', () => {
     });
   }
 
+  test('Start at takes 0 and negative numbers, from the field and from its arrows, and the deck counts from them', async (t) => {
+    const page = await load(t, 'mac', LISTS, 0);
+    await clickText(page, await pointOf(page, 'Alpha'));
+    await showTab(page, 'Text');
+    assert.equal(await page.evaluate(`document.querySelector(${js(START)}).value`), '1');
+    await click(page, START, { count: 3 });
+    await type(page, '0');
+    await press(page, 'Enter');
+    await page.waitFor(`document.querySelector('${SLIDE} > ol').start === 0`);
+    assert.match(await render(page), /<ol start="0">\s*<li>Alpha/);
+    await click(page, START);
+    await press(page, 'ArrowDown');
+    await page.waitFor(`document.querySelector('${SLIDE} > ol').start === -1`);
+    assert.match(await render(page), /<ol start="-1">\s*<li>Alpha/);
+    await saveAndReopen(page, 'start-at-negative.html');
+    assert.deepEqual(page.errors, []);
+  });
+
   const POSTER = '#beeson-edit-panel-format input[name=poster-frame]';
 
   const held = (page) => page.evaluate(`(() => {

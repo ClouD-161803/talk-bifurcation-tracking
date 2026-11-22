@@ -1138,14 +1138,14 @@ describe('Start at and starts of cut lists', () => {
   }
 
   for (const platform of PLATFORMS) {
-    test(`the field Start at refuses a value under 1 and keeps the value before (${platform})`, async (t) => {
+    test(`the field Start at refuses a value that is not a whole number and keeps the value before (${platform})`, async (t) => {
       const page = await load(t, platform, LISTS, 0);
       await click(page, await pointOf(page, 'Bravo'));
       await showTab(page, 'Text');
       await typeStart(page, '12');
       const twelve = await render(page);
       assert.equal(twelve, page.source.replace('<ol>', '<ol start="12">'));
-      for (const value of ['0', '-3']) {
+      for (const value of ['2.5', 'x']) {
         await typeStart(page, value);
         assert.equal(await render(page), twelve, `a typed ${value} changes the file`);
         assert.equal(await field(page), '12', `the field does not go back to 12 after a typed ${value}`);
