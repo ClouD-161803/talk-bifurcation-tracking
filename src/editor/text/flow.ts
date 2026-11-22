@@ -5,7 +5,7 @@ import { injectStyle } from '../ui/dom.ts';
 export type Place = [Element, number];
 type Way = 'left' | 'right' | 'up' | 'down';
 
-const STYLE = '::highlight(beeson-span) { background-color: color-mix(in srgb, Highlight 60%, transparent); }';
+const STYLE = '.reveal ::highlight(beeson-span) { background-color: #1b334d; } html[data-theme="light"] .reveal ::highlight(beeson-span) { background-color: #d3dced; }';
 
 let span: { anchor: Place; focus: Place } | null = null;
 let drag: { from: Element; anchor: Place | null } | null = null;

@@ -101,6 +101,8 @@ html, body, .reveal-viewport { background: var(--bg); }
   color: var(--text);
 }
 .reveal .slides { text-align: left; }
+.reveal ::selection { background-color: #1b334d; }
+html[data-theme="light"] .reveal ::selection { background-color: #d3dced; }
 .reveal .slides section,
 .reveal .slides section > section {
   box-sizing: border-box;
