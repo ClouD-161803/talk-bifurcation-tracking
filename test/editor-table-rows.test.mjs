@@ -705,7 +705,8 @@ describe('Start at, and rows moved by their bars', () => {
     assert.equal(attributeProblem('start', false, 'ol', '3'), null);
     assert.equal(attributeProblem('start', false, 'ul', '3'), 'the attribute start');
     assert.equal(attributeProblem('start', false, 'ol', 'x'), 'the attribute start');
-    assert.equal(attributeProblem('start', false, 'ol', '-2'), 'the attribute start');
+    assert.equal(attributeProblem('start', false, 'ol', '-2'), null);
+    assert.equal(attributeProblem('start', false, 'ol', '2.5'), 'the attribute start');
     const theme = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
     assert.deepEqual(editProblems('ol', [], { attrs: { start: '4' } }, theme), []);
     assert.deepEqual(editProblems('li', [], { attrs: { start: '4' } }, theme), ['the attribute start']);

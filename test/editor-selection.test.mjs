@@ -1764,3 +1764,34 @@ describe('turns, Regroup, and layers of inner groups', () => {
     });
   }
 });
+
+test('selected words on a slide are drawn on a tint of the mode of the deck, with every tone readable on it, whatever the mode of the system', { timeout: 120000 }, async (t) => {
+  const { contrast } = await import('./helpers/editor.mjs');
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await editorPage(browser);
+  const tones = ['text', 'accent', 'violet', 'blue', 'red', 'subtle'];
+  for (const scheme of ['dark', 'light']) {
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    for (const mode of ['light', 'dark']) {
+      const read = await page.evaluate(`(() => {
+        document.documentElement.dataset.theme = ${JSON.stringify(mode)};
+        const p = document.querySelector('.reveal .slides section p');
+        const probe = document.createElement('span');
+        p.append(probe);
+        probe.style.backgroundColor = 'var(--bg)';
+        const out = { selection: getComputedStyle(p, '::selection').backgroundColor, span: getComputedStyle(p, '::highlight(beeson-span)').backgroundColor, bg: getComputedStyle(probe).backgroundColor, tones: {} };
+        probe.style.backgroundColor = '';
+        for (const tone of ${JSON.stringify(tones)}) { probe.className = 'tone-' + tone; out.tones[tone] = getComputedStyle(probe).color; }
+        probe.remove();
+        return out;
+      })()`);
+      const at = `${mode} deck on a ${scheme} system`;
+      assert.ok(contrast(read.selection, read.bg) >= 1.25, `${at}: the selection ${read.selection} is not seen on ${read.bg}`);
+      assert.ok(contrast(read.tones.text, read.selection) >= 7, `${at}: the text ${read.tones.text} on ${read.selection}`);
+      for (const tone of tones) assert.ok(contrast(read.tones[tone], read.selection) >= 3, `${at}: the tone ${tone} ${read.tones[tone]} on ${read.selection}`);
+      assert.equal(read.span, read.selection, `${at}: the selection across text elements`);
+    }
+  }
+  assert.deepEqual(page.errors, []);
+});

@@ -7,6 +7,7 @@ import { groupFrame, groupReach, turned } from '../canvas/frames.ts';
 import { groupAngle, groupOf } from './order.ts';
 import { declarationProblem } from '../model/scope.ts';
 import { store } from '../ui/dom.ts';
+import { formatTargets } from '../text/targets.ts';
 
 export type Side = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 export const SIDES: Side[] = ['left', 'center', 'right', 'top', 'middle', 'bottom'];
@@ -35,6 +36,9 @@ export function selectedTargets(app: App): Element[] {
   }
   return app.selection.elements().filter((el) => app.pairing?.elements.get(el)?.open && !el.matches('.backdrop'));
 }
+
+const ownObjects = (app: App): boolean => formatTargets(app).every((el) => movableOf(app, el) === el || !app.pairing?.byLive.has(el));
+const alignable = (app: App): Element[] => (ownObjects(app) ? targetsOf(app) : []);
 
 export function targetsOf(app: App, arg?: unknown): Element[] {
   const given = (arg as { els?: Element[] } | undefined)?.els;
@@ -160,7 +164,7 @@ function distribute(app: App, axis: 'x' | 'y'): void {
 }
 
 const canDistribute = (app: App) => {
-  const n = objects(app).length;
+  const n = ownObjects(app) ? objects(app).length : 0;
   return n === 1 || n >= 3;
 };
 
@@ -203,7 +207,7 @@ export function commands(): Command[] {
       menu: { bar: 'Arrange', group: i < 3 ? 'x' : 'y', order: 20 + i, submenu: 'Align' },
       context: ['element'],
       undoable: true,
-      enabled: (app) => targetsOf(app).length > 0,
+      enabled: (app) => alignable(app).length > 0,
       run: (app) => align(app, side),
     });
   }

@@ -190,14 +190,21 @@ function conversionOf(app: App, slide: Element | null): Conversion | string | nu
   return { slide, parent, ranges, moved };
 }
 
-async function makeStack(app: App): Promise<void> {
+const sizeOf = (el: Element): [number, number] => {
+  const r = el.getBoundingClientRect();
+  return [r.width, r.height];
+};
+
+async function makeStack(app: App): Promise<Element | null> {
   const c = conversionOf(app, app.current());
   if (typeof c === 'string') throw new Error(c);
-  if (!c) return;
+  if (!c) return null;
   const { slide, parent, ranges, moved } = c;
   const all = fragmentsOf(slide);
   const indexAt = (step: number) => fragmentIndex(all.find((f) => f.step === step && f.el.classList.contains('fragment'))!.el);
-  const keep = keepBoxes(app, placedOf(app, slide));
+  const placed = placedOf(app, slide);
+  const keep = keepBoxes(app, placed);
+  const sizes = new Map(placed.map((el) => [el, sizeOf(el)]));
   const tabs = tabsOf(app);
   const was = tabs.shown(slide).i;
   const kids = ranges.map((r) => (r.from ? `<div class="fragment" data-fragment-index="${indexAt(r.from)}"></div>` : '<div></div>'));
@@ -212,6 +219,15 @@ async function makeStack(app: App): Promise<void> {
   }
   keep();
   tabs.show(slide, { child: children[Math.min(was, children.length - 1)], i: was });
+  return [...sizes].find(([el, [w, h]]) => el.isConnected && sizeOf(el).some((v, k) => Math.abs(v - [w, h][k]) > 1))?.[0] ?? null;
+}
+
+async function runMakeStack(app: App): Promise<void> {
+  const grown = await app.history.transact('Make Stack', () => makeStack(app));
+  if (!grown) return;
+  const entry = app.history.last;
+  if (entry) await app.history.retract(entry, true);
+  throw new Error(`Make Stack cannot keep the size of ${named(app, grown)}, since a style of this deck sizes it as a child of the slide`);
 }
 
 export function install(app: App): void {
@@ -220,7 +236,6 @@ export function install(app: App): void {
   tabs.act = (what, rect, child) => {
     if (what === 'add') void app.commands.run('stack.addTab').catch(fail);
     else if (what === 'delete' && child) void app.commands.run('stack.deleteTab', { el: child }).catch(fail);
-    else if (what === 'make') void app.commands.run('stack.make').catch(fail);
     else if (what === 'menu' && child) openMenu(app, [{ command: 'stack.deleteTab', arg: { el: child } }], { anchor: rect, placement: 'below' });
   };
   const given = (arg: unknown): Element | null => {
@@ -256,9 +271,8 @@ export function install(app: App): void {
       id: 'stack.make',
       label: 'Make Stack',
       menu: { bar: 'Slide', group: 'stack', order: 57 },
-      undoable: true,
       enabled: (a: App) => !!conversionOf(a, a.current()),
-      run: (a: App) => makeStack(a),
+      run: (a: App) => runMakeStack(a),
     },
     {
       id: 'arrange.everyTab',

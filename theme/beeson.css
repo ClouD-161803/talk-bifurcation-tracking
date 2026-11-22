@@ -101,6 +101,8 @@ html, body, .reveal-viewport { background: var(--bg); }
   color: var(--text);
 }
 .reveal .slides { text-align: left; }
+.reveal ::selection { background-color: #1b334d; }
+html[data-theme="light"] .reveal ::selection { background-color: #d3dced; }
 .reveal .slides section,
 .reveal .slides section > section {
   box-sizing: border-box;
@@ -189,8 +191,8 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal ol > li::before { --mark-width: 1ch; content: counter(list-item); position: absolute; right: calc(100% - 1ch); top: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .reveal li:empty::before { content: none; }
 .reveal .slides section :is(p, li):empty { min-height: 1lh; }
-.reveal :is(ul.center, ol.center, .shape > :is(ul, ol):not(.left)) li { padding-left: 0; }
-.reveal :is(ul.center, ol.center, .shape > :is(ul, ol):not(.left)) li::before { position: relative; right: auto; display: inline-block; vertical-align: top; margin-right: calc(54px - var(--mark-width, 28px)); }
+.reveal :is(:is(ul.center, ol.center, .shape > :is(ul, ol):not(.left)) li, li.center) { padding-left: 0; }
+.reveal :is(:is(ul.center, ol.center, .shape > :is(ul, ol):not(.left)) li, li.center)::before { position: relative; right: auto; display: inline-block; vertical-align: top; margin-right: calc(54px - var(--mark-width, 28px)); }
 .reveal li ul, .reveal li ol { margin-top: 10px; font-size: 36px; }
 .reveal .outline { font-size: 36px; line-height: 1.7; color: var(--muted); margin: 48px 0 0; }
 .reveal .outline > li { margin: 0; padding-left: 42px; }

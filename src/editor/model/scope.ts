@@ -75,7 +75,7 @@ export function declarationProblem(tag: string, classes: string[], name: string,
 }
 
 export function attributeProblem(name: string, template = false, tag = '', value = ''): string | null {
-  if (name === 'start') return tag === 'ol' && /^\d+$/.test(value) ? null : `the attribute ${name}`;
+  if (name === 'start') return tag === 'ol' && /^-?\d+$/.test(value) ? null : `the attribute ${name}`;
   if (name === 'class' || name === 'style' || DATA_ATTRS.includes(name) || STANDARD_ATTRS.includes(name)) return null;
   if (LINE_ATTRS[tag]?.includes(name)) return null;
   if (template && TEMPLATE_ATTRS.includes(name)) return null;

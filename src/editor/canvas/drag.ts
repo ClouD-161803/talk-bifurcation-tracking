@@ -620,6 +620,7 @@ export function install(app: App): void {
       }
       return;
     }
+    if (host && !ev.shiftKey && !commandHeld(ev)) return;
     const item = el ? outlineItem(el, target) : null;
     if (el && item) {
       pressElement(ev, el, target, sel.only() === el && !ev.shiftKey && !commandHeld(ev) && !locked(el) ? () => editItem(app, item) : null);
