@@ -631,8 +631,8 @@ function recordingOf(parts, n) {
 test('a slide of the deck with a traced backdrop is one PowerPoint slide with its still, its recording, and the words of each step', { timeout: 600000 }, () => {
   const { run, parts } = recordDeck();
   assertPackage(parts);
-  assert.match(run.stdout, /recorded backdrops: 5 in \d+\.\d s/);
-  assert.equal(slideCount(parts), 8);
+  assert.match(run.stdout, /recorded backdrops: 6 in \d+\.\d s/);
+  assert.equal(slideCount(parts), 11);
   assert.deepEqual(kinds(parts, 1), ['Step', 'Recording', 'Words', 'Words', 'Words', 'Words']);
   const title = recordingOf(parts, 1);
   assert.deepEqual({ ...title, part: undefined, poster: undefined, duration: undefined },
@@ -642,7 +642,7 @@ test('a slide of the deck with a traced backdrop is one PowerPoint slide with it
   assert.equal(text(parts, 'ppt/slides/slide1.xml').match(/nodeType="clickEffect"/g).length, 3);
   assert.deepEqual(kinds(parts, 2), ['Step', 'Recording', 'Words']);
   assert.deepEqual(kinds(parts, 8), ['Step', 'Recording', 'Words', 'Words']);
-  assert.equal([...parts.keys()].filter((name) => name.endsWith('.mp4')).length, 5);
+  assert.equal([...parts.keys()].filter((name) => name.endsWith('.mp4')).length, 6);
 });
 
 test('a backdrop that is a step starts a new PowerPoint slide at its step, and the slides before it are not recorded', { timeout: 600000 }, () => {
@@ -651,6 +651,13 @@ test('a backdrop that is a step starts a new PowerPoint slide at its step, and t
   assert.deepEqual(kinds(parts, 5), ['Step', 'Recording', 'Words']);
   assert.equal(recordingOf(parts, 5).frames, 61);
   assert.deepEqual([kinds(parts, 6), kinds(parts, 7)], [['Step'], ['Step']]);
+});
+
+test('a backdrop with a step of data-backdrop-play starts a new PowerPoint slide at this step, and the slides before it are not recorded', { timeout: 600000 }, () => {
+  const { parts } = recordDeck();
+  assert.deepEqual([kinds(parts, 9), kinds(parts, 10)], [['Step'], ['Step']]);
+  assert.deepEqual(kinds(parts, 11), ['Step', 'Recording', 'Words', 'Words']);
+  assert.equal(recordingOf(parts, 11).frames, 61);
 });
 
 test('a loop is a looped recording of one period', { timeout: 600000 }, () => {
@@ -664,8 +671,8 @@ test('a loop is a looped recording of one period', { timeout: 600000 }, () => {
 test('with --still, a deck with traced backdrops is exported without a recording, one step per PowerPoint slide', { timeout: 300000 }, () => {
   const parts = recordStillDeck();
   assertPackage(parts);
-  assert.equal(slideCount(parts), 12);
-  for (let n = 1; n <= 12; n++) assert.deepEqual(kinds(parts, n), ['Step']);
+  assert.equal(slideCount(parts), 16);
+  for (let n = 1; n <= 16; n++) assert.deepEqual(kinds(parts, n), ['Step']);
   assert.ok(![...parts.keys()].some((name) => name.endsWith('.mp4')));
 });
 

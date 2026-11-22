@@ -2195,3 +2195,78 @@ describe('Poincaré Sections and Invariant Tori', () => {
     });
   }
 });
+
+describe('the step at which a backdrop starts', () => {
+  const DECK = 'test/pages/backdrop-play.html';
+  const PANEL = '#beeson-edit-panel-format';
+  const MENU = '.beeson-edit-menu.select';
+  let browser;
+  let server;
+  before(async () => {
+    browser = await launch({ offline: false });
+    server = await serve('.');
+  });
+  after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  const js = (v) => JSON.stringify(v);
+  const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg ? `, ${js(arg)}` : ''})).then(() => true)`);
+  const render = (page) => page.evaluate('window.BeesonEditor.render()');
+  const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
+  const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo')`).then((s) => s.label);
+  const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+  const items = async (page) => {
+    await click(page, `${PANEL} [aria-label="Start"]`);
+    await page.waitFor(`!!document.querySelector('${MENU}')`);
+    return page.evaluate(`[...document.querySelectorAll('${MENU} .item')].map((i) => [i.querySelector('.label')?.textContent ?? i.textContent, i.getAttribute('aria-checked') === 'true'])`);
+  };
+  async function choose(page, n) {
+    const text = await render(page);
+    await items(page);
+    await page.evaluate(`document.querySelectorAll('${MENU} .item')[${n}].setAttribute('data-pick', '')`);
+    await click(page, `${MENU} .item[data-pick]`);
+    await page.waitFor(`window.BeesonEditor.render() !== ${js(text)}`);
+    await frames(page);
+    return render(page);
+  }
+
+  for (const platform of ['mac', 'other']) {
+    test(`the Start popup of the Backdrop pane writes data-backdrop-play on the first element of the chosen step, and With the Slide takes it off (${platform})`, async (t) => {
+      const page = await browser.newPage({ width: 1600, height: 1000 });
+      t.after(() => page.close().catch(() => {}));
+      const url = `${server.origin}/${DECK}?edit&still&edit-platform=${platform}`;
+      await page.goto(url);
+      await page.evaluate('localStorage.clear()');
+      await page.goto(url);
+      await page.waitFor(deckSettled);
+      await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+      const source = readFileSync(DECK, 'utf8');
+      assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(source)})`)).problems, []);
+      await page.evaluate('Reveal.slide(1)');
+      await frames(page);
+      if (!(await page.evaluate(`window.BeesonEditor.state('shell.format')`)).checked) await exec(page, 'shell.format');
+      await exec(page, 'backdrop.select');
+      await frames(page);
+      assert.equal(await page.evaluate('Beeson.backdrops.find((b) => b.el.closest("section") === Reveal.getCurrentSlide()).done'), true, 'the backdrop is not complete in the editor');
+      const listed = await items(page);
+      await press(page, 'Escape');
+      assert.deepEqual(listed.map(([, on]) => on), [false, false, true]);
+      assert.equal(listed[0][0], 'With the Slide');
+      assert.match(listed[1][0], /^Step 1: .*First$/);
+      assert.match(listed[2][0], /^Step 2: .*Second$/);
+      const first = await choose(page, 1);
+      assert.match(first, /<p class="fragment" data-fragment-index="0" data-backdrop-play(="")?>First<\/p>\s*<p class="fragment" data-fragment-index="1">Second<\/p>/);
+      assert.equal(await undoLabel(page), 'Undo Start');
+      await undo(page);
+      assert.equal(await render(page), source);
+      const none = await choose(page, 0);
+      assert.ok(!none.includes('data-backdrop-play'), none);
+      assert.equal(none, source.replace(' data-backdrop-play>', '>'));
+      await undo(page);
+      assert.equal(await render(page), source);
+      assert.deepEqual(page.errors, []);
+    });
+  }
+});

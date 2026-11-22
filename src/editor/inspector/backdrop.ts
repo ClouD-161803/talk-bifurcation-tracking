@@ -1,5 +1,5 @@
 import type { App } from '../app.ts';
-import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, labeledDrawing, library, liveOf, planePick, probeLibrary, selectedBackdrop, systemPick, toriPick, type Pick } from '../commands/backdrop.ts';
+import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, labeledDrawing, library, liveOf, planePick, probeLibrary, selectedBackdrop, startStep, startSteps, systemPick, toriPick, WITH_THE_SLIDE, type Pick } from '../commands/backdrop.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { make } from '../ui/dom.ts';
 import { button, checkbox, glyph, keepFocus, note, numberField, row, section, type Control, type Run } from './controls.ts';
@@ -126,7 +126,15 @@ export function backdropPane(app: App, run: Run): Control[] {
         command: 'backdrop.duration',
         commit: (value) => run('backdrop.duration', { value, el }),
       }), button(app, run, { command: 'backdrop.preview', arg: { el }, text: 'Preview' })]),
-      note(() => (traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'With Live, the backdrop is traced when its slide is shown.')),
+      popup(app, 'Start', () => startStep(app, el)?.label ?? WITH_THE_SLIDE, () => {
+        const now = startStep(app, el)?.step ?? null;
+        return [
+          { label: WITH_THE_SLIDE, checked: now === null, run: () => run('backdrop.start', { value: null, el }) },
+          { rule: true },
+          ...startSteps(app, el).map((o) => ({ label: o.label, checked: o.step === now, run: () => run('backdrop.start', { value: o.step, el }) })),
+        ];
+      }, () => on() && startSteps(app, el).length > 0),
+      note(() => (startStep(app, el) ? 'The backdrop is kept at the start of its trace until its step, and traced from this step on.' : traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'With Live, the backdrop is traced when its slide is shown.')),
     ]),
     section(null, [row([button(app, run, { command: 'arrange.lock', icon: 'lock', text: 'Lock' }), button(app, run, { command: 'arrange.unlock', icon: 'unlock', text: 'Unlock' })])]),
   );

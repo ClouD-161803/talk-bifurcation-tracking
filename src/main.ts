@@ -139,18 +139,24 @@ function stepPlots(slide: Element): void {
 }
 
 const waiting = (o: Backdrop) => o.el.classList.contains('fragment') && !o.el.classList.contains('visible');
+const cuesOf = (slide: Element | null | undefined): Element[] => (slide ? [...slide.querySelectorAll('.fragment[data-backdrop-play]')] : []);
+const held = (o: Backdrop, slide: Element | null = o.el.closest('section')): boolean => {
+  const cues = cuesOf(slide);
+  return cues.length > 0 && !cues.some((f) => f.classList.contains('visible'));
+};
+const restOrComplete = (o: Backdrop) => (!EDITING && held(o) ? o.reset() : o.complete());
 
 function animated(o: Backdrop, slide: Element | null = o.el.closest('section')): boolean {
-  if (waiting(o)) return false;
+  if (waiting(o) || held(o, slide)) return false;
   const loop = o.el.hasAttribute('data-loop');
   if (slide?.hasAttribute('data-auto-animate')) return loop;
-  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c));
+  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c)) || cuesOf(slide).length > 0;
 }
 
 function playBackdrop(o: Backdrop, slide: HTMLElement): void {
   o.fit();
-  if (still()) { o.complete(); return; }
-  if (waiting(o)) { o.reset(); return; }
+  if (still()) { restOrComplete(o); return; }
+  if (waiting(o) || held(o, slide)) { o.reset(); return; }
   const loop = o.el.hasAttribute('data-loop');
   if (slide.hasAttribute('data-auto-animate')) {
     o.complete();
@@ -226,7 +232,7 @@ async function fitWindow(el: HTMLElement, box?: { left: number; top: number; wid
 
 function completeAll(): void {
   remount();
-  for (const o of backdrops) { o.fit(); o.complete(); }
+  for (const o of backdrops) { o.fit(); restOrComplete(o); }
   for (const s of surfaces) { s.fit(); s.sync(false); s.draw(); }
   for (const p of plots) { p.fit(); p.syncSteps(); p.still(); }
   applyAll(document);
@@ -334,7 +340,8 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   deck.on('fragmenthidden', step);
   const stepped = (event: Event) => {
     const shown = (event as Event & { fragments?: HTMLElement[] }).fragments ?? [];
-    for (const o of within(deck.getCurrentSlide())) if (shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
+    const cue = shown.some((f) => f.hasAttribute('data-backdrop-play'));
+    for (const o of within(deck.getCurrentSlide())) if (cue || shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
   };
   deck.on('fragmentshown', stepped);
   deck.on('fragmenthidden', stepped);

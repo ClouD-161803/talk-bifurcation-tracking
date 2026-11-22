@@ -9,6 +9,8 @@ import { selectIn } from '../text/elements.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
 import { SYSTEMS, systemOf } from '../../poincare.ts';
 import { ALPHAS, PLANES, planeOf, shownTori, toriSpec } from '../../tori.ts';
+import { describe, modelOf } from '../steps.ts';
+import { mathLookup } from '../math.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
@@ -178,6 +180,24 @@ export function drawingName(el: Element): string {
 }
 
 export const entryName = (el: Element): string => (isBroucke(el) ? NAMES.broucke : drawingName(el));
+
+export type StartStep = { step: number; label: string; els: Element[] };
+
+export function startSteps(app: App, el: Element | null): StartStep[] {
+  const m = el ? modelOf(app, el.closest('section')) : null;
+  if (!el || !m) return [];
+  const out: StartStep[] = [];
+  m.plan.groups.forEach((g, k) => {
+    const els = g.filter((i) => !m.locked[i] && !m.els[i].contains(el) && !el.contains(m.els[i])).map((i) => m.els[i]);
+    if (!els.length) return;
+    const d = describe(els[0], (e) => mathLookup()(e)?.tex ?? null);
+    out.push({ step: k, label: `Step ${k + 1}: ${d.kind}, ${d.text}`, els });
+  });
+  return out;
+}
+
+export const startStep = (app: App, el: Element | null): StartStep | null => startSteps(app, el).find((o) => o.els.some((e) => e.hasAttribute('data-backdrop-play'))) ?? null;
+export const WITH_THE_SLIDE = 'With the Slide';
 
 const round = (v: number) => Number(v.toFixed(8));
 
@@ -758,6 +778,28 @@ export function commands(): Command[] {
       run: (app, arg) => {
         const el = targetOf(app, arg);
         if (el) app.doc.setTag(el, { attrs: { 'data-live': el.hasAttribute('data-live') ? null : '' } }, 'motion');
+      },
+    },
+    {
+      id: 'backdrop.start',
+      label: 'Backdrop Start',
+      undoable: true,
+      undo: 'Start',
+      enabled: (app) => {
+        const el = targetOf(app, undefined);
+        return !!el && !locked(el) && startSteps(app, el).length > 0;
+      },
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        const slide = el?.closest('section');
+        if (!el || !slide) return;
+        const v = valueOf(arg);
+        const to = v === null || v === undefined ? null : startSteps(app, el).find((o) => o.step === Number(v));
+        if (to === undefined) return;
+        endPreview();
+        const target = to ? (to.els.find((e) => e.hasAttribute('data-backdrop-play')) ?? to.els[0]) : null;
+        for (const c of slide.querySelectorAll('[data-backdrop-play]')) if (c !== target && open(app, c)) app.doc.setTag(c, { attrs: { 'data-backdrop-play': null } }, 'motion');
+        if (target && !target.hasAttribute('data-backdrop-play')) app.doc.setTag(target, { attrs: { 'data-backdrop-play': '' } }, 'motion');
       },
     },
     {

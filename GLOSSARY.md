@@ -18,6 +18,8 @@ Avoid "glue".
 
 The drawing of orbits behind the words of a slide, or in its figure box, chosen by name from the built-in drawings or drawn from a file of trajectories.
 
+A backdrop is traced from the start of its slide, or from a step chosen as its Start in the Backdrop pane. In the markup, this step is a fragment with `data-backdrop-play`, and the backdrop is kept at the start of its trace until the step.
+
 Avoid "background", and avoid "scene", which means only a TyCHO scene. The attribute `data-scene` of an old talk is `data-backdrop`.
 
 ## Badge

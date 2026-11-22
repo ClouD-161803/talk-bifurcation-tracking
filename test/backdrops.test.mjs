@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
+import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { builtIn } from '../src/backdrops.ts';
 import { systemOf } from '../src/poincare.ts';
 import { ALPHAS, planeOf, shownTori, toriSpec } from '../src/tori.ts';
@@ -638,5 +638,70 @@ test('the saddle is drawn from its file of theme/backdrops, loaded once, on the 
   }
   assert.ok(Math.abs(out[0].duration - 10.124) < 1e-3, `${out[0].duration}`);
   assert.equal(out[1].duration, 5);
+  assert.deepEqual(page.errors, []);
+});
+
+const PLAY = 'test/pages/backdrop-play.html';
+const playState = `(() => { const b = Beeson.backdrops[0]; return { tracing: b.tracing, done: b.done, drawn: b.idx.some((j) => j > 0) }; })()`;
+const HELD = { tracing: false, done: false, drawn: false };
+
+test('a backdrop with a step of data-backdrop-play is kept at the start of its trace until this step, and traced from it on', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(PLAY));
+  await page.waitFor(deckSettled);
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('Reveal.getIndices().h === 1');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is not kept still before its step');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), false);
+  await page.evaluate('Reveal.next()');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is started at the step before its own');
+  await page.evaluate('Reveal.next()');
+  await page.waitFor('Beeson.backdrops[0].tracing && Beeson.backdrops[0].idx.some((j) => j > 0)');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), true);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('!Beeson.backdrops[0].tracing');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is not set back when its step is undone');
+  await page.evaluate('Reveal.slide(2)');
+  await page.waitFor('Reveal.getIndices().h === 2');
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('Reveal.getIndices().h === 1 && Beeson.backdrops[0].tracing');
+  assert.equal(await page.evaluate(`document.querySelector('[data-backdrop-play]').classList.contains('visible')`), true);
+  assert.deepEqual(page.errors, []);
+});
+
+test('under reduced motion and in the print view, a backdrop is at the start of its trace before its step of data-backdrop-play and complete from it on', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await page.goto(deckUrl(PLAY));
+  await page.waitFor(deckSettled);
+  assert.equal(await page.evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`), true);
+  await page.evaluate('Reveal.slide(1)');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD);
+  await page.evaluate('Reveal.next()');
+  await page.evaluate('Reveal.next()');
+  await page.waitFor('Beeson.backdrops[0].done');
+  assert.equal(await page.evaluate('Beeson.backdrops[0].tracing'), false);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('!Beeson.backdrops[0].done');
+  assert.deepEqual(await page.evaluate(playState), HELD);
+  await printView(page, deckUrl(PLAY, 'print-pdf&still'));
+  const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].flatMap((p) => {
+    const el = p.querySelector('.backdrop');
+    const o = el && Beeson.backdrops.find((b) => b.el === el);
+    return o ? [{ done: o.done, animated: Beeson.animated(o), drawn: o.idx.some((j) => j > 0) || o.done }] : [];
+  })`);
+  assert.deepEqual(pages, [
+    { done: false, animated: false, drawn: false },
+    { done: false, animated: false, drawn: false },
+    { done: true, animated: true, drawn: true },
+    { done: true, animated: true, drawn: true },
+  ]);
   assert.deepEqual(page.errors, []);
 });
