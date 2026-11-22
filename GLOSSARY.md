@@ -58,7 +58,7 @@ Avoid "badge", which is the count of the threads of an element, and avoid "chip"
 
 ## Built-in backdrop
 
-A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, `saddle`, or `normalForm`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, Normal Form Saddle, and Normal Form in the editor.
+A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, `saddle`, or `normalForm`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, Saddle Manifolds, and Normal Form in the editor.
 
 ## Chip
 
@@ -182,9 +182,9 @@ Avoid "lock", which is the command Lock of the Arrange menu.
 
 ## Host
 
-The person who started a session. The edit command runs on the computer of the host, and `index.html` is written in the talk folder of the host.
+The person who started a session. The edit command runs on the host machine, and `index.html` is written in the talk folder of the host.
 
-Avoid "owner", and avoid "machine" for the computer of the host.
+Avoid "owner", and avoid "computer of the host".
 
 ## Image
 
@@ -256,7 +256,7 @@ Avoid "ping", and avoid "tag" for a mention.
 
 The dark or the light look of a deck, which a person flips with the mode button or the key D.
 
-Avoid "theme" and "version" for a mode.
+Avoid "theme" and "version" for a mode. The names `data-theme`, `data-keep-theme`, and `?theme=`, and the attribute `theme` of a TyCHO viewer, are kept, since the styles of talks and TyCHO read them.
 
 ## Name flag
 
@@ -374,7 +374,7 @@ Avoid "footnote" and "citation" for a reference.
 
 ## Relay
 
-The program through which a guest reaches the edit command of a host, which can be reached only from the computer of the host. A deck is never kept on it.
+The program through which a guest reaches the edit command of a host, which can be reached only from the host machine. A deck is never kept on it.
 
 Avoid "hub", and avoid "server" for the relay.
 

@@ -130,7 +130,7 @@ function offer(client: Client, kind: Kind): void {
       try {
         await sent(client);
         if (stop.signal.aborted) return;
-        tell(`${kind.built}${client.host ? '' : ' on the computer of the host'}…`);
+        tell(`${kind.built}${client.host ? '' : ' on the host machine'}…`);
         const mb = (bytes: number) => (bytes / MB).toFixed(1);
         const { made, blob } = await fetchZip(client, kind, stop.signal, (made, read) => tell(`Downloading ${made.name}: ${mb(read)} of ${mb(made.size)} MB`));
         if (stop.signal.aborted) return;

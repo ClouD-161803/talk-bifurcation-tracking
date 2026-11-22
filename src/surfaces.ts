@@ -5,9 +5,9 @@ export type Height = (x: number, y: number) => number;
 
 export type Point = { name: string; x: number; y: number; kind: 'saddle' | 'maximum' | 'minimum' };
 
-export type Sheet = { height: Height; tone: Tone; lift: number };
+export type Graph = { height: Height; tone: Tone; lift: number };
 
-export type State = { sheets: Sheet[]; points: boolean; level: number | null };
+export type State = { graphs: Graph[]; points: boolean; level: number | null };
 
 export type Tone = { ramp: string; range?: [number, number] };
 
@@ -81,7 +81,7 @@ const FUNCTIONS = {
     const points = librationPoints(mu);
     const C1 = -2 * sum(points[0].x, 0);
     const zero: Height = () => 0;
-    const one = (height: Height, tone: Tone): Sheet[] => [{ height, tone, lift: 0 }];
+    const one = (height: Height, tone: Tone): Graph[] => [{ height, tone, lift: 0 }];
     return {
       x: [-1.5, 1.5],
       y: [-1.5, 1.5],
@@ -90,12 +90,12 @@ const FUNCTIONS = {
       points,
       initial: 'zero',
       states: {
-        zero: () => ({ sheets: one(zero, GRAVITATIONAL), points: false, level: null }),
-        gravitational: () => ({ sheets: one(wells, GRAVITATIONAL), points: false, level: null }),
-        centrifugal: () => ({ sheets: [...one(wells, GRAVITATIONAL), { height: bowl, tone: CENTRIFUGAL, lift: BOWL_LIFT }], points: false, level: null }),
-        effective: () => ({ sheets: one(sum, EFFECTIVE), points: false, level: null }),
-        extrema: () => ({ sheets: one(sum, EFFECTIVE), points: true, level: null }),
-        cut: (a) => ({ sheets: one(sum, EFFECTIVE), points: true, level: -num(a.c, C1) / 2 }),
+        zero: () => ({ graphs: one(zero, GRAVITATIONAL), points: false, level: null }),
+        gravitational: () => ({ graphs: one(wells, GRAVITATIONAL), points: false, level: null }),
+        centrifugal: () => ({ graphs: [...one(wells, GRAVITATIONAL), { height: bowl, tone: CENTRIFUGAL, lift: BOWL_LIFT }], points: false, level: null }),
+        effective: () => ({ graphs: one(sum, EFFECTIVE), points: false, level: null }),
+        extrema: () => ({ graphs: one(sum, EFFECTIVE), points: true, level: null }),
+        cut: (a) => ({ graphs: one(sum, EFFECTIVE), points: true, level: -num(a.c, C1) / 2 }),
       },
     };
   },

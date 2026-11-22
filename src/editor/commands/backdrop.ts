@@ -24,7 +24,7 @@ export const NAMES = {
   wideRibbon: 'Earth Manifolds',
   poincare: 'Poincaré Sections',
   tori: 'Invariant Tori',
-  saddle: 'Normal Form Saddle',
+  saddle: 'Saddle Manifolds',
   normalForm: 'Normal Form',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
