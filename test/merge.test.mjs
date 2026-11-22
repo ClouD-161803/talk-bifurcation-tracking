@@ -386,6 +386,27 @@ test('the merge of a paste far over the cells of the search for a run in common 
   assert.ok(ratio < 4, `a paste of 55,000 characters costs ${ratio.toFixed(1)} times one of 3,194 at the cap`);
 });
 
+test('the changes of a deck whose lines are all indented anew cost about as much per slide at 2,400 slides as at 300', () => {
+  const deck = (n) => {
+    let s = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+    for (let i = 0; i < n; i++) s += `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
+    return `${s}</div></div></body></html>\n`;
+  };
+  const cost = (n) => {
+    const a = deck(n), b = a.replace(/^ {2}</gm, '    <');
+    const times = [];
+    for (let i = 0; i < 3; i++) {
+      const t0 = performance.now();
+      changes(a, b);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((x, y) => x - y)[1];
+  };
+  let ratio = Infinity;
+  for (let i = 0; i < 3 && ratio >= 16; i++) ratio = cost(2_400) / cost(300);
+  assert.ok(ratio < 16, `the changes of 2,400 slides cost ${ratio.toFixed(1)} times those of 300, where 8 is the ratio of their sizes`);
+});
+
 test('the merge of an apply in a session keeps an insertion of another person two letters after an unread deletion of the person whose letters repeat after it', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
   const f = wrap('toward unstable stable point'), s = wrap('toward unstable point'), t = wrap('toward unstable stablexyz point');
