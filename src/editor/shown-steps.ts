@@ -97,7 +97,7 @@ const CSS = `
 `;
 const GAP = 4;
 const HOLD_MS = 500;
-export type TabAction = 'add' | 'menu' | 'delete' | 'make';
+export type TabAction = 'add' | 'menu' | 'delete';
 
 export type Pick = TabPick;
 
@@ -145,7 +145,7 @@ export class ShownSteps {
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
     this.tabs.hidden = false;
     const stacked = stacksOf(slide).length > 0;
-    const key = [...labels, stacked ? '+' : 'make'].join('|');
+    const key = [...labels, stacked ? '+' : ''].join('|');
     if (key !== this.key) {
       this.key = key;
       const tabs = labels.map((text, i) => {
@@ -191,19 +191,19 @@ export class ShownSteps {
         });
         return b;
       });
-      const extra = document.createElement('button');
-      extra.type = 'button';
-      extra.className = stacked ? 'add' : 'make';
-      extra.textContent = stacked ? '+' : 'Make Stack';
-      extra.title = stacked ? 'Add a tab with a copy of the tab shown, just before the next tab' : 'Make the elements replaced on this slide a stack, with a tab for each version';
-      extra.setAttribute('aria-label', stacked ? 'Add Tab' : 'Make Stack');
-      extra.addEventListener('click', (ev) => {
-        if (ev.detail > 0) extra.blur();
-        this.act?.(stacked ? 'add' : 'make', extra.getBoundingClientRect(), null);
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'add';
+      add.textContent = '+';
+      add.title = 'Add a tab with a copy of the tab shown, just before the next tab';
+      add.setAttribute('aria-label', 'Add Tab');
+      add.addEventListener('click', (ev) => {
+        if (ev.detail > 0) add.blur();
+        this.act?.('add', add.getBoundingClientRect(), null);
       });
-      this.tabs.replaceChildren(...tabs, extra);
+      this.tabs.replaceChildren(...tabs, ...(stacked ? [add] : []));
     }
-    this.tabs.querySelectorAll('button:not(.add, .make)').forEach((b, i) => {
+    this.tabs.querySelectorAll('button:not(.add)').forEach((b, i) => {
       b.setAttribute('aria-pressed', String(i === at));
       b.classList.toggle('on', i === at);
     });

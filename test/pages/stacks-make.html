@@ -7,6 +7,10 @@
 <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
 <link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
 <link rel="stylesheet" href="../../theme/beeson.css">
+<style>
+.reveal .slides section#placed > :is(.math, p) { position: absolute; left: 0; top: 0; margin: 0; max-width: none; }
+.reveal .slides section#placed > .math { font-size: 40px; }
+</style>
 </head>
 <body>
 <div class="reveal">
@@ -46,6 +50,14 @@
         <p class="fragment current-visible" data-fragment-index="1" id="in-col">In a column.</p>
         <p class="fragment" data-fragment-index="2">After it.</p>
       </div>
+    </section>
+    <section class="wide" id="placed">
+      <h2>Placed</h2>
+      <p class="fragment current-visible" data-fragment-index="1" id="placed-lead-1" style="translate: 120px 215px">The equations of motion are:</p>
+      <p class="fragment current-visible" data-fragment-index="2" id="placed-lead-2" style="translate: 120px 215px">The equations of motion are:</p>
+      <div class="math fragment current-visible" data-fragment-index="1" id="placed-eq-1" style="translate: 120px 300px">\[\dot v = f(r, v)\]</div>
+      <div class="math fragment current-visible" data-fragment-index="2" id="placed-eq-2" style="translate: 120px 300px">\[\dot p = g(r)\]</div>
+      <p class="small fragment" data-fragment-index="1" id="placed-where" style="translate: 120px 500px">where the distances are written out.</p>
     </section>
   </div>
 </div>
