@@ -419,6 +419,7 @@ export function install(app: App): void {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
+      numberLines(app);
       paint(app);
     });
   };
@@ -461,6 +462,6 @@ export function install(app: App): void {
   window.addEventListener('input', settle);
   app.onRefresh(['content', 'slide', 'structure'], refresh);
   app.listen('slide', later);
-  document.addEventListener('input', refresh, true);
-  refresh();
+  document.addEventListener('input', later, true);
+  later();
 }
