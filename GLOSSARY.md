@@ -198,7 +198,7 @@ Avoid "cursor", "tag", and "badge".
 
 ## Outline list
 
-The list of the sections of a talk on a section slide, written empty with `data-auto` and given the heading of each section slide as an item when the deck is shown. The item of the section of its slide is drawn in `--text`, and the others are muted.
+The list of the sections of a talk on a section slide, written empty with `data-auto` and given the heading of each section slide as an item when the deck is shown. The item of the section of its slide is drawn in `--text`, and the others are muted with their numbers or bullets.
 
 Avoid "agenda" and "table of contents".
 
