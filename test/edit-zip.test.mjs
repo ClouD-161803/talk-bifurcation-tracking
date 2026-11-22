@@ -656,6 +656,23 @@ test('a file that changes after its zip was made is named in the answer to a pie
   assert.equal(byName(again.zip).get('media/clip.mp4').bytes.length, 4 * MB);
 });
 
+test('a file that is written again with the same size during the download is named in the answer to a piece', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  const clip = put(talk, 'media/clip.mp4', randomBytes(5 * MB));
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const { id, size } = (await makeZip(port, key, token)).json();
+  assert.equal((await pieceOf(port, key, token, id, 0)).status, 200);
+  writeFileSync(clip, randomBytes(5 * MB));
+  const later = new Date(statSync(clip).mtimeMs + 10_000);
+  utimesSync(clip, later, later);
+  let answer;
+  for (let at = PIECE; at < size && answer?.status !== 409; at += PIECE) answer = await pieceOf(port, key, token, id, at);
+  assert.equal(answer.status, 409);
+  assert.deepEqual(answer.json(), { error: 'The file media/clip.mp4 changed while the talk folder was downloaded. Try again.' });
+});
+
 test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP_KEPT_MS, and after a quarter of this time when no piece was asked for', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
