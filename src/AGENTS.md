@@ -15,15 +15,15 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - Let `theme/session.js` reach the editor only through `src/session/client/handover.ts`. From `src/editor/`, import only `merge.ts`, `tokens.ts`, and types. Any other module would be a second copy with separate state, and `build.mjs` fails on it.
 - Let `theme/session-history.js` take the modules of `theme/session.js` that keep state, e.g. `toast.ts`, `follow.ts`, and `presence.ts`, only from `src/session/client/history.ts`. It may share with `theme/session.js` only `src/editor/tokens.ts`, `protocol.ts`, `slides.ts`, `dom.ts`, and `labels.ts`, and `build.mjs` fails on any other module.
 - Let the engine of the port reach the editor only through `src/editor/session/host.ts`. Import a module of the editor into `session.ts`, `apply.ts`, or `tree.ts` only with `import type`. `theme/editor-session.js` may not share any module with `theme/editor.js`, and `build.mjs` fails on one.
-- Add what the session client needs from the editor as a small hook in `src/editor/session/`. Keep the drawing, the texts, and the styles in `src/session/client/`.
+- Add what the session client needs from the editor as a small hook in `src/editor/session/`. Keep the code that draws, the texts, and the styles in `src/session/client/`.
 - Keep the edit command and the relay free of dependencies. They are run on Node 20 and later, on Windows, macOS, and Linux.
-- Do not block the edit command with a long step. Every page of a session waits on its one process.
+- Do not hold up the edit command with a long step. Every page of a session waits on its one process.
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`. The TyCHO runtime and the Latin Modern Roman faces are the exceptions, and they are copied by hand. Add libraries that decks load to `scripts/vendor.mjs`, together with their licenses.
 - pdf.js is vendored from its legacy build. Its default build calls methods that are missing in the Safari version before the current one.
 - In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
 - The engine of the Poincaré sections and of the tori, in `src/dots.ts`, `src/poincare.ts`, and `src/tori.ts`, was written for a talk of the group, not ported from DyLAN code. The files of `theme/backdrops/` hold data computed by DyLAN, which is allowed.
-- Load the file of a drawing of `theme/backdrops/` only in a deck that draws it. `theme/beeson.js` is loaded by every deck, hence keep the data of a drawing out of it.
+- Load the file of a built-in backdrop of `theme/backdrops/` only in a deck that draws it. `theme/beeson.js` is loaded by every deck, hence keep the data of a backdrop out of it.
 - `realpathSync` of Node keeps the short names of Windows, e.g. `RUNNER~1`. `realpathSync.native` and `realpath` of `fs/promises` resolve them.
 - On Windows, another program may hold `index.html` open for a moment. A rename over it is therefore tried again.
 - `node:zlib` has `crc32` only since Node 20.15. The CRC-32 of a zip entry is read from the trailer of gzip.
@@ -123,7 +123,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - The system clipboard is shared between tests. Stub `navigator.clipboard`, or send copy and paste events with a `DataTransfer` of the page.
 - Over the DevTools protocol, a trusted key runs an editing command, or clicks a button at Enter, only when it is sent with the command or with its text, e.g. `commands: ['selectAll']` or `text: '\r'`. In headless Chrome, a paste event is not fired at Mod+V.
 - In headless Chrome, a file chooser is canceled unless `Page.setInterceptFileChooserDialog` is turned on before the trusted click that opens it. The cancel would race the files set by the test.
-- Under load, an anti-aliased edge may be rastered a few levels apart. Compare the computed styles and boxes of two drawings, not their pixels.
+- Under load, an anti-aliased edge may be rastered a few levels apart. Compare the computed styles and boxes of two pages, not their pixels.
 - On the Windows runners, Chrome draws WebGL in WARP, since SwiftShader takes about 170 ms for a frame of a surface there, against about 30 ms in WARP. The page is still composited in software, so that the screenshots of the print view equal the frames composed on a 2D canvas.
 - On macOS, Chrome is started without MacAppCodeSignClone. With it, Chrome copies its app into a temp folder of macOS at each start, and the copy is left there when Chrome is ended by a signal. Chrome removes what it has written outside its profile only at an exit of its own, hence `close()` waits up to 5 s for Chrome to exit after `Browser.close` before it ends Chrome.
 - On Windows, Chrome is started without TcpPortRandomizationWin. On Windows 11 and Server 2025, it causes spurious `net::ERR_NO_BUFFER_SPACE` at rapid fetches over 127.0.0.1, also inside iframes, where the reload of `goto()` does not recover them.
