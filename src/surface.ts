@@ -1,7 +1,7 @@
 import type * as Three from 'three';
 import { typesetLabels } from './drawn-text.ts';
 import { FUNCTION_NAMES, RAMPS, levelCurves, sample, surfaceFunction } from './surfaces.ts';
-import type { Height, Sheet, State, SurfaceFunction } from './surfaces.ts';
+import type { Graph, Height, State, SurfaceFunction } from './surfaces.ts';
 
 declare global {
   interface Window {
@@ -14,7 +14,7 @@ type Shown = { points: number; cut: number; level: number; low: number; high: nu
 type Pose = { lift: number; alpha: number };
 type Paint = { key: string; texture: Three.DataTexture; range: [number, number] };
 
-type SheetMesh = {
+type GraphMesh = {
   group: Three.Group;
   mesh: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
   depth: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
@@ -290,7 +290,7 @@ export class Surface {
   private THREE: typeof Three;
   private scene: Three.Scene;
   private camera: Three.PerspectiveCamera;
-  private sheets: SheetMesh[] = [];
+  private graphs: GraphMesh[] = [];
   private plane: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
   private curve: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
   private glow: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
@@ -347,7 +347,7 @@ export class Surface {
     this.labels = [...el.querySelectorAll<HTMLElement>('.label')];
     typesetLabels(this.labels);
 
-    for (const f of new Set(Object.values(fn.states).flatMap((state) => state({ ...el.dataset }).sheets.map((sheet) => sheet.height)))) {
+    for (const f of new Set(Object.values(fn.states).flatMap((state) => state({ ...el.dataset }).graphs.map((graph) => graph.height)))) {
       const g = sample(f, fn.x, fn.y, CELLS, CELLS, fn.floor);
       this.grids.set(f, g);
       this.ranges.set(f, this.range(g));
@@ -381,8 +381,8 @@ export class Surface {
     this.fit();
   }
 
-  private initialSheet(): Sheet {
-    return this.fn.states[this.fn.initial]({ ...this.el.dataset }).sheets[0];
+  private initialGraph(): Graph {
+    return this.fn.states[this.fn.initial]({ ...this.el.dataset }).graphs[0];
   }
 
   private range(g: Float64Array): [number, number] {
@@ -407,18 +407,18 @@ export class Surface {
     return t;
   }
 
-  private paintOf(sheet: Sheet): Paint {
-    let { ramp, range } = sheet.tone;
+  private paintOf(graph: Graph): Paint {
+    let { ramp, range } = graph.tone;
     if (ramp !== 'theme' && !(ramp in RAMPS)) {
       console.error(`beeson: unknown ramp "${ramp}" of ${this.el.dataset.function}, known: theme, ${Object.keys(RAMPS).join(', ')}`);
       ramp = 'theme';
     }
-    const world: [number, number] = range ? [range[0] * this.zscale, range[1] * this.zscale] : (this.ranges.get(sheet.height) ?? [-1, 1]);
+    const world: [number, number] = range ? [range[0] * this.zscale, range[1] * this.zscale] : (this.ranges.get(graph.height) ?? [-1, 1]);
     return { key: `${ramp}|${world.join('|')}`, texture: this.texture(ramp), range: world };
   }
 
-  private sheet(i: number): SheetMesh {
-    if (this.sheets[i]) return this.sheets[i];
+  private graph(i: number): GraphMesh {
+    if (this.graphs[i]) return this.graphs[i];
     const THREE = this.THREE, n = CELLS + 1, fn = this.fn;
     const position = new Float32Array(3 * n * n);
     const dx = (fn.x[1] - fn.x[0]) / CELLS, dy = (fn.y[1] - fn.y[0]) / CELLS;
@@ -440,7 +440,7 @@ export class Surface {
     }
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     const cell = Math.max(fn.x[1] - fn.x[0], fn.y[1] - fn.y[0]) / 24;
-    const paint = this.paintOf(this.initialSheet());
+    const paint = this.paintOf(this.initialGraph());
     const uniforms = {
       uMix: { value: 1 },
       uRampA: { value: paint.texture },
@@ -472,8 +472,8 @@ export class Surface {
     group.visible = false;
     this.scene.add(group);
     const hidden: Pose = { lift: 0, alpha: 0 };
-    const s: SheetMesh = { group, mesh, depth, height: null, A: this.zeros, B: this.zeros, from: hidden, to: hidden, shown: hidden, paintA: paint, paintB: paint, toneFrom: 1, tone: 1, now: null };
-    this.sheets[i] = s;
+    const s: GraphMesh = { group, mesh, depth, height: null, A: this.zeros, B: this.zeros, from: hidden, to: hidden, shown: hidden, paintA: paint, paintB: paint, toneFrom: 1, tone: 1, now: null };
+    this.graphs[i] = s;
     return s;
   }
 
@@ -577,7 +577,7 @@ export class Surface {
     return { name, state: this.fn.states[name]({ ...this.el.dataset, ...best?.dataset }), step: best };
   }
 
-  private repaint(s: SheetMesh, p: Paint): void {
+  private repaint(s: GraphMesh, p: Paint): void {
     if (p.key === s.paintB.key) s.toneFrom = s.tone;
     else if (p.key === s.paintA.key) { s.paintA = s.paintB; s.toneFrom = 1 - s.tone; s.paintB = p; }
     else { s.paintA = s.tone < 0.5 ? s.paintA : s.paintB; s.paintB = p; s.toneFrom = 0; }
@@ -631,48 +631,48 @@ export class Surface {
     this.pointKey = pointKey;
     this.stateName = name;
     this.el.dataset.shown = name;
-    const s = this.zscale, sheets = state.sheets.length ? state.sheets : [this.initialSheet()], main = sheets[0];
+    const s = this.zscale, graphs = state.graphs.length ? state.graphs : [this.initialGraph()], main = graphs[0];
     const grid = (height: Height) => this.grids.get(height) ?? this.zeros;
-    const first = this.sheets[0];
+    const first = this.graphs[0];
     const merge = !first || first.height !== main.height;
     const was = first ? { heights: this.current(first), lift: first.shown.lift, paint: first.tone < 0.5 ? first.paintA : first.paintB } : null;
     const lifts: number[] = [];
-    for (let i = 0; i < Math.max(this.sheets.length, sheets.length); i++) {
-      const sheet = this.sheet(i), next = sheets[i], seen = sheet.shown.alpha > 0;
+    for (let i = 0; i < Math.max(this.graphs.length, graphs.length); i++) {
+      const graph = this.graph(i), next = graphs[i], seen = graph.shown.alpha > 0;
       if (!next && !seen) {
-        sheet.height = null;
-        sheet.from = sheet.to = sheet.shown;
+        graph.height = null;
+        graph.from = graph.to = graph.shown;
         continue;
       }
-      const heights = this.current(sheet);
+      const heights = this.current(graph);
       if (next) {
         const paint = this.paintOf(next);
         if (seen) {
-          sheet.A = heights;
-          sheet.from = sheet.shown;
+          graph.A = heights;
+          graph.from = graph.shown;
         } else if (i > 0 && merge && was) {
-          sheet.A = was.heights;
-          sheet.from = { lift: was.lift, alpha: 0 };
-          sheet.paintA = sheet.paintB = was.paint;
-          sheet.tone = 1;
+          graph.A = was.heights;
+          graph.from = { lift: was.lift, alpha: 0 };
+          graph.paintA = graph.paintB = was.paint;
+          graph.tone = 1;
         } else {
-          sheet.A = this.zeros;
-          sheet.from = { lift: (i > 0 && first ? first.shown.lift : next.lift * s), alpha: 0 };
-          sheet.paintA = sheet.paintB = paint;
-          sheet.tone = 1;
+          graph.A = this.zeros;
+          graph.from = { lift: (i > 0 && first ? first.shown.lift : next.lift * s), alpha: 0 };
+          graph.paintA = graph.paintB = paint;
+          graph.tone = 1;
         }
-        sheet.B = grid(next.height);
-        sheet.to = { lift: next.lift * s, alpha: 1 };
-        sheet.height = next.height;
-        this.repaint(sheet, paint);
+        graph.B = grid(next.height);
+        graph.to = { lift: next.lift * s, alpha: 1 };
+        graph.height = next.height;
+        this.repaint(graph, paint);
         lifts.push(next.lift * s);
       } else {
-        sheet.A = heights;
-        sheet.from = sheet.shown;
-        sheet.height = null;
-        sheet.B = merge ? grid(main.height) : this.zeros;
-        sheet.to = { lift: main.lift * s, alpha: 0 };
-        this.repaint(sheet, merge ? this.paintOf(main) : sheet.paintB);
+        graph.A = heights;
+        graph.from = graph.shown;
+        graph.height = null;
+        graph.B = merge ? grid(main.height) : this.zeros;
+        graph.to = { lift: main.lift * s, alpha: 0 };
+        this.repaint(graph, merge ? this.paintOf(main) : graph.paintB);
       }
     }
     const to: Shown = {
@@ -682,42 +682,42 @@ export class Surface {
       low: this.zmin * s + Math.min(...lifts),
       high: this.zmax * s + Math.max(...lifts),
     };
-    const counted = (shown: (sheet: SheetMesh) => boolean) => this.sheets.filter(shown).length;
-    const regrouped = counted((sheet) => sheet.from.alpha > 0) !== counted((sheet) => sheet.to.alpha > 0);
+    const counted = (shown: (graph: GraphMesh) => boolean) => this.graphs.filter(shown).length;
+    const regrouped = counted((graph) => graph.from.alpha > 0) !== counted((graph) => graph.to.alpha > 0);
     if (jump) {
       this.mix = 1;
-      for (const sheet of this.sheets) {
-        sheet.A = sheet.B;
-        sheet.from = sheet.shown = sheet.to;
-        sheet.toneFrom = sheet.tone = 1;
+      for (const graph of this.graphs) {
+        graph.A = graph.B;
+        graph.from = graph.shown = graph.to;
+        graph.toneFrom = graph.tone = 1;
       }
       this.shown = this.from = this.to = to;
       this.moving = false;
     } else {
       this.mix = 0;
-      for (const sheet of this.sheets) sheet.tone = sheet.toneFrom;
+      for (const graph of this.graphs) graph.tone = graph.toneFrom;
       this.from = { ...this.shown, level: this.shown.cut > 0 ? this.shown.level : this.fn.floor };
       this.to = to;
       this.duration = this.from.level !== to.level || regrouped ? SLIDE : MORPH;
       this.t0 = performance.now();
       this.moving = true;
     }
-    const lead = this.sheet(0);
+    const lead = this.graph(0);
     this.fn.points.forEach((m, i) => {
       this.pointA[i] = heightAt(lead.A, this.fn, m.x, m.y);
       this.pointB[i] = heightAt(lead.B, this.fn, m.x, m.y);
     });
-    for (const sheet of this.sheets) this.upload(sheet);
+    for (const graph of this.graphs) this.upload(graph);
     if (this.moving) this.kick();
     else this.draw();
   }
 
-  private current(sheet: SheetMesh): Float64Array {
-    if (this.mix >= 1 || sheet.A === sheet.B) return sheet.B;
-    const now = sheet.now, a = sheet.A, b = sheet.B, t = this.mix;
+  private current(graph: GraphMesh): Float64Array {
+    if (this.mix >= 1 || graph.A === graph.B) return graph.B;
+    const now = graph.now, a = graph.A, b = graph.B, t = this.mix;
     if (now && now.a === a && now.b === b && now.mix === t) return now.grid;
     const grid = a.map((z, i) => z + (b[i] - z) * t);
-    sheet.now = { a, b, mix: t, grid };
+    graph.now = { a, b, mix: t, grid };
     return grid;
   }
 
@@ -737,22 +737,22 @@ export class Surface {
     return out;
   }
 
-  private upload(sheet: SheetMesh): void {
-    const geometry = sheet.mesh.geometry, s = this.zscale;
+  private upload(graph: GraphMesh): void {
+    const geometry = graph.mesh.geometry, s = this.zscale;
     const zA = geometry.getAttribute('zA') as Three.BufferAttribute, zB = geometry.getAttribute('zB') as Three.BufferAttribute;
-    for (let i = 0; i < sheet.A.length; i++) { zA.array[i] = sheet.A[i] * s; zB.array[i] = sheet.B[i] * s; }
-    (geometry.getAttribute('nA') as Three.BufferAttribute).set(this.normalsOf(sheet.A));
-    (geometry.getAttribute('nB') as Three.BufferAttribute).set(this.normalsOf(sheet.B));
+    for (let i = 0; i < graph.A.length; i++) { zA.array[i] = graph.A[i] * s; zB.array[i] = graph.B[i] * s; }
+    (geometry.getAttribute('nA') as Three.BufferAttribute).set(this.normalsOf(graph.A));
+    (geometry.getAttribute('nB') as Three.BufferAttribute).set(this.normalsOf(graph.B));
     for (const name of ['zA', 'zB', 'nA', 'nB']) geometry.getAttribute(name).needsUpdate = true;
   }
 
   private pointAt(i: number, p: Three.Vector3): Three.Vector3 {
     const m = this.fn.points[i];
-    return p.set(m.x, m.y, lerp(this.pointA[i], this.pointB[i], this.mix) * this.zscale + this.sheet(0).shown.lift);
+    return p.set(m.x, m.y, lerp(this.pointA[i], this.pointB[i], this.mix) * this.zscale + this.graph(0).shown.lift);
   }
 
   probe(): { state: string; settled: boolean; points: { name: string; z: number; surface: number; fade: number; label: number | null; lit: number; tone: PointTone }[] } {
-    const position = this.points.geometry.getAttribute('position') as Three.BufferAttribute, lead = this.sheet(0), g = this.current(lead);
+    const position = this.points.geometry.getAttribute('position') as Three.BufferAttribute, lead = this.graph(0), g = this.current(lead);
     const fade = this.points.visible ? this.shown.points : 0;
     const camera = this.camera.clone(), p = new this.THREE.Vector3();
     camera.updateMatrixWorld();
@@ -809,7 +809,7 @@ export class Surface {
   }
 
   private trace(): void {
-    const lead = this.sheet(0);
+    const lead = this.graph(0);
     const key = this.shown.cut > 0 ? `${this.shown.level}|${this.mix}|${lead.height ? [...this.grids.keys()].indexOf(lead.height) : -1}` : '';
     if (key === this.drawn) return;
     this.drawn = key;
@@ -850,7 +850,7 @@ export class Surface {
     const r = renderer();
     if (!r) return;
     const shown = this.shown;
-    for (const s of this.sheets) {
+    for (const s of this.graphs) {
       const u = s.mesh.material.uniforms;
       u.uMix.value = this.mix;
       u.uTone.value = s.tone;
@@ -860,7 +860,7 @@ export class Surface {
       s.group.visible = s.shown.alpha > 0;
       s.depth.visible = s.shown.alpha < 1;
     }
-    const lift = this.sheet(0).shown.lift;
+    const lift = this.graph(0).shown.lift;
     this.plane.position.z = shown.level * this.zscale + lift;
     this.plane.material.uniforms.uAlpha.value = 0.2 * shown.cut;
     this.plane.visible = shown.cut > 0;
@@ -914,7 +914,7 @@ export class Surface {
   }
 
   private behind(p: Three.Vector3): boolean {
-    const fn = this.fn, lead = this.sheet(0), g = this.current(lead), cam = this.camera.position;
+    const fn = this.fn, lead = this.graph(0), g = this.current(lead), cam = this.camera.position;
     for (let k = 1; k <= 80; k++) {
       const t = 0.01 + (k / 80) * 0.99;
       const x = p.x + (cam.x - p.x) * t, y = p.y + (cam.y - p.y) * t, z = p.z + 0.03 + (cam.z - p.z) * t;
@@ -937,7 +937,7 @@ export class Surface {
       const late = ease(clamp((k - 0.35) / 0.65, 0, 1)), early = ease(clamp(k / 0.65, 0, 1));
       this.mix = e;
       this.shown = { points: lerp(a.points, b.points, b.points > a.points ? late : early), cut: lerp(a.cut, b.cut, e), level: lerp(a.level, b.level, e), low: lerp(a.low, b.low, e), high: lerp(a.high, b.high, e) };
-      for (const s of this.sheets) {
+      for (const s of this.graphs) {
         s.shown = { lift: lerp(s.from.lift, s.to.lift, e), alpha: lerp(s.from.alpha, s.to.alpha, s.to.alpha > s.from.alpha ? early : late) };
         s.tone = lerp(s.toneFrom, 1, e);
       }
@@ -953,7 +953,7 @@ export class Surface {
     this.moving = false;
     this.mix = 1;
     this.shown = this.to;
-    for (const s of this.sheets) {
+    for (const s of this.graphs) {
       s.shown = s.to;
       s.tone = 1;
     }
