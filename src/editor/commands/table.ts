@@ -782,6 +782,12 @@ async function pasteCells(app: App, cell: HTMLTableCellElement, rows: string[][]
   else if (last) focusCell(last, 'end');
 }
 
+export function selectedRows(app: App): HTMLTableRowElement[] | null {
+  const t = selectedRange(app);
+  if (!t?.box || t.box.c0 !== 0 || t.box.c1 !== gridOf(t.table).width - 1) return null;
+  return [...t.table.rows].slice(t.box.r0, t.box.r1 + 1);
+}
+
 export const selectedRange = (app: App): Target | null => (rangeHeld(app) ? targetOf(app) : null);
 
 export function rangeText(t: Target): { plain: string; html: string } {
@@ -882,6 +888,8 @@ function cellItems(cell: HTMLTableCellElement): MenuItem[] {
     ...ids(['table.sortAscending', 'table.sortDescending']),
     { rule: true },
     ...ids(['table.ruleBelow', 'table.header', 'table.numbersRight', 'table.autoAlign']),
+    { rule: true },
+    { command: 'steps.listDelivery' },
     { rule: true },
     ...ids(['table.delete']),
   ];
