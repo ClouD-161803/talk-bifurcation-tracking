@@ -52,7 +52,7 @@ export async function firstFrame(url: string, time = 0): Promise<Blob> {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    if (!canvas.width || !canvas.height) throw new Error('the video does not have a picture');
+    if (!canvas.width || !canvas.height) throw new Error('the video does not have a frame');
     canvas.getContext('2d')!.drawImage(video, 0, 0);
     let blob: Blob | null;
     try {

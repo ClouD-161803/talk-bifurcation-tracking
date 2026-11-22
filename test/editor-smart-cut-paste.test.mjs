@@ -340,7 +340,7 @@ describe('Paste of the menus sets the spaces', () => {
   const requested = (page) => page.evaluate(`performance.getEntriesByType('resource').map((e) => e.name).filter((n) => ${FILES}.test(n))`);
 
   async function drawingItems(page) {
-    await click(page, `${PANEL} [aria-label="Drawing"]`);
+    await click(page, `${PANEL} [aria-label="Backdrop"]`);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu.select')`);
     return page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.select .item')].map((i) => i.querySelector('.label')?.textContent ?? i.textContent)`);
   }
@@ -351,7 +351,7 @@ describe('Paste of the menus sets the spaces', () => {
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
       await exec(page, 'backdrop.select');
       await wait(page, 600);
-      assert.equal(await page.evaluate(`!!document.querySelector('${PANEL} [aria-label="Drawing"]')`), true, 'the Backdrop pane is not built');
+      assert.equal(await page.evaluate(`!!document.querySelector('${PANEL} [aria-label="Backdrop"]')`), true, 'the Backdrop pane is not built');
       await page.evaluate(`Reveal.slide(0)`);
       await frames(page);
       await exec(page, 'backdrop.select');

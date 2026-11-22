@@ -213,7 +213,7 @@ describe('a backdrop selected, moved, and deleted', () => {
       const tabs = await page.evaluate(`[...document.querySelectorAll('${PANEL} button')].map((b) => b.textContent.trim())`);
       assert.ok(!tabs.includes('Arrange'), `the pane has the tab Arrange`);
       const titles = await page.evaluate(`[...document.querySelectorAll('${PANEL} h5')].map((h) => h.textContent)`);
-      for (const t of ['Drawing', 'Window', 'Labels', 'Motion']) assert.ok(titles.includes(t), `the pane does not have ${t}`);
+      for (const t of ['Backdrop', 'Window', 'Labels', 'Motion']) assert.ok(titles.includes(t), `the pane does not have ${t}`);
       const field = await page.evaluate(`(() => { const i = document.querySelector('${PANEL} input[name="Half Height"]'); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       await click(page, field, { count: 3 });
       await type(page, '0.4');
@@ -776,7 +776,7 @@ describe('the list of backdrops of Media > Backdrop…', () => {
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await exec(page, 'backdrop.select');
     await frames(page);
-    return page.evaluate(`document.querySelector('${PANEL} [aria-label="Drawing"]').textContent`);
+    return page.evaluate(`document.querySelector('${PANEL} [aria-label="Backdrop"]').textContent`);
   }
 
   const familyName = (page) => page.evaluate(`['Family', 'Frame'].map((l) => document.querySelector('${PANEL} [aria-label="' + l + '"]').textContent).join(' ')`);
@@ -895,7 +895,7 @@ describe('the list of backdrops of Media > Backdrop…', () => {
       await page.evaluate('Reveal.slide(1)');
       await frames(page);
       await paneName(page);
-      await click(page, `${PANEL} [aria-label="Drawing"]`);
+      await click(page, `${PANEL} [aria-label="Backdrop"]`);
       await page.waitFor(`!!document.querySelector('.beeson-edit-menu.select')`);
       const items = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.select .item')].map((i) => [i.querySelector('.label')?.textContent ?? i.textContent, i.getAttribute('aria-disabled') === 'true'])`);
       assert.deepEqual(items.map((i) => i[0]), list.map((e) => e[1]));
@@ -1020,8 +1020,8 @@ describe('Broucke Families and the names of colormaps', () => {
       assert.deepEqual(list.map((e) => e[1]), LIST);
       await press(page, 'Escape');
       await selectBackdrop(page);
-      assert.equal(await popupText(page, 'Drawing'), 'Broucke Families');
-      const items = await popupItems(page, 'Drawing');
+      assert.equal(await popupText(page, 'Backdrop'), 'Broucke Families');
+      const items = await popupItems(page, 'Backdrop');
       assert.deepEqual(items.map((i) => i[0]), LIST);
       assert.deepEqual(items.filter((i) => i[1]).map((i) => i[0]), ['Broucke Families']);
       await press(page, 'Escape');
@@ -1032,9 +1032,9 @@ describe('Broucke Families and the names of colormaps', () => {
       await deck.evaluate('Reveal.slide(3)');
       await frames(deck);
       await selectBackdrop(deck);
-      assert.equal(await popupText(deck, 'Drawing'), 'Broucke Families');
+      assert.equal(await popupText(deck, 'Backdrop'), 'Broucke Families');
       assert.equal(await popupText(deck, 'Family'), '7');
-      assert.deepEqual((await popupItems(deck, 'Drawing')).filter((i) => i[1]).map((i) => i[0]), ['Broucke Families']);
+      assert.deepEqual((await popupItems(deck, 'Backdrop')).filter((i) => i[1]).map((i) => i[0]), ['Broucke Families']);
     });
 
     test(`the Family popup beside Colormap lists the families with the family of the backdrop checked, and a pick is one entry of the history (${platform})`, async (t) => {
@@ -1049,7 +1049,7 @@ describe('Broucke Families and the names of colormaps', () => {
       assert.equal(tagOf(text, '<section class="section">'), BROUCKE.replace('frame=pulsating', 'family=11,frame=pulsating'));
       assert.equal((await state(page, 'edit.undo')).label, 'Undo Family');
       assert.equal(await popupText(page, 'Family'), '11');
-      assert.equal(await popupText(page, 'Drawing'), 'Broucke Families');
+      assert.equal(await popupText(page, 'Backdrop'), 'Broucke Families');
       assert.deepEqual((await popupItems(page, 'Family')).filter((i) => i[1]).map((i) => i[0]), ['11']);
       await press(page, 'Escape');
       await undo(page);
@@ -1062,7 +1062,7 @@ describe('Broucke Families and the names of colormaps', () => {
     test(`Broucke Families put on a scene draws 7P, and on a Broucke backdrop keeps its selection (${platform})`, async (t) => {
       const page = await load(t, platform, DEMO, 2);
       await selectBackdrop(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Broucke Families', page.source);
       const text = await render(page);
       assert.match(tagOf(text, STEPS), /data-trajectories="demo\/broucke-sample\.js" data-trajectories-select="family=7,branch=periapsis,frame=pulsating"/);
@@ -1078,7 +1078,7 @@ describe('Broucke Families and the names of colormaps', () => {
       await page.evaluate('Reveal.slide(1)');
       await frames(page);
       await selectBackdrop(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Broucke Families');
       assert.equal(await render(page), page.source);
     });
@@ -1109,15 +1109,15 @@ describe('Broucke Families and the names of colormaps', () => {
       const LOGO = /^<div class="backdrop"[^>]*data-trajectories="brand\/transfer\.js"[^>]*>\s*<\/div>$/;
       assert.match(backdropOf(page.source, STEPS), /class="label"/);
       await selectBackdrop(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Earth Manifolds', page.source);
       assert.equal((backdropOf(await render(page), STEPS).match(/class="label"/g) ?? []).length, 3);
       await undo(page);
       assert.equal(await render(page), page.source);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Beeson Logo', page.source);
       assert.match(backdropOf(await render(page), STEPS), LOGO);
-      assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Drawing');
+      assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Backdrop');
       await undo(page);
       assert.equal(await render(page), page.source);
       await openList(page, LIST.length);
@@ -1136,8 +1136,8 @@ describe('Broucke Families and the names of colormaps', () => {
     test(`the Backdrop pane is built again when the drawing changes between a scene and a file (${platform})`, async (t) => {
       const page = await load(t, platform, DEMO, 2);
       await selectBackdrop(page);
-      const builtIn = { secs: ['Drawing', 'Window', 'Labels', 'Motion'], colormap: false, family: false, note: false };
-      const file = { secs: ['Drawing', 'Window', 'Labels', 'Motion'], colormap: true, family: false, note: true };
+      const builtIn = { secs: ['Backdrop', 'Window', 'Labels', 'Motion'], colormap: false, family: false, note: false };
+      const file = { secs: ['Backdrop', 'Window', 'Labels', 'Motion'], colormap: true, family: false, note: true };
       assert.deepEqual(await sections(page), builtIn);
       await openList(page, LIST.length);
       await pick(page, 'Beeson Logo', page.source);
@@ -1151,10 +1151,10 @@ describe('Broucke Families and the names of colormaps', () => {
       assert.deepEqual(await sections(page), file);
       await undo(page);
       await frames(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Beeson Logo', page.source);
       assert.deepEqual(await sections(page), file);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Cislunar Manifolds', await render(page));
       assert.deepEqual(await sections(page), builtIn);
       assert.deepEqual(page.errors, []);
@@ -1185,16 +1185,16 @@ describe('Broucke Families and the names of colormaps', () => {
     test(`an entry of the Drawing popup chosen on a backdrop with more drawing attributes than the entry draws the entry (${platform})`, async (t) => {
       const page = await load(t, platform, SELECTIONS, 4);
       await selectBackdrop(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Beeson Logo', page.source);
       assert.equal(tagOf(await render(page), '<h2>A part of the logo'), '<div class="backdrop" data-trajectories="../../brand/transfer.js">');
-      assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Drawing');
+      assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Backdrop');
       await undo(page);
       assert.equal(await render(page), page.source);
       await page.evaluate('Reveal.slide(5)');
       await frames(page);
       await selectBackdrop(page);
-      await popupItems(page, 'Drawing');
+      await popupItems(page, 'Backdrop');
       await choose(page, 'Earth Manifolds', page.source);
       const tag = tagOf(await render(page), '<h2>A scene with heads');
       assert.match(tag, /data-backdrop="wideRibbon"/);
@@ -1419,7 +1419,7 @@ describe('the Family, Frame, and Branch popups', () => {
     test(`Broucke Families is listed when the first drawing of its file in the deck is missing and a later one is found (${platform})`, async (t) => {
       const page = await load(t, platform, MISSING, 2);
       await selectBackdrop(page);
-      const items = (await popupItems(page, 'Drawing')).map((i) => i[0]);
+      const items = (await popupItems(page, 'Backdrop')).map((i) => i[0]);
       assert.ok(items.includes('Broucke Families'), items.join(', '));
       await press(page, 'Escape');
       const list = (await openList(page, 3)).map((e) => e[1]);
@@ -1495,7 +1495,7 @@ describe('the window kept at a change of drawing', () => {
     await page.waitFor(`window.BeesonEditor.render() !== ${js(text)}`);
     await settle(page);
   }
-  const chooseDrawing = (page, name, text) => choosePopup(page, 'Drawing', name, text);
+  const chooseDrawing = (page, name, text) => choosePopup(page, 'Backdrop', name, text);
 
   async function settle(page) {
     await frames(page);
@@ -1532,7 +1532,7 @@ describe('the window kept at a change of drawing', () => {
   }
 
   async function checkHistory(page, text) {
-    assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Drawing');
+    assert.equal((await state(page, 'edit.undo')).label, 'Undo Change Backdrop');
     await undo(page);
     assert.equal(await render(page), page.source);
     await redo(page);
@@ -1753,7 +1753,7 @@ describe('picks in the popups give back the bytes', () => {
       const page = await load(t, platform, DEMO, 1);
       const seven = await pick(page, 'Family', '7', 'Undo Family');
       await go(page, 2);
-      const drawing = await pick(page, 'Drawing', 'Broucke Families', 'Undo Change Drawing');
+      const drawing = await pick(page, 'Backdrop', 'Broucke Families', 'Undo Change Backdrop');
       assert.match(tagOf(drawing, STEPS), /data-trajectories-select="family=7,branch=periapsis,frame=pulsating"/);
       await assertFamily(page, '7');
       const inertial = await pick(page, 'Frame', 'Inertial', 'Undo Frame');
@@ -1775,14 +1775,14 @@ describe('picks in the popups give back the bytes', () => {
       const page = await load(t, platform, DECK, 1);
       for (const n of [1, 2, 3]) {
         await go(page, n);
-        await pick(page, 'Drawing', 'Cislunar Manifolds', 'Undo Change Drawing');
+        await pick(page, 'Backdrop', 'Cislunar Manifolds', 'Undo Change Backdrop');
       }
-      const items = await popupItems(page, 'Drawing');
+      const items = await popupItems(page, 'Backdrop');
       assert.deepEqual(items.find((i) => i[0] === 'Broucke Families'), ['Broucke Families', false, false], js(items));
       await press(page, 'Escape');
-      const text = await pick(page, 'Drawing', 'Broucke Families', 'Undo Change Drawing');
+      const text = await pick(page, 'Backdrop', 'Broucke Families', 'Undo Change Backdrop');
       assert.match(tagOf(text, '<h2>One family</h2>'), /data-trajectories="\.\.\/\.\.\/demo\/broucke-sample\.js" data-trajectories-select="family=7,branch=periapsis,frame=pulsating"/);
-      assert.equal(await popupText(page, 'Drawing'), 'Broucke Families');
+      assert.equal(await popupText(page, 'Backdrop'), 'Broucke Families');
     });
   }
 });
@@ -1887,7 +1887,7 @@ describe('built-in backdrops whose file is not found', () => {
     test(`in a talk without the files, the Drawing popup lists Beeson Logo and Broucke Families disabled, and neither is chosen by the pointer, a key, or the command (${platform})`, async (t) => {
       const page = await load(t, platform, TALK, 0);
       await selectBackdrop(page);
-      const items = await popupItems(page, 'Drawing');
+      const items = await popupItems(page, 'Backdrop');
       assert.deepEqual(items, LIST.map((name, i) => [name, i === 0 || i === 5]));
       await page.evaluate(`[...document.querySelectorAll('${MENU} .item')].find((i) => i.textContent.includes('Broucke')).setAttribute('data-pick', '')`);
       await click(page, `${MENU} .item[data-pick]`);
@@ -1895,7 +1895,7 @@ describe('built-in backdrops whose file is not found', () => {
       assert.equal(await render(page), page.source);
       if (await page.evaluate(`!!document.querySelector('${MENU}')`)) await press(page, 'Escape');
       await frames(page);
-      await page.evaluate(`document.querySelector('${PANEL} [aria-label="Drawing"]').focus()`);
+      await page.evaluate(`document.querySelector('${PANEL} [aria-label="Backdrop"]').focus()`);
       await press(page, 'Space');
       await page.waitFor(`!!document.querySelector('${MENU}')`);
       await press(page, 'Home');
@@ -1946,7 +1946,7 @@ describe('built-in backdrops whose file is not found', () => {
       await page.evaluate('Reveal.slide(0)');
       await frames(page);
       await selectBackdrop(page);
-      assert.deepEqual(await popupItems(page, 'Drawing'), LIST.map((name, i) => [name, i === 0]));
+      assert.deepEqual(await popupItems(page, 'Backdrop'), LIST.map((name, i) => [name, i === 0]));
       await press(page, 'Escape');
       await page.evaluate('Reveal.slide(2)');
       await frames(page);
@@ -1964,7 +1964,7 @@ describe('built-in backdrops whose file is not found', () => {
       assert.ok(list.every((e) => !e.disabled && e.title === e.name && !/File not found/.test(e.text)));
       await press(page, 'Escape');
       await selectBackdrop(page);
-      assert.deepEqual(await popupItems(page, 'Drawing'), LIST.map((name) => [name, false]));
+      assert.deepEqual(await popupItems(page, 'Backdrop'), LIST.map((name) => [name, false]));
       await press(page, 'Escape');
       assert.equal(await render(page), page.source);
     });
@@ -2074,15 +2074,15 @@ describe('Poincaré Sections and Invariant Tori', () => {
   for (const platform of PLATFORMS) {
     test(`Poincaré Sections put on the Earth Manifolds takes off the window and the labels, and the System popup writes data-system (${platform})`, async (t) => {
       const page = await load(t, platform);
-      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Labels', 'Motion']);
-      const items = await popupItems(page, 'Drawing');
+      assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Labels', 'Motion']);
+      const items = await popupItems(page, 'Backdrop');
       await press(page, 'Escape');
       assert.deepEqual(items.map((i) => i[0]).slice(0, 6), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Broucke Families']);
-      const section = await choose(page, 'Drawing', 'Poincaré Sections');
+      const section = await choose(page, 'Backdrop', 'Poincaré Sections');
       assert.equal(tagOf(section, CHAPTER), '<div class="backdrop" data-backdrop="poincare">');
       assert.ok(!/class="label"/.test(backdropOf(section, CHAPTER)), backdropOf(section, CHAPTER));
-      assert.equal(await undoLabel(page), 'Undo Change Drawing');
-      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Motion']);
+      assert.equal(await undoLabel(page), 'Undo Change Backdrop');
+      assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Motion']);
       const first = await drawn(page);
       assert.deepEqual({ ...first, inked: first.inked > 1000 }, { count: 1, canvases: ['dots'], labels: 0, inked: true, fitted: true });
       assert.equal(await popupText(page, 'System'), 'Earth–Moon L2');
@@ -2102,16 +2102,16 @@ describe('Poincaré Sections and Invariant Tori', () => {
       await undo(page);
       await undo(page);
       assert.equal(await render(page), page.source);
-      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Labels', 'Motion']);
+      assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Labels', 'Motion']);
       assert.deepEqual((await drawn(page)).canvases, ['orbits-base', 'orbits-head']);
       assert.deepEqual(page.errors, []);
     });
 
     test(`the ticks of the Invariant Tori write data-tori, All Tori ticks every torus or none, and the Plane popup writes data-plane (${platform})`, async (t) => {
       const page = await load(t, platform);
-      const all = await choose(page, 'Drawing', 'Invariant Tori');
+      const all = await choose(page, 'Backdrop', 'Invariant Tori');
       assert.equal(tagOf(all, CHAPTER), '<div class="backdrop" data-backdrop="tori">');
-      assert.deepEqual(await sections(page), ['Drawing', 'Window', 'Motion']);
+      assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Motion']);
       assert.equal(await popupText(page, 'System'), null);
       assert.equal(await popupText(page, 'Plane'), 'x, y');
       assert.deepEqual(await ticks(page), [['All Tori', true], ...ALPHAS.map((a) => [`α = ${a}`, true])]);
@@ -2136,7 +2136,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.equal(tagOf(plane, CHAPTER), '<div class="backdrop" data-backdrop="tori" data-tori="0.18" data-plane="xz">');
       assert.equal(await undoLabel(page), 'Undo Plane');
       assert.equal(await choose(page, 'Plane', 'x, y'), one);
-      const tubes = await choose(page, 'Drawing', 'Cislunar Manifolds');
+      const tubes = await choose(page, 'Backdrop', 'Cislunar Manifolds');
       assert.ok(/^<div class="backdrop" data-backdrop="tubes" data-cx="[^"]+" data-cy="[^"]+" data-half="[^"]+">$/.test(tagOf(tubes, CHAPTER)), tagOf(tubes, CHAPTER));
       assert.deepEqual(await ticks(page), []);
       assert.deepEqual(page.errors, []);

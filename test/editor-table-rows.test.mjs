@@ -370,7 +370,7 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await render(page), page.source);
       await editMask(page);
       await drag(page, await handleAt(page, 'e'), { dx: -100, dy: 0 });
-      await click(page, `${BAR} button[title="The picture as it was before this edit"]`);
+      await click(page, `${BAR} button[title="The image as it was before this edit"]`);
       await click(page, `${BAR} button.done`);
       assert.equal(await render(page), page.source);
       assert.equal(await page.evaluate(`document.querySelector(${js(IMG)}).getAttribute('style')`), null);

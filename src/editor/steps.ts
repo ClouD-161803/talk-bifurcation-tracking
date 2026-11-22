@@ -301,7 +301,7 @@ export function effectEdit(state: TagState, effect: Effect): TagEdit {
   return out;
 }
 
-const KINDS: [string, string][] = [['.r-stack > *', 'Tab'], ['h1, h2, h3', 'Heading'], ['.foot', 'Footnote'], ['li', 'Item'], ['ul, ol', 'List'], ['td, th', 'Table cell'], ['cite', 'Citation'], ['p', 'Paragraph'], ['div.math', 'Formula'], ['table', 'Table'], ['tr', 'Table row'], ['pre, code', 'Code'], ['blockquote', 'Quotation'], ['video', 'Video'], ['tycho-viewer', 'Scene'], ['.qr', 'QR code'], ['.caption', 'Caption'], ['.backdrop', 'Backdrop'], ['.surface', 'Surface'], ['.plot', 'Plot'], ['[data-plot-show], [data-plot-tab], [data-plot-hide]', 'Plot step'], ['[data-surface-state]', 'Surface step'], ['.tikz > [data-part]', 'Figure step'], ['.tikz', 'TikZ figure'], ['img, figure, .figure-box, .plate', 'Figure'], ['svg.line', 'Line'], ['.shape', 'Shape']];
+const KINDS: [string, string][] = [['.r-stack > *', 'Stack child'], ['h1, h2, h3', 'Heading'], ['.foot', 'Footnote'], ['li', 'Item'], ['ul, ol', 'List'], ['td, th', 'Table cell'], ['cite', 'Citation'], ['p', 'Paragraph'], ['div.math', 'Formula'], ['table', 'Table'], ['tr', 'Table row'], ['pre, code', 'Code'], ['blockquote', 'Quotation'], ['video', 'Video'], ['tycho-viewer', 'Scene'], ['.qr', 'QR code'], ['.caption', 'Caption'], ['.backdrop', 'Backdrop'], ['.surface', 'Surface'], ['.plot', 'Plot'], ['[data-plot-show], [data-plot-tab], [data-plot-hide]', 'Plot step'], ['[data-surface-state]', 'Surface step'], ['.tikz > [data-part]', 'Figure step'], ['.tikz', 'TikZ figure'], ['img, figure, .figure-box, .plate', 'Figure'], ['svg.line', 'Line'], ['.shape', 'Shape']];
 
 function textOf(el: Element, tex: Ctx['tex']): string {
   let out = '';
