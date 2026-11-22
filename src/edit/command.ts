@@ -451,7 +451,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'preview') {
       const box = boxOf(body.box);
       if (typeof body.name !== 'string' || !FIGURE_NAME.test(body.name) || typeof body.source !== 'string' || !box) return error(400, 'name, source, or box is not valid');
-      if (figures.state().compiler === 'missing') return error(503, 'latex or dvisvgm is not found on the computer of the host');
+      if (figures.state().compiler === 'missing') return error(503, 'latex or dvisvgm is not found on the host machine');
       return json(200, await figures.preview(client, body.name, body.source, box));
     }
     const text = route === 'data' ? body.text : body.source;

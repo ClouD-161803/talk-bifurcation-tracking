@@ -700,7 +700,7 @@ describe('the list of backdrops of Media > Backdrop…', () => {
     'Earth Manifolds',
     'Poincaré Sections',
     'Invariant Tori',
-    'Normal Form Saddle',
+    'Saddle Manifolds',
     'Broucke Families',
   ];
   const LOGO = '<div class="backdrop" data-trajectories="brand/transfer.js" data-duration="20" data-cx="-0.84" data-cy="0" data-half="1.128">';
@@ -882,7 +882,7 @@ describe('the list of backdrops of Media > Backdrop…', () => {
         'Earth Manifolds',
         'Poincaré Sections',
         'Invariant Tori',
-        'Normal Form Saddle',
+        'Saddle Manifolds',
         'Broucke Families',
         'Beeson Logo',
         'missing',
@@ -926,7 +926,7 @@ describe('Broucke Families and the names of colormaps', () => {
   const PANEL = '#beeson-edit-panel-format';
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Saddle Manifolds', 'Broucke Families'];
   const FAMILIES = ['7', '11', '7/11'];
   const BROUCKE = '<div class="backdrop" data-trajectories="demo/broucke-sample.js" data-trajectories-select="frame=pulsating" data-trajectories-color="family" data-trajectories-ramp="e" data-trajectories-colormap="viridis" data-duration="3" data-stagger="0.6">';
   const STEPS = '<h2>Show your steps one at a time';
@@ -1029,7 +1029,7 @@ describe('Broucke Families and the names of colormaps', () => {
       await press(page, 'Escape');
       const deck = await load(t, platform, DECK, 6);
       const names = (await openList(deck, 8)).map((e) => e[1]);
-      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families', 'Beeson Logo', 'missing']);
+      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Saddle Manifolds', 'Broucke Families', 'Beeson Logo', 'missing']);
       await press(deck, 'Escape');
       await deck.evaluate('Reveal.slide(3)');
       await frames(deck);
@@ -1798,7 +1798,7 @@ describe('built-in backdrops whose file is not found', () => {
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
   const KEYS = ['logo', 'tubes', 'wideRibbon', 'poincare', 'tori', 'saddle', 'broucke'];
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Saddle Manifolds', 'Broucke Families'];
   const LOGO_TITLE = 'brand/transfer.js is not found next to the deck';
   const BROUCKE_TITLE = 'demo/broucke-sample.js is not found next to the deck';
 
@@ -1903,7 +1903,7 @@ describe('built-in backdrops whose file is not found', () => {
       await press(page, 'Home');
       assert.equal(await highlighted(page), 'Cislunar Manifolds');
       await press(page, 'End');
-      assert.equal(await highlighted(page), 'Normal Form Saddle');
+      assert.equal(await highlighted(page), 'Saddle Manifolds');
       const seen = [];
       for (let i = 0; i < 8; i++) {
         await press(page, 'ArrowDown');
@@ -2074,15 +2074,15 @@ describe('Poincaré Sections and Invariant Tori', () => {
   const sections = (page) => page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-sec')].filter((s) => s.getClientRects().length).map((s) => s.querySelector(':scope > h5')?.textContent ?? '').filter(Boolean)`);
 
   for (const platform of PLATFORMS) {
-    test(`the Normal Form Saddle put on the Earth Manifolds takes off the window and the labels, and its pane offers Add Label without the labels of named points (${platform})`, async (t) => {
+    test(`the Saddle Manifolds put on the Earth Manifolds takes off the window and the labels, and its pane offers Add Label without the labels of named points (${platform})`, async (t) => {
       const page = await load(t, platform);
       const named = () => page.evaluate(`[...document.querySelectorAll('${PANEL} label.ed-check')].filter((l) => l.getClientRects().length && l.querySelector('input').dataset.command === 'backdrop.label').length`);
       assert.equal(await named(), 4);
-      const saddle = await choose(page, 'Backdrop', 'Normal Form Saddle');
+      const saddle = await choose(page, 'Backdrop', 'Saddle Manifolds');
       assert.equal(tagOf(saddle, CHAPTER), '<div class="backdrop" data-backdrop="saddle">');
       assert.ok(!/class="label"/.test(backdropOf(saddle, CHAPTER)), backdropOf(saddle, CHAPTER));
       assert.equal(await undoLabel(page), 'Undo Change Backdrop');
-      assert.equal(await popupText(page, 'Backdrop'), 'Normal Form Saddle');
+      assert.equal(await popupText(page, 'Backdrop'), 'Saddle Manifolds');
       assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Labels', 'Motion']);
       assert.equal(await named(), 0);
       assert.equal(await popupText(page, 'Colormap'), null);
@@ -2099,7 +2099,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Labels', 'Motion']);
       const items = await popupItems(page, 'Backdrop');
       await press(page, 'Escape');
-      assert.deepEqual(items.map((i) => i[0]).slice(0, 7), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families']);
+      assert.deepEqual(items.map((i) => i[0]).slice(0, 7), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Saddle Manifolds', 'Broucke Families']);
       const section = await choose(page, 'Backdrop', 'Poincaré Sections');
       assert.equal(tagOf(section, CHAPTER), '<div class="backdrop" data-backdrop="poincare">');
       assert.ok(!/class="label"/.test(backdropOf(section, CHAPTER)), backdropOf(section, CHAPTER));
@@ -2164,7 +2164,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.deepEqual(page.errors, []);
     });
 
-    test(`the tiles Poincaré Sections, Invariant Tori, and Normal Form Saddle are drawn in the gallery, and a tile adds its backdrop fitted to its box (${platform})`, async (t) => {
+    test(`the tiles Poincaré Sections, Invariant Tori, and Saddle Manifolds are drawn in the gallery, and a tile adds its backdrop fitted to its box (${platform})`, async (t) => {
       const page = await load(t, platform);
       await press(page, 'Delete');
       const bare = await render(page);
@@ -2183,7 +2183,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       })`;
       assert.ok((await page.evaluate(`${inked}('poincare')`)) > 50, 'the tile Poincaré Sections is empty');
       assert.ok((await page.evaluate(`${inked}('tori')`)) > 50, 'the tile Invariant Tori is empty');
-      assert.ok((await page.evaluate(`${inked}('saddle')`)) > 50, 'the tile Normal Form Saddle is empty');
+      assert.ok((await page.evaluate(`${inked}('saddle')`)) > 50, 'the tile Saddle Manifolds is empty');
       await click(page, `${TILES}[data-tile="tori"]`);
       await page.waitFor(`window.BeesonEditor.render() !== ${js(bare)}`);
       await frames(page);
