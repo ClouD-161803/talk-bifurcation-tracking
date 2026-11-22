@@ -292,6 +292,12 @@ The time for which a pointer stays in the reach before the band of the scrubber 
 
 Avoid "delay", which is the delay of a step, and avoid "dwell".
 
+## Rule below
+
+A thin rule drawn under some cells of a table, as `\cmidrule` in booktabs or a bottom border in Excel. It is the class `rule-below` on each cell.
+
+Avoid "border" and "underline".
+
 ## Scrubber
 
 A line of progress with ticks, on which a place is chosen with the pointer. The scrubber of a show is its progress line, magnified into a band while it is open. A tick is the place of a numbered slide on the band. The name of a section is the text of its running head, and the name of the closing slide is its heading, both written over the ticks. The scrubber of an animated plot is the line under the plot, with a tick at each event.

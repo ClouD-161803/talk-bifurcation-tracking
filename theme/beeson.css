@@ -232,6 +232,7 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal th, .reveal td { padding: 10px 28px 10px 12px; text-align: left; vertical-align: top; font-weight: inherit; font-variant-numeric: lining-nums tabular-nums; }
 .reveal th { color: var(--subtle); font-style: italic; }
 .reveal tr:first-child > th { vertical-align: bottom; border-bottom: 1.5px solid var(--text); }
+.reveal :is(th, td).rule-below { border-bottom: 1.5px solid var(--text); }
 .reveal table:has(> :last-child > tr.fragment:not(.visible):last-child) { border-bottom-color: transparent; }
 .reveal table:has(> :last-child > tr.fragment:not(.visible):last-child) > :not(:has(~ * > tr:is(:not(.fragment), .visible))) > tr:is(:not(.fragment), .visible):not(:has(~ tr:is(:not(.fragment), .visible))) > * { background-image: linear-gradient(var(--text), var(--text)); background-position: bottom; background-size: 100% 3px; background-repeat: no-repeat; }
 

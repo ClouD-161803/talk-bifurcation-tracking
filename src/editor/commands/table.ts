@@ -617,6 +617,20 @@ function numbersRight(t: Target | null): boolean {
   return cells.length > 0 && cells.every((p) => right(p.cell));
 }
 
+const RULE = 'rule-below';
+
+function ruledCells(t: Target): HTMLTableCellElement[] {
+  if (t.box) return [...new Set(spotsIn(gridOf(t.table), t.box).map((s) => s.cell))];
+  return t.cell ? [t.cell] : [];
+}
+
+const ruled = (t: Target | null) => !!t && ruledCells(t).length > 0 && ruledCells(t).every((cell) => cell.classList.contains(RULE));
+
+function ruleBelow(app: App, t: Target): void {
+  const on = !ruled(t);
+  for (const cell of ruledCells(t)) if (cell.classList.contains(RULE) !== on) app.doc.setTag(cell, { classes: { [RULE]: on } }, 'rule below');
+}
+
 async function mergeCells(app: App, t: Target): Promise<void> {
   const box = t.box!;
   const [first, ...rest] = spotsIn(gridOf(t.table), box);
@@ -867,7 +881,7 @@ function cellItems(cell: HTMLTableCellElement): MenuItem[] {
     { rule: true },
     ...ids(['table.sortAscending', 'table.sortDescending']),
     { rule: true },
-    ...ids(['table.header', 'table.numbersRight', 'table.autoAlign']),
+    ...ids(['table.ruleBelow', 'table.header', 'table.numbersRight', 'table.autoAlign']),
     { rule: true },
     ...ids(['table.delete']),
   ];
@@ -1793,6 +1807,15 @@ export function install(app: App): void {
     enabled: withCell,
     undoable: true,
     run: (a, arg) => deleteColumn(a, need(a, arg)),
+  });
+  c.define({
+    id: 'table.ruleBelow',
+    label: 'Rule Below',
+    menu: menu('options', 85.5),
+    enabled: withCell,
+    checked: (a) => ruled(targetOf(a)),
+    undoable: true,
+    run: (a, arg) => ruleBelow(a, need(a, arg)),
   });
   c.define({
     id: 'table.header',

@@ -320,6 +320,30 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(page.errors, []);
   });
 
+  test(`Rule Below draws a thin rule under the selected cells, and again takes it off (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await click(page, cellSelector(1, 0));
+    await click(page, cellSelector(1, 1), { modifiers: 'Shift' });
+    await settle(page);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('table.ruleBelow')`)).checked, false);
+    await page.evaluate(`window.BeesonEditor.exec('table.ruleBelow')`);
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r, i) => (i === 1 ? r.replaceAll('<td>', '<td class="rule-below">') : r)))]]);
+    assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Rule Below');
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('table.ruleBelow')`)).checked, true);
+    const rule = (r, c) => page.evaluate(`getComputedStyle(document.querySelector(${js(cellSelector(r, c))})).borderBottom`);
+    assert.equal(await rule(1, 1), await rule(0, 1), 'the rule is not drawn as the rule under the header row');
+    assert.notEqual(await rule(1, 1), await rule(2, 1));
+    await page.evaluate(`window.BeesonEditor.exec('table.ruleBelow')`);
+    await settle(page);
+    assert.equal(await render(page), page.source, 'a second Rule Below takes the rule off');
+    await press(page, 'Mod+Z');
+    await settle(page);
+    await roundTrip(page);
+  });
+
   test(`an arrow key at the edge of a cell goes to the cell beside it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
