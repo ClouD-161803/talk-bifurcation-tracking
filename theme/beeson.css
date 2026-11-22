@@ -197,9 +197,11 @@ html[data-theme="light"] .reveal ::selection { background-color: #d3dced; }
 .reveal .outline { font-size: 36px; line-height: 1.7; color: var(--muted); margin: 48px 0 0; }
 .reveal .outline > li { margin: 0; padding-left: 42px; }
 .reveal .outline > li.now { color: var(--text); }
-.reveal ol.outline > li::before { color: var(--text); }
-.reveal ul.outline > li::before { background: var(--violet); }
-.reveal ul.outline.dots > li::before { background: none; border-color: var(--violet); }
+.reveal ol.outline > li::before { color: inherit; }
+.reveal ul.outline > li::before { background: var(--muted); }
+.reveal ul.outline.dots > li::before { background: none; border-color: var(--muted); }
+.reveal ul.outline > li.now::before { background: var(--violet); }
+.reveal ul.outline.dots > li.now::before { background: none; border-color: var(--violet); }
 
 .reveal .math { margin: 28px 0 4px; font-size: 52px; }
 .reveal mjx-container[display="true"] { margin: 0 !important; text-align: left !important; }
