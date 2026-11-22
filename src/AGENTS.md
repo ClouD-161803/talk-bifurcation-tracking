@@ -47,6 +47,7 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - Set type in Latin Modern Roman at 22, 28, 36, 48, 64, or 96 px on the design size of 1920 by 1080. Set math in the TeX font of MathJax.
 - Keep body text at 48 px, i.e. the 24 points of the AIAA guideline for a slide 7.5 in high. Keep captions and tables at 36 px, and code boxes at 22 px.
 - When you rename a class or an attribute for the glossary, make the theme read only the new name. Add the old name to `test/names.test.mjs`, and under "Avoid" in its entry of `GLOSSARY.md`.
+- During a trace, the strokes of thin trajectories are kept on an offscreen canvas in the order in which they are traced. Only their new pieces are stroked at each frame. A thin trajectory has an opacity up to 0.5, a width up to 1, and no glow, and only the first run of thin trajectories in the file is kept. The trajectories before this run are stroked whole at each frame under the canvas, and the trajectories after it are stroked whole at each frame over it. Hence put the opaque trajectories of a built-in drawing first, as in `tubes` and `wideRibbon`. The still is drawn in the order of the file, so a few overlaps of two colors change at the last frame.
 - Describe new or changed classes, attributes, and editor commands in `REFERENCE.md`, in the section of their element.
 - When an editor command or an export is not available in a browser, tell the user so in a message in this browser.
 

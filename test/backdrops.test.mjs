@@ -303,6 +303,53 @@ test('a glowing backdrop is traced without shadowBlur, caches finished trajector
   assert.deepEqual(page.errors, []);
 });
 
+test('a frame of a trace of the manifolds strokes the new pieces of their trajectories, and not the whole of them again', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test-deck.html'));
+  await page.waitFor(deckSettled);
+  const out = {};
+  for (const name of ['wideRibbon', 'tubes']) {
+    const find = `Beeson.backdrops.find((o) => o.el.dataset.backdrop === '${name}')`;
+    await page.evaluate(`(() => { const { h, v } = Reveal.getIndices(${find}.el.closest('section')); Reveal.slide(h, v); return true; })()`);
+    await page.waitFor(`${find}.W > 0`);
+    out[name] = await page.evaluate(`(() => {
+      const b = ${find};
+      const base = b.base.getContext('2d'), proto = CanvasRenderingContext2D.prototype, kept = {};
+      let pieces = 0;
+      for (const key of ['lineTo', 'bezierCurveTo']) {
+        kept[key] = proto[key];
+        proto[key] = function (...args) {
+          if (this === base) pieces++;
+          return kept[key].apply(this, args);
+        };
+      }
+      try {
+        b.reset();
+        b.t0 = 0;
+        const frames = [];
+        for (let ms = 0; ms < b.duration * 1000; ms += 1000 / 60) {
+          pieces = 0;
+          b.frame(ms);
+          frames.push(pieces);
+        }
+        b.complete();
+        pieces = 0;
+        b.redraw();
+        frames.sort((a, c) => a - c);
+        return { p90: frames[Math.floor(0.9 * frames.length)], whole: pieces };
+      } finally {
+        Object.assign(proto, kept);
+      }
+    })()`);
+  }
+  for (const [name, { p90, whole }] of Object.entries(out)) {
+    assert.ok(p90 < whole / 10, `a frame of ${name} strokes ${p90} pieces at the 90th percentile, and its still ${whole}`);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
 test('the trajectories of a backdrop with data-stagger are started one after another', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
