@@ -365,7 +365,6 @@ test('a drag of the grip of a column or of a row, of the edge of a table, of the
     ['the edge of the table', async () => {
       await click(ben, 'section.present th:nth-child(2)');
       await press(ben, 'Escape');
-      await press(ben, 'Escape');
     }, '.beeson-table-bars .beeson-grip[data-handle="e"]', async () => ({ dx: 40 })],
     ['the bar of a row', async () => {
       await click(ben, 'section.present tr:nth-child(3) td');
@@ -374,7 +373,6 @@ test('a drag of the grip of a column or of a row, of the edge of a table, of the
     ['the grip of a row', () => click(ben, 'section.present th:nth-child(2)'), () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .grips.rows [data-row="0"]').getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`), async () => ({ dy: 20 })],
     ['the table', async () => {
       await click(ben, 'section.present th:nth-child(2)');
-      await press(ben, 'Escape');
       await press(ben, 'Escape');
     }, 'section.present tr:nth-child(3) td:nth-child(2)', async () => ({ dx: 40, dy: 20 })],
     ['the fill handle', async () => {
