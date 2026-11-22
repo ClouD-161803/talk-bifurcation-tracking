@@ -104,19 +104,19 @@ async function openDeck(t, platform) {
 const outlines = (page) => page.evaluate(`[...document.querySelectorAll('.reveal .outline')].map((l) => l.localName + ': ' + [...l.children].map((li) => li.textContent + (li.classList.contains('now') ? '*' : '')).join(' | '))`);
 const marks = (page) => page.evaluate(`(() => {
   const tone = (v) => { const p = document.createElement('p'); p.style.color = 'var(' + v + ')'; document.querySelector('.reveal section.present').append(p); const c = getComputedStyle(p).color; p.remove(); return c; };
-  return { text: tone('--text'), violet: tone('--violet'), items: [...document.querySelectorAll('.reveal section.present .outline > li')].map((li) => {
+  return { text: tone('--text'), muted: tone('--muted'), violet: tone('--violet'), items: [...document.querySelectorAll('.reveal section.present .outline > li')].map((li) => {
     const s = getComputedStyle(li, '::before');
-    return { content: s.content, color: s.color, background: s.backgroundColor, clip: s.clipPath !== 'none', width: s.width, height: s.height };
+    return { now: li.classList.contains('now'), content: s.content, color: s.color, background: s.backgroundColor, clip: s.clipPath !== 'none', width: s.width, height: s.height };
   }) };
 })()`);
 
 for (const platform of PLATFORMS) {
-  test(`an outline list is numbered in the color of the text as an ol and has violet bullets as a ul, and Numbers and Bullets switch every outline list of the deck (${platform})`, async (t) => {
+  test(`an outline list marks the item of its section with a number in the color of the text as an ol or with a violet bullet as a ul, mutes the marks of the other items, and Numbers and Bullets switch every outline list of the deck (${platform})`, async (t) => {
     const page = await openDeck(t, platform);
     assert.deepEqual(await outlines(page), ['ul: Chapter one* | Chapter two', 'ul: Chapter one | Chapter two*']);
     const bullets = await marks(page);
     assert.equal(bullets.items.length, 2);
-    for (const m of bullets.items) assert.deepEqual({ background: m.background, clip: m.clip, width: m.width, height: m.height }, { background: bullets.violet, clip: true, width: '12px', height: '18px' }, 'an item of a ul is not marked with a violet chevron');
+    for (const m of bullets.items) assert.deepEqual({ background: m.background, clip: m.clip, width: m.width, height: m.height }, { background: m.now ? bullets.violet : bullets.muted, clip: true, width: '12px', height: '18px' }, m.now ? 'the item of the section is not marked with a violet chevron' : 'the chevron of a muted item is not muted');
 
     await click(page, 'section.present .outline li:nth-child(2)');
     assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((el) => el.className)`), ['outline']);
@@ -127,7 +127,7 @@ for (const platform of PLATFORMS) {
     assert.equal(numbered, page.source.replaceAll('<ul class="outline" data-auto></ul>', '<ol class="outline" data-auto></ol>'));
     assert.deepEqual(await outlines(page), ['ol: Chapter one* | Chapter two', 'ol: Chapter one | Chapter two*']);
     const numbers = await marks(page);
-    assert.deepEqual(numbers.items.map((m) => [m.content, m.color]), [['counter(list-item)', numbers.text], ['counter(list-item)', numbers.text]]);
+    assert.deepEqual(numbers.items.map((m) => [m.content, m.color]), [['counter(list-item)', numbers.text], ['counter(list-item)', numbers.muted]], 'the number of a muted item is not muted');
 
     await page.evaluate('window.BeesonEditor.undo()');
     await settle(page);

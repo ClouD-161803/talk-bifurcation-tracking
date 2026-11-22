@@ -9,7 +9,7 @@ import { afterMove, relink } from '../model/attach.ts';
 import { copiedGroups, groupsOf, scopeOf, within } from '../model/groups.ts';
 import { cornerBoxOf } from '../commands/align.ts';
 import { backdropAt, pressBackdrop } from '../commands/backdrop.ts';
-import { selectedRange } from '../commands/table.ts';
+import { selectCellOf, selectedRange } from '../commands/table.ts';
 import { placeCaretAt } from '../selection.ts';
 import { injectStyle } from '../ui/dom.ts';
 import { editItem, outlineItem } from '../text/outline.ts';
@@ -616,10 +616,11 @@ export function install(app: App): void {
       if (ev.shiftKey || commandHeld(ev) || (boxFirst(el) && sel.only() !== el && !editing)) pressElement(ev, el, target);
       else if ((boxFirst(el) || heldTable(el)) && sel.only() === el && !editing && !locked(el)) {
         const { clientX: x, clientY: y } = ev;
-        pressElement(ev, el, target, () => placeCaretAt(host, x, y));
+        pressElement(ev, el, target, () => (heldTable(el) && selectCellOf(target)) || placeCaretAt(host, x, y));
       }
       return;
     }
+    if (host && !ev.shiftKey && !commandHeld(ev)) return;
     const item = el ? outlineItem(el, target) : null;
     if (el && item) {
       pressElement(ev, el, target, sel.only() === el && !ev.shiftKey && !commandHeld(ev) && !locked(el) ? () => editItem(app, item) : null);

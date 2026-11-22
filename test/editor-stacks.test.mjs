@@ -285,6 +285,38 @@ test('Make Stack refuses an element shown in more than one tab, and one inside a
   assert.equal(await rendered(page), page.source);
 });
 
+test('the tabs of a slide without a stack end without a button, and Make Stack is in the Slide menu only where elements are replaced in place', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: MAKE });
+  t.after(() => page.close());
+  assert.equal((await tabs(page)).length, 5);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-step-tabs button:not([aria-pressed])')].map((b) => b.textContent)`), []);
+  assert.equal((await page.evaluate(`window.BeesonEditor.state('stack.make')`)).enabled, true);
+  const stacked = await open(t);
+  assert.equal((await stacked.evaluate(`window.BeesonEditor.state('stack.make')`)).enabled, false);
+  assert.deepEqual(await stacked.evaluate(`[...document.querySelectorAll('.beeson-step-tabs button:not([aria-pressed])')].map((b) => b.getAttribute('aria-label'))`), ['Add Tab']);
+});
+
+test('Make Stack refuses elements that a style of the deck sizes as children of the slide, and leaves the slide as it was', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: MAKE });
+  t.after(() => page.close());
+  await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.id === 'placed'))`);
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Placed' && document.querySelectorAll('.beeson-step-tabs button[aria-pressed]').length === 2`);
+  const before = [];
+  for (let i = 0; i < 2; i++) {
+    await showTab(page, i);
+    before.push(await shownBoxes(page));
+  }
+  await showTab(page, 0);
+  assert.match(await refusal(page), /Make Stack cannot keep the size of the paragraph “The equations of motion are:”, since a style of this deck sizes it as a child of the slide/);
+  assert.equal(await rendered(page), page.source);
+  assert.equal((await page.evaluate('window.BeesonEditor.status()')).undo, false);
+  for (let i = 0; i < 2; i++) {
+    await showTab(page, i);
+    assert.deepEqual(await shownBoxes(page), before[i], `tab ${i}`);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
 test('Delete Tab and Show on Every Tab keep the elements below the stack in place', { timeout: 120000 }, async (t) => {
   const page = await open(t);
   await page.evaluate('Reveal.slide(4)');

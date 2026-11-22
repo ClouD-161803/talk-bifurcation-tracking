@@ -1,4 +1,5 @@
 import type { App } from '../app.ts';
+import { formatTargets } from './targets.ts';
 import { mathLookup } from '../math.ts';
 import { fileIndexes } from '../shown-steps.ts';
 import { tokenize } from '../tokens.ts';
@@ -74,10 +75,12 @@ export function selectIn(root: Element, start: number, end = start): void {
 
 export type Target = { host: Element; range: Range };
 
-export function selectedTextElements(app: App): Element[] {
+export const selectedTextElements = (app: App): Element[] => textElementsIn(app, app.selection.elements());
+
+function textElementsIn(app: App, els: Element[]): Element[] {
   const pairing = app.pairing;
   if (!pairing) return [];
-  return app.selection.elements().flatMap((el) => {
+  return els.flatMap((el) => {
     if (pairing.byLive.has(el)) return el.matches('aside.notes') ? [] : [el];
     if (el.matches('div.shape')) return [...el.querySelectorAll(':scope > p, :scope > ul > li, :scope > ol > li')].filter((p) => pairing.byLive.has(p));
     return el.matches(LIST) && pairing.elements.has(el) ? [...el.querySelectorAll('li')].filter((li) => pairing.byLive.has(li)) : [];
@@ -335,7 +338,7 @@ export function startList(app: App): HTMLOListElement | null {
 
 export function setStart(app: App, n: number): void {
   const list = startList(app);
-  if (!list || !Number.isInteger(n) || n < 1 || (n === list.start && !cutOff.has(list))) return;
+  if (!list || !Number.isInteger(n) || (n === list.start && !cutOff.has(list))) return;
   if (n !== list.start) app.doc.setTag(list, { attrs: { start: n === 1 ? null : String(n) } }, 'start at');
   if (!cutOff.delete(list)) return;
   app.history.push({ label: 'start at', undo: () => void cutOff.add(list), redo: () => void cutOff.delete(list) });
@@ -896,11 +899,7 @@ export function styleOf(app: App, el: Element): ParagraphStyle | null {
   return one('p', null) || one('li', null) ? 'body' : null;
 }
 
-function chosen(app: App): Element[] {
-  const spanned = flow.spanTargets(app).map((t) => t.host);
-  const t = spanned.length ? null : textTarget(app);
-  return spanned.length ? spanned : t ? [t.host] : selectedTextElements(app);
-}
+const chosen = (app: App): Element[] => textElementsIn(app, formatTargets(app));
 
 const styled = (app: App): Element[] => chosen(app).filter((el) => styleOf(app, el) !== null);
 

@@ -876,7 +876,7 @@ describe('a Height that no whole width gives', () => {
   const cellMenu = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.cell .item .label')].map((l) => l.textContent).filter((l) => ${FIT}.test(l))`);
 
   async function selectTable(page) {
-    await click(page, cell(1, 0));
+    await clickText(page, cell(1, 0));
     await sleep(100);
     await press(page, 'Escape');
     await sleep(100);

@@ -651,7 +651,7 @@ export class Client {
     }
     this.texCount(answer.tex);
     this.takeFigures(answer.figures);
-    if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `${answer.writeError.file ?? 'The deck'} cannot be written on the host's machine: ${answer.writeError.message}` : null);
+    if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `${answer.writeError.file ?? 'The deck'} cannot be written on the computer of the host: ${answer.writeError.message}` : null);
     this.people = answer.people;
     this.presence = answer.presence;
     this.emit('people');

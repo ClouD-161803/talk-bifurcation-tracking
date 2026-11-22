@@ -73,7 +73,7 @@ export function install(client: Client): void {
   store.refuse = (file) => {
     if (!TAKEN.test(file.name)) {
       const ext = /\.[^./]+$/.exec(file.name)?.[0].toLowerCase();
-      const advice = `Save ${file.type.startsWith('image/') ? 'it as a PNG or a JPEG' : file.type.startsWith('video/') ? 'it as an MP4 or a WebM' : 'a picture as a PNG or a JPEG, and a video as an MP4 or a WebM'}`;
+      const advice = `Save ${file.type.startsWith('image/') ? 'it as a PNG or a JPEG' : file.type.startsWith('video/') ? 'it as an MP4 or a WebM' : 'an image as a PNG or a JPEG, and a video as an MP4 or a WebM'}`;
       return `${file.name} cannot be sent to the others, since a session does not take ${ext ? `${ext} files` : 'files without an extension'}. ${advice}.`;
     }
     const video = file.type.startsWith('video/') || (!file.type && VIDEO.test(file.name));

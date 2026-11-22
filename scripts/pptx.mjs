@@ -238,7 +238,7 @@ export function pptx(slides) {
       throw new Error(`${slide.name}: a slide with a recording has one image, the still under it, and not ${slide.images.length}`);
     }
     if (tops.length && !slide.recording) {
-      throw new Error(`${slide.name}: a slide with tops, the pictures of its words, needs a recording under them`);
+      throw new Error(`${slide.name}: a slide with tops, the images of its words, needs a recording under them`);
     }
     const embed = (video, shape) => {
       const target = clip(video.data ?? video.path);

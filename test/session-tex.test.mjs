@@ -418,7 +418,7 @@ test('a page shows that tex.js cannot be written on the host machine, until a wr
   const at = bo.text.indexOf('low-energy transfer</p>') + 'low-energy transfer'.length;
   const op = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: '<cite data-key="szebehely1967"></cite>' }] })).json();
   assert.equal(op.ok, true);
-  await ann.waitFor(`${STATE}?.startsWith("tex.js cannot be written on the host's machine: ")`, 30_000);
+  await ann.waitFor(`${STATE}?.startsWith("tex.js cannot be written on the computer of the host: ")`, 30_000);
   rmSync(join(server.talk, 'tex.js'), { recursive: true });
   await until(() => existsSync(join(server.talk, 'tex.js')) && server.read('tex.js').includes('"szebehely1967"'), 'the reference of szebehely1967 in tex.js', 30_000);
   assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');

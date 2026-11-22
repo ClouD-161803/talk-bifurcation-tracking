@@ -271,3 +271,39 @@ test('a step nested in an earlier step is drawn at full opacity while it is the 
   assert.deepEqual(pages, NESTED);
   assert.deepEqual(print.errors, []);
 });
+
+const CLOSING_RULE = (section) => `(() => {
+  const table = ${section}.querySelector('table');
+  const rows = [...table.rows];
+  const ruled = rows.findIndex((tr) => [...tr.cells].every((c) => getComputedStyle(c).backgroundImage.startsWith('linear-gradient')));
+  return {
+    shown: rows.filter((tr) => getComputedStyle(tr).visibility === 'visible').length,
+    rule: getComputedStyle(table).borderBottomColor === 'rgba(0, 0, 0, 0)' ? ruled : 'table',
+    tops: rows.map((tr) => Math.round(tr.getBoundingClientRect().top - table.getBoundingClientRect().top)),
+  };
+})()`;
+
+test('the closing rule of a table whose rows are steps is drawn under the last row shown, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const expected = [{ shown: 1, rule: 0 }, { shown: 2, rule: 1 }, { shown: 3, rule: 2 }, { shown: 4, rule: 'table' }];
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/table-steps.html', 'still'));
+  await page.waitFor(deckSettled);
+  const seen = [];
+  for (let i = 0; i < expected.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await page.waitFor(`${CLOSING_RULE('Reveal.getCurrentSlide()')}.shown === ${i + 1}`);
+    seen.push(await page.evaluate(CLOSING_RULE('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen.map(({ shown, rule }) => ({ shown, rule })), expected);
+  for (const s of seen) assert.deepEqual(s.tops, seen[0].tops);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/table-steps.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < expected.length; i++) pages.push(await print.evaluate(CLOSING_RULE(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages.map(({ shown, rule }) => ({ shown, rule })), expected);
+  assert.deepEqual(print.errors, []);
+});

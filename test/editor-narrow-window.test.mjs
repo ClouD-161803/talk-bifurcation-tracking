@@ -427,7 +427,7 @@ describe('a split button folded into More', () => {
       await press(page, 'ArrowRight');
       await frames(page);
       assert.equal(await menus(page), 2, 'the right arrow does not open the submenu of Preview');
-      assert.deepEqual(await labels(page, 1), ['Play Slide', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Add Backdrop…']);
+      assert.deepEqual(await labels(page, 1), ['Play Slide', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Backdrop…']);
       assert.equal(await highlighted(page, 1), 'Play Slide', 'the first item of the submenu is not highlighted');
       await press(page, 'ArrowLeft');
       assert.equal(await menus(page), 1, 'the left arrow does not close the submenu');
@@ -456,7 +456,7 @@ describe('a split button folded into More', () => {
       await hover(page, 'Preview', 0);
       assert.equal(await menus(page), 2, 'the submenu of Preview is not opened by a hover');
       const sub = await rows(page, 1);
-      assert.deepEqual(sub.map((r) => (r === '-' ? '-' : r.label)), ['Stop', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Add Backdrop…']);
+      assert.deepEqual(sub.map((r) => (r === '-' ? '-' : r.label)), ['Stop', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Backdrop…']);
       assert.equal(sub[0].command, 'preview.slide');
       assert.equal(sub[0].dimmed, false);
       await click(page, await rowAt(page, 1, `(i) => i.dataset.command === 'preview.slide'`));

@@ -6,7 +6,7 @@ import { columnName, emptyRows, grow, isNumeric, layoutCells, numericColumns, pa
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, clickText, drag, editorPage, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, editorPage, press, saveAndReopen, selectFigure, type, typeKeys } from './helpers/editor.mjs';
 
 const LAYOUTS_DECK = 'test/pages/editor-layouts.html';
 const TABLES_DECK = 'test/pages/editor-tables.html';
@@ -184,7 +184,7 @@ test('Option and Right Arrow in the text of a cell move the caret by a word (mac
   const page = await open('mac', LAYOUTS_DECK);
   t.after(() => page.close?.());
   await show(page, '.reveal .slides table');
-  await click(page, cellSelector(0, 0));
+  await clickText(page, cellSelector(0, 0));
   await press(page, 'End');
   await type(page, ' of orbits');
   await press(page, 'Home');
@@ -244,7 +244,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(0, 0));
+    await clickText(page, cellSelector(0, 0));
     assert.deepEqual(await focusCell(page), [0, 0]);
     await press(page, 'Tab');
     assert.deepEqual(await focusCell(page), [0, 1]);
@@ -258,7 +258,7 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'Shift+Tab');
     assert.deepEqual(await focusCell(page), [0, 0], 'Shift+Tab in the first cell leaves it');
     assert.equal(await render(page), page.source);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await press(page, 'Tab');
     assert.deepEqual(await focusCell(page), [2, 1]);
     await press(page, 'Tab');
@@ -272,11 +272,125 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page, 2);
   });
 
+  test(`a click selects a cell, typing replaces its text, F2 and a second click edit it, and Enter and Tab go to the next cell (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    const block = () => page.evaluate(`window.BeesonEditor.selection().length === 1 && !document.activeElement?.closest?.('td, th')`);
+    await click(page, cellSelector(1, 0));
+    assert.ok(await block(), 'a click selects the cell as a block');
+    assert.equal(await render(page), page.source);
+    await typeKeys(page, 'Axial');
+    await settle(page);
+    assert.deepEqual(await focusCell(page), [1, 0], 'typing edits the cell');
+    assert.equal(await page.evaluate(`document.querySelector(${js(cellSelector(1, 0))}).textContent`), 'Axial');
+    await press(page, 'Enter');
+    await settle(page);
+    assert.ok(await block(), 'Enter selects the cell below');
+    await press(page, 'Mod+Z');
+    await settle(page);
+    assert.equal(await render(page), page.source, 'one undo takes the typing back');
+    await press(page, 'Tab');
+    assert.ok(await block(), 'Tab selects the next cell');
+    await press(page, 'F2');
+    assert.deepEqual(await focusCell(page), [1, 1], 'F2 edits the cell after the one of the undo');
+    await click(page, cellSelector(0, 1));
+    assert.ok(await block());
+    await click(page, cellSelector(0, 1));
+    assert.deepEqual(await focusCell(page), [0, 1], 'a second click edits the cell');
+    assert.equal(await render(page), page.source);
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`a paste onto a cell selected with a click writes over its text, and a paste of rows from a spreadsheet fills the cells from it on (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await click(page, cellSelector(1, 0));
+    await paste(page, { 'text/plain': 'Axial' });
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r) => r.replace('Lyapunov', 'Axial')))]]);
+    await press(page, 'Mod+Z');
+    await settle(page);
+    assert.equal(await render(page), page.source, 'one undo takes the paste back');
+    await click(page, cellSelector(1, 0));
+    await paste(page, { 'text/plain': 'Axial\t1\r\nVertical\t2\r\n', 'text/html': '<table><tr><td>Axial</td><td>1</td></tr><tr><td>Vertical</td><td>2</td></tr></table>' });
+    await settled(page);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.reveal section.present table tr')].slice(1, 3).map((r) => r.textContent)`), ['Axial1', 'Vertical2']);
+    assert.deepEqual(page.errors, []);
+  });
+
+  test(`Rule Below draws a thin rule under the selected cells, and again takes it off (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await click(page, cellSelector(1, 0));
+    await click(page, cellSelector(1, 1), { modifiers: 'Shift' });
+    await settle(page);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('table.ruleBelow')`)).checked, false);
+    await page.evaluate(`window.BeesonEditor.exec('table.ruleBelow')`);
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r, i) => (i === 1 ? r.replaceAll('<td>', '<td class="rule-below">') : r)))]]);
+    assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').label`), 'Undo Rule Below');
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('table.ruleBelow')`)).checked, true);
+    const rule = (r, c) => page.evaluate(`getComputedStyle(document.querySelector(${js(cellSelector(r, c))})).borderBottom`);
+    assert.equal(await rule(1, 1), await rule(0, 1), 'the rule is not drawn as the rule under the header row');
+    assert.notEqual(await rule(1, 1), await rule(2, 1));
+    await page.evaluate(`window.BeesonEditor.exec('table.ruleBelow')`);
+    await settle(page);
+    assert.equal(await render(page), page.source, 'a second Rule Below takes the rule off');
+    await press(page, 'Mod+Z');
+    await settle(page);
+    await roundTrip(page);
+  });
+
+  test(`Smaller on words selected in a cell sets them small and gray, and Bigger sets them back (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await clickText(page, cellSelector(1, 0));
+    const pick = () => page.evaluate(`(() => { const text = document.querySelector(${js(cellSelector(1, 0))}).firstChild; const r = document.createRange(); r.setStart(text, 3); r.setEnd(text, 8); getSelection().removeAllRanges(); getSelection().addRange(r); document.dispatchEvent(new Event('selectionchange')); })()`);
+    await pick();
+    await settle(page);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.bigger')`)).enabled, false);
+    await page.evaluate(`window.BeesonEditor.exec('text.smaller')`);
+    await settled(page);
+    await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable(LAYOUT_ROWS.map((r) => r.replace('Lyapunov', 'Lya<span class="small">punov</span>')))]]);
+    const look = await page.evaluate(`(() => { const s = getComputedStyle(document.querySelector('.reveal section.present td .small')); const c = getComputedStyle(document.querySelector(${js(cellSelector(1, 0))})); return { small: parseFloat(s.fontSize) < parseFloat(c.fontSize), gray: s.color !== c.color }; })()`);
+    assert.deepEqual(look, { small: true, gray: true });
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.smaller')`)).enabled, false, 'Smaller is enabled on words already small');
+    await roundTrip(page);
+    await page.evaluate(`(() => { const span = document.querySelector('.reveal section.present td .small'); const r = document.createRange(); r.selectNodeContents(span); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+    await settle(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.bigger')`);
+    await settle(page);
+    assert.equal(await render(page), page.source, 'Bigger does not take the small words back');
+  });
+
+  test(`Boxed draws a box around the words selected in a cell, in the color of the words (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await clickText(page, cellSelector(1, 0));
+    await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(document.querySelector(${js(cellSelector(1, 0))})); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+    await settle(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.tone.accent')`);
+    await settled(page);
+    await page.evaluate(`window.BeesonEditor.exec('text.boxed')`);
+    await settle(page);
+    const edited = await render(page);
+    assert.ok(/<td><span class="tone-accent"><span class="boxed">Lyapunov<\/span><\/span><\/td>|<td><span class="boxed"><span class="tone-accent">Lyapunov<\/span><\/span><\/td>/.test(edited), edited.match(/<td>[^\n]*Lyapunov[^\n]*/)?.[0]);
+    assert.equal((await page.evaluate(`window.BeesonEditor.state('text.boxed')`)).checked, true);
+    const look = await page.evaluate(`(() => { const b = getComputedStyle(document.querySelector('.reveal section.present td .boxed')); return { width: b.borderTopWidth !== '0px', same: b.borderTopColor === getComputedStyle(document.querySelector('.reveal section.present td .tone-accent')).color }; })()`);
+    assert.deepEqual(look, { width: true, same: true });
+    await roundTrip(page, 2);
+  });
+
   test(`an arrow key at the edge of a cell goes to the cell beside it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(0, 0));
+    await clickText(page, cellSelector(0, 0));
     await press(page, 'End');
     await press(page, 'ArrowLeft');
     assert.deepEqual(await focusCell(page), [0, 0], 'an arrow inside the text moves the caret');
@@ -311,7 +425,7 @@ for (const platform of ['mac', 'other']) {
     for (const [r, c, id, rows, focus] of steps) {
       const page = await open(platform, LAYOUTS_DECK);
       await show(page, '.reveal .slides table');
-      await click(page, cellSelector(r, c));
+      await clickText(page, cellSelector(r, c));
       assert.equal(await page.evaluate(`window.BeesonEditor.state(${js(id)}).enabled`), true, id);
       await page.evaluate(`window.BeesonEditor.exec(${js(id)})`);
       await settle(page);
@@ -330,7 +444,7 @@ for (const platform of ['mac', 'other']) {
     const marked = () => page.evaluate(`[...document.querySelectorAll('.beeson-table-bars .bar > .on')].map((d) => d.textContent)`);
     const range = () => page.evaluate(`!!document.querySelector('.beeson-table-bars .cell.range:not([hidden])')`);
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(1, 0));
     if (platform === 'mac') {
       await press(page, 'Alt+ArrowDown');
       await press(page, 'Alt+ArrowUp');
@@ -359,7 +473,7 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await marked(), ['A', '4']);
     for (let i = 0; i < 3; i++) await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
-    await click(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(1, 0));
     await press(page, 'Escape');
     await press(page, 'Alt+ArrowRight');
     await settle(page);
@@ -384,7 +498,7 @@ for (const platform of ['mac', 'other']) {
       await page.evaluate('window.BeesonEditor.undo()');
     }
     await byteExact(page);
-    await click(page, cellSelector(0, 0));
+    await clickText(page, cellSelector(0, 0));
     if (platform === 'mac') {
       await press(page, 'Alt+ArrowDown');
       await settle(page);
@@ -409,7 +523,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     const table = layoutTable(LAYOUT_ROWS);
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(1, 1));
+    await clickText(page, cellSelector(1, 1));
     assert.equal(await page.evaluate(`window.BeesonEditor.state('table.header').checked`), true);
     await page.evaluate(`window.BeesonEditor.exec('table.header')`);
     await settle(page);
@@ -420,7 +534,7 @@ for (const platform of ['mac', 'other']) {
     await page.close();
     page = await open(platform, LAYOUTS_DECK);
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(1, 0));
     assert.equal(await page.evaluate(`window.BeesonEditor.state('table.numbersRight').checked`), false);
     await page.evaluate(`window.BeesonEditor.exec('table.numbersRight')`);
     await settle(page);
@@ -434,8 +548,8 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(1, 0));
-    await click(page, cellSelector(2, 1), { button: 'right' });
+    await clickText(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(2, 1), { button: 'right' });
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu.cell')`);
     const labels = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.cell .item .label')].map((l) => l.textContent)`);
     for (const label of ['Add Row Above', 'Add Row Below', 'Add Column Before', 'Add Column After', 'Delete Row', 'Delete Column', 'Header Row', 'Delete Table']) {
@@ -453,7 +567,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(2, 1));
+    await clickText(page, cellSelector(2, 1));
     await press(page, 'Shift+F10');
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].map((m) => m.getAttribute('aria-label'))`), ['cell menu']);
@@ -468,7 +582,7 @@ for (const platform of ['mac', 'other']) {
     const panel = '#beeson-edit-panel-format';
     if (!(await page.evaluate(`window.BeesonEditor.state('shell.format').checked`))) await page.evaluate(`window.BeesonEditor.exec('shell.format')`);
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(1, 0));
     await settle(page);
     assert.equal(await page.evaluate(`document.querySelector('${panel} .ed-panes')?.dataset.pane`), 'table');
     assert.equal(await page.evaluate(`document.querySelector('${panel} .ed-note')?.textContent`), '3 rows, 2 columns, cell A2');
@@ -527,7 +641,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());
     await show(page, '.reveal .slides table');
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await paste(page, { 'text/plain': 'Axial\t4.0\nVertical\t4.4' });
     await settled(page);
     await byteExact(page, [[layoutTable(LAYOUT_ROWS), layoutTable([
@@ -554,7 +668,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    await click(page, cellSelector(1, 1));
+    await clickText(page, cellSelector(1, 1));
     await page.evaluate(`window.BeesonEditor.exec('table.rowBelow')`);
     await settle(page);
     await byteExact(page, [[tbodyTable(MERGED_ROWS), tbodyTable([
@@ -570,7 +684,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await page.evaluate(`window.BeesonEditor.exec('table.columnAfter')`);
     await settle(page);
     await byteExact(page, [[tbodyTable(MERGED_ROWS), tbodyTable([
@@ -606,7 +720,7 @@ for (const platform of ['mac', 'other']) {
     assert.ok(await asRange(page));
     assert.equal(await focusCell(page), null);
     assert.equal(await selected(page), '');
-    await click(page, cellSelector(3, 2), { modifiers: 'Shift' });
+    await clickText(page, cellSelector(3, 2), { modifiers: 'Shift' });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3', '4']);
     await press(page, 'Shift+ArrowLeft');
@@ -627,11 +741,11 @@ for (const platform of ['mac', 'other']) {
     await press(page, 'Enter');
     await settle(page);
     assert.deepEqual(await focusCell(page), [1, 2]);
-    await click(page, cellSelector(3, 0), { modifiers: 'Shift' });
+    await clickText(page, cellSelector(3, 0), { modifiers: 'Shift' });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3', '4']);
     assert.equal(await focusCell(page), null);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await settle(page);
     assert.deepEqual(await focusCell(page), [2, 0]);
     assert.ok(!(await asRange(page)));
@@ -647,15 +761,15 @@ for (const platform of ['mac', 'other']) {
     await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', '2', '3', '4']);
-    await click(page, cellSelector(1, 1));
+    await clickText(page, cellSelector(1, 1));
     await page.evaluate(`window.BeesonEditor.exec('table.selectColumn')`);
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', '1', '2', '3', '4']);
-    await click(page, cellSelector(2, 1));
+    await clickText(page, cellSelector(2, 1));
     await page.evaluate(`window.BeesonEditor.exec('table.selectRow')`);
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3']);
-    await click(page, cellSelector(2, 1), { button: 'right' });
+    await clickText(page, cellSelector(2, 1), { button: 'right' });
     await settle(page);
     assert.deepEqual(await marked(page), ['A', 'B', 'C', '2', '3']);
     const items = await page.evaluate(`[...document.querySelectorAll('[role=menu][aria-label="cell menu"] [role=menuitem]')].map((r) => r.textContent)`);
@@ -668,7 +782,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(2, 1));
+    await clickText(page, cellSelector(2, 1));
     await page.evaluate(`window.BeesonEditor.exec('table.selectColumn')`);
     await settle(page);
     await press(page, 'Backspace');
@@ -714,7 +828,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 0);
-    await click(page, cellSelector(1, 0));
+    await clickText(page, cellSelector(1, 0));
     await page.evaluate(`window.BeesonEditor.exec('table.selectColumn')`);
     await settle(page);
     assert.equal((await page.evaluate(`window.BeesonEditor.state('table.unmerge')`)).enabled, true);
@@ -781,7 +895,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await settle(page);
     const before = await firstRow(page);
     await drag(page, '.beeson-table-bars .grip[data-grip="0"]', { dx: 20 });
@@ -802,7 +916,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await settle(page);
     const before = await firstRow(page);
     await drag(page, '.beeson-table-bars .grip[data-grip="0"]', { dx: 400 });
@@ -817,7 +931,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(1, 2));
+    await clickText(page, cellSelector(1, 2));
     await settle(page);
     const lines = () => page.evaluate(`(() => {
       const r = document.createRange();
@@ -843,7 +957,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     const before = await firstRow(page);
     await page.evaluate(`window.BeesonEditor.exec('table.distributeColumns')`);
     await settle(page);
@@ -880,7 +994,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 1);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await autoAlign(page);
     await settle(page);
     const right = (r) => r.replace(/<(t[dh])>((?:\\\(0\.01215\\\)|2\.53e-5|2\.37e-4|Mass ratio))</, '<$1 style="text-align: right">$2<');
@@ -911,7 +1025,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform, TABLES_DECK);
     t.after(() => page.close?.());
     await show(page, 2);
-    await click(page, cellSelector(2, 0));
+    await clickText(page, cellSelector(2, 0));
     await autoAlign(page);
     await settle(page);
     await byteExact(page, [[
@@ -1417,7 +1531,7 @@ describe('a table selected as an object', () => {
       assert.match(await render(page), new RegExp(`<table style="translate: ${x0 + 1}px ${y0}px">`));
       await roundTrip(page);
 
-      await click(page, cellOf(1, 1));
+      await clickText(page, cellOf(1, 1));
       await press(page, 'Escape');
       await frames(page);
       assert.match(await page.evaluate(PANE_NOTE), /cell B2$/);
@@ -1464,7 +1578,7 @@ describe('a table selected as an object', () => {
       assert.ok(Math.max(...widths) - Math.min(...widths) <= 1, `the columns are not widened alike: ${widths}`);
       await roundTrip(page);
 
-      await click(page, cellOf(0, 0));
+      await clickText(page, cellOf(0, 0));
       await press(page, 'Escape');
       await press(page, 'Escape');
       await frames(page);
@@ -1478,7 +1592,7 @@ describe('a table selected as an object', () => {
       assert.deepEqual(page.errors, []);
     });
 
-    test(`a drag anywhere on a table selected as an object moves it, and a click puts the caret into the cell (${platform})`, async (t) => {
+    test(`a drag anywhere on a table selected as an object moves it, a click selects a cell, and a second click puts the caret in (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2 });
       await newTable(page);
       await press(page, 'Escape');
@@ -1492,14 +1606,17 @@ describe('a table selected as an object', () => {
       assert.ok(Math.abs(s.box.left - was.left - 60) < 10 && Math.abs(s.box.top - was.top - 40) < 10, `a drag of (60, 40) on a cell moves the table by (${s.box.left - was.left}, ${s.box.top - was.top})`);
       await roundTrip(page);
 
-      await click(page, cellOf(0, 0));
+      await clickText(page, cellOf(0, 0));
       await press(page, 'Escape');
       await press(page, 'Escape');
       await frames(page);
       await isObject(page, 'after a click on a cell and two Esc');
       await click(page, cellOf(1, 2));
       await frames(page);
-      assert.ok(await page.evaluate(`document.querySelector(${js(cellOf(1, 2))}).contains(getSelection().focusNode)`), 'a click on a cell of the table selected as an object does not put the caret into the cell');
+      assert.ok(await page.evaluate(`!document.activeElement.closest('td, th') && !document.querySelector('.beeson-table-bars .cell').hidden`), 'a click on a cell of the table selected as an object does not select the cell');
+      await click(page, cellOf(1, 2));
+      await frames(page);
+      assert.ok(await page.evaluate(`document.querySelector(${js(cellOf(1, 2))}).contains(getSelection().focusNode)`), 'a second click on the cell does not put the caret into it');
       assert.equal(await render(page), page.source, 'a click on a cell of the table selected as an object edits the file');
       assert.deepEqual(page.errors, []);
     });
@@ -1527,7 +1644,7 @@ describe('a table selected as an object', () => {
       assert.ok(Math.max(...heights) - Math.min(...heights) <= 3, `the rows are not heightened alike, beyond the rules of the table: ${heights}`);
       await roundTrip(page);
 
-      await click(page, cellOf(0, 0));
+      await clickText(page, cellOf(0, 0));
       await press(page, 'Escape');
       await press(page, 'Escape');
       await frames(page);
@@ -1540,7 +1657,7 @@ describe('a table selected as an object', () => {
       assert.ok(Math.abs(s.box.right - was.right) < 3 && Math.abs(s.box.bottom - was.bottom) < 3, 'the lower right corner is moved by a drag of the upper left grip');
       await roundTrip(page);
 
-      await click(page, cellOf(0, 0));
+      await clickText(page, cellOf(0, 0));
       await press(page, 'Escape');
       await press(page, 'Escape');
       await frames(page);
@@ -1558,7 +1675,7 @@ describe('a table selected as an object', () => {
 
     test(`a drag of the line between two rows or two columns inside a table sets the height of the row or the widths of the columns (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
-      await click(page, cellOf(1, 0));
+      await clickText(page, cellOf(1, 0));
       await frames(page);
       const rowBox = (r) => page.evaluate(`(() => { const b = document.querySelectorAll('.reveal section.present table tr')[${r}].getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; })()`);
       const cellBox = (r, c) => page.evaluate(`(() => { const b = document.querySelector(${js(cellOf(r, c))}).getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; })()`);
@@ -1573,7 +1690,7 @@ describe('a table selected as an object', () => {
       assert.equal([...(await render(page)).matchAll(/<tr style="height: \d+px">/g)].length, 1, 'the height is not written into the one row');
       await roundTrip(page);
 
-      await click(page, cellOf(1, 0));
+      await clickText(page, cellOf(1, 0));
       await frames(page);
       const [a, c] = [await cellBox(2, 1), await cellBox(2, 2)];
       await drag(page, { x: c.right - 2, y: (c.top + c.bottom) / 2 }, { dx: 50, steps: 10 });
@@ -1622,7 +1739,7 @@ describe('a table selected as an object', () => {
 
   test('a drag of a table selected as an object that ends beside a formula of a cell keeps the table selected', async (t) => {
     const page = await load(t, 'other', { deck: 'test/pages/editor-tables.html', n: 1 });
-    await click(page, cellOf(2, 0));
+    await clickText(page, cellOf(2, 0));
     await press(page, 'Escape');
     await press(page, 'Escape');
     await frames(page);
@@ -1645,7 +1762,7 @@ describe('a table selected as an object', () => {
   for (const platform of PLATFORMS) {
     test(`a click on a column letter or a row number selects the column or the row, Shift extends it, and the arrow and a right-click open its menu (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
-      await click(page, cellOf(2, 2));
+      await clickText(page, cellOf(2, 2));
       await frames(page);
       assert.match(await page.evaluate(PANE_NOTE), /cell C3$/);
       for (const [bar, i, modifiers, range] of [['cols', 1, '', 'B1:B4'], ['cols', 2, 'Shift', 'B1:C4'], ['rows', 3, '', 'A4:C4'], ['rows', 1, 'Shift', 'A2:C4'], ['cols', 0, '', 'A1:A4']]) {
@@ -1716,7 +1833,7 @@ describe('a table selected as an object', () => {
   for (const platform of PLATFORMS) {
     test(`the Table pane has fields with steppers for the counts of rows and columns, each change one entry of the history (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
-      await click(page, cellOf(2, 2));
+      await clickText(page, cellOf(2, 2));
       await frames(page);
       assert.deepEqual(await page.evaluate(COUNTS), { rows: '4', columns: '3' }, 'the Table pane does not show the counts of rows and columns in fields');
       await click(page, '#beeson-edit-panel-format button[aria-label="Increase Rows"]');
@@ -1726,7 +1843,7 @@ describe('a table selected as an object', () => {
       assert.equal((await state(page, 'edit.undo')).label, 'Undo Set Row Count');
       await roundTrip(page);
 
-      await click(page, cellOf(1, 0));
+      await clickText(page, cellOf(1, 0));
       await frames(page);
       await click(page, '#beeson-edit-panel-format #beeson-edit-num-columns');
       await page.evaluate(`document.querySelector('#beeson-edit-num-columns').select()`);
@@ -1783,7 +1900,7 @@ describe('a table selected as an object', () => {
   for (const platform of PLATFORMS) {
     test(`the header option of the Table pane reads Header Row, as in the menus (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
-      await click(page, cellOf(2, 2));
+      await clickText(page, cellOf(2, 2));
       await frames(page);
       const label = await page.evaluate(`document.querySelector('#beeson-edit-panel-format input[data-command="table.header"]')?.parentElement.textContent ?? null`);
       assert.equal(label, 'Header Row', 'the header option of the Table pane is not labeled Header Row');
@@ -1814,8 +1931,8 @@ describe('a table selected as an object', () => {
   for (const platform of PLATFORMS) {
     test(`the frame of a range of cells and of a merged cell is drawn on their edges, clear of the text beside them (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: 'test/pages/editor-tables.html', n: 1 });
-      await click(page, cellOf(1, 0));
-      await click(page, cellOf(2, 1), { modifiers: 'Shift' });
+      await clickText(page, cellOf(1, 0));
+      await clickText(page, cellOf(2, 1), { modifiers: 'Shift' });
       await frames(page);
       assert.match(await page.evaluate(PANE_NOTE), /cells A2:B3/);
       await clearOf(page, 'of the range A2:B3');

@@ -391,7 +391,7 @@ export async function openGallery(app: App, anchor?: Element | null): Promise<vo
   const el = make('div', 'beeson-backdrop-gallery');
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Backdrops');
-  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the drawing of the backdrop' : 'Add a backdrop'));
+  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the backdrop' : 'Add a backdrop'));
   const tiles: Live[] = [];
   const close = () => {
     if (gallery?.el !== el) return;
@@ -664,9 +664,9 @@ export function commands(): Command[] {
     },
     {
       id: 'backdrop.builtIn',
-      label: 'Backdrop Drawing',
+      label: 'Built-In Backdrop',
       undoable: true,
-      undo: 'Change Drawing',
+      undo: 'Change Backdrop',
       enabled: (app) => !!targetOf(app, undefined),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
@@ -818,7 +818,7 @@ export function commands(): Command[] {
     },
     {
       id: 'backdrop.choose',
-      label: 'Choose Backdrop…',
+      label: 'Replace Backdrop…',
       enabled: (app) => !!app.current() && !editing(),
       run: (app, arg) => openGallery(app, arg instanceof Element ? arg : null),
     },

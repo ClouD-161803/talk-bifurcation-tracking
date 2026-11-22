@@ -109,13 +109,13 @@ describe('the Preview button of the toolbar', () => {
       assert.deepEqual(f.d, PLAY);
       assert.equal(f.pressed, false);
       assert.equal(await page.evaluate(`!!document.querySelector('${MAIN}').parentElement.matches('.beeson-edit-split')`), true, 'Preview is not a split button');
-      assert.deepEqual(await splitMenu(page, 'preview.slide'), ['Play Slide', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Add Backdrop… (dimmed)']);
+      assert.deepEqual(await splitMenu(page, 'preview.slide'), ['Play Slide', 'Trace Backdrop', 'Play Steps', '-', 'Select Backdrop', 'Backdrop… (dimmed)']);
       await press(page, 'Escape');
       const play = await menuOf(page, 'Play');
       const at = play.indexOf('Play Slide');
       assert.ok(at > play.indexOf('Present') && at < play.indexOf('Rehearse Timings'), `the Play menu is ${play.join(', ')}`);
       assert.deepEqual(play.slice(at - 1, at + 4), ['-', 'Play Slide', 'Trace Backdrop', 'Play Steps', '-']);
-      assert.ok(!play.includes('Select Backdrop') && !play.includes('Add Backdrop…'));
+      assert.ok(!play.includes('Select Backdrop') && !play.includes('Backdrop…'));
     });
 
     test(`the entries of Preview are dimmed by what the slide has (${platform})`, async () => {
@@ -276,7 +276,7 @@ describe('the Preview button of the toolbar', () => {
       assert.notEqual(await render(page), page.source);
     });
 
-    test(`Select Backdrop selects the backdrop and shows the Backdrop pane, and Add Backdrop… opens the gallery (${platform})`, async () => {
+    test(`Select Backdrop selects the backdrop and shows the Backdrop pane, and Backdrop… opens the gallery (${platform})`, async () => {
       const page = await previewPage(platform, BACKDROP);
       await splitMenu(page, 'preview.slide');
       await click(page, await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.includes('Select Backdrop')).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
