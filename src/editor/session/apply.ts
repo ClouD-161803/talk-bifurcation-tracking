@@ -94,7 +94,7 @@ const shiftPiece = (p: Piece, d: number): Piece =>
 
 const drawn = (range: Range): boolean => /\S/.test(range.toString());
 
-function drawSpaces(block: Element, node: Text, runs: Edit[]): void {
+function drawSpaces(host: Element, node: Text, runs: Edit[]): void {
   const space = (i: number) => node.data[i] === ' ' || node.data[i] === '\u00a0';
   let delta = 0;
   for (const e of runs) {
@@ -110,11 +110,11 @@ function drawSpaces(block: Element, node: Text, runs: Edit[]): void {
       let j = i;
       while (j < b && space(j)) j++;
       const range = document.createRange();
-      range.setStart(block, 0);
+      range.setStart(host, 0);
       range.setEnd(node, i);
       const first = !drawn(range);
       range.setStart(node, j);
-      range.setEnd(block, block.childNodes.length);
+      range.setEnd(host, host.childNodes.length);
       const last = !drawn(range);
       let run = '';
       for (let k = i; k < j; k++) run += run.endsWith(' ') || (k === i && first) || (k === j - 1 && last) ? '\u00a0' : ' ';
@@ -124,10 +124,10 @@ function drawSpaces(block: Element, node: Text, runs: Edit[]): void {
   }
 }
 
-function retype(block: Element, node: Text, was: string, now: string, file: string): void {
+function retype(host: Element, node: Text, was: string, now: string, file: string): void {
   const runs = runsOf(was, now);
   for (const e of [...runs].reverse()) node.replaceData(e.start, e.end - e.start, e.text);
-  if (!file.includes('\u00a0')) drawSpaces(block, node, runs);
+  if (!file.includes('\u00a0')) drawSpaces(host, node, runs);
 }
 
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
