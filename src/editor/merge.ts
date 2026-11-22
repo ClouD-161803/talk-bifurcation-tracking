@@ -137,16 +137,42 @@ function slidesOf(lines: string[]): [number, number, string][] {
 
 function markMoved(a: string[], b: string[]): [string[], string[]] | null {
   type S = [number, number, string];
-  const [inA, inB] = [a, b].map(slidesOf), one = (l: S[], f: (s: S) => boolean) => l.filter(f).length === 1;
-  const exact = inA.filter(([, , t]) => one(inA, (s) => s[2] === t) && one(inB, (s) => s[2] === t)).map(([from, n, t]) => [from, inB.find((s) => s[2] === t)![0], n]);
-  const [restA, restB] = [inA, inB].map((l, k) => l.filter(([from]) => !exact.some((p) => from >= p[k] && from < p[k] + p[2])));
-  const like = (s: S, t: S) => {
-    const [u, v] = [s, t].map((x) => linesOf(x[2]).map((l) => l.trim()));
-    return u.length === v.length && u.every((l, i) => skeleton(l) === skeleton(v[i]) && (l === v[i] || wordsOf(l).some((w) => [...wordsOf(v[i])].includes(w)))) && 2 * u.filter((l, i) => l === v[i] && WORDED.test(l)).length > u.filter((l) => WORDED.test(l)).length;
+  const [inA, inB] = [a, b].map(slidesOf);
+  const [countA, countB] = [inA, inB].map((l) => l.reduce((m, s) => m.set(s[2], (m.get(s[2]) ?? 0) + 1), new Map<string, number>()));
+  const fromB = new Map(inB.map((s) => [s[2], s[0]]));
+  const exact = inA.filter(([, , t]) => countA.get(t) === 1 && countB.get(t) === 1).map(([from, n, t]) => [from, fromB.get(t)!, n]);
+  const covered = [a, b].map((l, k) => {
+    const out = new Uint8Array(l.length);
+    for (const p of exact) out.fill(1, p[k], p[k] + p[2]);
+    return out;
+  });
+  const [restA, restB] = [inA, inB].map((l, k) => l.filter(([from]) => !covered[k][from]));
+  type Shape = { lines: string[]; skeleton: string; words: Set<string>[]; worded: string[] };
+  const shapes = new Map<S, Shape>();
+  const shape = (s: S) => {
+    let out = shapes.get(s);
+    if (!out) {
+      const lines = linesOf(s[2]).map((l) => l.trim());
+      out = { lines, skeleton: lines.map(skeleton).join('\n'), words: lines.map((l) => new Set(wordsOf(l))), worded: lines.map((l, i) => `${i}\n${l}`).filter((_, i) => WORDED.test(lines[i])) };
+      shapes.set(s, out);
+    }
+    return out;
   };
+  const like = (s: S, t: S) => {
+    const [u, v] = [shape(s), shape(t)];
+    return u.skeleton === v.skeleton && u.lines.every((l, i) => l === v.lines[i] || wordsOf(l).some((w) => v.words[i].has(w))) && 2 * u.lines.filter((l, i) => l === v.lines[i] && WORDED.test(l)).length > u.worded.length;
+  };
+  const byLine = (l: S[]) => {
+    const out = new Map<string, S[]>();
+    for (const s of l) for (const key of shape(s).worded) out.set(key, [...(out.get(key) ?? []), s]);
+    return out;
+  };
+  const [lineA, lineB] = [restA, restB].map(byLine);
+  const near = (keys: string[], index: Map<string, S[]>) => [...new Set(keys.flatMap((key) => index.get(key) ?? []))];
+  const fewest = (keys: string[], index: Map<string, S[]>) => keys.map((key) => [key, index.get(key)?.length ?? 0] as const).sort((x, y) => x[1] - y[1]).slice(0, Math.ceil(keys.length / 2)).map(([key]) => key);
   const loose = restA.flatMap((s) => {
-    const t = restB.filter((x) => like(s, x));
-    return t.length === 1 && one(restA, (x) => like(x, t[0])) ? [[s[0], t[0][0], s[1]]] : [];
+    const t = near(fewest(shape(s).worded, lineB), lineB).filter((x) => like(s, x));
+    return t.length === 1 && near(shape(t[0]).worded, lineA).filter((x) => like(x, t[0])).length === 1 ? [[s[0], t[0][0], s[1]]] : [];
   });
   let end = 0;
   const pairs = [...exact, ...loose].sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
