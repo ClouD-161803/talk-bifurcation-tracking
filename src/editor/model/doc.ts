@@ -370,7 +370,8 @@ export class Doc {
 
   async setContent(textEl: Element, content: string, label = 'content'): Promise<void> {
     const before = contentWithTex(textEl);
-    const put = async (c: string) => {
+    const put = async (text: string) => {
+      const c = media.resolveText(text);
       if (this.host.restore) await this.host.restore(textEl, c);
       else await setContentWithTex(textEl, c);
       this.host.changed();

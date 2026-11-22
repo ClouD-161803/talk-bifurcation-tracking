@@ -169,7 +169,7 @@ export function selectCellOf(target: Element): boolean {
   return true;
 }
 
-const opensInPlace = (target: Element) => !!target.closest('.plot, img, video, figure, .figure-box, .qr, .shape, svg, math, mjx-container, .math');
+const opensInPlace = (target: Element) => !!target.closest('.plot, video, figure, .figure-box, .qr, .shape, svg, math, mjx-container, .math');
 
 const soleCell = (app: App, cell: HTMLTableCellElement) => rangeHeld(app) && cellRange!.anchor === cell && cellRange!.focus === cell;
 
@@ -786,6 +786,24 @@ export function selectedRows(app: App): HTMLTableRowElement[] | null {
   const t = selectedRange(app);
   if (!t?.box || t.box.c0 !== 0 || t.box.c1 !== gridOf(t.table).width - 1) return null;
   return [...t.table.rows].slice(t.box.r0, t.box.r1 + 1);
+}
+
+export function cellForPicture(app: App): HTMLTableCellElement | null {
+  if (!app.pairing?.root || !app.current()) return null;
+  const cell = cellAt(app);
+  if (cell) return cell;
+  return rangeHeld(app) && cellRange!.anchor === cellRange!.focus ? cellRange!.anchor : null;
+}
+
+export async function pictureInCell(app: App, cell: HTMLTableCellElement, html: string): Promise<void> {
+  const table = cell.closest('table') as HTMLTableElement;
+  const p = placeOf(cell)!;
+  const top = gridOf(table).grid[0]?.[p.col]?.cell;
+  const before = contentWithTex(cell).trim();
+  const width = cell.getBoundingClientRect().width;
+  await app.doc.setContent(cell, before ? `${before}<br>${html}` : html, 'insert image');
+  if (top && top.colSpan === 1 && !top.style.width) writeWidths(app, new Map([[top, Math.min(320, Math.max(160, width - 40))]]), 'insert image');
+  selectCells(app, cell, cell);
 }
 
 export const selectedRange = (app: App): Target | null => (rangeHeld(app) ? targetOf(app) : null);

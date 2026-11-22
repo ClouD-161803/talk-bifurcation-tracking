@@ -151,6 +151,13 @@ export class MediaStore {
     if (!f.saved) this.keep(() => tx('readwrite', (s) => (s.delete([deck(), from]), s.put({ deck: deck(), path, blob: f.blob } satisfies Row))));
   }
 
+  resolveText(html: string): string {
+    return html.replace(/(\s(?:src|poster)=")([^"]*)"/g, (all, head: string, path: string) => {
+      const f = this.byPath.get(path);
+      return f ? `${head}${f.url}"` : all;
+    });
+  }
+
   resolve(root: Element): void {
     for (const el of [root, ...root.querySelectorAll('img, video, source')]) {
       if (!el.matches('img, video, source')) continue;

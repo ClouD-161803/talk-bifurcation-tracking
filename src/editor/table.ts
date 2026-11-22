@@ -51,9 +51,9 @@ export function parseTabular(text: string): string[][] | null {
   return square(rows);
 }
 
-function square(rows: string[][]): string[][] | null {
+function square(rows: string[][], least = 2): string[][] | null {
   const width = Math.max(0, ...rows.map((r) => r.length));
-  if (!rows.length || rows.length * width < 2 || !rows.some((r) => r.some((c) => c.trim()))) return null;
+  if (!rows.length || rows.length * width < least || !rows.some((r) => r.some((c) => c.trim()))) return null;
   return rows.map((r) => [...r, ...Array<string>(width - r.length).fill('')]);
 }
 
@@ -85,8 +85,10 @@ function inlineHtml(el: Element): string {
   for (const n of el.childNodes) {
     if (n.nodeType === 3) out += escape((n as Text).data).replace(/\u00a0/g, '&nbsp;');
     if (!(n instanceof Element) || ['script', 'style'].includes(n.localName)) continue;
-    const tone = n.localName === 'span' && n.classList.length === 1 && /^tone-(accent|violet|blue|red|subtle|muted)$/.test(n.className);
+    const tone = n.localName === 'span' && n.classList.length === 1 && /^(tone-(accent|violet|blue|red|subtle|muted)|small|boxed)$/.test(n.className);
+    const src = n.localName === 'img' ? n.getAttribute('src') : null;
     if (n.localName === 'br') out += '<br>';
+    else if (src) out += `<img src="${escape(src).replace(/"/g, '&quot;')}">`;
     else if (['strong', 'em', 'u', 's'].includes(n.localName)) out += `<${n.localName}>${inlineHtml(n)}</${n.localName}>`;
     else if (tone) out += `<span class="${n.className}">${inlineHtml(n)}</span>`;
     else out += inlineHtml(n);
@@ -98,7 +100,7 @@ export function parseEditorTable(html: string): string[][] | null {
   const table = editorTable(html);
   if (!table) return null;
   const rows = [...table.rows].map((tr) => [...tr.cells].flatMap((c) => [inlineHtml(c), ...Array<string>(Math.max(0, c.colSpan - 1)).fill('')]));
-  return square(rows.filter((r) => r.length));
+  return square(rows.filter((r) => r.length), 1);
 }
 
 export function editorHeads(html: string): boolean[][] | null {
