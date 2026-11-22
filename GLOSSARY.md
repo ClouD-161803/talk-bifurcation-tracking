@@ -176,9 +176,9 @@ Avoid "lock", which is the command Lock of the Arrange menu.
 
 ## Host
 
-The person who started a session. The edit command runs on the computer of the host, and `index.html` is written in the talk folder of the host.
+The person who started a session. The edit command runs on the host machine, and `index.html` is written in the talk folder of the host.
 
-Avoid "owner", and avoid "machine" for the computer of the host.
+Avoid "owner", and avoid "computer of the host".
 
 ## Image
 
@@ -368,7 +368,7 @@ Avoid "footnote" and "citation" for a reference.
 
 ## Relay
 
-The program through which a guest reaches the edit command of a host, which can be reached only from the computer of the host. A deck is never kept on it.
+The program through which a guest reaches the edit command of a host, which can be reached only from the host machine. A deck is never kept on it.
 
 Avoid "hub", and avoid "server" for the relay.
 

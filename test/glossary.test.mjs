@@ -75,7 +75,7 @@ const { hits, used } = scan();
 
 test('the glossary names at least the avoided words of its main entries', () => {
   const words = new Set(AVOIDED.map((a) => a.word));
-  assert.deepEqual(['drawing', 'picture', 'block', 'card', 'glue', 'slide list'].filter((w) => !words.has(w)), []);
+  assert.deepEqual(['drawing', 'picture', 'block', 'card', 'glue', 'slide list', 'computer of the host'].filter((w) => !words.has(w)), []);
 });
 
 test('each entry of the glossary opens with its definition, not with what to avoid', () => {
