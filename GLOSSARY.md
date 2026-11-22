@@ -250,7 +250,7 @@ Avoid "ping", and avoid "tag" for a mention.
 
 The dark or the light look of a deck, which a person flips with the mode button or the key D.
 
-Avoid "theme" and "version" for a mode.
+Avoid "theme" and "version" for a mode. The names `data-theme`, `data-keep-theme`, and `?theme=`, and the attribute `theme` of a TyCHO viewer, are kept, since the styles of talks and TyCHO read them.
 
 ## Name flag
 
