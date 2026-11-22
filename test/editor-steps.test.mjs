@@ -1298,8 +1298,8 @@ describe('a dimmed step in the presenter display', () => {
       const page = await load(t, platform, 'test/pages/editor-r20-4.html');
       for (const [n, [kind, written]] of KINDS.entries()) {
         const before = await marks(page, n);
-        await page.evaluate(`(() => { const li = document.querySelectorAll('${SLIDE} > :is(ul, ol)')[${n}].querySelector('li'); li.focus(); getSelection().collapse(li.firstChild, 1); return true; })()`);
-        await wait(page, 100);
+        await click(page, await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(document.querySelectorAll('${SLIDE} > :is(ul, ol)')[${n}].querySelector('li').firstChild); const b = r.getBoundingClientRect(); return { x: b.left + 4, y: b.top + b.height / 2 }; })()`));
+        assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`), [kind === 'numbers' ? 'ol' : 'ul'], `${kind}: a click does not select the list`);
         await exec(page, 'text.align.center');
         await wait(page);
         assert.ok((await render(page)).includes(written), `${kind}: the list is not written with the class center`);
