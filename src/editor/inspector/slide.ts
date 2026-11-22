@@ -192,7 +192,7 @@ export function slidePane(app: App, run: Run): Control[] {
         line?.el.remove();
         line = now
           ? row([note(() => drawingName(now)), button(app, run, { command: 'backdrop.select', text: 'Select' })])
-          : row([button(app, run, { command: 'backdrop.choose', text: 'Add Backdrop…' })]);
+          : row([button(app, run, { command: 'insert.backdrop', text: 'Backdrop…' })]);
         sec.el.append(line.el);
       }
       line.sync();

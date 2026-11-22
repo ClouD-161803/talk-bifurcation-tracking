@@ -107,13 +107,15 @@ test('a double click on a paragraph that is not selected puts the caret in with 
   assert.deepEqual(page.errors, []);
 });
 
-test('a click on a cell of a table puts the caret in it at once', async (t) => {
+test('a click on a cell of a table selects the cell, and a second click puts the caret in', async (t) => {
   const page = await open(t);
   await page.evaluate('Reveal.slide(1)');
   await page.waitFor(`!!document.querySelector('.reveal section.present table')`);
   await frames(page);
   await click(page, '.reveal section.present td');
-  assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present table')`), true, 'a click on a cell does not put the caret in');
+  assert.equal(await page.evaluate(`!document.activeElement?.closest('.reveal section.present table') && window.BeesonEditor.state('table.clearCells').enabled`), true, 'a click on a cell does not select the cell');
+  await click(page, '.reveal section.present td');
+  assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present table')`), true, 'a second click on a cell does not put the caret in');
   assert.deepEqual(page.errors, []);
 });
 

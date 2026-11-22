@@ -20,8 +20,11 @@ const unix = process.platform !== 'win32';
 const BUSY = 'The edit command is busy with other downloads of the talk folder. Try again in a minute.';
 
 process.env.SLIDES_ZIP_MAX_BYTES = String(3 * MB);
+process.env.SLIDES_ZIP_HELD_BYTES = String(3 * MB);
 const small = await import('../theme/edit.mjs?limit=3MB');
 delete process.env.SLIDES_ZIP_MAX_BYTES;
+delete process.env.SLIDES_ZIP_HELD_BYTES;
+const text = (bytes) => randomBytes(Math.ceil((bytes * 3) / 4)).toString('base64').slice(0, bytes);
 
 const api = (key, route) => `/${key}/.session/${route}`;
 const urlOf = (path) => path.map(encodeURIComponent).join('/');
@@ -606,6 +609,70 @@ test('a zip that is kept holds about its bytes in memory, also the zip of a fold
   assert.equal((await dropZip(port, key, token, id)).status, 200);
 });
 
+test('a zip of a video larger than 64 MB holds under 1 MB in memory, and its pieces are read from the disk', { timeout: 120_000 }, async (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const { root, talk } = talkFolder(t);
+  const clip = put(talk, 'media/clip.mp4', '');
+  truncateSync(clip, 65 * MB);
+  writeFileSync(clip, 'the first bytes of the clip', { flag: 'r+' });
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const held = () => {
+    gc();
+    gc();
+    return process.memoryUsage().arrayBuffers;
+  };
+  const before = held();
+  const made = await makeZip(port, key, token);
+  assert.equal(made.status, 200, made.text);
+  const { id, size } = made.json();
+  assert.ok(size > 65 * MB, `a zip of ${size} bytes`);
+  const grown = held() - before;
+  assert.ok(grown < MB, `the zip holds ${(grown / MB).toFixed(2)} MB`);
+  const pieces = [];
+  for (let at = 0; at < size; at += PIECE) pieces.push((await pieceOf(port, key, token, id, at)).body);
+  const got = byName(Buffer.concat(pieces)).get('media/clip.mp4');
+  assert.equal(got.method, 0);
+  assert.ok(got.bytes.equals(readFileSync(clip)));
+  assert.equal((await dropZip(port, key, token, id)).status, 200);
+});
+
+test('a file that changes after its zip was made is named in the answer to a piece, and the zip is dropped', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  const clip = put(talk, 'media/clip.mp4', randomBytes(5 * MB));
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const { id, size } = (await makeZip(port, key, token)).json();
+  truncateSync(clip, 4 * MB);
+  let answer;
+  for (let at = 0; at < size && answer?.status !== 409; at += PIECE) answer = await pieceOf(port, key, token, id, at);
+  assert.equal(answer.status, 409);
+  assert.deepEqual(answer.json(), { error: 'The file media/clip.mp4 changed while the talk folder was downloaded. Try again.' });
+  assert.equal((await pieceOf(port, key, token, id, 0)).status, 404);
+  const again = await download(port, key, token);
+  assert.equal(byName(again.zip).get('media/clip.mp4').bytes.length, 4 * MB);
+});
+
+test('a file that is written again with the same size during the download is named in the answer to a piece', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  const clip = put(talk, 'media/clip.mp4', randomBytes(5 * MB));
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const { id, size } = (await makeZip(port, key, token)).json();
+  assert.equal((await pieceOf(port, key, token, id, 0)).status, 200);
+  writeFileSync(clip, randomBytes(5 * MB));
+  const later = new Date(statSync(clip).mtimeMs + 10_000);
+  utimesSync(clip, later, later);
+  let answer;
+  for (let at = PIECE; at < size && answer?.status !== 409; at += PIECE) answer = await pieceOf(port, key, token, id, at);
+  assert.equal(answer.status, 409);
+  assert.deepEqual(answer.json(), { error: 'The file media/clip.mp4 changed while the talk folder was downloaded. Try again.' });
+});
+
 test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP_KEPT_MS, and after a quarter of this time when no piece was asked for', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -625,11 +692,11 @@ test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP
   await until(async () => (await pieceOf(edit.port, edit.key, token, id, size)).status === 404, 'the zip to be dropped');
 });
 
-test('a folder over the limit is refused with its size, and the zips kept at one time are capped', { timeout: 60_000 }, async (t) => {
+test('a folder over the limit is refused with its size, and the bytes that the zips kept hold at one time are capped', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  put(talk, 'media/a.png', randomBytes(2 * MB));
-  const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
+  put(talk, 'notes.txt', text(2 * MB));
+  const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), SLIDES_ZIP_HELD_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
   const { port, key } = edit;
   const ann = await hello(t, port, key, 'Ann');
   const bo = await hello(t, port, key, 'Bo');
@@ -673,13 +740,13 @@ test('a page alone downloads a talk folder whose files are at the limit, althoug
 
 test('pages that ask at one time do not each build a zip: the room of a zip is taken before its files are read', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
-  put(talk, 'media/a.png', randomBytes(2 * MB));
+  put(talk, 'notes/a.txt', text(2 * MB));
   const { readFile } = fsp;
   let reads = 0;
   let release;
   const gate = new Promise((done) => (release = done));
   fsp.readFile = async (file, ...rest) => {
-    if (String(file).endsWith('a.png')) {
+    if (String(file).endsWith('a.txt')) {
       reads++;
       await gate;
     }
@@ -695,7 +762,7 @@ test('pages that ask at one time do not each build a zip: the room of a zip is t
   const ann = await hello(t, port, key, 'Ann');
   const bo = await hello(t, port, key, 'Bo');
   const first = makeZip(port, key, ann);
-  await until(() => reads === 1, 'the first zip to read media/a.png');
+  await until(() => reads === 1, 'the first zip to read notes/a.txt');
   const busy = await within(makeZip(port, key, bo), 10_000, 'the answer to the second page while the first zip is built');
   assert.equal(busy.status, 503);
   assert.deepEqual(busy.json(), { error: BUSY });
@@ -711,13 +778,13 @@ test('pages that ask at one time do not each build a zip: the room of a zip is t
 
 test('a page whose zip is built while the edit command stops is told so, and not that the edit command is busy', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
-  put(talk, 'media/a.png', randomBytes(MB));
+  put(talk, 'notes/a.txt', text(MB));
   const { readFile } = fsp;
   let reads = 0;
   let release;
   const gate = new Promise((done) => (release = done));
   fsp.readFile = async (file, ...rest) => {
-    if (String(file).endsWith('a.png')) {
+    if (String(file).endsWith('a.txt')) {
       reads++;
       await gate;
     }
@@ -732,7 +799,7 @@ test('a page whose zip is built while the edit command stops is told so, and not
   const running = await inProcess(t, root, talk);
   const token = await hello(t, running.port, running.key, 'Ann');
   const made = makeZip(running.port, running.key, token);
-  await until(() => reads === 1, 'the zip to read media/a.png');
+  await until(() => reads === 1, 'the zip to read notes/a.txt');
   const closing = running.close();
   release();
   const answer = await within(made, 10_000, 'the answer to the page');
@@ -741,14 +808,14 @@ test('a page whose zip is built while the edit command stops is told so, and not
   await closing;
 });
 
-test('a file that grows after it was listed counts against the limit with the bytes that are read', { timeout: 60_000 }, async (t) => {
+test('a text file that grows after it was listed counts against the limit with the bytes that are read', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
-  put(talk, 'media/a.png', randomBytes(MB));
+  put(talk, 'notes/a.txt', text(MB));
   const { readFile } = fsp;
   let grown = 0;
   fsp.readFile = async (file, ...rest) => {
     const bytes = await readFile(file, ...rest);
-    return String(file).endsWith('a.png') ? Buffer.concat([bytes, Buffer.alloc(grown)]) : bytes;
+    return String(file).endsWith('a.txt') ? Buffer.concat([bytes, Buffer.alloc(grown)]) : bytes;
   };
   syncBuiltinESMExports();
   t.after(() => {
@@ -759,7 +826,7 @@ test('a file that grows after it was listed counts against the limit with the by
   const token = await hello(t, port, key, 'Ann');
   grown = MB;
   const got = byName((await download(port, key, token)).zip);
-  assert.equal(got.get('media/a.png').bytes.length, 2 * MB, 'a file that grew below the limit is zipped as it was read');
+  assert.equal(got.get('notes/a.txt').bytes.length, 2 * MB, 'a file that grew below the limit is zipped as it was read');
   grown = 2.5 * MB;
   const over = await makeZip(port, key, token);
   assert.equal(over.status, 413);
@@ -785,7 +852,7 @@ test('a JSON file that is wrapped for the zip counts once against the limit', { 
   assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
 });
 
-test('through the relay, a folder over 64 MB is refused, and a download gives the zip of a direct download', { timeout: 120_000 }, async (t) => {
+test('through the relay, a folder over 64 MB is downloaded, and a download gives the zip of a direct download', { timeout: 300_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 5000, pullMs: 1000 });
   t.after(() => relay.close());
   const { root, talk, config } = talkFolder(t);
@@ -797,14 +864,12 @@ test('through the relay, a folder over 64 MB is refused, and a download gives th
   await until(async () => (await raw(relay.port, 'GET', `/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
   const guest = await hello(t, relay.port, key, 'Guest');
 
-  const over = await makeZip(relay.port, key, guest);
-  assert.equal(over.status, 413);
-  const size = (Math.ceil(((65 * MB + Buffer.byteLength(DECK)) / MB) * 10) / 10).toFixed(1);
-  assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 64 MB for a download through the relay.` });
-  assert.equal(size, '65.1');
-  const direct = await makeZip(edit.port, key, guest);
-  assert.equal(direct.status, 200, direct.text);
-  assert.equal((await dropZip(edit.port, key, guest, direct.json().id)).status, 200);
+  const large = await download(relay.port, key, guest);
+  assert.ok(large.size > 65 * MB, `a zip of ${large.size} bytes`);
+  const bigEntry = byName(large.zip).get('big.bin');
+  assert.equal(bigEntry.bytes.length, 65 * MB);
+  assert.ok(bigEntry.bytes.every((b) => b === 0));
+  assert.equal((await dropZip(relay.port, key, guest, large.id)).status, 200);
 
   unlinkSync(big);
   put(talk, 'media/photo.png', randomBytes(5 * MB));
@@ -849,11 +914,11 @@ test('a folder of more files than a zip holds is refused', { skip: !unix && '65,
 
 test('the edit command answers a page while it builds a zip', { timeout: 120_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
-  put(talk, 'big.bin', randomBytes(30 * MB));
+  put(talk, 'big.txt', text(12 * MB));
   const { readFile } = fsp;
   let reading = false;
   fsp.readFile = (file, ...rest) => {
-    if (String(file).endsWith('big.bin')) reading = true;
+    if (String(file).endsWith('big.txt')) reading = true;
     return readFile(file, ...rest);
   };
   syncBuiltinESMExports();
@@ -866,7 +931,7 @@ test('the edit command answers a page while it builds a zip', { timeout: 120_000
   const token = await hello(t, port, key, 'Ann');
   const order = [];
   const zipping = makeZip(port, key, token).then((answer) => (order.push('zip'), answer));
-  await until(() => reading, 'the zip to read big.bin');
+  await until(() => reading, 'the zip to read big.txt');
   const page = await raw(port, 'GET', `/${key}/index.html`);
   order.push('index.html');
   assert.equal(page.status, 200);

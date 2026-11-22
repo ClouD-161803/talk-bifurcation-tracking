@@ -158,6 +158,13 @@ function watch(app: App, root: Element): void {
   }
 }
 
+export async function pictureText(app: App, file: File): Promise<string | null> {
+  const [r] = await prepare(app, [file]);
+  if (!r || r.kind !== 'image' || r.pdf) return null;
+  report(app, [r]);
+  return `<img src="${attr(r.file.path)}">`;
+}
+
 async function fill(app: App, slot: Element, r: Ready, label: string): Promise<Element> {
   const pending = app.doc.insert(r.pdf ? pdfText(r.pdf) : mediaText(r), slot, null, label);
   media.resolve(slot);

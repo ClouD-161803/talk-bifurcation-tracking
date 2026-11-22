@@ -105,7 +105,10 @@ function ribbon(A: number, phases: number, crossings: number, alpha: number, kic
 }
 
 const BUILT_IN = {
-  tubes: () => [...tubes(1, 0.0313, 14, 2.2), ...tubes(2, 0.0408, 14, 2.2)],
+  tubes: () => {
+    const [[l1, ...from1], [l2, ...from2]] = [tubes(1, 0.0313, 14, 2.2), tubes(2, 0.0408, 14, 2.2)];
+    return [l1, l2, ...from1, ...from2];
+  },
   wideRibbon: () => ribbon(0.016, 120, 3, 0.12),
 } satisfies Record<string, () => Trajectory[]>;
 

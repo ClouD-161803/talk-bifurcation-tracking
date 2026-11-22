@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { isTextElement } from '../src/editor/render.ts';
-import { click, editorPage } from './helpers/editor.mjs';
+import { click, clickText, editorPage } from './helpers/editor.mjs';
 
 const srcEl = (tag, ...children) => ({ kind: 'element', tag, children });
 const srcText = (decoded) => ({ kind: 'text', decoded });
@@ -20,7 +20,7 @@ test('a deck with a plot in a table cell is opened in the editor with every text
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser, { deck: 'test/pages/editor-plot-cell.html' });
-  await click(page, 'td');
+  await clickText(page, 'td');
   await page.waitFor(`document.activeElement.matches('td[contenteditable]')`);
   await click(page, '.plot-area > svg');
   await page.waitFor(`!document.activeElement.closest('table') && !document.querySelector('.plot').closest('td').isContentEditable`);

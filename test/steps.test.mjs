@@ -271,3 +271,83 @@ test('a step nested in an earlier step is drawn at full opacity while it is the 
   assert.deepEqual(pages, NESTED);
   assert.deepEqual(print.errors, []);
 });
+
+const CLOSING_RULE = (section) => `(() => {
+  const table = ${section}.querySelector('table');
+  const rows = [...table.rows];
+  const ruled = rows.findIndex((tr) => [...tr.cells].every((c) => getComputedStyle(c).backgroundImage.startsWith('linear-gradient')));
+  return {
+    shown: rows.filter((tr) => getComputedStyle(tr).visibility === 'visible').length,
+    rule: getComputedStyle(table).borderBottomColor === 'rgba(0, 0, 0, 0)' ? ruled : 'table',
+    tops: rows.map((tr) => Math.round(tr.getBoundingClientRect().top - table.getBoundingClientRect().top)),
+  };
+})()`;
+
+test('the closing rule of a table whose rows are steps is drawn under the last row shown, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const expected = [{ shown: 1, rule: 0 }, { shown: 2, rule: 1 }, { shown: 3, rule: 2 }, { shown: 4, rule: 'table' }];
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/table-steps.html', 'still'));
+  await page.waitFor(deckSettled);
+  const seen = [];
+  for (let i = 0; i < expected.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await page.waitFor(`${CLOSING_RULE('Reveal.getCurrentSlide()')}.shown === ${i + 1}`);
+    seen.push(await page.evaluate(CLOSING_RULE('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen.map(({ shown, rule }) => ({ shown, rule })), expected);
+  for (const s of seen) assert.deepEqual(s.tops, seen[0].tops);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/table-steps.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < expected.length; i++) pages.push(await print.evaluate(CLOSING_RULE(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages.map(({ shown, rule }) => ({ shown, rule })), expected);
+  assert.deepEqual(print.errors, []);
+});
+
+const RULE_SPAN = (section) => `(() => {
+  const table = ${section}.querySelector('table');
+  const box = table.getBoundingClientRect();
+  const shown = [...table.rows].filter((tr) => getComputedStyle(tr).visibility === 'visible');
+  if (getComputedStyle(table).borderBottomColor !== 'rgba(0, 0, 0, 0)') return { shown: shown.length, left: 0, right: 0 };
+  const line = Math.max(...shown.map((tr) => tr.getBoundingClientRect().bottom));
+  const spans = [...table.querySelectorAll('th, td')]
+    .filter((c) => getComputedStyle(c).backgroundImage.startsWith('linear-gradient') && Math.abs(c.getBoundingClientRect().bottom - line) < 1)
+    .map((c) => c.getBoundingClientRect())
+    .sort((a, b) => a.left - b.left);
+  let reach = box.left;
+  for (const r of spans) if (r.left <= reach + 1) reach = Math.max(reach, r.right);
+  return { shown: shown.length, left: Math.round(spans[0] ? spans[0].left - box.left : Infinity), right: Math.round(box.right - reach) };
+})()`;
+
+test('the closing rule of a table whose rows are steps runs across the whole table under cells that span rows, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const expected = [{ shown: 2, left: 0, right: 0 }, { shown: 4, left: 0, right: 0 }, { shown: 5, left: 0, right: 0 }];
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/table-steps.html', 'still'));
+  await page.waitFor(deckSettled);
+  await page.evaluate('Reveal.slide(1, 0, -1)');
+  const seen = [];
+  for (let i = 0; i < expected.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await page.waitFor(`${RULE_SPAN('Reveal.getCurrentSlide()')}.shown === ${expected[i].shown}`);
+    seen.push(await page.evaluate(RULE_SPAN('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen, expected);
+  await page.evaluate(`(() => { const s = document.createElement('style'); s.textContent = 'table { --closing-rule: transparent }'; document.head.append(s); Reveal.slide(1, 0, -1); })()`);
+  await page.waitFor(`${RULE_SPAN('Reveal.getCurrentSlide()')}.shown === 2`);
+  const off = await page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('th, td')].map((c) => getComputedStyle(c).backgroundImage).filter((b) => b.startsWith('linear-gradient') && !b.includes('rgba(0, 0, 0, 0)')).length`);
+  assert.equal(off, 0, 'a deck style of one declaration does not turn the closing rule off');
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/table-steps.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < expected.length; i++) pages.push(await print.evaluate(RULE_SPAN(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('h2')?.textContent === 'Rows below a spanning header')[${i}]`)));
+  assert.deepEqual(pages, expected);
+  assert.deepEqual(print.errors, []);
+});

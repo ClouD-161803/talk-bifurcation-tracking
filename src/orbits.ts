@@ -1,6 +1,6 @@
 import { builtIn } from './backdrops.ts';
 import { typesetLabels } from './drawn-text.ts';
-import { colormapColor, fitView, load, mix, shadeOf, trajectoriesFor } from './trajectories.ts';
+import { colormapColor, fileOf, fitView, load, mix, shadeOf, trajectoriesFor } from './trajectories.ts';
 import type { Colormap, Dot, TrajectoryData } from './trajectories.ts';
 
 export type Member = { s: Float64Array; path: number[]; times: number[]; t: number };
@@ -358,11 +358,13 @@ export class Orbits {
   private loaded: boolean;
   private pending = false;
   private headSize: number;
-  readonly duration: number;
+  private givenDuration: number;
+  private clockInSeconds: boolean;
   private stagger: number;
   private everyHead: boolean;
   private inks: string[] = [];
   private ghosted: { base: HTMLCanvasElement; head: HTMLCanvasElement; trail: HTMLCanvasElement | null; above: HTMLCanvasElement | null; c: Colors; inks: string[] } | null = null;
+  private lead = 0;
   private cached = 0;
   private doneAbove = 0;
   private upTo: number[] = [];
@@ -389,7 +391,7 @@ export class Orbits {
 
   constructor(el: HTMLElement) {
     this.el = el;
-    const file = el.dataset.trajectories !== undefined;
+    const path = fileOf(el), file = path !== null;
     this.trajectories = file ? [] : builtIn(el.dataset.backdrop ?? '');
     this.dots = file ? [] : null;
     this.loaded = !file;
@@ -397,7 +399,8 @@ export class Orbits {
     this.headSize = HEADS[el.dataset.heads ?? 'full'] ?? HEADS.full;
     this.everyHead = el.dataset.heads !== undefined;
     const given = Number(el.dataset.duration);
-    this.duration = given > 0 ? given : DURATION;
+    this.givenDuration = given > 0 ? given : 0;
+    this.clockInSeconds = file && el.dataset.trajectories === undefined;
     this.stagger = Math.max(0, Number(el.dataset.stagger) || 0);
     this.cx = +(el.dataset.cx ?? 0);
     this.cy = +(el.dataset.cy ?? 0);
@@ -419,7 +422,7 @@ export class Orbits {
     CACHE.set(el, this);
     this.fit();
     this.ready = file
-      ? Promise.all([trajectoriesFor(el), load(el.dataset.trajectories ?? '')]).then(([{ trajectories, dots }, f]) => {
+      ? Promise.all([trajectoriesFor(el), load(path ?? '')]).then(([{ trajectories, dots }, f]) => {
           this.fileTrajectories = f?.families ?? null;
           this.install(trajectories, dots);
         })
@@ -444,15 +447,19 @@ export class Orbits {
   }
 
   private order(): void {
-    const ends = new Map<string, number>();
+    const pooled = (s: Trajectory) => !s.glow && alphaOf(s) <= 0.5 && widthOf(s) <= 1;
     const seconds = (i: number, t: number) => (t / this.Tmax) * this.duration + i * this.stagger;
-    let k = 0;
+    let lead = 0;
+    while (lead < this.trajectories.length && !pooled(this.trajectories[lead])) lead++;
+    const ends = new Map<string, number>();
+    let k = lead;
     for (; k < this.trajectories.length; k++) {
       const s = this.trajectories[k], color = colorOf(s), begin = seconds(k, s.times[0]);
-      if (s.glow || alphaOf(s) > 0.5 || widthOf(s) > 1) break;
-      if ([...ends].some(([other, end]) => other !== color && end > begin)) break;
+      if (!pooled(s)) break;
       ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds(k, s.times[s.times.length - 1])));
     }
+    if (k === lead) lead = k = 0;
+    this.lead = lead;
     this.cached = k;
     this.doneAbove = k;
     this.upTo = this.trajectories.map(() => 0);
@@ -472,12 +479,16 @@ export class Orbits {
     return keep[lo];
   }
 
+  get duration(): number {
+    return this.givenDuration || (this.clockInSeconds && this.loaded && this.Tmax > 0 ? this.Tmax : DURATION);
+  }
+
   get view(): { cx: number; cy: number; half: number } {
     return { cx: this.cx, cy: this.cy, half: this.half };
   }
 
   get fitsItself(): boolean {
-    return this.el.dataset.trajectories !== undefined;
+    return fileOf(this.el) !== null;
   }
 
   get fittedToDrawing(): boolean {
@@ -489,7 +500,7 @@ export class Orbits {
       this.fitted = false;
       ({ cx: this.cx, cy: this.cy, half: this.half } = view);
     } else {
-      this.fitted = this.el.dataset.trajectories !== undefined;
+      this.fitted = fileOf(this.el) !== null;
       this.fittedFor = '';
     }
     this.fit();
@@ -744,7 +755,8 @@ export class Orbits {
   private draw(ctx: CanvasRenderingContext2D, c: Colors, now: number, inks = this.inks, trail: HTMLCanvasElement | null = null, above: HTMLCanvasElement | null = null): void {
     ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, this.W, this.H);
-    if (trail) ctx.drawImage(trail, 0, 0);
+    const under = !!trail && !this.lead;
+    if (under) ctx.drawImage(trail, 0, 0);
     else this.bodies(ctx, c);
     const tracing = this.midTrace;
     const paint = (i: number, from: number) => {
@@ -760,7 +772,12 @@ export class Orbits {
       this.pen(ctx, c, i, inks);
       this.stroke(ctx, i, n - 1, 0, from);
     };
-    for (let i = 0; i < this.cached; i++) paint(i, trail ? this.upTo[i] : 0);
+    for (let i = 0; i < this.lead; i++) paint(i, 0);
+    if (trail && !under) {
+      ctx.globalAlpha = 1;
+      ctx.drawImage(trail, 0, 0);
+    }
+    for (let i = this.lead; i < this.cached; i++) paint(i, trail ? this.upTo[i] : 0);
     if (above) {
       ctx.globalAlpha = 1;
       ctx.drawImage(above, 0, 0);
@@ -770,15 +787,15 @@ export class Orbits {
   }
 
   private trailOf(c: Colors): HTMLCanvasElement | null {
-    if (!this.cached) return null;
+    if (this.cached <= this.lead) return null;
     if (!this.trail) {
       const trail = document.createElement('canvas');
       trail.width = this.W;
       trail.height = this.H;
       const ctx = trail.getContext('2d');
       if (!ctx) return Orbits.drop(trail);
-      this.bodies(ctx, c);
-      for (let i = 0; i < this.cached; i++) {
+      if (!this.lead) this.bodies(ctx, c);
+      for (let i = this.lead; i < this.cached; i++) {
         if (!this.upTo[i]) continue;
         this.pen(ctx, c, i);
         this.stroke(ctx, i, this.upTo[i], 0);
@@ -810,7 +827,7 @@ export class Orbits {
     const ghost = this.ghosted;
     const ctx = this.trailOf(c)?.getContext('2d'), gtx = ghost?.trail?.getContext('2d');
     if (ctx) {
-      for (let i = 0; i < this.cached; i++) {
+      for (let i = this.lead; i < this.cached; i++) {
         const to = this.lastKept(i, this.idx[i]), from = this.upTo[i];
         if (to <= from) continue;
         this.pen(ctx, c, i);

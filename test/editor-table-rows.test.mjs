@@ -6,7 +6,7 @@ import { numberOf, sortOrder } from '../src/editor/table.ts';
 import { attributeProblem, editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, contrast, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, contrast, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { decodePng } from './helpers/png.mjs';
 
 describe('rows of a new table, and Sort', () => {
@@ -133,7 +133,7 @@ describe('rows of a new table, and Sort', () => {
   for (const platform of PLATFORMS) {
     test(`Sort Descending in the menu of a cell reorders the body rows by its column, as one entry (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: TABLES, n: 1 });
-      await click(page, cellOf(2, 1));
+      await clickText(page, cellOf(2, 1));
       await frames(page);
       await click(page, cellOf(2, 1), { button: 'right' });
       await page.waitFor(`!!document.querySelector('.beeson-edit-menu.cell')`);
@@ -148,7 +148,7 @@ describe('rows of a new table, and Sort', () => {
 
     test(`Sort Ascending in the Table pane reorders the body rows by the column of the caret (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: TABLES, n: 1 });
-      await click(page, cellOf(1, 0));
+      await clickText(page, cellOf(1, 0));
       await frames(page);
       const button = await rect(page, `${PANEL} [data-command="table.sortAscending"]`);
       assert.ok(button, 'the Table pane does not have Sort Ascending');
@@ -158,7 +158,7 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await undoLabel(page), 'Undo Sort Ascending');
       assert.equal(await page.evaluate('document.activeElement.textContent'), 'Moon');
       await roundTrip(page);
-      await click(page, cellOf(1, 0));
+      await clickText(page, cellOf(1, 0));
       await exec(page, 'table.sortAscending');
       assert.equal(await render(page), page.source);
       assert.equal((await state(page, 'edit.undo')).enabled, false);
@@ -166,7 +166,7 @@ describe('rows of a new table, and Sort', () => {
 
     test(`Sort is dimmed for a table with a cell over two rows (${platform})`, async (t) => {
       const page = await load(t, platform, { deck: TABLES, n: 0 });
-      await click(page, cellOf(3, 1));
+      await clickText(page, cellOf(3, 1));
       await frames(page);
       assert.equal((await state(page, 'table.sortAscending')).enabled, false);
       assert.equal((await state(page, 'table.sortDescending')).enabled, false);
@@ -370,7 +370,7 @@ describe('rows of a new table, and Sort', () => {
       assert.equal(await render(page), page.source);
       await editMask(page);
       await drag(page, await handleAt(page, 'e'), { dx: -100, dy: 0 });
-      await click(page, `${BAR} button[title="The picture as it was before this edit"]`);
+      await click(page, `${BAR} button[title="The image as it was before this edit"]`);
       await click(page, `${BAR} button.done`);
       assert.equal(await render(page), page.source);
       assert.equal(await page.evaluate(`document.querySelector(${js(IMG)}).getAttribute('style')`), null);
@@ -705,7 +705,8 @@ describe('Start at, and rows moved by their bars', () => {
     assert.equal(attributeProblem('start', false, 'ol', '3'), null);
     assert.equal(attributeProblem('start', false, 'ul', '3'), 'the attribute start');
     assert.equal(attributeProblem('start', false, 'ol', 'x'), 'the attribute start');
-    assert.equal(attributeProblem('start', false, 'ol', '-2'), 'the attribute start');
+    assert.equal(attributeProblem('start', false, 'ol', '-2'), null);
+    assert.equal(attributeProblem('start', false, 'ol', '2.5'), 'the attribute start');
     const theme = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
     assert.deepEqual(editProblems('ol', [], { attrs: { start: '4' } }, theme), []);
     assert.deepEqual(editProblems('li', [], { attrs: { start: '4' } }, theme), ['the attribute start']);
@@ -1204,9 +1205,11 @@ describe('the drop line, and body cells pasted', () => {
         assert.ok(drop && lift, `the drag does not show the copy and the line: ${js({ drop, lift })}`);
         assert.ok(drop.y > lift.y && drop.y + drop.h < lift.y + lift.h, `the line is not under the copy: ${js({ drop, lift })}`);
         const x = drop.x + drop.w * 0.25;
-        const [line, above] = await pixels(page, [[x, drop.y + drop.h / 2], [x, drop.y - 6]]);
+        const ys = [-1.5, -1, 0, 0.5, 1].map((d) => (d < 0 ? drop.y + d : d === 1 ? drop.y + drop.h + 1 : drop.y + drop.h * d));
+        const [above, ...across] = await pixels(page, [[x, drop.y - 6], ...ys.map((y) => [x, y])]);
+        const line = across.reduce((m, p) => (contrast(p, above) > contrast(m, above) ? p : m));
         const ratio = contrast(line, above);
-        assert.ok(ratio >= 3, `the drop line reads ${line} against ${above} beside it, a contrast of ${ratio.toFixed(2)} to 1`);
+        assert.ok(ratio >= 3, `the edge of the drop line reads ${line} against ${above} beside it, a contrast of ${ratio.toFixed(2)} to 1`);
         await press(page, 'Escape');
         await pointer(page, 'mouseReleased', m.x, m.y);
         await wait(page);

@@ -200,7 +200,7 @@ export function install(app: App): void {
   });
   c.define({
     id: 'preview.addBackdrop',
-    label: 'Add Backdrop…',
+    label: 'Backdrop…',
     toolbar: preview(39.04),
     enabled: (a) => ready(a) && !backdropOf(a) && c.enabled('insert.backdrop'),
     run: (a) => a.commands.run('insert.backdrop'),

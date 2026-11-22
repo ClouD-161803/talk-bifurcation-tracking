@@ -110,7 +110,7 @@ export function install(app: App): void {
   });
   c.define({
     id: 'file.export.html',
-    label: 'HTML…',
+    label: 'Editable HTML…',
     menu: exportTo(41),
     enabled: (a) => a.state === 'loaded' && !!a.pairing,
     run: () => fileActions().exportHtml(),

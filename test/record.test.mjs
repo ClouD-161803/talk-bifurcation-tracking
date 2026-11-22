@@ -262,12 +262,16 @@ test('a recording leaves the print view as it was, without an error in the page'
   const state = await page.evaluate(`({
     classes: document.documentElement.className,
     marked: document.querySelectorAll('[data-rec]').length,
-    done: Beeson.backdrops.every((o) => o.done || !o.el.isConnected),
+    undone: Beeson.backdrops.filter((o) => o.el.isConnected && !o.done).map((o) => ({
+      tracing: o.tracing,
+      held: ((cues) => cues.length > 0 && cues.every((f) => !f.classList.contains('visible')))([...o.el.closest('section').querySelectorAll('.fragment[data-backdrop-play]')]),
+    })),
     now: performance.now === Performance.prototype.now,
   })`);
   assert.doesNotMatch(state.classes, /\brec-/);
   assert.equal(state.marked, 0);
-  assert.ok(state.done);
+  assert.ok(state.undone.length > 0);
+  assert.deepEqual(state.undone, state.undone.map(() => ({ tracing: false, held: true })));
   assert.ok(state.now);
   assert.deepEqual(page.errors, []);
   assert.deepEqual(edges?.errors ?? [], []);

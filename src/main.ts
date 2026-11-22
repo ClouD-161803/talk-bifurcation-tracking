@@ -16,7 +16,7 @@ import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
 import { fly } from './fly.ts';
-import { fitView, register, trajectoriesFor, type View } from './trajectories.ts';
+import { fileOf, fitView, register, trajectoriesFor, type View } from './trajectories.ts';
 import { builtIn } from './backdrops.ts';
 import { addRestoreSteps, applyAll, applySteps, initSteps, initTimedSteps, typeset, type Internal } from './steps.ts';
 import { numberTheorems } from './theorems.ts';
@@ -24,6 +24,7 @@ import { forDeck, get, initSwitcher, initTheme, set, toggle } from './switcher.t
 import { coverAll, initVideos } from './video.ts';
 import { typesetLabel } from './drawn-text.ts';
 import { initViewers } from './viewers.ts';
+import { exported, themeFile, unpackLarge } from './files.ts';
 import type { RevealOptions, SlideEvent } from './reveal.d.ts';
 
 function numberOf(slide: HTMLElement | null | undefined, counted: HTMLElement[]): [string, string, string] {
@@ -90,7 +91,8 @@ const surfaces: (Surface | Bundle)[] = [];
 onRestore(() => { for (const s of surfaces) s.draw(); });
 const plots: PlotView[] = [];
 
-const EDITING = new URLSearchParams(location.search).has('edit');
+if (exported()) unpackLarge();
+const EDITING = !exported() && new URLSearchParams(location.search).has('edit');
 const PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has('from-editor');
 const RECEIVER = window.parent !== window && /receiver/i.test(location.search);
 const TAB = !EDITING && window.parent === window && !!window.opener && new URLSearchParams(location.search).has('from-editor');
@@ -139,18 +141,24 @@ function stepPlots(slide: Element): void {
 }
 
 const waiting = (o: Backdrop) => o.el.classList.contains('fragment') && !o.el.classList.contains('visible');
+const cuesOf = (slide: Element | null | undefined): Element[] => (slide ? [...slide.querySelectorAll('.fragment[data-backdrop-play]')] : []);
+const held = (o: Backdrop, slide: Element | null = o.el.closest('section')): boolean => {
+  const cues = cuesOf(slide);
+  return cues.length > 0 && !cues.some((f) => f.classList.contains('visible'));
+};
+const restOrComplete = (o: Backdrop) => (!EDITING && held(o) ? o.reset() : o.complete());
 
 function animated(o: Backdrop, slide: Element | null = o.el.closest('section')): boolean {
-  if (waiting(o)) return false;
+  if (waiting(o) || held(o, slide)) return false;
   const loop = o.el.hasAttribute('data-loop');
   if (slide?.hasAttribute('data-auto-animate')) return loop;
-  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c));
+  return loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide?.classList.contains(c)) || cuesOf(slide).length > 0;
 }
 
 function playBackdrop(o: Backdrop, slide: HTMLElement): void {
   o.fit();
-  if (still()) { o.complete(); return; }
-  if (waiting(o)) { o.reset(); return; }
+  if (still()) { restOrComplete(o); return; }
+  if (waiting(o) || held(o, slide)) { o.reset(); return; }
   const loop = o.el.hasAttribute('data-loop');
   if (slide.hasAttribute('data-auto-animate')) {
     o.complete();
@@ -219,14 +227,14 @@ async function fitWindow(el: HTMLElement, box?: { left: number; top: number; wid
     await dots?.ready;
     return dots?.viewFitted(box) ?? null;
   }
-  const trajectories = el.dataset.trajectories !== undefined ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? '');
+  const trajectories = fileOf(el) !== null ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? '');
   const b = box ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
   return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
 }
 
 function completeAll(): void {
   remount();
-  for (const o of backdrops) { o.fit(); o.complete(); }
+  for (const o of backdrops) { o.fit(); restOrComplete(o); }
   for (const s of surfaces) { s.fit(); s.sync(false); s.draw(); }
   for (const p of plots) { p.fit(); p.syncSteps(); p.still(); }
   applyAll(document);
@@ -334,7 +342,8 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   deck.on('fragmenthidden', step);
   const stepped = (event: Event) => {
     const shown = (event as Event & { fragments?: HTMLElement[] }).fragments ?? [];
-    for (const o of within(deck.getCurrentSlide())) if (shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
+    const cue = shown.some((f) => f.hasAttribute('data-backdrop-play'));
+    for (const o of within(deck.getCurrentSlide())) if (cue || shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
   };
   deck.on('fragmentshown', stepped);
   deck.on('fragmenthidden', stepped);
@@ -371,11 +380,17 @@ function syncViewers(theme: string): void {
 
 initTheme();
 
-const self = document.currentScript as HTMLScriptElement | null;
 if (EDITING) {
   const script = document.createElement('script');
-  script.src = self?.src ? new URL('editor.js', self.src).href : 'theme/editor.js';
+  script.src = themeFile('editor.js');
   document.head.append(script);
+} else if (exported() && new URLSearchParams(location.search).has('edit')) {
+  const told = document.createElement('dialog');
+  told.className = 'beeson-not-editable';
+  told.textContent = 'This single web page cannot be edited. To edit the talk, open index.html in its talk folder and add ?edit to its address.';
+  told.addEventListener('click', () => told.close());
+  document.body.append(told);
+  told.show();
 }
 
 const Beeson = {

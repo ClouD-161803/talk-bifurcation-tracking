@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <title>Targets of formatting commands</title>
+  <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+  <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+  <link rel="stylesheet" href="../../theme/beeson.css">
+  <style>.reveal .slides .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }</style>
+</head>
+<body>
+  <div class="reveal"><div class="slides">
+    <section id="s-table">
+      <h2>A table</h2>
+      <table>
+        <tr><th>Name</th><th>Value</th></tr>
+        <tr><td>alpha beta</td><td>gamma delta</td></tr>
+        <tr><td>epsilon</td><td style="text-align: right">2</td></tr>
+      </table>
+    </section>
+    <section id="s-list">
+      <h2>A list</h2>
+      <ul>
+        <li>First item words</li>
+        <li>Second item words</li>
+        <li>Third item words</li>
+      </ul>
+    </section>
+    <section class="split" id="s-split">
+      <div class="text-column">
+        <h2>A split</h2>
+        <p>Column words here</p>
+        <p>Another column paragraph</p>
+      </div>
+    </section>
+    <section id="s-figure">
+      <h2>A figure</h2>
+      <figure class="figure-box">
+        <img class="white-figure" src="../../demo/figure-dark.png" alt="A figure">
+        <figcaption class="caption">A caption under it</figcaption>
+      </figure>
+    </section>
+    <section id="s-stack">
+      <h2>A stack</h2>
+      <div class="r-stack">
+        <div><p>Stack first words</p></div>
+        <div class="fragment" data-fragment-index="1"><p>Stack second words</p></div>
+      </div>
+    </section>
+    <section id="s-grid">
+      <h2>A grid</h2>
+      <div class="grid">
+        <div><p>Left cell words</p></div>
+        <div><p>Right cell words</p></div>
+      </div>
+    </section>
+  </div></div>
+  <script src="../../theme/vendor/reveal/reveal.js"></script>
+  <script src="../../theme/vendor/reveal/notes.js"></script>
+  <script src="../../theme/beeson.js"></script>
+  <script>Beeson.start({});</script>
+</body>
+</html>

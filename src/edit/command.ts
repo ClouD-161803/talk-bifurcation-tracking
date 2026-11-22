@@ -13,10 +13,11 @@ import { Disk, readText, renameRetried, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, servedSegment, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
-import { ADDRESS_RULE, loadConfig, RELAY_ANSWER, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
+import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 import { deriveTex, TexWriter } from './tex.ts';
 import { FigureWatcher, type Box } from './figures.ts';
-import { MOST_FILES, piece, TooLarge, zipOf, type Zip } from './zip.ts';
+import { Single, singleOf, SingleTooLarge } from './single.ts';
+import { Changed, MOST_FILES, TooLarge, zipOf, type Zip } from './zip.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -29,7 +30,8 @@ const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
 const CLOSE_WAIT = 200;
 const TOLD_WAIT = 3000;
-const ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 512 * 1024 * 1024;
+const ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 0xffffffff;
+const ZIP_HELD = Number(process.env.SLIDES_ZIP_HELD_BYTES) || 512 * 1024 * 1024;
 const ZIP_PIECE = 2 * 1024 * 1024;
 const ZIP_KEPT = Number(process.env.SLIDES_ZIP_KEPT_MS) || 120_000;
 const MB = 1024 * 1024;
@@ -298,7 +300,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     relay = next;
   }
 
-  const zips = new Map<string, { id: string; zip: Zip; timer: ReturnType<typeof setTimeout> }>();
+  const zips = new Map<string, { id: string; zip: Zip | Single; timer: ReturnType<typeof setTimeout> }>();
   const dropZip = (client: string) => {
     clearTimeout(zips.get(client)?.timer);
     zips.delete(client);
@@ -311,8 +313,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   let building = 0;
   const zipsFull = (bytes: number) => {
     let held = building;
-    for (const z of zips.values()) held += z.zip.size;
-    return held > 0 && held + bytes > ZIP_MAX;
+    for (const z of zips.values()) held += z.zip.held;
+    return held > 0 && held + bytes > ZIP_HELD;
   };
 
   async function zipApi(route: string, request: Request): Promise<Response> {
@@ -323,30 +325,49 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (request.method !== 'POST') return error(405, 'POST');
       if (closed) return error(503, 'the edit command is stopping');
       dropZip(client);
-      const limit = request.direct ? ZIP_MAX : Math.min(ZIP_MAX, RELAY_ANSWER);
       const tex = deriveTex(root, authority.text);
       const deck = { html: authority.text, bom: disk.bom, tex: tex.sources && !tex.unread.length ? tex.text : null };
       let reserved = 0;
       let zip: Zip | null;
       try {
-        zip = await zipOf(root, zipName, deck, limit, (most) => !zipsFull(most) && ((building += reserved = most), true));
+        zip = await zipOf(root, zipName, deck, ZIP_MAX, (most) => !zipsFull(most) && ((building += reserved = most), true));
       } catch (e) {
         if (!(e instanceof TooLarge)) throw e;
         if (e.files > MOST_FILES) return error(413, `The zip of the talk folder would hold more than ${MOST_FILES.toLocaleString('en-US')} files, the most that a zip holds.`);
         const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
-        return error(413, `The talk folder is ${size} MB, over the limit of ${Math.floor(limit / MB)} MB for a download${request.direct ? '' : ' through the relay'}.`);
+        return error(413, `The talk folder is ${size} MB, over the limit of ${Math.floor(ZIP_MAX / MB)} MB for a download.`);
       } finally {
         building -= reserved;
       }
       dropZip(client);
       if (closed) return error(503, 'the edit command is stopping');
-      if (!zip || zipsFull(zip.size)) return error(503, 'The edit command is busy with other downloads of the talk folder. Try again in a minute.');
+      if (!zip || zipsFull(zip.held)) return error(503, 'The edit command is busy with other downloads of the talk folder. Try again in a minute.');
       const id = randomBytes(8).toString('hex');
       zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
       return json(200, { id, size: zip.size, name: `${zipName}.zip` });
     }
+    if (route === 'single') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const tex = deriveTex(root, authority.text);
+      let built;
+      try {
+        built = await singleOf(root, authority.text, tex.sources && !tex.unread.length ? tex.text : null, ZIP_MAX);
+      } catch (e) {
+        if (!(e instanceof SingleTooLarge)) throw e;
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The single web page would be ${size} MB, over the limit of ${Math.floor(ZIP_MAX / MB)} MB for a download.`);
+      }
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (zipsFull(built.single.held)) return error(503, 'The edit command is busy with other downloads. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      zips.set(client, { id, zip: built.single, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: built.single.size, name: `${zipName}.html`, missing: built.missing });
+    }
     const held = zips.get(client);
-    if (!held || held.id !== route.slice('zip/'.length)) return error(404, 'the zip is not kept any more');
+    if (!held || held.id !== route.slice(route.indexOf('/') + 1)) return error(404, 'the zip is not kept any more');
     if (request.method === 'DELETE') {
       dropZip(client);
       return json(200, {});
@@ -356,7 +377,13 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (!Number.isInteger(at) || at < 0 || at >= held.zip.size) return error(416, 'at is not a byte of the zip');
     clearTimeout(held.timer);
     held.timer = dropAfter(client, held.id, ZIP_KEPT);
-    return { status: 200, headers: { 'Content-Type': 'application/zip', 'Cache-Control': 'no-store' }, body: piece(held.zip, at, ZIP_PIECE) };
+    try {
+      return { status: 200, headers: { 'Content-Type': held.zip instanceof Single ? 'application/octet-stream' : 'application/zip', 'Cache-Control': 'no-store' }, body: await held.zip.piece(at, ZIP_PIECE) };
+    } catch (e) {
+      if (!(e instanceof Changed)) throw e;
+      dropZip(client);
+      return error(409, e.message);
+    }
   }
 
   const uploads = { files: 0, bytes: 0 };
@@ -621,7 +648,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
-    if (route === 'zip' || route.startsWith('zip/')) return zipApi(route, request);
+    if (/^(zip|single)(\/|$)/.test(route)) return zipApi(route, request);
     if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
     if (route.startsWith('source/')) return sourceApi(route.slice('source/'.length), request);
     if (route === 'events') {

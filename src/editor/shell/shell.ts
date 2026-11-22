@@ -110,10 +110,10 @@ export function install(app: App): void {
 
   const edge = make('div', 'beeson-edit-nav-edge beeson-edit-region');
   edge.tabIndex = 0;
-  edge.title = 'Drag to change the width of the slide list, double-click to reset it, or focus it and press the left and right arrows';
+  edge.title = 'Drag to change the width of the navigator, double-click to reset it, or focus it and press the left and right arrows';
   edge.setAttribute('role', 'separator');
   edge.setAttribute('aria-orientation', 'vertical');
-  edge.setAttribute('aria-label', 'Width of the slide list');
+  edge.setAttribute('aria-label', 'Width of the navigator');
   edge.setAttribute('aria-valuemin', String(NAV_MIN));
   edge.setAttribute('aria-valuemax', String(NAV_MAX));
   let navWidth = NAV_DEFAULT;

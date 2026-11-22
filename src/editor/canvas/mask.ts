@@ -208,7 +208,7 @@ export function markCuts(app: App, el: HTMLElement, view: { cx: number; cy: numb
     const v = edge === 'left' || edge === 'right';
     const x = edge === 'right' ? r.right - 2 : r.left - (v ? 1 : 0), y = edge === 'bottom' ? r.bottom - 2 : r.top - (v ? 0 : 1);
     Object.assign(mark.style, { left: `${x}px`, top: `${y}px`, width: v ? '3px' : `${r.width}px`, height: v ? `${r.height}px` : '3px' });
-    const note = make('span', '', 'The drawing is cut here');
+    const note = make('span', '', 'The backdrop is cut here');
     Object.assign(note.style, v ? { top: '50%', [edge === 'left' ? 'left' : 'right']: '14px', transform: 'translateY(-50%)' } : { left: '50%', [edge === 'top' ? 'top' : 'bottom']: '14px', transform: 'translateX(-50%)' });
     mark.append(note);
     layer.append(mark);
@@ -294,8 +294,8 @@ class MaskUi {
     this.slider.min = '0';
     this.slider.max = '1000';
     this.fill.type = this.reset.type = this.done.type = 'button';
-    this.fill.title = 'Scale the picture to fill its box';
-    this.reset.title = 'The picture as it was before this edit';
+    this.fill.title = 'Scale the image to fill its box';
+    this.reset.title = 'The image as it was before this edit';
     this.done.title = 'Apply the mask (Return)';
     this.bar.tabIndex = -1;
     this.bar.append(this.what, this.modes, this.fill, this.slider, this.value, this.reset, this.done);
@@ -571,9 +571,9 @@ export function begin(app: App, el: Element): boolean {
   ui.what.hidden = s.kind === 'image';
   ui.modes.hidden = s.kind !== 'image';
   ui.mask.disabled = !s.sizable;
-  ui.mask.title = s.sizable ? 'Edit Mask' : 'The picture is stretched to its box, which Edit Mask cannot resize';
+  ui.mask.title = s.sizable ? 'Edit Mask' : 'The image is stretched to its box, which Edit Mask cannot resize';
   setMode('image');
-  ui.slider.setAttribute('aria-label', s.kind === 'image' ? 'Scale of the image' : 'Scale of the drawing');
+  ui.slider.setAttribute('aria-label', s.kind === 'image' ? 'Scale of the image' : 'Scale of the backdrop');
   ui.bar.setAttribute('aria-label', s.kind === 'image' ? 'Edit Mask' : 'Edit Backdrop Window');
   document.documentElement.classList.add('beeson-masking');
   document.body.append(ui.layer, ui.bar);

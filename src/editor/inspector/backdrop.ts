@@ -1,5 +1,5 @@
 import type { App } from '../app.ts';
-import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, library, liveOf, planePick, probeLibrary, selectedBackdrop, systemPick, toriPick, type Pick } from '../commands/backdrop.ts';
+import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, labeledDrawing, library, liveOf, planePick, probeLibrary, selectedBackdrop, startStep, startSteps, systemPick, toriPick, WITH_THE_SLIDE, type Pick } from '../commands/backdrop.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { make } from '../ui/dom.ts';
 import { button, checkbox, glyph, keepFocus, note, numberField, row, section, type Control, type Run } from './controls.ts';
@@ -58,7 +58,7 @@ export function backdropPane(app: App, run: Run): Control[] {
     command: `backdrop.${id}`,
     commit: (value) => run(`backdrop.${id}`, { value, el }),
   });
-  const drawing = popup(app, 'Drawing', () => (el ? entryName(el) : ''), () => library(app).map((e) => ({
+  const drawing = popup(app, 'Backdrop', () => (el ? entryName(el) : ''), () => library(app).map((e) => ({
     label: e.name,
     checked: !!el && drawnBy(e, el),
     disabled: !!e.missing,
@@ -76,9 +76,9 @@ export function backdropPane(app: App, run: Run): Control[] {
   })), on);
   const torusBox = (n: number) => checkbox(app, run, 'backdrop.torus', `α = ${ALPHAS[n]}`, () => toriPick(el)[n], { value: ALPHAS[n], el });
   const parts: Control[] = [
-    section('Drawing', [
+    section('Backdrop', [
       drawing,
-      row([button(app, run, { command: 'backdrop.choose', text: 'Choose…' })]),
+      row([button(app, run, { command: 'backdrop.choose', text: 'Replace Backdrop…' })]),
       when(() => dottedDrawing(el) === 'poincare', [choicePopup('System', 'backdrop.system', SYSTEMS, SYSTEM_NAMES, () => systemPick(el))]),
       when(() => dottedDrawing(el) === 'tori', [
         choicePopup('Plane', 'backdrop.plane', PLANES, PLANE_NAMES, () => planePick(el)),
@@ -104,16 +104,16 @@ export function backdropPane(app: App, run: Run): Control[] {
       row([field('Half Height', 'half', 'half'), { el: make('div', 'ed-num'), sync: () => {} }]),
       row([button(app, run, { command: 'backdrop.zoomIn', arg: { el }, text: 'Zoom In' }), button(app, run, { command: 'backdrop.zoomOut', arg: { el }, text: 'Zoom Out' })]),
       row([button(app, run, { command: 'backdrop.edit', arg: { el }, text: 'Edit Window…' }), button(app, run, { command: 'backdrop.fitWindow', arg: { el }, text: 'Fit Window' })]),
-      note(() => 'Drag the drawing or use the arrow keys to pan it, and drag a handle to resize its box.'),
+      note(() => 'Drag the backdrop or use the arrow keys to pan it, and drag a handle to resize its box.'),
     ]),
   ];
   parts.push(when(() => !dottedDrawing(el), [section('Labels', [
-    when(() => !file(), [
+    when(() => labeledDrawing(el), [
       row(LABELS.slice(0, 2).map((l) => labelBox(app, run, el, l.at, l.name))),
       row(LABELS.slice(2).map((l) => labelBox(app, run, el, l.at, l.name))),
     ]),
     row([button(app, run, { command: 'backdrop.addLabel', arg: { el }, text: 'Add Label' })]),
-    note(() => 'Add Label puts a label at the center of the window. Choose Add Label Here in the menu of the drawing to put one at a point, and drag a label to shift it.'),
+    note(() => 'Add Label puts a label at the center of the window. Choose Add Label Here in the menu of the backdrop to put one at a point, and drag a label to shift it.'),
   ])]));
   const traced = !!el?.closest('section')?.matches('.title, .section, .closing');
   parts.push(
@@ -126,7 +126,15 @@ export function backdropPane(app: App, run: Run): Control[] {
         command: 'backdrop.duration',
         commit: (value) => run('backdrop.duration', { value, el }),
       }), button(app, run, { command: 'backdrop.preview', arg: { el }, text: 'Preview' })]),
-      note(() => (traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'With Live, the backdrop is traced when its slide is shown.')),
+      popup(app, 'Start', () => startStep(app, el)?.label ?? WITH_THE_SLIDE, () => {
+        const now = startStep(app, el)?.step ?? null;
+        return [
+          { label: WITH_THE_SLIDE, checked: now === null, run: () => run('backdrop.start', { value: null, el }) },
+          { rule: true },
+          ...startSteps(app, el).map((o) => ({ label: o.label, checked: o.step === now, run: () => run('backdrop.start', { value: o.step, el }) })),
+        ];
+      }, () => on() && startSteps(app, el).length > 0),
+      note(() => (startStep(app, el) ? 'The backdrop is kept at the start of its trace until its step, and traced from this step on.' : traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'With Live, the backdrop is traced when its slide is shown.')),
     ]),
     section(null, [row([button(app, run, { command: 'arrange.lock', icon: 'lock', text: 'Lock' }), button(app, run, { command: 'arrange.unlock', icon: 'unlock', text: 'Unlock' })])]),
   );

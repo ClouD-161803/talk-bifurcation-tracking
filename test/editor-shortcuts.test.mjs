@@ -831,7 +831,7 @@ describe('the key of each menu item runs it', () => {
     await clickText(page, await rect(page, `(${findItem})('Export To')`));
     await settle(page);
     const items = await page.evaluate(`(() => { const m = [...document.querySelectorAll('.beeson-edit-menu')].filter((m) => m.getClientRects().length).at(-1); return [...m.querySelectorAll('.item')].map((i) => i.querySelector('.label')?.textContent); })()`);
-    assert.deepEqual(items, ['PDF…', 'HTML…', 'PowerPoint…'], 'File > Export To does not list PowerPoint… after PDF… and HTML…');
+    assert.deepEqual(items, ['PDF…', 'Editable HTML…', 'PowerPoint…'], 'File > Export To does not list PowerPoint… after PDF… and Editable HTML…');
     await clickText(page, await rect(page, `(${findItem})('PowerPoint…')`));
     await settle(page);
     return items;
@@ -841,7 +841,7 @@ describe('the key of each menu item runs it', () => {
     test(`File > Export To > PowerPoint… shows the command that writes the file, and copies it (${platform})`, async (t) => {
       const page = await load(t, platform);
       await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
-      assert.deepEqual(await exportPowerPoint(page), ['PDF…', 'HTML…', 'PowerPoint…']);
+      assert.deepEqual(await exportPowerPoint(page), ['PDF…', 'Editable HTML…', 'PowerPoint…']);
       const shown = await card(page, 'pptx');
       assert.ok(shown, 'the card of PowerPoint… is not open');
       assert.equal(shown.code, 'npm run pptx -- test-deck.html');
@@ -936,6 +936,8 @@ describe('no Duplicate key printed in a cell', () => {
   for (const platform of PLATFORMS) {
     test(`with the caret in a cell, the Slide menu does not print the key of Duplicate, which is dimmed there (${platform})`, async (t) => {
       const page = await load(t, platform);
+      await click(page, 'section.present td');
+      await frames(page);
       await click(page, 'section.present td');
       await frames(page);
       assert.equal(await page.evaluate(`document.activeElement?.closest('td, th') !== null`), true, 'the caret is not in a cell');

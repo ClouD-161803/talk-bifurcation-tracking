@@ -3,6 +3,7 @@ import { VOID, contentRange, elementRange, isFragmentRoot, lastEnd, rawRange, ty
 import type { MathInfo, MathLookup } from './math.ts';
 import { mergeEdit, renderTag, stateOf, type TagEdit } from './tags.ts';
 import { fragmentIndex } from './shown-steps.ts';
+import { media } from './media/store.ts';
 import { indentAt, placeLead, spaceOf, unitsOf, type Child, type Unit } from './model/units.ts';
 import { textStyle } from './model/templates.ts';
 
@@ -166,7 +167,7 @@ function serializeNew(source: Source, el: Element, math: MathLookup): string {
   const tag = el.localName;
   const attrs = [...el.attributes]
     .filter((a) => !isRuntimeAttr(el, a.name))
-    .map((a) => ({ name: a.name, value: a.name === 'data-fragment-index' ? (fragmentIndex(el) ?? a.value) : a.name === 'class' ? [...el.classList].filter((c) => !isRuntimeClass(c)).join(' ') : a.value }))
+    .map((a) => ({ name: a.name, value: a.name === 'data-fragment-index' ? (fragmentIndex(el) ?? a.value) : a.name === 'class' ? [...el.classList].filter((c) => !isRuntimeClass(c)).join(' ') : (a.name === 'src' || a.name === 'poster') && a.value.startsWith('blob:') ? (media.pathOf(a.value) ?? a.value) : a.value }))
     .filter((a) => a.name !== 'class' || a.value)
     .map((a) => (a.value === '' ? ` ${a.name}` : ` ${a.name}="${a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"`))
     .join('');
@@ -237,8 +238,17 @@ export const isRuntimeClass = (c: string): boolean => RUNTIME_PREFIX.test(c) || 
 const RUNTIME_ATTRS: Record<string, string[]> = { p: ['data-head', 'data-style', 'data-missing'], cite: ['data-n', 'data-missing'] };
 const numbered = (el: Element): boolean => el.localName === 'cite' || el.matches('p.theorem');
 export const isRuntimeAttr = (el: Element, name: string): boolean => numbered(el) && RUNTIME_ATTRS[el.localName].includes(name);
+let inert: Document | undefined;
 export function stripRuntime(root: ParentNode): void {
   for (const el of root.querySelectorAll('cite, p.theorem')) for (const name of RUNTIME_ATTRS[el.localName]) el.removeAttribute(name);
+  const linked = [...root.querySelectorAll('img, video, source')].filter((el) => ['src', 'poster'].some((name) => el.getAttribute(name)?.startsWith('blob:')));
+  if (linked.length && root instanceof Node && !root.parentNode) (inert ??= document.implementation.createHTMLDocument('')).adoptNode(root);
+  for (const el of linked) {
+    for (const name of ['src', 'poster']) {
+      const value = el.getAttribute(name);
+      if (value?.startsWith('blob:')) el.setAttribute(name, media.pathOf(value) ?? value);
+    }
+  }
 }
 const LIVE_STYLE = ['translate', 'rotate', 'width', 'font-size', 'text-align'];
 const LIVE_ATTRS = ['alt', 'src', 'poster', 'href', 'muted', 'loop', 'colspan', 'rowspan', 'data-key'];

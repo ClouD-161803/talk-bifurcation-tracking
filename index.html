@@ -32,7 +32,7 @@ try {
     <p class="sub" style="translate: 8px -261px">Template for the Beeson group</p>
     <p class="who" style="translate: 8px -54px"><br></p>
   </div>
-  <aside class="notes">The title slide is a plate. The backdrop is the low-thrust transfer of the group logo, traced in 20 s when the slide is shown, and the words are in a block at the lower left. The Princeton Engineering lockup is at the top left on title and closing slides only.</aside>
+  <aside class="notes">The title slide is a plate. The backdrop is the low-thrust transfer of the group logo, traced in 20 s when the slide is shown, and the words are at the lower left. The Princeton Engineering lockup is at the top left on title and closing slides only.</aside>
 </section>
 
 <section class="section">
@@ -47,7 +47,7 @@ try {
   <h2>Show your steps one at a time</h2>
   <p>Design the complete slide first, then break it up into steps. Direct the viewer's attention.</p>
   <ol>
-    <li class="fragment" data-fragment-index="1">Steps are managed in the editor mode, which you can access by pressing <code>e</code>.</li>
+    <li class="fragment" data-fragment-index="1">Steps are managed in the editor, which you can open by pressing <code>e</code>.</li>
     <li class="fragment" data-fragment-index="2">Steps are numbered. “With the slide” corresponds to step number 0.</li>
     <li class="fragment" data-fragment-index="3">When exporting to PDF or PPTX, you will get one slide per step.</li>
   </ol>
@@ -73,7 +73,7 @@ try {
   </table>
   <p style="position: relative; z-index: 1; width: 414px; translate: 1132px -100px" class="fragment" data-fragment-index="6">Use tables for data</p>
   <div class="shape rounded fragment tone-accent" style="width: 682px; height: 282px; translate: 120px 361px" data-fragment-index="2"><p>Create “Shape” elements</p></div>
-  <div class="shape rounded fragment tone-accent" style="width: 682px; height: 282px; translate: 1118px 361px" data-fragment-index="3"><p>Embed your text or equations into them</p></div>
+  <div class="shape rounded fragment tone-accent" style="width: 682px; height: 282px; translate: 1118px 361px" data-fragment-index="3"><p>Embed your text or formulas into them</p></div>
   <div class="shape arrow-both fragment tone-accent" style="width: 261px; height: 76px; translate: 830px 464px" data-fragment-index="3"></div>
   <div class="shape brace fragment" style="width: 42px; height: 247px; translate: 521px 699px" data-fragment-index="5"></div>
 </section>
@@ -81,12 +81,12 @@ try {
 <section class="wide">
   <h2>Native support for LaTeX</h2>
   <ul>
-    <li>Add a LaTeX equation with the “Formula” icon.</li>
+    <li>Add a LaTeX formula with the “Formula” icon.</li>
   </ul>
   <div class="math fragment" data-fragment-index="1" data-keep>\[H = \tfrac{1}{2}\|\boldsymbol{p}\|_2^2 + y\,p_x - x\,p_y - \frac{1-\mu}{\rho_1} - \frac{\mu}{\rho_2}\]</div>
   <ul style="translate: 0px -24px">
     <li class="fragment" data-fragment-index="2">To use your <code>preamble.tex</code>, paste it in File › Preamble.</li>
-    <li class="fragment" data-fragment-index="3">Theorem environments are natively supported.</li>
+    <li class="fragment" data-fragment-index="3">Theorems are natively supported.</li>
   </ul>
   <p class="theorem fragment" data-fragment-index="3" data-kind="theorem" data-name="Floquet" style="translate: 0px -24px">Every fundamental matrix of \(\dot{\vb x} = \vb A(t)\,\vb x\), with \(\vb A\) of period \(T\), is \(\vb\Phi(t) = \vb P(t)\,e^{\vb B t}\), where \(\vb P\) has period \(T\) and \(\vb B\) is constant<cite data-key="floquet1883"></cite>.</p>
   <ul style="translate: 0px -24px">
@@ -101,16 +101,16 @@ try {
 
 <section>
   <h2>Images: all formats are supported</h2>
-  <p>Add an image (PNG, SVG, PDF, JPEG, ...) from the “Media” dropdown.</p>
+  <p>Add an image (PNG, SVG, PDF, JPEG, ...) from the menu of the “Media” button.</p>
   <ul style="translate: 0px 20px; width: 1080px">
     <li class="fragment" data-fragment-index="1">You might have noticed a toggle on the top right: try clicking it on this slide.</li>
-    <li class="fragment" data-fragment-index="2">For PNG, SVG, and PDF: add the light themed image, the dark one will be auto-created.</li>
-    <li class="fragment" data-fragment-index="3">For JPEG: you usually won’t need two themes.</li>
+    <li class="fragment" data-fragment-index="2">For PNG, SVG, and PDF: add the image for light mode, the dark one will be auto-created.</li>
+    <li class="fragment" data-fragment-index="3">For JPEG: you usually won’t need two modes.</li>
   </ul>
   <p style="translate: 0px 30px" class="fragment" data-fragment-index="4">Other formats, such as GIF, WebP, AVIF, and BMP are also supported.</p>
   <figure class="figure-box" style="translate: 20px -40px">
-    <img class="for-dark" src="demo/figure-dark.png" alt="Zero-velocity curves of the Earth–Moon system, dark version">
-    <img class="for-light" src="demo/figure-light.png" alt="Zero-velocity curves of the Earth–Moon system, light version">
+    <img class="for-dark" src="demo/figure-dark.png" alt="Zero-velocity curves of the Earth–Moon system, for dark mode">
+    <img class="for-light" src="demo/figure-light.png" alt="Zero-velocity curves of the Earth–Moon system, for light mode">
     <figcaption class="caption center"><sub>Zero-velocity curves at the Jacobi constant values of \(\mathcal{L}_1\), \(\mathcal{L}_2\), and \(\mathcal{L}_3\).</sub></figcaption>
   </figure>
   <aside class="notes">A figure exported with the styles in styles/ is transparent and set in the typeface of the slides.</aside>
@@ -118,14 +118,14 @@ try {
 
 <section>
   <h2>QR codes are first-class citizens</h2>
-  <p>Add your custom QR code clicking on the “Media” dropdown, then selecting “QR Code”.</p>
+  <p>Add your custom QR code clicking on the “Media” button, then selecting “QR Code”.</p>
   <ul style="translate: 0px 20px; width: 1047px">
     <li class="fragment" data-fragment-index="1">You can enter your website’s URL, and...</li>
     <li class="fragment" data-fragment-index="2">... The QR code will generate automatically for you. Isn’t that magical.</li>
-    <li class="fragment" data-fragment-index="3">In dark mode, QR codes look a little off against the black background...</li>
+    <li class="fragment" data-fragment-index="3">In dark mode, QR codes look a little off against a black slide...</li>
   </ul>
   <ul style="translate: 0px 2px">
-    <li class="fragment" data-fragment-index="4">... Since you can switch to light theme, try presenting QR-enhanced slides in light!</li>
+    <li class="fragment" data-fragment-index="4">... Since you can switch to light mode, try presenting QR-enhanced slides in light!</li>
   </ul>
   <div class="qr fragment" data-qr="https://github.com/beeson-group/slides" style="width: 475px; translate: 1152px -621px" data-fragment-index="2"></div>
   <aside class="notes">A figure exported with the styles in styles/ is transparent and set in the typeface of the slides.</aside>
@@ -179,9 +179,9 @@ try {
 
 <section>
   <h2>Embedding videos</h2>
-  <p>To add a video to your slide, click on the “Media” dropdown and select “Video”.</p>
+  <p>To add a video to your slide, click on the “Media” button and select “Video”.</p>
   <ul>
-    <li class="fragment" data-fragment-index="1">Like for images, you should export one video per theme (light and dark).</li>
+    <li class="fragment" data-fragment-index="1">Like for images, you should export one video per mode (light and dark).</li>
     <li class="fragment" data-fragment-index="2">The video will play “With the slide” by default, and loop indefinitely.</li>
   </ul>
   <ul>

@@ -127,11 +127,11 @@ export function install(app: App): void {
   injectStyle('objects', CSS);
   const root = make('div', 'beeson-edit-objects');
   root.setAttribute('role', 'region');
-  root.setAttribute('aria-label', 'Objects');
-  const head = make('div', 'head', 'Objects');
+  root.setAttribute('aria-label', 'Object List');
+  const head = make('div', 'head', 'Object List');
   const list = make('div', 'list');
   list.setAttribute('role', 'tree');
-  list.setAttribute('aria-label', 'Objects of the slide');
+  list.setAttribute('aria-label', 'Elements of the slide');
   list.setAttribute('aria-multiselectable', 'true');
   const drop = make('div', 'drop');
   drop.hidden = true;
@@ -140,7 +140,7 @@ export function install(app: App): void {
   const field = make('input');
   field.type = 'search';
   field.placeholder = 'Search';
-  field.setAttribute('aria-label', 'Search the objects');
+  field.setAttribute('aria-label', 'Search the elements');
   search.append(glyph('search', 14), field);
   root.append(head, list, empty, search);
   root.hidden = true;
@@ -284,7 +284,7 @@ export function install(app: App): void {
       rows = plan.map((p) => ({ item: p.item, row: rowOf(p.item, p.level, selected) }));
       list.replaceChildren(...rows.map((r) => r.row), drop);
       empty.hidden = rows.length > 0;
-      empty.textContent = query ? 'The search does not match any object' : 'This slide does not have objects';
+      empty.textContent = query ? 'The search does not match any element' : 'This slide does not have elements';
       rows.find((r) => r.row.getAttribute('aria-selected') === 'true')?.row.scrollIntoView({ block: 'nearest' });
     }
     for (const r of rows) r.row.tabIndex = keyOf(r.item) === current ? 0 : -1;

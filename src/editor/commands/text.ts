@@ -5,6 +5,7 @@ import * as carry from '../text/carry.ts';
 import * as inline from '../text/inline.ts';
 import * as flow from '../text/flow.ts';
 import { renameSection } from '../text/outline.ts';
+import { formatTargets } from '../text/targets.ts';
 import { openLink, applyLink, type LinkKind } from '../text/link.ts';
 import { isSmart, setSmart, type Smart } from '../text/substitute.ts';
 import { injectStyle } from '../ui/dom.ts';
@@ -70,26 +71,23 @@ function tabIn(app: App, back: boolean): void {
   s?.addRange(r);
 }
 
-const ALIGNED = 'h1, h2, h3, p, ul, ol, .caption, div.math';
+const ALIGNED = 'h1, h2, h3, p, ul, ol, li, td, th, .caption, div.math';
 function alignTargets(app: App): Element[] {
   const pairing = app.pairing;
   if (!pairing) return [];
-  const els = app.selection.kind === 'elements' ? app.selection.elements().flatMap((el) => (el.matches('div.shape') ? [...el.children] : [el])) : [...flow.spanTargets(app).map((t) => t.host), textElements.textTarget(app)?.host].filter((el): el is Element => !!el);
-  const out = new Set<Element>();
-  for (const el of els) {
-    const textEl = el.localName === 'li' ? el.closest('ul, ol') : el;
-    if (textEl?.matches(ALIGNED) && pairing.elements.get(textEl)?.open && !textEl.closest('td, th, aside.notes')) out.add(textEl);
-  }
-  return [...out];
+  const els = formatTargets(app).flatMap((el) => (el.matches('div.shape') ? [...el.children] : [el]));
+  return els.filter((el) => el.matches(ALIGNED) && pairing.elements.get(el)?.open && !el.closest('aside.notes'));
 }
 
 const inShape = (el: Element): boolean => !!el.parentElement?.matches('div.shape');
-const centered = (el: Element): boolean => (inShape(el) ? !el.classList.contains('left') : el.classList.contains('center'));
+const isCell = (el: Element): boolean => el.matches('td, th');
+const centered = (el: Element): boolean => (inShape(el) ? !el.classList.contains('left') : el.classList.contains('center') && !(isCell(el) && (el as HTMLElement).style.textAlign));
 
 function setCenter(app: App, on: boolean): void {
   for (const el of alignTargets(app)) {
     const classes: Record<string, boolean> = inShape(el) ? { left: !on, center: false } : { center: on };
-    if (Object.entries(classes).some(([c, v]) => el.classList.contains(c) !== v)) app.doc.setTag(el, { classes }, 'align');
+    const style = isCell(el) && (el as HTMLElement).style.textAlign ? { 'text-align': null } : null;
+    if (style || Object.entries(classes).some(([c, v]) => el.classList.contains(c) !== v)) app.doc.setTag(el, { classes, ...(style ? { style } : {}) }, 'align');
   }
   app.markDirty();
   app.invalidate('content');
@@ -148,6 +146,16 @@ export function install(app: App): void {
   format('underline', 'Underline', 11.5, { mac: ['Mod+U'], other: ['Mod+U'] });
   format('code', 'Code', 12, {});
   format('strike', 'Strikethrough', 13, { mac: ['Mod+Shift+X'], other: ['Alt+Shift+5'] });
+  define({
+    id: 'text.boxed',
+    label: 'Boxed',
+    in: FORMAT,
+    menu: menu('font', 13.5),
+    undoable: true,
+    enabled: (a) => !onMath(a) && inline.inlineTargets(a).length > 0,
+    checked: (a) => inline.boxedOn(a),
+    run: (a) => inline.toggleBoxed(a),
+  });
   format('superscript', 'Superscript', 20, { mac: ['Ctrl+Mod++', 'Ctrl+Mod+='], other: ['Mod+.'] }, 'Baseline');
   format('subscript', 'Subscript', 21, { mac: ['Ctrl+Mod+-'], other: ['Mod+,'] }, 'Baseline');
 
@@ -158,9 +166,9 @@ export function install(app: App): void {
     in: FORMAT,
     menu: menu('size', 30),
     undoable: true,
-    enabled: (a) => textElements.canStep(a, true) || carry.canStep(a, true) || carry.canSizeCode(a, true),
+    enabled: (a) => inline.canSizeInCell(a, true) || textElements.canStep(a, true) || carry.canStep(a, true) || carry.canSizeCode(a, true),
     why: (a) => textElements.styleWhy(a, 'Bigger', true),
-    run: (a) => (carry.canSizeCode(a, true) ? carry.sizeCode(a, true) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, true)) : textElements.setStyle(a, (s) => textElements.stepped(s, true))),
+    run: (a) => (inline.canSizeInCell(a, true) ? inline.sizeInCell(a, true) : carry.canSizeCode(a, true) ? carry.sizeCode(a, true) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, true)) : textElements.setStyle(a, (s) => textElements.stepped(s, true))),
   });
   define({
     id: 'text.smaller',
@@ -169,9 +177,9 @@ export function install(app: App): void {
     in: FORMAT,
     menu: menu('size', 31),
     undoable: true,
-    enabled: (a) => textElements.canStep(a, false) || carry.canStep(a, false) || carry.canSizeCode(a, false),
+    enabled: (a) => inline.canSizeInCell(a, false) || textElements.canStep(a, false) || carry.canStep(a, false) || carry.canSizeCode(a, false),
     why: (a) => textElements.styleWhy(a, 'Smaller', false),
-    run: (a) => (carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
+    run: (a) => (inline.canSizeInCell(a, false) ? inline.sizeInCell(a, false) : carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
   });
 
   const boxes = (a: App) => a.selection.elements().filter(isShape);

@@ -1051,7 +1051,7 @@ describe('Paste and Match Style and Open Recent', () => {
     test(`File > Export To > PDF… prints the print view of the saved deck with a page per step (${platform})`, async (t) => {
       const page = await load(t, platform);
       assert.deepEqual((await menuLabels(page, 'File')).slice(-4), ['|', '{Export To}', '|', 'Print…']);
-      assert.deepEqual(await menuLabels(page, 'File', 'Export To'), ['PDF…', 'HTML…', 'PowerPoint…']);
+      assert.deepEqual(await menuLabels(page, 'File', 'Export To'), ['PDF…', 'Editable HTML…', 'PowerPoint…']);
       await page.evaluate(`(() => {
       const real = window.open;
       window.__printed = 0;
@@ -1109,7 +1109,7 @@ describe('Paste and Match Style and Open Recent', () => {
       assert.deepEqual(page.errors, []);
     });
 
-    test(`File > Export To > HTML… writes a copy of the deck with its edits, and the deck keeps its file (${platform})`, async (t) => {
+    test(`File > Export To > Editable HTML… writes a copy of the deck with its edits, and the deck keeps its file (${platform})`, async (t) => {
       const page = await load(t, platform);
       const name = `export-${platform}.html`;
       await page.evaluate(`(async () => {
@@ -1118,7 +1118,7 @@ describe('Paste and Match Style and Open Recent', () => {
     })()`);
       await caretInParagraph(page);
       await type(page, '!');
-      await choose(page, 'File', 'Export To', 'HTML…');
+      await choose(page, 'File', 'Export To', 'Editable HTML…');
       await page.waitFor(`(async () => { try { return (await (await (await navigator.storage.getDirectory()).getFileHandle(${js(name)})).getFile()).size > 0; } catch { return false; } })()`);
       const edited = page.source.replace(PARAGRAPH, PARAGRAPH.replace('inline.</p>', 'inline.!</p>'));
       const copy = await page.evaluate(`(async () => (await (await (await navigator.storage.getDirectory()).getFileHandle(${js(name)})).getFile()).text())()`);

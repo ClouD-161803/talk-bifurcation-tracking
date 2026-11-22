@@ -191,7 +191,6 @@ function startField(app: App, run: Run): Control {
   const field = numberField(app, {
     label: 'Start at',
     unit: '',
-    min: 1,
     refuse: true,
     same: true,
     value: () => startList(app)?.start ?? null,

@@ -145,7 +145,7 @@ const NOTES_KEY = 'beeson-presenter-notes';
 const PARTS = [
   ['current', 'Current Slide'],
   ['next', 'Next Slide'],
-  ['notes', 'Presenter Notes'],
+  ['notes', 'Speaker Notes'],
   ['clock', 'Clock'],
   ['timer', 'Timer'],
 ] as const;
@@ -312,7 +312,7 @@ export class Presenter {
     this.app = app;
     injectStyle('presenter', CSS);
     const el = this.el;
-    el.setAttribute('aria-label', 'Presenter view');
+    el.setAttribute('aria-label', 'Presenter View');
     el.tabIndex = -1;
 
     const end = tool('End', 'End the show (Esc)', 'chevron-left');
@@ -358,7 +358,7 @@ export class Presenter {
       label.append(box, text);
       this.popover.append(label);
     }
-    const customize = tool('Customize Presenter Display', 'Move and resize the parts of the display');
+    const customize = tool('Customize Presenter View', 'Move and resize the parts of the presenter view');
     customize.addEventListener('click', () => this.customize(true));
     this.popover.append(customize);
     el.addEventListener('pointerdown', (ev) => {

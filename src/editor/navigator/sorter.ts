@@ -131,7 +131,7 @@ export class Sorter {
       store(HIDE_KEY, this.hide.checked ? '1' : null);
       this.refresh();
     });
-    hideLabel.append(this.hide, document.createTextNode('Hide Skipped Slides'));
+    hideLabel.append(this.hide, document.createTextNode('Hide Hidden Slides'));
     const size = make('label', 'size');
     this.slider.type = 'range';
     this.slider.min = String(MIN);

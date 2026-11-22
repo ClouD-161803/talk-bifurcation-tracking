@@ -616,7 +616,7 @@ describe('the TeX popover by the keyboard', () => {
   async function customize(page) {
     if (await page.evaluate(`!!document.querySelector('${DISPLAY} .parts[hidden]')`)) await click(page, `${DISPLAY} .bar.top button[aria-label="Display Options"]`);
     const buttons = await page.evaluate(`[...document.querySelectorAll('${DISPLAY} .parts button')].map((b) => b.textContent)`);
-    assert.deepEqual(buttons, ['Customize Presenter Display'], 'the popover does not have the button Customize Presenter Display');
+    assert.deepEqual(buttons, ['Customize Presenter View'], 'the popover does not have the button Customize Presenter View');
     await click(page, `${DISPLAY} .parts button`);
     await frames(page);
   }

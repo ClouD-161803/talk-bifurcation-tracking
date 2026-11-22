@@ -9,6 +9,8 @@ import { selectIn } from '../text/elements.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
 import { SYSTEMS, systemOf } from '../../poincare.ts';
 import { ALPHAS, PLANES, planeOf, shownTori, toriSpec } from '../../tori.ts';
+import { describe, modelOf } from '../steps.ts';
+import { mathLookup } from '../math.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
@@ -22,13 +24,16 @@ export const NAMES = {
   wideRibbon: 'Earth Manifolds',
   poincare: 'Poincaré Sections',
   tori: 'Invariant Tori',
+  saddle: 'Normal Form Saddle',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
   broucke: 'Broucke Families',
   custom: 'Custom',
 };
-export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori };
+export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori, saddle: NAMES.saddle };
 const DOTTED = ['poincare', 'tori'];
+const LABELED = ['tubes', 'wideRibbon'];
+export const labeledDrawing = (el: Element | null): boolean => !!el && !el.hasAttribute('data-trajectories') && LABELED.includes(el.getAttribute('data-backdrop') ?? '');
 export const dottedDrawing = (el: Element | null): string | null => {
   const name = el && !el.hasAttribute('data-trajectories') ? el.getAttribute('data-backdrop') : null;
   return name !== null && DOTTED.includes(name) ? name : null;
@@ -176,6 +181,24 @@ export function drawingName(el: Element): string {
 
 export const entryName = (el: Element): string => (isBroucke(el) ? NAMES.broucke : drawingName(el));
 
+export type StartStep = { step: number; label: string; els: Element[] };
+
+export function startSteps(app: App, el: Element | null): StartStep[] {
+  const m = el ? modelOf(app, el.closest('section')) : null;
+  if (!el || !m) return [];
+  const out: StartStep[] = [];
+  m.plan.groups.forEach((g, k) => {
+    const els = g.filter((i) => !m.locked[i] && !m.els[i].contains(el) && !el.contains(m.els[i])).map((i) => m.els[i]);
+    if (!els.length) return;
+    const d = describe(els[0], (e) => mathLookup()(e)?.tex ?? null);
+    out.push({ step: k, label: `Step ${k + 1}: ${d.kind}, ${d.text}`, els });
+  });
+  return out;
+}
+
+export const startStep = (app: App, el: Element | null): StartStep | null => startSteps(app, el).find((o) => o.els.some((e) => e.hasAttribute('data-backdrop-play'))) ?? null;
+export const WITH_THE_SLIDE = 'With the Slide';
+
 const round = (v: number) => Number(v.toFixed(8));
 
 function writeWindow(app: App, el: HTMLElement, view: Partial<View>, label = 'window'): void {
@@ -228,6 +251,7 @@ function builtIn(app: App): Entry[] {
     { key: 'wideRibbon', name: NAMES.wideRibbon, attrs: { 'data-backdrop': 'wideRibbon' }, motion: {}, view: { cx: 0.2, cy: 0, half: 1.3 }, size: [1920, 1080] },
     { key: 'poincare', name: NAMES.poincare, attrs: { 'data-backdrop': 'poincare' }, motion: {}, view: null, size: null },
     { key: 'tori', name: NAMES.tori, attrs: { 'data-backdrop': 'tori' }, motion: {}, view: null, size: null },
+    { key: 'saddle', name: NAMES.saddle, attrs: { 'data-backdrop': 'saddle' }, motion: {}, view: null, size: null },
     {
       key: 'broucke', name: NAMES.broucke, view: null, size: null, motion: { 'data-duration': '3', 'data-stagger': '0.6' },
       attrs: { 'data-trajectories': file, 'data-trajectories-select': SPECS['7 Rotating Periapsis'], 'data-trajectories-color': 'family', 'data-trajectories-ramp': 'e', 'data-trajectories-colormap': 'viridis' },
@@ -336,7 +360,7 @@ export async function applyEntry(app: App, entry: Entry): Promise<void> {
 }
 
 async function dropLabels(app: App, el: HTMLElement, entry: Entry): Promise<void> {
-  if (entry.attrs['data-backdrop'] !== undefined && !DOTTED.includes(entry.key)) return;
+  if (LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return;
   for (const lab of [...el.querySelectorAll(':scope > .label')].filter((l) => open(app, l))) await app.doc.remove(lab, 'label');
 }
 
@@ -367,7 +391,7 @@ export async function openGallery(app: App, anchor?: Element | null): Promise<vo
   const el = make('div', 'beeson-backdrop-gallery');
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Backdrops');
-  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the drawing of the backdrop' : 'Add a backdrop'));
+  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the backdrop' : 'Add a backdrop'));
   const tiles: Live[] = [];
   const close = () => {
     if (gallery?.el !== el) return;
@@ -640,9 +664,9 @@ export function commands(): Command[] {
     },
     {
       id: 'backdrop.builtIn',
-      label: 'Backdrop Drawing',
+      label: 'Built-In Backdrop',
       undoable: true,
-      undo: 'Change Drawing',
+      undo: 'Change Backdrop',
       enabled: (app) => !!targetOf(app, undefined),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
@@ -654,7 +678,7 @@ export function commands(): Command[] {
         const now = app.doc.tagState(el).attrs;
         const changed = Object.entries(attrs).filter(([k, x]) => (now[k] ?? null) !== x);
         if (!changed.length) return;
-        if (now['data-backdrop'] === undefined || entry.attrs['data-backdrop'] === undefined || DOTTED.includes(entry.key) || dottedDrawing(el)) return replaceDrawing(app, el, entry);
+        if (!labeledDrawing(el) || !LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return replaceDrawing(app, el, entry);
         app.doc.setTag(el, { attrs: Object.fromEntries(changed) }, 'drawing');
       },
     },
@@ -711,7 +735,7 @@ export function commands(): Command[] {
       label: 'Backdrop Label',
       undoable: true,
       undo: 'Label',
-      enabled: (app) => !!targetOf(app, undefined)?.hasAttribute('data-backdrop'),
+      enabled: (app) => labeledDrawing(targetOf(app, undefined)),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
         const at = (arg as { at?: string } | undefined)?.at;
@@ -757,6 +781,28 @@ export function commands(): Command[] {
       },
     },
     {
+      id: 'backdrop.start',
+      label: 'Backdrop Start',
+      undoable: true,
+      undo: 'Start',
+      enabled: (app) => {
+        const el = targetOf(app, undefined);
+        return !!el && !locked(el) && startSteps(app, el).length > 0;
+      },
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        const slide = el?.closest('section');
+        if (!el || !slide) return;
+        const v = valueOf(arg);
+        const to = v === null || v === undefined ? null : startSteps(app, el).find((o) => o.step === Number(v));
+        if (to === undefined) return;
+        endPreview();
+        const target = to ? (to.els.find((e) => e.hasAttribute('data-backdrop-play')) ?? to.els[0]) : null;
+        for (const c of slide.querySelectorAll('[data-backdrop-play]')) if (c !== target && open(app, c)) app.doc.setTag(c, { attrs: { 'data-backdrop-play': null } }, 'motion');
+        if (target && !target.hasAttribute('data-backdrop-play')) app.doc.setTag(target, { attrs: { 'data-backdrop-play': '' } }, 'motion');
+      },
+    },
+    {
       id: 'backdrop.duration',
       label: 'Backdrop Duration',
       undoable: true,
@@ -772,7 +818,7 @@ export function commands(): Command[] {
     },
     {
       id: 'backdrop.choose',
-      label: 'Choose Backdrop…',
+      label: 'Replace Backdrop…',
       enabled: (app) => !!app.current() && !editing(),
       run: (app, arg) => openGallery(app, arg instanceof Element ? arg : null),
     },
