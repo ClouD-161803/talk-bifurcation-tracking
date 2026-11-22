@@ -1,4 +1,5 @@
 import type { App } from '../app.ts';
+import type { Edit } from '../merge.ts';
 import type { MathLookup } from '../math.ts';
 import type { Pairing, TextElement } from '../render.ts';
 import type { Piece, Source, SrcEl, SrcText } from '../source.ts';
@@ -91,6 +92,44 @@ function liveIn(textEl: TextElement, s: SrcEl, math: MathLookup): Element | null
 const shiftPiece = (p: Piece, d: number): Piece =>
   p.kind === 'text' ? { kind: 'text', dec: { start: p.dec.start + d, end: p.dec.end + d } } : { kind: 'math', dec: { start: p.dec.start + d, end: p.dec.end + d }, inner: { start: p.inner.start + d, end: p.inner.end + d } };
 
+const drawn = (range: Range): boolean => /\S/.test(range.toString());
+
+function drawSpaces(host: Element, node: Text, runs: Edit[]): void {
+  const space = (i: number) => node.data[i] === ' ' || node.data[i] === '\u00a0';
+  let delta = 0;
+  for (const e of runs) {
+    let a = e.start + delta, b = a + e.text.length;
+    delta += e.text.length - (e.end - e.start);
+    while (a > 0 && space(a - 1)) a--;
+    while (b < node.length && space(b)) b++;
+    for (let i = a; i < b; ) {
+      if (!space(i)) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < b && space(j)) j++;
+      const range = document.createRange();
+      range.setStart(host, 0);
+      range.setEnd(node, i);
+      const first = !drawn(range);
+      range.setStart(node, j);
+      range.setEnd(host, host.childNodes.length);
+      const last = !drawn(range);
+      let run = '';
+      for (let k = i; k < j; k++) run += run.endsWith(' ') || (k === i && first) || (k === j - 1 && last) ? '\u00a0' : ' ';
+      if (run !== node.data.slice(i, j)) node.replaceData(i, j - i, run);
+      i = j;
+    }
+  }
+}
+
+function retype(host: Element, node: Text, was: string, now: string, file: string): void {
+  const runs = runsOf(was, now);
+  for (const e of [...runs].reverse()) node.replaceData(e.start, e.end - e.start, e.text);
+  if (!file.includes('\u00a0')) drawSpaces(host, node, runs);
+}
+
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const at = textAt(textEl.src, w.start, w.endA);
   if (!at) return false;
@@ -120,7 +159,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
   const sel = getSelection();
   const ends = sel?.rangeCount ? ([[sel.anchorNode, sel.anchorOffset], [sel.focusNode, sel.focusOffset]] as const) : null;
-  for (const e of runsOf(was, now).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
+  retype(textEl.live, lp.node, was, now, decoded);
   if (sel && ends?.some(([n]) => n === lp.node)) {
     const [[an, ao], [fn, fo]] = ends.map(([n, o]) => [n, n === lp.node ? mapOffset(o, was, now) : o] as const);
     if (an && fn && (sel.anchorOffset !== ao || sel.focusOffset !== fo)) sel.setBaseAndExtent(an, ao, fn, fo);
@@ -150,7 +189,15 @@ export function repairText(pairing: Pairing, textEl: TextElement, s: SrcEl, math
   return next;
 }
 
-function setContent(ctx: Ctx, live: Element, content: string): void {
+function setContent(ctx: Ctx, live: Element, content: string, was: string | null = null): void {
+  const node = live.firstChild;
+  if (was !== null && live.childNodes.length === 1 && node instanceof Text && !/[<&$\\]/.test(was + content) && sameText(node.data, was)) {
+    retype(live, node, was, content, content);
+    ctx.touched.add(live);
+    ctx.changed.push(live);
+    ctx.hosts.push(live);
+    return;
+  }
   for (const el of live.querySelectorAll('*')) {
     ctx.touched.add(el);
     ctx.pairing.inner.delete(el);
@@ -481,7 +528,8 @@ function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLEl
       const was = contentRange(op.from)!;
       const range = contentRange(op.to)!;
       const content = ctx.text.slice(range.start, range.end);
-      if (content !== ctx.source.text.slice(was.start, was.end)) setContent(ctx, op.node, content);
+      const before = ctx.source.text.slice(was.start, was.end);
+      if (content !== before) setContent(ctx, op.node, content, before);
     } else if (op.kind === 'inner') {
       setTag(ctx, op.node, op.from.attrs, op.to.attrs);
       if (op.plan) execute(ctx, op.plan, placed, focus);

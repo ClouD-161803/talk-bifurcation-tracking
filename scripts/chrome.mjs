@@ -252,28 +252,41 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
       return result.value;
     }
 
+    const next = (method) => {
+      let on;
+      const heard = new Promise((done) => {
+        on = ({ method: event, params, sessionId: from }) => {
+          if (from !== sessionId || event !== method) return;
+          listeners.delete(on);
+          done(params);
+        };
+        listeners.add(on);
+      });
+      return { heard, stop: () => listeners.delete(on) };
+    };
+
     return {
       errors,
       evaluate,
       send: call,
+      next: (method, limit = timeout) => {
+        const { heard, stop } = next(method);
+        return answered(heard, method, limit).finally(stop);
+      },
       async goto(url) {
         const once = async (method, params) => {
-          const loaded = new Promise((done) => {
-            const onLoad = ({ method: event, sessionId: from }) => {
-              if (from === sessionId && event === 'Page.loadEventFired') {
-                listeners.delete(onLoad);
-                done();
-              }
-            };
-            listeners.add(onLoad);
-          });
-          const { errorText } = await call(method, params);
-          if (errorText) throw new Error(`${url}: ${errorText}`);
-          await answered(loaded, `the load of ${url}`).catch(async (error) => {
-            const state = await answered(evaluate(LOADING), 'the state of the page', 5000).catch((e) => e.message.split('\n')[0]);
-            error.message = error.message.replace('\n', `, and the page holds ${JSON.stringify(state)}\n`);
-            throw error;
-          });
+          const { heard, stop } = next('Page.loadEventFired');
+          try {
+            const { errorText } = await call(method, params);
+            if (errorText) throw new Error(`${url}: ${errorText}`);
+            await answered(heard, `the load of ${url}`).catch(async (error) => {
+              const state = await answered(evaluate(LOADING), 'the state of the page', 5000).catch((e) => e.message.split('\n')[0]);
+              error.message = error.message.replace('\n', `, and the page holds ${JSON.stringify(state)}\n`);
+              throw error;
+            });
+          } finally {
+            stop();
+          }
         };
         const load = async (method, params) => {
           for (let n = 0; ; n++) {

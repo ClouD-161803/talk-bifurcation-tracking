@@ -137,7 +137,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - A touch sent with `Input.dispatchTouchEvent` on a grip may be given by Chrome to the text element beside it. Make the pointer events of a touch on a grip in the page.
 - IndexedDB does not answer a read while the virtual time of Chrome is paused.
 - Under the policy `advance` of virtual time without a budget, the 1 s interval of reveal.js is run back to back, and virtual time is advanced by days each second.
-- Under virtual time, a reading of `performance.now()` may be off by 0.1 ms, whereas `Date.now()` is advanced by each whole budget. Animation frames are not drawn while virtual time is paused.
+- Under virtual time, a reading of `performance.now()` may be off by 0.1 ms, and a reading of `Date.now()` by 1 ms, also at the end of a budget. Wait for the end of a budget with `page.next('Emulation.virtualTimeBudgetExpired')`, not for a reading of the clock. Animation frames are not drawn while virtual time is paused.
 - reveal.js blurs the focus when a page is shown again. In a test of a session, do not bring another page to the front, and send the edits of the other person over HTTP instead.
 - reveal.js answers `isReady()` one timer before `.reveal` is given the class `ready`, and an Esc in between opens its overview. Wait for `.reveal.ready` before you send a key.
 - A crash of a page may cancel the keepalive requests of the other pages of its renderer. In a test of a crash, send these requests by hand.
@@ -147,7 +147,7 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Outside a Mac, ] and [ need AltGr on German and Italian keyboards. Hence a menu lists first the key typed without AltGr. On a Mac, Option with an arrow and the Control keys of macOS, e.g. Control-D, are left to the text.
 - The clipboard is read and written only through its events, which are allowed in every browser. Text read from it may come from any page. The folders in the path of a session page are its key, hence they are hashed before they are written.
 - A page opened from `file:` cannot download a file, and `crypto.subtle` is missing outside a secure context.
-- In Chrome, a space typed at the end of a text becomes a no-break space, and a character typed at the end of an inline element is put into this element. A space after the caret at the start of a text is dropped, and `selectionchange` is held back while keys come quickly.
+- In Chrome, a space typed at the end of a text becomes a no-break space, and a character typed at the end of an inline element is put into this element. A plain space that is not drawn, e.g. at the end of a text, is deleted at the next key typed next to it. Hence spaces written into a text by an edit of another person, or by a change of the file, are put on the page as Chrome puts typed spaces. A space after the caret at the start of a text is dropped, and `selectionchange` is held back while keys come quickly.
 - reveal.js marks only the fragments of the slide that it starts on. Its highlight plugin replaces the elements of a code box, hence code is colored in the editor with the CSS Custom Highlight API.
 - WebDriver cannot read the console of Safari, and pages from file URLs are refused in Safari. Phones and pixel ratios are emulated only in Chrome. On a Mac, enable safaridriver once with `sudo safaridriver --enable`.
 - Firefox on Android reports a fine pointer on a screen with a stylus. Hence a rule for touch screens also matches `hover: none`.

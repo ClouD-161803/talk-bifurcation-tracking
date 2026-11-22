@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
@@ -200,7 +201,7 @@ test('an undo of typing next to a space that the browser rewrote as &nbsp; remov
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('an undo of a word whose trailing space the browser of another person took away is refused, and keeps the letters of the other person', { timeout: 240_000 }, async (t) => {
+test('an undo of a word whose trailing space another person deleted is refused, and keeps the letters of the other person', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -209,9 +210,10 @@ test('an undo of a word whose trailing space the browser of another person took 
   await typeKeys(ana, ' foo ');
   await converge(server, pages);
   await caretAtEnd(ben, p);
+  await press(ben, 'Backspace');
   await typeKeys(ben, 'bar');
   let text = await converge(server, pages);
-  assert.equal(para(text), '<p>Second slide foobar</p>', 'Chrome of Ben takes away the trailing space of Ana');
+  assert.equal(para(text), '<p>Second slide foobar</p>', 'Ben deletes the trailing space of Ana');
   assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), 'typing');
   await run(ana, 'edit.undo');
   text = await converge(server, pages);
@@ -243,9 +245,10 @@ test('an undo of typing that cannot be undone keeps the change before it and say
   await typeKeys(ana, ' foo ');
   await converge(server, pages);
   await caretAtEnd(ben, p);
+  await press(ben, 'Backspace');
   await typeKeys(ben, 'bar');
   let text = await converge(server, pages);
-  assert.equal(para(text), '<p>Second slide foobar</p>', 'Chrome of Ben takes away the trailing space of Ana');
+  assert.equal(para(text), '<p>Second slide foobar</p>', 'Ben deletes the trailing space of Ana');
   await run(ana, 'edit.undo');
   const shown = await ana.evaluate(BUBBLE_AT);
   assert.equal(shown?.text, NOT_UNDONE);
@@ -449,6 +452,7 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
   await typeKeys(ana, ' foo ');
   await converge(server, pages);
   await caretAtEnd(ben, NOTES);
+  await press(ben, 'Backspace');
   await typeKeys(ben, 'bar');
   assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
   await leave(ben);
@@ -481,6 +485,7 @@ for (const [width, height] of [[390, 844], [320, 568]]) {
     await typeKeys(ana, ' foo ');
     await converge(server, pages);
     await caretAtEnd(ben, NOTES);
+    await press(ben, 'Backspace');
     await typeKeys(ben, 'bar');
     assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
     await leave(ben);
@@ -516,6 +521,7 @@ for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
     await typeKeys(ana, ' foo ');
     await converge(server, pages);
     await caretAtEnd(ben, q);
+    await press(ben, 'Backspace');
     await typeKeys(ben, 'bar');
     await converge(server, pages);
     await leave(ben);
@@ -721,6 +727,35 @@ for (const [label, ana, marker, ben, more] of [
     assert.equal(text, `<p>Second deckX${more}</p>`);
   });
 }
+
+test('a space that another person types at the end of a paragraph is kept when the person then puts in a word with a space there', { timeout: 300_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  await caretAtEnd(ana, p);
+  await caretAtEnd(ben, p);
+  await typeKeys(ben, ' ');
+  await until(() => ana.evaluate(`${p}.textContent.length === 'Second slide '.length`), 'the space of Ben on the page of Ana');
+  await type(ana, ' Aa');
+  await converge(server, pages);
+  await typeKeys(ben, 'Bb');
+  const text = loose(para(await converge(server, pages)));
+  assert.equal(text, '<p>Second slide Bb Aa</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('a space that a change of the file puts at the end of a paragraph, together with a change of the list after it, is kept when the person types there', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana']);
+  const [ana] = pages;
+  await show(ana, 'Two');
+  await ana.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>\n  <ul>', '<p>Second slide </p>\n  <ul class="cols">'));
+  await until(() => ana.evaluate(`${p}.textContent.length === 'Second slide '.length && ${el(1, 'ul')}.classList.contains('cols')`), 'the change of the file on the page');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, 'x');
+  const text = loose(para(await converge(server, pages)));
+  assert.equal(text, '<p>Second slide x</p>');
+  assert.deepEqual(ana.errors, []);
+});
 
 async function pair(t) {
   const s = await session(t, ['Ana', 'Ben']);
