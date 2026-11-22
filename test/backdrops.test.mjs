@@ -607,3 +607,36 @@ test('a Poincaré section is built up once to its still, and the tori run withou
   await page.waitFor('!Beeson.backdrops[3].tracing');
   assert.deepEqual(page.errors, []);
 });
+
+test('the saddle is drawn from its file of theme/backdrops, loaded once, on the clock of the file in seconds and fitted to its box', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/backdrops-saddle.html', 'still'));
+  await page.waitFor(deckSettled);
+  await page.waitFor('Beeson.backdrops.length === 2 && Beeson.backdrops.every((b) => b.trajectories.length > 0)');
+  const out = await page.evaluate(`(async () => {
+    const out = [];
+    for (const b of Beeson.backdrops) {
+      const { h, v } = Reveal.getIndices(b.el.closest('section'));
+      Reveal.slide(h, v);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      b.complete();
+      const c = b.canvases[0], d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i]) n++;
+      out.push({ trajectories: b.trajectories.length, duration: b.duration, fitted: b.fittedToDrawing, fitsItself: b.fitsItself, done: b.done, n });
+    }
+    return out;
+  })()`);
+  const files = await page.evaluate(`[...document.querySelectorAll('script[src*="/backdrops/"]')].map((s) => s.src.split('/').pop())`);
+  assert.deepEqual(files, ['saddle.js']);
+  for (const b of out) {
+    assert.equal(b.trajectories, 488);
+    assert.deepEqual([b.fitted, b.fitsItself, b.done], [true, true, true]);
+    assert.ok(b.n > 5000, `${b.n} pixels of the saddle`);
+  }
+  assert.ok(Math.abs(out[0].duration - 10.124) < 1e-3, `${out[0].duration}`);
+  assert.equal(out[1].duration, 5);
+  assert.deepEqual(page.errors, []);
+});

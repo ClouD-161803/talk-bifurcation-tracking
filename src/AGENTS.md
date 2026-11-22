@@ -70,6 +70,11 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
   uv run --with numpy python demo/poincare.py bicircular-l1-vertical sections-bicircular-l1-vertical.npz
   uv run --with numpy python demo/tori.py tori.npz
   ```
+- `theme/backdrops/saddle.js` is written by `demo/saddle.py` from the closed-form flow of the quadratic part of the normal form, with NumPy alone. The script was written for the normal-forms talk of the group and does not call DyLAN.
+
+  ```sh
+  uv run --with numpy python demo/saddle.py
+  ```
 - The clips of the demo deck are exported with tycho, as described in its CONTRIBUTING.md.
 
 ## Verifying

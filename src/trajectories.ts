@@ -419,6 +419,16 @@ const hex = (c: [number, number, number]) =>
 const given = new Map<string, unknown>();
 const files = new Map<string, Promise<TrajectoryFile | null>>();
 
+export const HOME = typeof document === 'undefined' ? '' : ((document.currentScript as HTMLScriptElement | null)?.src ?? '');
+export const FILED = ['saddle'];
+export const builtInFile = (name: string): string => (HOME ? new URL(`backdrops/${name}.js`, HOME).href : `theme/backdrops/${name}.js`);
+
+export function fileOf(el: HTMLElement): string | null {
+  if (el.dataset.trajectories !== undefined) return el.dataset.trajectories;
+  const name = el.dataset.backdrop ?? '';
+  return FILED.includes(name) ? builtInFile(name) : null;
+}
+
 export function register(data: unknown): void {
   const script = document.currentScript;
   if (script instanceof HTMLScriptElement && script.src) given.set(script.src, data);
@@ -480,7 +490,7 @@ function colormapFor(el: HTMLElement): Colormap | undefined {
 }
 
 export async function trajectoriesFor(el: HTMLElement): Promise<{ trajectories: Trajectory[]; dots: Dot[] }> {
-  const path = el.dataset.trajectories ?? '';
+  const path = fileOf(el) ?? '';
   const file = await load(path);
   if (!file) return { trajectories: [], dots: [] };
   try {

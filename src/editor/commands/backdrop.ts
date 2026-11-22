@@ -22,13 +22,16 @@ export const NAMES = {
   wideRibbon: 'Earth Manifolds',
   poincare: 'Poincaré Sections',
   tori: 'Invariant Tori',
+  saddle: 'Normal Form Saddle',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
   broucke: 'Broucke Families',
   custom: 'Custom',
 };
-export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori };
+export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori, saddle: NAMES.saddle };
 const DOTTED = ['poincare', 'tori'];
+const LABELED = ['tubes', 'wideRibbon'];
+export const labeledDrawing = (el: Element | null): boolean => !!el && !el.hasAttribute('data-trajectories') && LABELED.includes(el.getAttribute('data-backdrop') ?? '');
 export const dottedDrawing = (el: Element | null): string | null => {
   const name = el && !el.hasAttribute('data-trajectories') ? el.getAttribute('data-backdrop') : null;
   return name !== null && DOTTED.includes(name) ? name : null;
@@ -228,6 +231,7 @@ function builtIn(app: App): Entry[] {
     { key: 'wideRibbon', name: NAMES.wideRibbon, attrs: { 'data-backdrop': 'wideRibbon' }, motion: {}, view: { cx: 0.2, cy: 0, half: 1.3 }, size: [1920, 1080] },
     { key: 'poincare', name: NAMES.poincare, attrs: { 'data-backdrop': 'poincare' }, motion: {}, view: null, size: null },
     { key: 'tori', name: NAMES.tori, attrs: { 'data-backdrop': 'tori' }, motion: {}, view: null, size: null },
+    { key: 'saddle', name: NAMES.saddle, attrs: { 'data-backdrop': 'saddle' }, motion: {}, view: null, size: null },
     {
       key: 'broucke', name: NAMES.broucke, view: null, size: null, motion: { 'data-duration': '3', 'data-stagger': '0.6' },
       attrs: { 'data-trajectories': file, 'data-trajectories-select': SPECS['7 Rotating Periapsis'], 'data-trajectories-color': 'family', 'data-trajectories-ramp': 'e', 'data-trajectories-colormap': 'viridis' },
@@ -336,7 +340,7 @@ export async function applyEntry(app: App, entry: Entry): Promise<void> {
 }
 
 async function dropLabels(app: App, el: HTMLElement, entry: Entry): Promise<void> {
-  if (entry.attrs['data-backdrop'] !== undefined && !DOTTED.includes(entry.key)) return;
+  if (LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return;
   for (const lab of [...el.querySelectorAll(':scope > .label')].filter((l) => open(app, l))) await app.doc.remove(lab, 'label');
 }
 
@@ -654,7 +658,7 @@ export function commands(): Command[] {
         const now = app.doc.tagState(el).attrs;
         const changed = Object.entries(attrs).filter(([k, x]) => (now[k] ?? null) !== x);
         if (!changed.length) return;
-        if (now['data-backdrop'] === undefined || entry.attrs['data-backdrop'] === undefined || DOTTED.includes(entry.key) || dottedDrawing(el)) return replaceDrawing(app, el, entry);
+        if (!labeledDrawing(el) || !LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return replaceDrawing(app, el, entry);
         app.doc.setTag(el, { attrs: Object.fromEntries(changed) }, 'drawing');
       },
     },
@@ -711,7 +715,7 @@ export function commands(): Command[] {
       label: 'Backdrop Label',
       undoable: true,
       undo: 'Label',
-      enabled: (app) => !!targetOf(app, undefined)?.hasAttribute('data-backdrop'),
+      enabled: (app) => labeledDrawing(targetOf(app, undefined)),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
         const at = (arg as { at?: string } | undefined)?.at;

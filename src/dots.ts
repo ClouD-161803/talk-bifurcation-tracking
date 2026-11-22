@@ -1,5 +1,5 @@
 import { Orbits } from './orbits.ts';
-import { colormapAt, colormapEnds } from './trajectories.ts';
+import { builtInFile, colormapAt, colormapEnds } from './trajectories.ts';
 import type { Colors, Extent, Kind } from './dotkind.ts';
 import { poincare } from './poincare.ts';
 import { tori } from './tori.ts';
@@ -17,7 +17,6 @@ const SHARPEST = 3;
 const PRINT_SHARPNESS = 2;
 const HEIGHT_OUTSIDE_A_SLIDE = 420;
 
-const HOME = typeof document === 'undefined' ? '' : ((document.currentScript as HTMLScriptElement | null)?.src ?? '');
 const given = new Map<string, unknown>();
 const files = new Map<string, Promise<unknown>>();
 
@@ -30,7 +29,7 @@ function load(name: string): Promise<unknown> {
   if (!out) {
     out = new Promise((done) => {
       const script = document.createElement('script');
-      script.src = HOME ? new URL(`backdrops/${name}.js`, HOME).href : `theme/backdrops/${name}.js`;
+      script.src = builtInFile(name);
       const missing = (reason: string) => {
         console.warn(`beeson: the backdrop of ${script.src} is not drawn, since the file ${reason}`);
         done(null);

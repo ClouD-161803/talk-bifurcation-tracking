@@ -1,6 +1,6 @@
 import { builtIn } from './backdrops.ts';
 import { typesetLabels } from './drawn-text.ts';
-import { colormapColor, fitView, load, mix, shadeOf, trajectoriesFor } from './trajectories.ts';
+import { colormapColor, fileOf, fitView, load, mix, shadeOf, trajectoriesFor } from './trajectories.ts';
 import type { Colormap, Dot, TrajectoryData } from './trajectories.ts';
 
 export type Member = { s: Float64Array; path: number[]; times: number[]; t: number };
@@ -358,7 +358,8 @@ export class Orbits {
   private loaded: boolean;
   private pending = false;
   private headSize: number;
-  readonly duration: number;
+  private givenDuration: number;
+  private clockInSeconds: boolean;
   private stagger: number;
   private everyHead: boolean;
   private inks: string[] = [];
@@ -389,7 +390,7 @@ export class Orbits {
 
   constructor(el: HTMLElement) {
     this.el = el;
-    const file = el.dataset.trajectories !== undefined;
+    const path = fileOf(el), file = path !== null;
     this.trajectories = file ? [] : builtIn(el.dataset.backdrop ?? '');
     this.dots = file ? [] : null;
     this.loaded = !file;
@@ -397,7 +398,8 @@ export class Orbits {
     this.headSize = HEADS[el.dataset.heads ?? 'full'] ?? HEADS.full;
     this.everyHead = el.dataset.heads !== undefined;
     const given = Number(el.dataset.duration);
-    this.duration = given > 0 ? given : DURATION;
+    this.givenDuration = given > 0 ? given : 0;
+    this.clockInSeconds = file && el.dataset.trajectories === undefined;
     this.stagger = Math.max(0, Number(el.dataset.stagger) || 0);
     this.cx = +(el.dataset.cx ?? 0);
     this.cy = +(el.dataset.cy ?? 0);
@@ -419,7 +421,7 @@ export class Orbits {
     CACHE.set(el, this);
     this.fit();
     this.ready = file
-      ? Promise.all([trajectoriesFor(el), load(el.dataset.trajectories ?? '')]).then(([{ trajectories, dots }, f]) => {
+      ? Promise.all([trajectoriesFor(el), load(path ?? '')]).then(([{ trajectories, dots }, f]) => {
           this.fileTrajectories = f?.families ?? null;
           this.install(trajectories, dots);
         })
@@ -472,12 +474,16 @@ export class Orbits {
     return keep[lo];
   }
 
+  get duration(): number {
+    return this.givenDuration || (this.clockInSeconds && this.loaded && this.Tmax > 0 ? this.Tmax : DURATION);
+  }
+
   get view(): { cx: number; cy: number; half: number } {
     return { cx: this.cx, cy: this.cy, half: this.half };
   }
 
   get fitsItself(): boolean {
-    return this.el.dataset.trajectories !== undefined;
+    return fileOf(this.el) !== null;
   }
 
   get fittedToDrawing(): boolean {
@@ -489,7 +495,7 @@ export class Orbits {
       this.fitted = false;
       ({ cx: this.cx, cy: this.cy, half: this.half } = view);
     } else {
-      this.fitted = this.el.dataset.trajectories !== undefined;
+      this.fitted = fileOf(this.el) !== null;
       this.fittedFor = '';
     }
     this.fit();

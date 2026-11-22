@@ -16,7 +16,7 @@ import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
 import { fly } from './fly.ts';
-import { fitView, register, trajectoriesFor, type View } from './trajectories.ts';
+import { fileOf, fitView, register, trajectoriesFor, type View } from './trajectories.ts';
 import { builtIn } from './backdrops.ts';
 import { addRestoreSteps, applyAll, applySteps, initSteps, initTimedSteps, typeset, type Internal } from './steps.ts';
 import { numberTheorems } from './theorems.ts';
@@ -219,7 +219,7 @@ async function fitWindow(el: HTMLElement, box?: { left: number; top: number; wid
     await dots?.ready;
     return dots?.viewFitted(box) ?? null;
   }
-  const trajectories = el.dataset.trajectories !== undefined ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? '');
+  const trajectories = fileOf(el) !== null ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? '');
   const b = box ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
   return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
 }

@@ -1,5 +1,5 @@
 import type { App } from '../app.ts';
-import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, library, liveOf, planePick, probeLibrary, selectedBackdrop, systemPick, toriPick, type Pick } from '../commands/backdrop.ts';
+import { ALPHAS, BRANCHES, COLORMAPS, FAMILIES, FRAMES, LABELS, NAMES, PLANES, PLANE_NAMES, SYSTEMS, SYSTEM_NAMES, brouckePick, colormapName, dottedDrawing, drawnBy, entryName, isBroucke, labeledDrawing, library, liveOf, planePick, probeLibrary, selectedBackdrop, systemPick, toriPick, type Pick } from '../commands/backdrop.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { make } from '../ui/dom.ts';
 import { button, checkbox, glyph, keepFocus, note, numberField, row, section, type Control, type Run } from './controls.ts';
@@ -108,7 +108,7 @@ export function backdropPane(app: App, run: Run): Control[] {
     ]),
   ];
   parts.push(when(() => !dottedDrawing(el), [section('Labels', [
-    when(() => !file(), [
+    when(() => labeledDrawing(el), [
       row(LABELS.slice(0, 2).map((l) => labelBox(app, run, el, l.at, l.name))),
       row(LABELS.slice(2).map((l) => labelBox(app, run, el, l.at, l.name))),
     ]),
