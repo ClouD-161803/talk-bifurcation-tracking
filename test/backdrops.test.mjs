@@ -752,3 +752,115 @@ test('under reduced motion and in the print view, a backdrop is at the start of 
   ]);
   assert.deepEqual(page.errors, []);
 });
+
+const NORMAL_FORM = 'test/pages/backdrops-normal-form.html';
+const NORMAL_STATES = ['none', 'field', 'stable', 'unstable', 'directions', 'flow', 'linear', 'resonant'];
+const toned = `((b) => {
+  const css = getComputedStyle(b.el), probe = document.createElement('canvas').getContext('2d');
+  const rgb = (name) => { probe.fillStyle = css.getPropertyValue(name).trim(); probe.fillRect(0, 0, 1, 1); return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+  const tones = { violet: rgb('--violet'), accent: rgb('--accent'), green: rgb('--trajectory-4'), lime: rgb('--trajectory-6'), muted: rgb('--muted') };
+  const c = b.canvases[0], d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const out = { n: 0 };
+  for (const k of Object.keys(tones)) out[k] = { n: 0, top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity };
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 250) continue;
+    out.n++;
+    for (const [k, t] of Object.entries(tones)) {
+      if (Math.abs(d[i] - t[0]) + Math.abs(d[i + 1] - t[1]) + Math.abs(d[i + 2] - t[2]) > 24) continue;
+      const o = out[k], x = (i / 4) % c.width, y = Math.floor(i / 4 / c.width);
+      o.n++; o.top = Math.min(o.top, y); o.bottom = Math.max(o.bottom, y); o.left = Math.min(o.left, x); o.right = Math.max(o.right, x);
+    }
+  }
+  out.green.n += out.lime.n;
+  return out;
+})`;
+
+test('the normal form is drawn in the state of the last step shown, without a file, and in both modes', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(NORMAL_FORM, 'still'));
+  await page.waitFor(deckSettled);
+  const steps = await page.evaluate(`(async () => {
+    const b = Beeson.backdrops[0], out = [];
+    for (let f = -1; f < 7; f++) {
+      Reveal.slide(0, 0, f);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      out.push({ shown: b.el.dataset.shown, done: b.done, tracing: b.tracing, ...${toned}(b) });
+    }
+    document.documentElement.dataset.theme = 'light';
+    document.dispatchEvent(new Event('beeson:theme'));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    out.push(${toned}(b));
+    return out;
+  })()`);
+  const light = steps.pop();
+  assert.deepEqual(steps.map((s) => s.shown), NORMAL_STATES);
+  for (const s of steps) assert.deepEqual([s.done, s.tracing], [true, false], s.shown);
+  const [none, field, stable, unstable, directions, flow, linear, resonant] = steps;
+  assert.ok(none.n > 100 && none.n < 2000, `${none.n} pixels of the origin alone`);
+  assert.ok(field.muted.n > 1000 && field.violet.n === 0 && field.accent.n === 0, JSON.stringify(field));
+  assert.ok(stable.violet.n > 1000 && stable.accent.n === 0, JSON.stringify(stable));
+  assert.ok(unstable.accent.n > 1000 && unstable.green.n === 0, JSON.stringify(unstable));
+  assert.ok(directions.violet.n > unstable.violet.n && directions.accent.n > unstable.accent.n, 'the directions are not drawn on the manifolds');
+  assert.ok(flow.green.n > 3000 && flow.lime.n > 0 && flow.green.n > flow.lime.n, `${flow.green.n} pixels of the flow in the ramp, ${flow.lime.n} at its green end`);
+  assert.ok(flow.accent.bottom - flow.accent.top > 200, `the unstable manifold of the saddle spans ${flow.accent.bottom - flow.accent.top} px`);
+  assert.ok(linear.accent.bottom - linear.accent.top < 40, `the unstable manifold of the normal form spans ${linear.accent.bottom - linear.accent.top} px`);
+  assert.ok(resonant.violet.n === 0 && resonant.accent.right - resonant.accent.left < 40 && resonant.green.n > 1000, JSON.stringify(resonant));
+  assert.ok(light.green.n > 3000 && light.violet.n === 0, `the resonant normal form in the light mode: ${JSON.stringify(light)}`);
+  const others = await page.evaluate(`(async () => {
+    const out = [];
+    for (const b of Beeson.backdrops.slice(1)) {
+      Reveal.slide(Reveal.getIndices(b.el.closest('section')).h);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      out.push({ shown: b.el.dataset.shown, fitted: b.fittedToDrawing, n: ${toned}(b).green.n });
+    }
+    return out;
+  })()`);
+  assert.deepEqual(others.map((o) => [o.shown, o.fitted]), [['flow', true], ['flow', true]]);
+  for (const o of others) assert.ok(o.n > 3000, `${o.n} pixels of the flow`);
+  assert.deepEqual(await page.evaluate(`document.querySelectorAll('script[src*="/backdrops/"]').length`), 0);
+  assert.deepEqual(await page.evaluate('window.warnings'), ['beeson: the backdrop state "saddle" of normalForm is not one of none, field, stable, unstable, directions, flow, linear, resonant']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the normal form is moved to the state of each step as it is shown, and its flow is traced without end', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(NORMAL_FORM));
+  await page.waitFor(deckSettled);
+  await page.waitFor('Beeson.backdrops[0].tracing');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), true, 'a backdrop with states is not traced');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[1])'), false);
+  for (let f = 0; f < 6; f++) await page.evaluate('Reveal.next()');
+  await page.waitFor(`Beeson.backdrops[0].el.dataset.shown === 'linear'`);
+  const span = `(${toned}(Beeson.backdrops[0]).accent)`;
+  await page.waitFor(`(({ top, bottom }) => bottom - top < 40)(${span})`, 30000);
+  const frames = await page.evaluate(`new Promise((done) => {
+    const b = Beeson.backdrops[0], seen = new Set();
+    const read = () => { seen.add(b.canvases[0].toDataURL()); if (seen.size < 4) requestAnimationFrame(read); else done(seen.size); };
+    requestAnimationFrame(read);
+  })`);
+  assert.equal(frames, 4);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor(`Beeson.backdrops[0].el.dataset.shown === 'flow'`);
+  await page.waitFor(`(({ top, bottom }) => bottom - top > 200)(${span})`, 30000);
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('!Beeson.backdrops[0].tracing && Beeson.backdrops[1].done');
+  assert.deepEqual(page.errors, []);
+});
+
+test('each page of the print view draws the normal form in the state of its step', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await printView(page, deckUrl(NORMAL_FORM, 'print-pdf'));
+  const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => {
+    const el = p.querySelector('.backdrop');
+    const b = Beeson.backdrops.find((o) => o.el === el);
+    return [el.dataset.shown, b.done, ${toned}(b).n > 100];
+  })`);
+  assert.deepEqual(pages, [...NORMAL_STATES, 'resonant', 'flow', 'flow'].map((s) => [s, true, true]));
+  assert.deepEqual(page.errors, []);
+});

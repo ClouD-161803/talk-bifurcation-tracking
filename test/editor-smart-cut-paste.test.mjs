@@ -366,7 +366,7 @@ describe('Paste of the menus sets the spaces', () => {
       await exec(page, 'backdrop.select');
       await frames(page);
       const items = await drawingItems(page);
-      assert.deepEqual(items, ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families', 'mark'], 'the popup leaves out an entry whose file is not found');
+      assert.deepEqual(items, ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Normal Form', 'Broucke Families', 'mark'], 'the popup leaves out an entry whose file is not found');
       assert.ok((await requested(page)).length > 0, 'the popup does not read the files');
       assert.deepEqual(page.errors.filter((e) => !FILES.test(e)), []);
     });

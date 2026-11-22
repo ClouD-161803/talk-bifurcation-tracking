@@ -701,6 +701,7 @@ describe('the list of backdrops of Media > Backdrop…', () => {
     'Poincaré Sections',
     'Invariant Tori',
     'Normal Form Saddle',
+    'Normal Form',
     'Broucke Families',
   ];
   const LOGO = '<div class="backdrop" data-trajectories="brand/transfer.js" data-duration="20" data-cx="-0.84" data-cy="0" data-half="1.128">';
@@ -883,11 +884,12 @@ describe('the list of backdrops of Media > Backdrop…', () => {
         'Poincaré Sections',
         'Invariant Tori',
         'Normal Form Saddle',
+        'Normal Form',
         'Broucke Families',
         'Beeson Logo',
         'missing',
       ]);
-      assert.deepEqual(list.map((e) => e[2]), [false, false, false, false, false, false, false, true]);
+      assert.deepEqual(list.map((e) => e[2]), [false, false, false, false, false, false, false, false, true]);
       assert.match(list.at(-1)[3], /missing\.js is not found next to the deck/);
       assert.match(list.at(-1)[4], /File not found/);
       await click(page, `${TILES}:disabled`);
@@ -926,7 +928,7 @@ describe('Broucke Families and the names of colormaps', () => {
   const PANEL = '#beeson-edit-panel-format';
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Normal Form', 'Broucke Families'];
   const FAMILIES = ['7', '11', '7/11'];
   const BROUCKE = '<div class="backdrop" data-trajectories="demo/broucke-sample.js" data-trajectories-select="frame=pulsating" data-trajectories-color="family" data-trajectories-ramp="e" data-trajectories-colormap="viridis" data-duration="3" data-stagger="0.6">';
   const STEPS = '<h2>Show your steps one at a time';
@@ -1029,7 +1031,7 @@ describe('Broucke Families and the names of colormaps', () => {
       await press(page, 'Escape');
       const deck = await load(t, platform, DECK, 6);
       const names = (await openList(deck, 8)).map((e) => e[1]);
-      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families', 'Beeson Logo', 'missing']);
+      assert.deepEqual(names, ['Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Normal Form', 'Broucke Families', 'Beeson Logo', 'missing']);
       await press(deck, 'Escape');
       await deck.evaluate('Reveal.slide(3)');
       await frames(deck);
@@ -1797,8 +1799,8 @@ describe('built-in backdrops whose file is not found', () => {
   const PANEL = '#beeson-edit-panel-format';
   const TILES = '.beeson-backdrop-gallery [data-tile]';
   const MENU = '.beeson-edit-menu.select';
-  const KEYS = ['logo', 'tubes', 'wideRibbon', 'poincare', 'tori', 'saddle', 'broucke'];
-  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families'];
+  const KEYS = ['logo', 'tubes', 'wideRibbon', 'poincare', 'tori', 'saddle', 'normalForm', 'broucke'];
+  const LIST = ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Normal Form', 'Broucke Families'];
   const LOGO_TITLE = 'brand/transfer.js is not found next to the deck';
   const BROUCKE_TITLE = 'demo/broucke-sample.js is not found next to the deck';
 
@@ -1867,12 +1869,12 @@ describe('built-in backdrops whose file is not found', () => {
       const list = await openList(page);
       assert.deepEqual(list.map((e) => e.key), KEYS);
       assert.deepEqual(list.map((e) => e.name), LIST);
-      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, false, true]);
+      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, false, false, true]);
       assert.equal(list[0].title, LOGO_TITLE);
-      assert.equal(list[6].title, BROUCKE_TITLE);
+      assert.equal(list[7].title, BROUCKE_TITLE);
       assert.match(list[0].text, /File not found/);
-      assert.match(list[6].text, /File not found/);
-      assert.ok(list.slice(1, 6).every((e) => e.title === e.name && !/File not found/.test(e.text)));
+      assert.match(list[7].text, /File not found/);
+      assert.ok(list.slice(1, 7).every((e) => e.title === e.name && !/File not found/.test(e.text)));
       assert.equal(await page.evaluate(`(() => { const b = document.querySelector('${TILES}[data-tile="broucke"]'); b.focus(); return document.activeElement === b; })()`), false);
       for (const key of ['broucke', 'logo']) {
         await click(page, `${TILES}[data-tile="${key}"]`);
@@ -1890,7 +1892,7 @@ describe('built-in backdrops whose file is not found', () => {
       const page = await load(t, platform, TALK, 0);
       await selectBackdrop(page);
       const items = await popupItems(page, 'Backdrop');
-      assert.deepEqual(items, LIST.map((name, i) => [name, i === 0 || i === 6]));
+      assert.deepEqual(items, LIST.map((name, i) => [name, i === 0 || i === 7]));
       await page.evaluate(`[...document.querySelectorAll('${MENU} .item')].find((i) => i.textContent.includes('Broucke')).setAttribute('data-pick', '')`);
       await click(page, `${MENU} .item[data-pick]`);
       await frames(page);
@@ -1903,7 +1905,7 @@ describe('built-in backdrops whose file is not found', () => {
       await press(page, 'Home');
       assert.equal(await highlighted(page), 'Cislunar Manifolds');
       await press(page, 'End');
-      assert.equal(await highlighted(page), 'Normal Form Saddle');
+      assert.equal(await highlighted(page), 'Normal Form');
       const seen = [];
       for (let i = 0; i < 8; i++) {
         await press(page, 'ArrowDown');
@@ -1930,9 +1932,9 @@ describe('built-in backdrops whose file is not found', () => {
       const page = await load(t, platform, OWN, 1);
       const list = await openList(page);
       assert.deepEqual(list.map((e) => e.name), LIST);
-      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, false, false]);
+      assert.deepEqual(list.map((e) => e.disabled), [true, false, false, false, false, false, false, false]);
       assert.equal(list[0].title, LOGO_TITLE);
-      assert.equal(list[6].title, 'Broucke Families');
+      assert.equal(list[7].title, 'Broucke Families');
       await click(page, `${TILES}[data-tile="broucke"]`);
       await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`);
       await frames(page);
@@ -2094,12 +2096,29 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.deepEqual(page.errors, []);
     });
 
+    test(`the Normal Form put on the Earth Manifolds is drawn without a file or labels, and Cislunar Manifolds put on it takes off its state (${platform})`, async (t) => {
+      const page = await load(t, platform);
+      const normal = await choose(page, 'Backdrop', 'Normal Form');
+      assert.equal(tagOf(normal, CHAPTER), '<div class="backdrop" data-backdrop="normalForm">');
+      assert.ok(!/class="label"/.test(backdropOf(normal, CHAPTER)), backdropOf(normal, CHAPTER));
+      assert.equal(await popupText(page, 'Backdrop'), 'Normal Form');
+      assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Motion']);
+      const out = await drawn(page);
+      assert.deepEqual({ ...out, inked: out.inked > 1000 }, { count: 1, canvases: ['dots'], labels: 0, inked: true, fitted: true });
+      assert.equal(await page.evaluate(`document.querySelectorAll('script[src*="/backdrops/"]').length`), 0);
+      await page.evaluate(`window.BeesonEditor.doc.setTag(window.BeesonEditor.selection()[0], { attrs: { 'data-backdrop-state': 'linear' } }, 'state')`);
+      await page.waitFor(`window.BeesonEditor.render().includes('data-backdrop-state="linear"')`);
+      const tubes = await choose(page, 'Backdrop', 'Cislunar Manifolds');
+      assert.ok(!/data-backdrop-state/.test(tagOf(tubes, CHAPTER)), tagOf(tubes, CHAPTER));
+      assert.deepEqual(page.errors, []);
+    });
+
     test(`Poincaré Sections put on the Earth Manifolds takes off the window and the labels, and the System popup writes data-system (${platform})`, async (t) => {
       const page = await load(t, platform);
       assert.deepEqual(await sections(page), ['Backdrop', 'Window', 'Labels', 'Motion']);
       const items = await popupItems(page, 'Backdrop');
       await press(page, 'Escape');
-      assert.deepEqual(items.map((i) => i[0]).slice(0, 7), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Broucke Families']);
+      assert.deepEqual(items.map((i) => i[0]).slice(0, 8), ['Beeson Logo', 'Cislunar Manifolds', 'Earth Manifolds', 'Poincaré Sections', 'Invariant Tori', 'Normal Form Saddle', 'Normal Form', 'Broucke Families']);
       const section = await choose(page, 'Backdrop', 'Poincaré Sections');
       assert.equal(tagOf(section, CHAPTER), '<div class="backdrop" data-backdrop="poincare">');
       assert.ok(!/class="label"/.test(backdropOf(section, CHAPTER)), backdropOf(section, CHAPTER));
@@ -2164,7 +2183,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.deepEqual(page.errors, []);
     });
 
-    test(`the tiles Poincaré Sections, Invariant Tori, and Normal Form Saddle are drawn in the gallery, and a tile adds its backdrop fitted to its box (${platform})`, async (t) => {
+    test(`the tiles Poincaré Sections, Invariant Tori, Normal Form Saddle, and Normal Form are drawn in the gallery, and a tile adds its backdrop fitted to its box (${platform})`, async (t) => {
       const page = await load(t, platform);
       await press(page, 'Delete');
       const bare = await render(page);
@@ -2184,6 +2203,7 @@ describe('Poincaré Sections and Invariant Tori', () => {
       assert.ok((await page.evaluate(`${inked}('poincare')`)) > 50, 'the tile Poincaré Sections is empty');
       assert.ok((await page.evaluate(`${inked}('tori')`)) > 50, 'the tile Invariant Tori is empty');
       assert.ok((await page.evaluate(`${inked}('saddle')`)) > 50, 'the tile Normal Form Saddle is empty');
+      assert.ok((await page.evaluate(`${inked}('normalForm')`)) > 50, 'the tile Normal Form is empty');
       await click(page, `${TILES}[data-tile="tori"]`);
       await page.waitFor(`window.BeesonEditor.render() !== ${js(bare)}`);
       await frames(page);

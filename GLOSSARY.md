@@ -32,6 +32,12 @@ A backdrop is traced from the start of its slide, or from a step chosen as its S
 
 Avoid "drawing". Avoid "background" for a backdrop, and avoid "scene", which means only a TyCHO scene. The attribute `data-scene` of an old talk is `data-backdrop`.
 
+## Backdrop state
+
+What a built-in backdrop draws at a step, set in `data-backdrop-state` on the backdrop for the start of its slide, and on a fragment of the slide for a later step, as a surface state is set. Only `normalForm` has states.
+
+Avoid "stage". The attribute `data-nf-stage` of the normal-forms talk is `data-backdrop-state`.
+
 ## Badge
 
 The count of the open threads of an element or a slide in a session, drawn at its upper right corner on the canvas, and filled violet while one of them is unread.
@@ -52,7 +58,7 @@ Avoid "badge", which is the count of the threads of an element, and avoid "chip"
 
 ## Built-in backdrop
 
-A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, or `saddle`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, and Normal Form Saddle in the editor.
+A backdrop that the theme draws by its name in `data-backdrop`, i.e. `tubes`, `wideRibbon`, `poincare`, `tori`, `saddle`, or `normalForm`, named Cislunar Manifolds, Earth Manifolds, Poincaré Sections, Invariant Tori, Normal Form Saddle, and Normal Form in the editor.
 
 ## Chip
 

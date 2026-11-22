@@ -18,20 +18,21 @@ export type Live = { el: HTMLElement; view: View; extent: { x0: number; x1: numb
 type Hooks = { backdrops?: Live[]; remount?(el: HTMLElement): Live; preview?(el: HTMLElement): Live; fitWindow?(el: HTMLElement, box?: Box): Promise<View | null> };
 const hooks = (): Hooks => (window as unknown as { Beeson?: Hooks }).Beeson ?? {};
 
-export const DRAWING = ['data-backdrop', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads'];
+export const DRAWING = ['data-backdrop', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads', 'data-backdrop-state'];
 export const NAMES = {
   tubes: 'Cislunar Manifolds',
   wideRibbon: 'Earth Manifolds',
   poincare: 'Poincaré Sections',
   tori: 'Invariant Tori',
   saddle: 'Normal Form Saddle',
+  normalForm: 'Normal Form',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
   broucke: 'Broucke Families',
   custom: 'Custom',
 };
-export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori, saddle: NAMES.saddle };
-const DOTTED = ['poincare', 'tori'];
+export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori, saddle: NAMES.saddle, normalForm: NAMES.normalForm };
+const DOTTED = ['poincare', 'tori', 'normalForm'];
 const LABELED = ['tubes', 'wideRibbon'];
 export const labeledDrawing = (el: Element | null): boolean => !!el && !el.hasAttribute('data-trajectories') && LABELED.includes(el.getAttribute('data-backdrop') ?? '');
 export const dottedDrawing = (el: Element | null): string | null => {
@@ -252,6 +253,7 @@ function builtIn(app: App): Entry[] {
     { key: 'poincare', name: NAMES.poincare, attrs: { 'data-backdrop': 'poincare' }, motion: {}, view: null, size: null },
     { key: 'tori', name: NAMES.tori, attrs: { 'data-backdrop': 'tori' }, motion: {}, view: null, size: null },
     { key: 'saddle', name: NAMES.saddle, attrs: { 'data-backdrop': 'saddle' }, motion: {}, view: null, size: null },
+    { key: 'normalForm', name: NAMES.normalForm, attrs: { 'data-backdrop': 'normalForm' }, motion: {}, view: null, size: null },
     {
       key: 'broucke', name: NAMES.broucke, view: null, size: null, motion: { 'data-duration': '3', 'data-stagger': '0.6' },
       attrs: { 'data-trajectories': file, 'data-trajectories-select': SPECS['7 Rotating Periapsis'], 'data-trajectories-color': 'family', 'data-trajectories-ramp': 'e', 'data-trajectories-colormap': 'viridis' },

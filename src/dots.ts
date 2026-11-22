@@ -3,12 +3,13 @@ import { builtInFile, colormapAt, colormapEnds } from './trajectories.ts';
 import type { Colors, Extent, Kind } from './dotkind.ts';
 import { poincare } from './poincare.ts';
 import { tori } from './tori.ts';
+import { normalForm } from './normal-form.ts';
 
 export type View = { cx: number; cy: number; half: number };
 type Box = { width: number; height: number };
 type AnyKind = Kind<unknown, unknown>;
 
-const KINDS: Record<string, AnyKind> = { poincare: poincare as unknown as AnyKind, tori: tori as unknown as AnyKind };
+const KINDS: Record<string, AnyKind> = { poincare: poincare as unknown as AnyKind, tori: tori as unknown as AnyKind, normalForm: normalForm as unknown as AnyKind };
 export const DOTTED = Object.keys(KINDS);
 
 const SECONDS_BETWEEN_FRAMES = 1 / 31;
@@ -60,11 +61,17 @@ function colorsOf(el: HTMLElement, g: CanvasRenderingContext2D): Colors {
   const light = el.ownerDocument.documentElement.dataset.theme === 'light';
   const ground = tone('--bg');
   const ends = new Map<string, [number, number]>();
+  const tones = new Map<string, string>();
   return {
     light,
     ground,
     text: tone('--text'),
     mark: tone('--data-7'),
+    tone(name) {
+      let out = tones.get(name);
+      if (out === undefined) tones.set(name, (out = tone(name)));
+      return out;
+    },
     map(name, at, trim = [0, 1]) {
       const key = `${name} ${trim.join()}`;
       let e = ends.get(key);
@@ -75,6 +82,21 @@ function colorsOf(el: HTMLElement, g: CanvasRenderingContext2D): Colors {
       return colormapAt(name, e[0] + (e[1] - e[0]) * Math.min(1, Math.max(0, at)));
     },
   };
+}
+
+const warned = new WeakSet<HTMLElement>();
+function stateOf(el: HTMLElement, states: string[], initial: string): string {
+  let best: HTMLElement | null = null, index = -Infinity;
+  for (const f of el.closest('section')?.querySelectorAll<HTMLElement>('.fragment.visible[data-backdrop-state]') ?? []) {
+    const i = Number(f.dataset.fragmentIndex ?? 0) || 0;
+    if (f !== el && i >= index) { best = f; index = i; }
+  }
+  const name = best?.dataset.backdropState ?? el.dataset.backdropState ?? initial;
+  if (states.includes(name)) return name;
+  const from = best ?? el;
+  if (!warned.has(from)) console.warn(`beeson: the backdrop state "${name}" of ${el.dataset.backdrop} is not one of ${states.join(', ')}`);
+  warned.add(from);
+  return initial;
 }
 
 const CACHE = new WeakMap<HTMLElement, Dots>();
@@ -126,13 +148,15 @@ export class Dots {
     el.prepend(this.canvas);
     CACHE.set(el, this);
     const name = this.kind.file(el);
-    if (given.has(name)) this.install(given.get(name));
-    this.ready = this.state === null ? load(name).then((data) => this.install(data)) : Promise.resolve();
+    if (name === null) this.install({});
+    else if (given.has(name)) this.install(given.get(name));
+    this.ready = this.state === null && name !== null ? load(name).then((data) => this.install(data)) : Promise.resolve();
   }
 
   private install(data: unknown): void {
     if (data === null || data === undefined || CACHE.get(this.el) !== this) return;
     this.state = this.kind.prepare(data, this.el);
+    this.sync(false);
     this.fit();
     if (this.pending) {
       this.pending = false;
@@ -217,6 +241,16 @@ export class Dots {
     this.redraw();
   }
 
+  sync(animate: boolean): void {
+    const { states, initial, sync } = this.kind;
+    if (!states || !initial || !sync || this.state === null) return;
+    const name = stateOf(this.el, states, initial);
+    if (animate && name === this.el.dataset.shown) return;
+    this.el.dataset.shown = name;
+    sync(this.state, name, animate && this.raf !== 0);
+    if (!this.raf) this.redraw();
+  }
+
   redraw(): void {
     if (!this.w) return;
     if (this.raf && this.t0 !== null) this.draw((performance.now() - this.t0) / 1000);
@@ -252,6 +286,7 @@ export class Dots {
     this.t0 = null;
     this.finished = false;
     this.clear();
+    this.sync(false);
   }
 
   start(force = false): void {
@@ -286,6 +321,7 @@ export class Dots {
     this.pending = false;
     this.finished = true;
     this.t0 = null;
+    this.sync(false);
     this.redraw();
   }
 
