@@ -938,6 +938,8 @@ describe('no Duplicate key printed in a cell', () => {
       const page = await load(t, platform);
       await click(page, 'section.present td');
       await frames(page);
+      await click(page, 'section.present td');
+      await frames(page);
       assert.equal(await page.evaluate(`document.activeElement?.closest('td, th') !== null`), true, 'the caret is not in a cell');
       const slides = await count(page);
       await press(page, 'Mod+d');

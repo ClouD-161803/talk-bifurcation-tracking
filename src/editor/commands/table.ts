@@ -2026,7 +2026,7 @@ export function install(app: App): void {
       const key = `${extend ? 'Shift+' : ''}Arrow${way}`;
       RANGE_KEYS.push(c.define({
         id: `table.${extend ? 'extend' : 'select'}${way}`,
-        label: `${extend ? 'Extend Selection' : 'Select Cell'} ${way === 'Left' ? 'Before' : way === 'Right' ? 'After' : way === 'Up' ? 'Above' : 'Below'}`,
+        label: `${extend ? 'Extend Selection' : 'Cell'} ${way === 'Left' ? 'Before' : way === 'Right' ? 'After' : way === 'Up' ? 'Above' : 'Below'}`,
         keys: { mac: [key], other: [key] },
         in: ['canvas'],
         enabled: rangeHeld,
@@ -2061,7 +2061,7 @@ export function install(app: App): void {
   for (const [way, label, key] of [[1, 'Next Cell', 'Tab'], [-1, 'Previous Cell', 'Shift+Tab']] as const) {
     RANGE_KEYS.push(c.define({
       id: `table.select${way > 0 ? 'Next' : 'Previous'}`,
-      label: `Select ${label}`,
+      label,
       keys: { mac: [key], other: [key] },
       in: ['canvas'],
       enabled: rangeHeld,
@@ -2073,7 +2073,7 @@ export function install(app: App): void {
   }
   c.define({
     id: 'table.enterBelow',
-    label: 'Select Cell Below',
+    label: 'Cell Below',
     keys: { mac: ['Enter'], other: ['Enter'] },
     in: ['text'],
     enabled: inCell,
