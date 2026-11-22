@@ -124,10 +124,10 @@ function drawSpaces(block: Element, node: Text, runs: Edit[]): void {
   }
 }
 
-function retype(block: Element, node: Text, was: string, now: string): void {
+function retype(block: Element, node: Text, was: string, now: string, file: string): void {
   const runs = runsOf(was, now);
   for (const e of [...runs].reverse()) node.replaceData(e.start, e.end - e.start, e.text);
-  if (!now.includes('\u00a0')) drawSpaces(block, node, runs);
+  if (!file.includes('\u00a0')) drawSpaces(block, node, runs);
 }
 
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
@@ -159,7 +159,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
   const sel = getSelection();
   const ends = sel?.rangeCount ? ([[sel.anchorNode, sel.anchorOffset], [sel.focusNode, sel.focusOffset]] as const) : null;
-  retype(textEl.live, lp.node, was, now);
+  retype(textEl.live, lp.node, was, now, decoded);
   if (sel && ends?.some(([n]) => n === lp.node)) {
     const [[an, ao], [fn, fo]] = ends.map(([n, o]) => [n, n === lp.node ? mapOffset(o, was, now) : o] as const);
     if (an && fn && (sel.anchorOffset !== ao || sel.focusOffset !== fo)) sel.setBaseAndExtent(an, ao, fn, fo);
@@ -192,7 +192,7 @@ export function repairText(pairing: Pairing, textEl: TextElement, s: SrcEl, math
 function setContent(ctx: Ctx, live: Element, content: string, was: string | null = null): void {
   const node = live.firstChild;
   if (was !== null && live.childNodes.length === 1 && node instanceof Text && !/[<&$\\]/.test(was + content) && sameText(node.data, was)) {
-    retype(live, node, was, content);
+    retype(live, node, was, content, content);
     ctx.touched.add(live);
     ctx.changed.push(live);
     ctx.hosts.push(live);
