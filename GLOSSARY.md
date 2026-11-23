@@ -12,6 +12,10 @@ The editor shows the deck between the navigator at its left and the inspector at
 
 A session is one run of the edit command on one talk folder. It has one host, who started it, and any number of guests, who joined through its link. A guest on another network reaches the edit command through a relay. Every person of a session edits the same deck, and the edit command keeps its states as versions. A comment belongs to one thread, and a thread belongs to one element or one slide.
 
+## Allow
+
+To let `npm run check` pass a slide with a named problem of writing, i.e. long speaker notes, a heading out of its place, an element copied or moved between two steps, or words off the slide, with `data-allow` on the slide. The check still lists the slide.
+
 ## Animated plot
 
 A 2D figure on a slide that is played as an animation, drawn from the JSON data written next to it, with one or more plot panels.

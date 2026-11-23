@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util';
 import { deckSettled, deckUrl, launch } from './chrome.mjs';
 import { figureProblems } from './figures.mjs';
 import { pdfFigureProblems } from './pdf-figures.mjs';
+import { allowable, allowedOf, headingProblems, notesProblem, outsideProblems, slideFacts, stepProblems, stepSettled, stepsMeasured, stepWatch } from './slide-problems.mjs';
 import { deckTex } from './tex.mjs';
 import { launch as launchWebDriver, serve } from './webdriver.mjs';
 
@@ -54,6 +55,11 @@ const videosWithoutPoster =`[...document.querySelectorAll('video:not([poster])')
 
 mkdirSync(options.out, { recursive: true });
 const failures = [];
+const allowed = [];
+
+function report(where, allow, problem) {
+  (allowedOf(allow).names.includes(problem.kind) ? allowed : failures).push(`${where}: ${problem.text}`);
+}
 const fresh = deckTex(options.deck);
 const written = existsSync(fresh.file) ? readFileSync(fresh.file, 'utf8') : null;
 const sources = ['preamble.tex', 'references.bib'].some((name) => existsSync(join(dirname(options.deck), name)));
@@ -203,6 +209,8 @@ try {
     await first.waitFor(deckSettled);
     const slides = await first.evaluate(listSlides);
     await first.close();
+    const named = (h, v) => `slide ${slides.findIndex(([sh, sv]) => sh === h && sv === v) + 1} (#/${h}/${v})`;
+    const seen = [];
 
     for (const [n, [h, v]] of slides.entries()) {
       const name = `${theme}-${String(n + 1).padStart(2, '0')}.png`;
@@ -214,23 +222,48 @@ try {
         page.errors.push(`opened at #/${at.h}/${at.v ?? 0}, set hash: true in Reveal.initialize`);
       }
       writeFileSync(join(options.out, name), await page.screenshot());
+      const facts = { ...(await page.evaluate(slideFacts)), name: `${name} (#/${h}/${v})` };
+      seen.push(facts);
+      if (theme === themes[0]) {
+        const notes = notesProblem(facts);
+        if (notes) report(named(h, v), facts.allow, notes);
+        const { names, unknown } = allowedOf(facts.allow);
+        if (names.length) console.log(`${named(h, v)} allows ${names.join(', ')} with data-allow`);
+        if (unknown.length) failures.push(`${named(h, v)}: data-allow names ${unknown.join(', ')}, which the check does not know: write ${allowable.join(', ')}`);
+      }
       for (const error of [...page.errors, ...(await page.evaluate(deckProblems))]) {
         failures.push(`${name} (#/${h}/${v}): ${error}`);
       }
       await page.close();
     }
     console.log(`${theme}: ${slides.length} slides saved to ${options.out}/${theme}-*.png`);
+    for (const problem of headingProblems(seen)) report(problem.slide.name, problem.slide.allow, problem);
 
     const animated = await browser.newPage();
     await animated.goto(deckAt(`theme=${theme}`));
     await animated.waitFor(deckSettled);
     let steps = 1;
     const atEnd = 'Reveal.isLastSlide() && !Reveal.availableFragments().next';
+    const measured = theme === themes[0] && (await animated.evaluate(stepsMeasured)) && (await animated.evaluate(stepWatch));
+    if (theme === themes[0] && !measured) console.log(`copies, moves, and words off the slide: not measured, since this browser lacks checkVisibility or getAnimations`);
+    let shown = measured ? await animated.evaluate('beesonStep()') : null;
+    const ended = (found) => {
+      for (const problem of outsideProblems(found)) report(named(found.h, found.v), found.allow, problem);
+    };
     while (steps < 1000 && !(await animated.evaluate(atEnd))) {
       await animated.evaluate('Reveal.next()');
-      await new Promise((done) => setTimeout(done, stepDelay));
+      if (measured) {
+        await animated.waitFor(stepSettled, 60000);
+        const found = await animated.evaluate('beesonStep()');
+        if (found.h !== shown.h || found.v !== shown.v) ended(shown);
+        shown = found;
+        for (const problem of stepProblems(found)) report(named(found.h, found.v), found.allow, problem);
+      } else {
+        await new Promise((done) => setTimeout(done, stepDelay));
+      }
       steps += 1;
     }
+    if (shown) ended(shown);
     await new Promise((done) => setTimeout(done, 1000));
     console.log(`${theme}: ${steps} steps run with animations`);
     for (const error of animated.errors) failures.push(`${theme} animated run: ${error}`);
@@ -248,6 +281,7 @@ try {
   server?.close();
 }
 
+for (const problem of allowed) console.log(`allowed with data-allow: ${problem}`);
 if (failures.length) {
   console.error(`${failures.length} page errors:`);
   for (const failure of failures) console.error(`  ${failure}`);
