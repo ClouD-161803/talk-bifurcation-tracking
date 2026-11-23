@@ -111,3 +111,14 @@ test('the frame of the current slide of the speaker view does not post the step 
   await page.waitFor(`window.__heard.length > 0`);
   assert.deepEqual(await page.evaluate('window.__heard'), ['1/0'], 'the frame posts its opening step, which the speaker view sends to the deck');
 });
+
+test('the frame of the current slide of the speaker view is not set back by a state that the deck sent before the step of the speaker reached it', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 0));
+  await page.waitFor(`${at} === '1/0'`);
+  await stepTo(page, KEY_RIGHT, '1/1');
+  const before = await page.evaluate(`${moves}.length`);
+  for (const [h, f] of [[1, 0], [1, 1], [1, 3]]) await page.evaluate(setState(h, f));
+  await page.waitFor(`${at} === '1/3'`);
+  assert.deepEqual(await page.evaluate(`${moves}.slice(${before})`), ['1/3'], 'the frame is set back by a state of the deck that is older than its step');
+});

@@ -117,12 +117,14 @@ const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? 
 
 function receiveSteps(deck: Deck): void {
   let posted: string[] = [];
+  let left: string | null = null;
   let last: string | null = null;
   const post = () => {
     const config = deck.getConfig();
     if (!config.postMessageEvents) return;
     const step = stepOf(deck.getState());
     if (last !== null && step !== last) {
+      if (!posted.length) left = last;
       last = step;
       posted.push(step);
       return;
@@ -143,9 +145,13 @@ function receiveSteps(deck: Deck): void {
     const state = m?.method === 'setState' ? m.args?.[0] : null;
     if (!state || typeof state !== 'object') return;
     ev.stopImmediatePropagation();
-    const at = posted.indexOf(stepOf(state));
-    posted = at >= 0 ? posted.slice(at + 1) : [];
-    if (at >= 0) return;
+    const step = stepOf(state);
+    const at = posted.indexOf(step);
+    if (at >= 0 || (posted.length && step === left)) {
+      posted = posted.slice(at + 1);
+      return;
+    }
+    posted = [];
     const config = deck.getConfig();
     const posts = config.postMessageEvents;
     config.postMessageEvents = false;
