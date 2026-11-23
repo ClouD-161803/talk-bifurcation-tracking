@@ -522,16 +522,20 @@ const dotted = `(async () => {
     };
     const g = document.createElement('canvas').getContext('2d');
     const mark = () => {
-      g.fillStyle = getComputedStyle(b.el).getPropertyValue('--data-7').trim();
+      const tone = b.el.dataset.system?.startsWith('bicircular') ? '--data-5' : '--data-7';
+      g.fillStyle = getComputedStyle(b.el).getPropertyValue(tone).trim();
       return [1, 3, 5].map((k) => parseInt(String(g.fillStyle).slice(k, k + 2), 16));
     };
     const center = (c) => {
       const sharp = c.width / b.el.offsetWidth, scale = b.el.offsetHeight / 2 / b.view.half;
-      const { unit, center: rows } = b.state.data, [cx, cy] = rows[rows.length - 1].map((v) => v * unit);
-      const x = b.el.offsetWidth / 2 + (cx - b.view.cx) * scale, y = b.el.offsetHeight / 2 - (cy - b.view.cy) * scale;
-      const at = (dx, dy) => [...c.getContext('2d').getImageData(Math.round((x + dx) * sharp), Math.round((y + dy) * sharp), 1, 1).data.slice(0, 3)];
+      const { unit, center: rows, halos } = b.state.data;
+      const read = ([px, py], dx, dy) => {
+        const x = b.el.offsetWidth / 2 + (px * unit - b.view.cx) * scale, y = b.el.offsetHeight / 2 - (py * unit - b.view.cy) * scale;
+        return [...c.getContext('2d').getImageData(Math.round((x + dx) * sharp), Math.round((y + dy) * sharp), 1, 1).data.slice(0, 3)];
+      };
       const near = (rgb) => mark().every((v, i) => Math.abs(v - rgb[i]) < 40);
-      return { diagonal: near(at(2, 2)), side: near(at(3, 0)) };
+      const mid = rows[rows.length - 1], halo = halos[halos.length - 1];
+      return { diagonal: near(read(mid, 2, 2)), side: near(read(mid, 3, 0)), halos: [0, 2].map((i) => near(read([halo[i], halo[i + 1]], 0, 0))) };
     };
     const c = b.canvases[0];
     const dark = inked(c);
@@ -539,9 +543,10 @@ const dotted = `(async () => {
     document.documentElement.dataset.theme = 'light';
     b.redraw();
     const light = inked(c);
+    const midLight = mid && center(c);
     document.documentElement.dataset.theme = 'dark';
     b.redraw();
-    out.push({ name: b.el.closest('section').querySelector('h2').textContent, view: b.view, fitted: b.fittedToDrawing, extent: b.extent, span: b.span, period: b.period, done: b.done, canvases: b.el.querySelectorAll(':scope > canvas').length, dark, light, mid });
+    out.push({ name: b.el.closest('section').querySelector('h2').textContent, view: b.view, fitted: b.fittedToDrawing, extent: b.extent, span: b.span, period: b.period, done: b.done, canvases: b.el.querySelectorAll(':scope > canvas').length, dark, light, mid, midLight });
   }
   return out;
 })()`;
@@ -616,8 +621,10 @@ test('a Poincaré section and the tori are drawn inside their boxes in both mode
     assert.ok(bicircular[mode].blue > 0.95, `${bicircular[mode].blue} of the bicircular section is blue in the ${mode} mode`);
     assert.ok(moon[mode].blue < 0.8, `${moon[mode].blue} of the section in plasma is blue in the ${mode} mode`);
   }
-  assert.deepEqual(moon.mid, { diagonal: true, side: true }, 'the elliptic center is not a disk');
-  assert.deepEqual(bicircular.mid, { diagonal: true, side: false }, 'the hyperbolic center is not a cross');
+  for (const mid of ['mid', 'midLight']) {
+    assert.deepEqual(moon[mid], { diagonal: true, side: true, halos: [true, true] }, `${mid}: the elliptic center is not a disk, or the marks are not in --data-7`);
+    assert.deepEqual(bicircular[mid], { diagonal: true, side: false, halos: [true, true] }, `${mid}: the hyperbolic center is not a cross, or the marks are not in --data-5`);
+  }
   assert.ok(all.dark.n > two.dark.n && two.dark.n > 3 * none.dark.n, `${all.dark.n} pixels of ten tori, ${two.dark.n} of one, ${none.dark.n} of none`);
   assert.ok(Math.abs(moon.span - 0.5) < 1e-9 && Math.abs(sun.span - 13) < 1e-9, `${moon.span} ${sun.span}`);
   assert.ok(Math.abs(all.span - 23.1) < 1e-9, `${all.span}`);
