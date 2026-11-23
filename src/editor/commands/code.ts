@@ -167,10 +167,8 @@ const TOKENS: [string, string][] = [
 const NAME = (token: string) => `beeson-code-${token.replace(/_/g, '-')}`;
 const DIM = 'beeson-code-dim';
 const NUMBERS = `
-html.beeson-editor .reveal pre[data-beeson-lines] { position: relative; }
-html.beeson-editor .reveal pre[data-beeson-lines]::before { content: attr(data-beeson-lines); position: absolute; top: 24px; left: 32px; white-space: pre; text-align: right; color: var(--muted); pointer-events: none; user-select: none; }
-${[1, 2, 3].map((d) => `html.beeson-editor .reveal pre[data-beeson-digits="${d}"]::before { width: ${d}ch; }
-html.beeson-editor .reveal pre[data-beeson-digits="${d}"] > code { padding-left: calc(${d}ch + 1em); }`).join('\n')}
+html.beeson-editor .reveal pre[data-beeson-lines]::before { content: attr(data-beeson-lines); float: left; margin-right: 1em; white-space: pre; text-align: right; color: var(--muted); pointer-events: none; user-select: none; }
+${[1, 2, 3].map((d) => `html.beeson-editor .reveal pre[data-beeson-digits="${d}"]::before { width: ${d}ch; }`).join('\n')}
 `;
 
 const STYLE = [

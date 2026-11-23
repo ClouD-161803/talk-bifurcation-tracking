@@ -4,7 +4,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -208,5 +208,54 @@ test('a new code box gets a language, is colored, and is shown in the Code pane'
   assert.ok((await ranges(page, 'number')) >= 1, 'the number of a new code box is not colored');
   assert.equal(await pane(page), 'code');
   assert.equal(await language(page), 'Python');
+  assert.deepEqual(page.errors, []);
+});
+
+const numberLayout = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present pre')].map((pre) => {
+  const code = pre.querySelector(':scope > code');
+  const box = pre.getBoundingClientRect();
+  const scale = box.width / pre.offsetWidth;
+  const p = getComputedStyle(pre);
+  const n = getComputedStyle(pre, '::before');
+  const px = (v) => parseFloat(v) || 0;
+  const absolute = n.position === 'absolute';
+  const x = (absolute ? px(p.borderLeftWidth) + px(n.left) : px(p.borderLeftWidth) + px(p.paddingLeft)) + px(n.marginLeft);
+  const y = (absolute ? px(p.borderTopWidth) + px(n.top) : px(p.borderTopWidth) + px(p.paddingTop)) + px(n.marginTop);
+  const c = getComputedStyle(code);
+  const codeBox = code.getBoundingClientRect();
+  const lineTop = (codeBox.top - box.top) / scale + px(c.borderTopWidth) + px(c.paddingTop);
+  const text = code.firstChild;
+  const glyph = (i) => { const r = document.createRange(); r.setStart(text, i); r.setEnd(text, i + 1); return r.getBoundingClientRect(); };
+  const starts = [0];
+  for (let i = 0; i < text.data.length; i++) if (text.data[i] === '\\n') starts.push(i + 1);
+  const first = glyph(0);
+  return {
+    padding: p.padding,
+    y, lineTop,
+    numberLine: px(n.lineHeight), codeLine: px(c.lineHeight),
+    steps: starts.map((s, k) => (glyph(s).top - first.top) / scale - k * px(c.lineHeight)),
+    left: x, contentLeft: px(p.borderLeftWidth) + px(p.paddingLeft),
+    gap: (first.left - box.left) / scale - x - px(n.width), em: px(p.fontSize),
+  };
+})`);
+
+test('the line numbers of a code box are drawn on its lines whatever the padding of the box, in both modes', async (t) => {
+  const page = await editorPage(browser, { deck: 'test/pages/editor-code-padding.html', page: { width: 1600, height: 1000 } });
+  t.after(() => page.close());
+  for (const mode of ['dark', 'light']) {
+    await page.evaluate(`document.documentElement.dataset.theme = '${mode}'`);
+    await page.waitFor(`[...document.querySelectorAll('.reveal section.present pre')].every((p) => p.hasAttribute('data-beeson-lines'))`);
+    await frames(page);
+    const boxes = await numberLayout(page);
+    assert.deepEqual(boxes.map((b) => b.padding), ['24px 32px', '14px 20px']);
+    for (const b of boxes) {
+      const where = `in the box with padding ${b.padding} in the ${mode} mode`;
+      assert.ok(Math.abs(b.y - b.lineTop) < 1, `the first number is drawn ${b.y - b.lineTop}px below the first line of the code ${where}`);
+      assert.ok(Math.abs(b.numberLine - b.codeLine) < 0.5, `the numbers are not drawn on the line height of the code ${where}`);
+      assert.ok(b.steps.every((d) => Math.abs(d) < 1), `the lines of the code are not on one grid ${where}: ${b.steps}`);
+      assert.ok(Math.abs(b.left - b.contentLeft) < 1, `the numbers are drawn ${b.left - b.contentLeft}px off the padding ${where}`);
+      assert.ok(Math.abs(b.gap - b.em) < 1, `the gap between the numbers and the code is ${b.gap}px, not one em ${where}`);
+    }
+  }
   assert.deepEqual(page.errors, []);
 });
