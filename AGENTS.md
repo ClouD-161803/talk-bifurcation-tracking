@@ -35,7 +35,7 @@ Hard invariants are never traded away for other goals. When a change would break
 - Write an element that is shown at several steps once, and change it in place, e.g. with `data-highlight`. Copies for each step are faded into each other, hence the element is seen to flicker, and to jump when the copies differ in width.
 - Leave each heading where the theme puts it. Do not give a slide its own top padding, and fit the content under the heading instead.
 - Reuse the symbols of the deck and of its main paper, and do not coin notation.
-- `npm run check` fails on speaker notes of more than 40 words, and on a heading off the place of the headings of the other slides of its layout. It fails as well on an element that is copied or moved between two steps of a slide. Mark an exception on a slide only with the attribute described under Tooling in `REFERENCE.md`.
+- `npm run check` fails on speaker notes of more than 40 words, and on a heading off the place of the headings of the other slides of its layout. It fails as well on an element that is copied or moved between two steps of a slide. Mark an exception on a slide only with `data-allow`, described under Tooling in `REFERENCE.md`.
 - Do not write `data-moves-on`. It is set by the theme when the deck is started.
 - Someone may have the deck open in the editor while you change `index.html`. The editor then loads your change. At the next save, the unsaved edits of this person are merged into it.
 - When you copy a newer `theme/` into a talk, convert every class and attribute listed under "Avoid" in `GLOSSARY.md` to its new name. The theme reads only the new names. Copy `scripts/` and `src/` of the same version with it, as listed under Tooling in `REFERENCE.md`, then run `npm run tex`. When the version of TyCHO changes, write each TyCHO scene again, as described under Figures in `REFERENCE.md`.
@@ -60,7 +60,7 @@ Start Chrome only with the commands above or with `launch()` of `scripts/chrome.
 ## Before you hand work over
 
 - Run `npm run check` and `npm run pdf`. Hand work over only when `npm run check` passes.
-- Look at the last page of each changed slide in `slides.pdf`. Text that runs off a slide is not reported by `npm run check`.
+- Look at the last page of each changed slide in `slides.pdf`. `npm run check` reports words that run off a slide, but not elements that overlap each other.
 - NEVER assume the failure was there before your change.
 
 ## Terms
