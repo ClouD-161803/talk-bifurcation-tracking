@@ -54,7 +54,7 @@ Avoid "references file", and avoid "library" for the bibliography.
 
 Words framed by a thin rounded box in their own color, over a faint tint of it, e.g. "open problem" in a cell of a table. It is the class `boxed` on a `span`.
 
-Avoid "badge", which is the count of the threads of an element, and avoid "chip" and "pill".
+Avoid "badge", which is the count of the threads of an element, "chip", which is a tile of the editor, and "pill".
 
 ## Built-in backdrop
 
@@ -103,6 +103,12 @@ The seconds between the click of a step and the moment an element is shown, as t
 A window of the editor that is shown over the deck to ask a question or to give a message, until it is answered or closed.
 
 Avoid "card". The heading over the scrubber of the progress line is not a card either, and its class is `scrub-heading`.
+
+## Draft
+
+A slide that is not finished yet, written with `data-draft` and drawn with the chip Draft in the editor. A draft is presented, printed, and exported as any other slide.
+
+Avoid "draft" for the unsaved edits kept in the storage of the browser, and "badge" for the chip of a draft, since a badge counts the threads of comments.
 
 ## Edit command
 

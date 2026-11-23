@@ -4,6 +4,7 @@ import { icon } from '../ui/icons.ts';
 import { transitionOf } from '../review/transitions.ts';
 import type { MoveSection, RenameSection } from '../commands/slide.ts';
 import { describe, droppedOrder, isHidden, showPlaces, type MoveTo, type Navigator } from './navigator.ts';
+import { draftChip, isDraft } from '../draft-slide.ts';
 import { followTheme, Thumbs } from './thumbs.ts';
 
 const SIZE_KEY = 'beeson-sorter-size';
@@ -16,7 +17,7 @@ const DRAG_START = 4;
 export const tileSlide = new WeakMap<Element, Element>();
 
 type Group = { key: string; head: Element | null; title: string; slides: Element[] };
-type Tile = { el: HTMLButtonElement; pic: HTMLElement; no: HTMLElement; corner: HTMLElement; dots: HTMLElement };
+type Tile = { el: HTMLButtonElement; pic: HTMLElement; no: HTMLElement; corner: HTMLElement; dots: HTMLElement; draft: HTMLElement };
 type Drag = { slides: Element[]; x: number; y: number; on: boolean; gap: number; head?: Element };
 
 const CSS = `
@@ -48,6 +49,7 @@ html.beeson-editor body > .beeson-edit-sorter[hidden], .beeson-edit-sorter[hidde
 .beeson-edit-sorter .tile .corner[hidden], .beeson-edit-sorter .tile .dots[hidden] { display: none; }
 .beeson-edit-sorter .tile .dots { position: absolute; left: 7px; bottom: 6px; display: flex; gap: 3px; pointer-events: none; }
 .beeson-edit-sorter .tile .dots i { width: 5px; height: 5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.beeson-edit-sorter .tile .beeson-draft-chip { position: absolute; left: 6px; top: 6px; }
 .beeson-edit-sorter .tile.dragged { opacity: 0.35; }
 .beeson-edit-sorter .drop { position: absolute; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--ed-select); pointer-events: none; }
 .beeson-edit-sorter .drop[hidden] { display: none; }
@@ -234,7 +236,8 @@ export class Sorter {
         t.el.classList.toggle('hidden-slide', hidden);
         t.el.setAttribute('aria-selected', String(picked.has(s)));
         t.el.tabIndex = s === current ? 0 : -1;
-        t.el.setAttribute('aria-label', `Slide ${n}: ${title}${hidden ? ', hidden' : ''}`);
+        t.draft.hidden = !isDraft(s);
+        t.el.setAttribute('aria-label', `Slide ${n}: ${title}${hidden ? ', hidden' : ''}${isDraft(s) ? ', draft' : ''}`);
         t.el.title = `Slide ${n}: ${title}`;
         const transition = transitionOf(this.app, s);
         t.corner.hidden = transition === 'fade';
@@ -347,7 +350,8 @@ export class Sorter {
     const corner = make('span', 'corner');
     const dots = make('span', 'dots');
     dots.append(make('i'), make('i'), make('i'));
-    frame.append(pic, dots, corner);
+    const draft = draftChip();
+    frame.append(pic, dots, corner, draft);
     const no = make('span', 'no');
     el.append(frame, no);
     el.addEventListener('click', (ev) => this.onClick(slide, ev));
@@ -355,7 +359,7 @@ export class Sorter {
     el.addEventListener('contextmenu', () => {
       if (!this.selected().includes(slide)) this.select([slide], slide);
     });
-    return { el, pic, no, corner, dots };
+    return { el, pic, no, corner, dots, draft };
   }
 
   private select(slides: Element[], current: Element | null, anchor: Element | null = current): void {

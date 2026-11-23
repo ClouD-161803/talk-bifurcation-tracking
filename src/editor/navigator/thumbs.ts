@@ -292,7 +292,7 @@ export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: n
   else drawBackdrops(slide, clone);
 }
 
-const QUIET = new Set(['contenteditable', 'tabindex', 'aria-hidden', 'hidden', 'role', 'aria-label', 'data-appendix', 'data-visibility']);
+const QUIET = new Set(['contenteditable', 'tabindex', 'aria-hidden', 'hidden', 'role', 'aria-label', 'data-appendix', 'data-visibility', 'data-draft']);
 
 function seen(m: MutationRecord): boolean {
   if (m.type !== 'attributes') return true;
