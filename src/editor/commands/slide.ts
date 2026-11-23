@@ -411,7 +411,7 @@ export function install(app: App): void {
     {
       id: 'slide.draft',
       label: 'Set as Draft',
-      keys: { mac: ['Mod+Alt+Shift+D'], other: ['Ctrl+Shift+D'] },
+      keys: { mac: ['Mod+Alt+Shift+D'] },
       in: ['navigator', 'canvas'],
       inText: true,
       menu: slideMenu(41),

@@ -90,7 +90,7 @@ test('the chip Draft is drawn over the slide, inside the canvas, on a phone', { 
 });
 
 for (const platform of ['mac', 'other']) {
-  test(`Set as Draft and its key write data-draft on every selected slide as one change of the history, and show its state (${platform})`, { timeout: 120000 }, async (t) => {
+  test(`Set as Draft, and its key on a Mac, write data-draft on every selected slide as one change of the history, and show its state (${platform})`, { timeout: 120000 }, async (t) => {
     const page = await open(t, { platform });
     await showNavigator(page);
     await row(page, 0);
@@ -104,7 +104,8 @@ for (const platform of ['mac', 'other']) {
     await page.evaluate('window.BeesonEditor.undo()');
     await byteExact(page);
     await row(page, 1);
-    await press(page, platform === 'mac' ? 'Mod+Alt+Shift+D' : 'Ctrl+Shift+D');
+    if (platform === 'mac') await press(page, 'Mod+Alt+Shift+D');
+    else await exec(page, 'slide.draft');
     await page.waitFor(`!document.querySelectorAll('.reveal .slides > section')[1].hasAttribute('data-draft')`);
     assert.equal((await state(page, 'slide.draft')).checked, false);
     assert.doesNotMatch(await page.evaluate('window.BeesonEditor.render()'), /<section data-draft>\n {6}<h2>A {3}draft/);
