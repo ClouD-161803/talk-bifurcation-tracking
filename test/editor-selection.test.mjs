@@ -1661,22 +1661,22 @@ describe('turns, Regroup, and layers of inner groups', () => {
       });
     }
 
-    test(`V20: Send to Back puts a shape just over the backdrop, where a click selects it (${platform})`, async (t) => {
+    const hit = (page, p) => page.evaluate(`document.elementFromPoint(${p.x}, ${p.y})?.closest('.shape, .backdrop')?.classList.value.replace(/ beeson-[\\w-]+/g, '') ?? null`);
+    const backs = async (page) => [(await state(page, 'arrange.order.backward')).enabled, (await state(page, 'arrange.order.back')).enabled];
+
+    test(`V20: a shape written with z-index -1 is drawn over the backdrop, and Send to Back keeps it there, where a click selects it (${platform})`, async (t) => {
       const page = await load(t, platform, BACKDROP);
       const late = '.shape.rounded';
       const alone = await at(page, late, 0.85, 0.5);
+      assert.equal(await hit(page, alone), 'shape rounded tone-accent');
       await click(page, alone);
       assert.equal(await classes(page), 'shape rounded tone-accent');
-      assert.equal((await state(page, 'arrange.order.back')).enabled, true);
       await exec(page, 'arrange.order.back');
       await frames(page);
-      const edited = await render(page);
-      assert.doesNotMatch(edited, /z-index: -/);
-      const hit = (p) => page.evaluate(`document.elementFromPoint(${p.x}, ${p.y})?.closest('.shape, .backdrop')?.classList.value.replace(/ beeson-[\\w-]+/g, '') ?? null`);
-      assert.equal(await hit(alone), 'shape rounded tone-accent');
-      assert.equal(await hit(await at(page, late, 0.1, 0.5)), 'shape tone-blue');
-      assert.equal((await state(page, 'arrange.order.back')).enabled, false);
-      assert.equal((await state(page, 'arrange.order.backward')).enabled, false);
+      assert.notEqual(await render(page), SOURCE);
+      assert.equal(await hit(page, alone), 'shape rounded tone-accent');
+      assert.equal(await hit(page, await at(page, late, 0.1, 0.5)), 'shape tone-blue');
+      assert.deepEqual(await backs(page), [false, false]);
       await click(page, `${S} h2`);
       await click(page, alone);
       assert.equal(await classes(page), 'shape rounded tone-accent');
@@ -1691,13 +1691,16 @@ describe('turns, Regroup, and layers of inner groups', () => {
 
     test(`V20: Send Backward and Send to Back do not pass the backdrop (${platform})`, async (t) => {
       const page = await load(t, platform, BACKDROP);
-      await click(page, await at(page, '.shape.tone-blue', 0.2, 0.5));
+      const blue = await at(page, '.shape.tone-blue', 0.2, 0.5);
+      await click(page, blue);
       assert.equal(await classes(page), 'shape tone-blue');
-      assert.equal((await state(page, 'arrange.order.backward')).enabled, false);
-      assert.equal((await state(page, 'arrange.order.back')).enabled, false);
       await exec(page, 'arrange.order.backward');
       await exec(page, 'arrange.order.back');
-      assert.equal(await render(page), SOURCE);
+      await frames(page);
+      assert.match(await render(page), /translate: 1100px 350px; z-index: -1"/);
+      assert.equal(await hit(page, blue), 'shape tone-blue');
+      assert.deepEqual(await backs(page), [false, false]);
+      assert.deepEqual(page.errors, []);
     });
 
     const copied = (page) => page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll(':scope > .shape')].map((e) => e.getAttribute('data-group'))`);
