@@ -28,6 +28,8 @@ async function open(t) {
   await page.waitFor(deckSettled);
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
   assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(DECK, 'utf8'))})`)).problems, []);
+  await page.evaluate(`document.querySelector('.beeson-step-tabs button').click()`);
+  await page.waitFor(`document.querySelector('.beeson-step-tabs button').getAttribute('aria-pressed') === 'true'`);
   return page;
 }
 const SHOW = `document.querySelector('.beeson-edit-show iframe')?.contentWindow`;

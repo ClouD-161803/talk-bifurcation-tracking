@@ -58,7 +58,7 @@ async function assertPlaced(page) {
 
 test('a slide whose steps are cut into ranges has tabs beside it, and no second copy of them in the status bar', { timeout: 120000 }, async (t) => {
   const page = await open(t);
-  assert.deepEqual(await tabs(page), ['*Up to step 2', 'From step 3']);
+  assert.deepEqual(await tabs(page), ['Up to step 2', '*From step 3']);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-shown-steps')`), null);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].filter((b) => /step [0-9]/i.test(b.textContent)).map((b) => b.textContent)`), []);
   await assertPlaced(page);
@@ -97,14 +97,37 @@ test('a slide whose steps are cut into ranges has tabs beside it, and no second 
   assert.deepEqual(page.errors, []);
 });
 
+const seenIn = (root, id) => `(() => { const el = ${root}?.querySelector('#${id}'); return !!el && getComputedStyle(el).visibility === 'visible'; })()`;
+const thumbOf = (pics, i) => `document.querySelectorAll('${pics}')[${i}]?.shadowRoot`;
+const PANELS = 1;
+
+test('a slide with steps and without a stack is shown at its last tab on arrival, in its thumbnail, and in its tile in Slide Sorter', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  assert.deepEqual(await tabs(page), ['Up to step 2', '*From step 3']);
+  assert.deepEqual(await shown(page, SWAP), ['new-lead', 'new-step']);
+  await page.evaluate(`Reveal.slide(${PANELS})`);
+  await page.waitFor(`${read('.beeson-step-tabs')}?.length === 4`);
+  assert.deepEqual(await tabs(page), ['Before step 1', 'Step 1', 'Step 2', '*From step 3']);
+  assert.deepEqual(await shown(page, ['panel-0', 'panel-1', 'panel-2', 'panel-3']), ['panel-3']);
+  await page.evaluate(`document.documentElement.classList.contains('beeson-nav') || window.BeesonEditor.exec('view.navigator')`);
+  await page.waitFor(seenIn(thumbOf('.beeson-edit-nav .row .pic', PANELS), 'panel-3'));
+  assert.equal(await page.evaluate(seenIn(thumbOf('.beeson-edit-nav .row .pic', PANELS), 'panel-0')), false);
+  await page.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
+  await page.waitFor(seenIn(thumbOf('.beeson-edit-sorter .tile .pic', PANELS), 'panel-3'));
+  assert.equal(await page.evaluate(seenIn(thumbOf('.beeson-edit-sorter .tile .pic', PANELS), 'panel-0')), false);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), readFileSync(DECK, 'utf8'));
+  assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').enabled`), false);
+  assert.deepEqual(page.errors, []);
+});
+
 test('the tabs fit beside the slide on a phone held across', { timeout: 120000 }, async (t) => {
   const page = await open(t, { width: 844, height: 390, mobile: true });
-  assert.deepEqual(await tabs(page), ['*Up to step 2', 'From step 3']);
+  assert.deepEqual(await tabs(page), ['Up to step 2', '*From step 3']);
   await assertPlaced(page);
-  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [await centerOf(page, tab('From step 3'))] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [await centerOf(page, tab('Up to step 2'))] });
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitFor(`${tab('From step 3')}?.getAttribute('aria-pressed') === 'true'`);
-  assert.deepEqual(await shown(page, SWAP), ['new-lead', 'new-step']);
+  await page.waitFor(`${tab('Up to step 2')}?.getAttribute('aria-pressed') === 'true'`);
+  assert.deepEqual(await shown(page, SWAP), ['old-lead', 'old-step', 'old-span']);
   assert.deepEqual(page.errors, []);
 });
 
@@ -115,13 +138,13 @@ test('a row of the Steps pane whose element is hidden at the steps shown shows t
   await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
   const row = (text) => `[...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.text').textContent.startsWith(${JSON.stringify(text)}))`;
   await page.waitFor(`!!${row('The new lead')}?.getBoundingClientRect().width`);
+  await click(page, await centerOf(page, `${row('The old step')}.querySelector('.text')`));
+  await page.waitFor(`${read('.beeson-step-tabs')}?.[0] === '*Up to step 2'`);
+  assert.deepEqual(await selected(page), ['old-step']);
   await click(page, await centerOf(page, `${row('The new lead')}.querySelector('.text')`));
   await page.waitFor(`${read('.beeson-step-tabs')}?.[1] === '*From step 3'`);
   assert.deepEqual(await selected(page), ['new-lead']);
   assert.deepEqual(await tabs(page), ['Up to step 2', '*From step 3']);
-  await click(page, await centerOf(page, `${row('The old step')}.querySelector('.text')`));
-  await page.waitFor(`${read('.beeson-step-tabs')}?.[0] === '*Up to step 2'`);
-  assert.deepEqual(await selected(page), ['old-step']);
   await click(page, await centerOf(page, `${row('The old lead')}.querySelector('.text')`));
   await page.waitFor(`window.BeesonEditor.selection()[0]?.matches('.fade-out')`);
   assert.deepEqual(await tabs(page), ['*Up to step 2', 'From step 3']);
@@ -133,8 +156,8 @@ test('a row of the Object List whose element is hidden at the steps shown shows 
   await page.evaluate(`window.BeesonEditor.exec('view.objects')`);
   const row = (text) => `[...document.querySelectorAll('.beeson-edit-objects .row')].find((r) => r.textContent.includes(${JSON.stringify(text)}))`;
   await page.waitFor(`!!${row('The new lead')}?.getBoundingClientRect().width`);
-  await click(page, await centerOf(page, row('The new lead')));
-  await page.waitFor(`${read('.beeson-step-tabs')}?.[1] === '*From step 3'`);
-  assert.deepEqual(await selected(page), ['new-lead']);
+  await click(page, await centerOf(page, row('The old step')));
+  await page.waitFor(`${read('.beeson-step-tabs')}?.[0] === '*Up to step 2'`);
+  assert.deepEqual(await selected(page), ['old-step']);
   assert.deepEqual(page.errors, []);
 });

@@ -79,11 +79,11 @@ test('on a slide whose ranges hide elements, the hidden elements are skipped by 
     await press(page, 'Tab');
     for (const id of await selected(page)) seen.add(id);
   }
-  assert.deepEqual([...seen].sort(), ['h2', 'panel-0']);
+  assert.deepEqual([...seen].sort(), ['h2', 'panel-3']);
   await press(page, 'Escape');
   const slide = await page.evaluate(`(() => { const r = document.querySelector('.reveal').getBoundingClientRect(); return { x: r.left + 4, y: r.top + 4, w: r.width - 8, h: r.height - 8 }; })()`);
   await drag(page, { x: slide.x, y: slide.y }, { dx: slide.w, dy: slide.h });
-  assert.deepEqual((await selected(page)).sort(), ['h2', 'panel-0']);
+  assert.deepEqual((await selected(page)).sort(), ['h2', 'panel-3']);
   assert.deepEqual(page.errors, []);
 });
 
