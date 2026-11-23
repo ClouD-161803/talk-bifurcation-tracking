@@ -168,3 +168,16 @@ test('the check reads the heads of a backdrop that is a step', { timeout: 120000
     rmSync(out, { recursive: true, force: true });
   }
 });
+
+for (const [page, lost] of [['once', false], ['never', true]]) test(`the check opens a slide again when its first open has no WebGL, and reports a viewer that has no WebGL at the second open either: ${page}`, { timeout: 180000 }, () => {
+  const out = mkdtempSync(join(tmpdir(), 'beeson-webgl-'));
+  try {
+    const run = spawnSync(process.execPath, ['scripts/check.mjs', '--deck', `test/pages/viewer-webgl-${page}.html`, '--themes', 'dark', '--out', out], { encoding: 'utf8' });
+    if (lost) {
+      assert.equal(run.status, 1, run.stdout + run.stderr);
+      assert.match(run.stderr, /dark-01\.png \(#\/0\/0\): WebGL is not available/);
+    } else assert.equal(run.status, 0, run.stdout + run.stderr);
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});

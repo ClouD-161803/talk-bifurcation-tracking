@@ -31,7 +31,7 @@ async function samePerson(browser, url, name) {
 test('the avatars of two and of six people, one person with two pages, and the initials', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t);
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '2000', SLIDES_GONE_MS: '8000' } });
   const url = sessionUrl(server.edit);
   const ann = await open(browser, url, { name: 'Ann Smith' });
   const ben = await open(browser, url, { name: 'Ben Carter' });
@@ -55,7 +55,7 @@ test('the avatars of two and of six people, one person with two pages, and the i
     clean(again);
   });
 
-  await t.test('six people: four others, +1 with the rest, and a digit for the same initials in the same tone', async () => {
+  await t.test('six people: four others, +1 with the rest, a digit for the same initials in the same tone, and a page closed while it is busy leaves', async () => {
     const other = await launch({ offline: false });
     t.after(() => other.close());
     const more = [];
@@ -87,6 +87,8 @@ test('the avatars of two and of six people, one person with two pages, and the i
       await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement?.title === 'Cleo Diaz'`);
     }
     const before = await ann.evaluate(`document.querySelector('.beeson-session-live').textContent`);
+    await new Promise((done) => setTimeout(done, 1000));
+    await more[1].evaluate('setTimeout(() => { const end = Date.now() + 2000; while (Date.now() < end); }), true');
     await more[1].close();
     await until(async () => (await avatars(ann)).length === 5, 'Dan Evans to leave');
     assert.deepEqual((await avatars(ann)).map((a) => a.text), ['BC', 'CD', 'AS2', 'FG', 'AS']);

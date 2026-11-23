@@ -584,6 +584,8 @@ const RECORDED = `(() => {
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
+const playedOn = (plays, from, click, duration) => plays.find((p) => !p.paused && (p.time > from + 0.5 || (p.time < from - 0.1 && from + (p.at - click?.at) / 1000 >= duration)));
+
 async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
@@ -600,7 +602,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
   if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
-  const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
+  const later = `(${playedOn})(window.__plays, ${from}, window.__click, window.__recorded.duration)`;
   await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
@@ -649,6 +651,15 @@ for (const platform of PLATFORMS) {
 test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', { late: 3000 }));
 
 test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
+
+test('Play in the Video pane is checked from a record of the video when the video runs past its end between two records', () => {
+  const click = { at: 11024.9, paused: false, time: 12.031445 };
+  const plays = [[11031.2, 12.0314], [11290.4, 12.2981], [11557.1, 12.5648], [55227.1, 0.2654], [55493, 0.5314], [55760.7, 0.799]].map(([at, time]) => ({ at, paused: false, time }));
+  const late = plays.slice(3);
+  assert.equal(playedOn(late, 12.031445, click, 24.066667), late[0]);
+  assert.equal(playedOn(plays, 12.031445, click, 24.066667), plays[2]);
+  assert.equal(playedOn(late, 12.031445, { ...click, at: 50000 }, 24.066667), undefined);
+});
 
 const TAGGED = `(() => {
   const tag = document.querySelector('.beeson-drop:not([hidden]) span')?.getBoundingClientRect();

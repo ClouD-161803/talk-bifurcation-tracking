@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -109,10 +109,7 @@ test('a Chrome that does not answer is reported', { skip: process.platform === '
   process.env.CHROME_PATH = join(root, 'chrome');
   writeFileSync(process.env.CHROME_PATH, '#!/bin/sh\nexec sleep 30\n', { mode: 0o755 });
 
-  const browser = await launch({ timeout: 200 });
-
-  await assert.rejects(browser.newPage(), /did not answer/);
-  await browser.close();
+  await assert.rejects(launch({ timeout: 200 }), /did not answer/);
 });
 
 test('a page opened with motion is shown without reduced motion', { timeout: 60000 }, async (t) => {
@@ -365,6 +362,7 @@ const input = fs.createReadStream(null, { fd: 3 });
 const output = fs.createWriteStream(null, { fd: 4 });
 const send = (msg) => output.write(JSON.stringify(msg) + '\\0');
 fs.writeFileSync(__dirname + '/ready', '');
+fs.appendFileSync(__dirname + '/log', 'launch ');
 const exitWithoutWaitingForPipeRead = () => process.kill(process.pid, 'SIGKILL');
 process.on('SIGTERM', () => {
   fs.writeFileSync(__dirname + '/signaled', '');
@@ -394,6 +392,7 @@ input.on('data', function read(chunk) {
       send({ id: msg.id, result: { sessionId: 's' + msg.params.targetId } });
     } else if (msg.method === 'Target.closeTarget') {
       closed.push(msg.params.targetId);
+      fs.appendFileSync(__dirname + '/log', 'closeTarget ');
       if (mode === 'hangCloseFirst' && msg.params.targetId === 't1') continue;
       send({ id: msg.id, result: { success: true } });
     } else if (msg.method === 'Page.enable') {
@@ -405,7 +404,14 @@ input.on('data', function read(chunk) {
       send({ id: msg.id, result: {} });
     } else if (msg.method === 'Runtime.evaluate') {
       send({ id: msg.id, result: { result: { value: { creates, targets, closed } } } });
+    } else if (msg.method === 'Page.captureScreenshot') {
+      if (mode === 'hangShotOnce' && !fs.existsSync(__dirname + '/hung')) {
+        fs.writeFileSync(__dirname + '/hung', '');
+        continue;
+      }
+      send({ id: msg.id, result: { data: '' } });
     } else if (msg.method === 'Browser.close') {
+      fs.appendFileSync(__dirname + '/log', 'close ');
       send({ id: msg.id, result: {} });
       if (mode === 'slowClose') setTimeout(exitWithoutWaitingForPipeRead, 300);
       else if (mode !== 'hangClose') process.exit(0);
@@ -418,14 +424,22 @@ input.on('data', function read(chunk) {
     { mode: 0o755 },
   );
   process.env.CHROME_PATH = exe;
-  return async () => {
+  return Object.assign(async () => {
     while (!existsSync(join(root, 'ready'))) await sleep(10);
-  };
+  }, { log: () => readFileSync(join(root, 'log'), 'utf8') });
 }
+
+test('a Chrome whose first screenshot is not answered is closed and launched again, and the page of the probe is left open', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  const chrome = pipeChrome(t, 'hangShotOnce');
+  const browser = await launch({ probe: 500 });
+  await browser.close();
+
+  assert.equal(chrome.log(), 'launch close launch close ');
+});
 
 test('newPage recovers when a fresh target does not answer Page.enable', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
   const ready = pipeChrome(t, 'hangFirst', { hold: startHold });
-  const browser = await launch({ timeout: 400 });
+  const browser = await launch({ timeout: 400, probe: 0 });
   await ready();
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -435,7 +449,7 @@ test('newPage recovers when a fresh target does not answer Page.enable', { skip:
 
 test('the first page of a Chrome that starts slower than the setup of a page is opened within the timeout', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
   pipeChrome(t, 'slowStart');
-  const browser = await launch({ timeout: 4000, setup: 300 });
+  const browser = await launch({ timeout: 4000, setup: 300, probe: 0 });
   t.after(() => browser.close());
   const page = await browser.newPage();
   assert.deepEqual(await page.evaluate('state'), { creates: 1, targets: 1, closed: [] });
@@ -443,14 +457,14 @@ test('the first page of a Chrome that starts slower than the setup of a page is 
 
 test('newPage recovers when Target.createTarget hangs or Target.closeTarget hangs during cleanup', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
   const readyA = pipeChrome(t, 'hangCreateFirst', { hold: startHold });
-  const browserA = await launch({ timeout: 400 });
+  const browserA = await launch({ timeout: 400, probe: 0 });
   await readyA();
   t.after(() => browserA.close());
   const pageA = await browserA.newPage();
   assert.deepEqual(await pageA.evaluate('state'), { creates: 2, targets: 1, closed: [] });
 
   const readyB = pipeChrome(t, 'hangCloseFirst', { hold: startHold });
-  const browserB = await launch({ timeout: 400 });
+  const browserB = await launch({ timeout: 400, probe: 0 });
   await readyB();
   t.after(() => browserB.close());
   const pageB = await browserB.newPage();
@@ -459,7 +473,7 @@ test('newPage recovers when Target.createTarget hangs or Target.closeTarget hang
 
 test('newPage recovers immediately when a fresh target detaches during setup', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
   const ready = pipeChrome(t, 'detachFirst', { hold: startHold });
-  const browser = await launch({ timeout: 3000 });
+  const browser = await launch({ timeout: 3000, probe: 0 });
   await ready();
   t.after(() => browser.close());
   const started = Date.now();
@@ -470,7 +484,7 @@ test('newPage recovers immediately when a fresh target detaches during setup', {
 
 test('newPage still fails when every target hangs on Page.enable', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
   const ready = pipeChrome(t, 'hangAll', { hold: startHold });
-  const browser = await launch({ timeout: 500 });
+  const browser = await launch({ timeout: 500, probe: 0 });
   await ready();
   t.after(() => browser.close());
   await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
@@ -487,7 +501,7 @@ test('close() ends without an error when the profile cannot be removed, and name
   });
   let browser;
   try {
-    browser = await launch({ timeout: 5000 });
+    browser = await launch({ timeout: 5000, probe: 0 });
   } finally {
     if (previous === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = previous;

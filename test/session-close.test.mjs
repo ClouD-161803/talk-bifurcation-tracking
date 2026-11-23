@@ -484,6 +484,7 @@ test('a page that loads does not take over the copy of a page that opened after 
   const net = await proxy(t, server.edit);
   const late = await tab(browser, net.url, { script: QUERY, wait: false });
   await late.waitFor('window.__queried === true');
+  await late.waitFor(ONLINE);
   const page = await tab(browser, net.url);
   await converge(server, [page]);
   await show(page, 'One');

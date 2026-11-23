@@ -91,7 +91,27 @@ const LOADING = `(() => {
   return { url: location.href, readyState: document.readyState, resourceTimingFull: loaded.size >= 250, unloaded: files.filter((f) => !loaded.has(f)) };
 })()`;
 
-export async function launch({ offline = true, timeout = 120000, setup = 15000, wholeFrames = false } = {}) {
+const LAUNCHES = 3;
+
+export async function launch({ probe = 10000, ...options } = {}) {
+  if (!probe) return start(options);
+  for (let n = 1; ; n++) {
+    const browser = await start(options);
+    let page;
+    try {
+      page = await browser.newPage({ width: 16, height: 16 });
+    } catch (error) {
+      await browser.close();
+      throw error;
+    }
+    const shot = await page.send('Page.captureScreenshot', { format: 'png' }, probe).then(() => null, (error) => error);
+    if (!shot) return browser;
+    await browser.close();
+    if (n === LAUNCHES || !shot.message.includes('did not answer Page.captureScreenshot')) throw shot;
+  }
+}
+
+async function start({ offline = true, timeout = 120000, setup = 15000, wholeFrames = false } = {}) {
   const chrome = findChrome();
   const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
   const args = chromeArgs({ profile, offline, wholeFrames });
