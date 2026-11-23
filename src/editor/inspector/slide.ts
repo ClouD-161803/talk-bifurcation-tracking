@@ -202,6 +202,7 @@ export function slidePane(app: App, run: Run): Control[] {
   }
   parts.push(section('Appearance', [
     hidden,
+    checkbox(app, run, 'slide.draft', 'Draft'),
     checkbox(app, run, 'slide.footnote', 'Footnote'),
   ]));
   if (layout === 'section') {

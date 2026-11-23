@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
+import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 
 async function openDeck(t, query = '', { deck = 'test-deck.html', ...size } = {}) {
   const browser = await launch();
@@ -586,6 +586,52 @@ test('the title, section, and closing slides are not numbered, and the slides af
 
   const runs = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('.run')?.textContent ?? '')`);
   assert.deepEqual(runs, ['', '', 'Chapter one', 'Chapter one', '', 'Chapter two', '', 'Appendix slides', 'Appendix slides']);
+});
+
+test('the section slides after the closing slide are lettered A, B in their labels, running heads, outline lists, and names on the band, past a hidden one', { timeout: 60000 }, async (t) => {
+  const { page, rest } = await openDeck(t, '', { deck: 'test/pages/appendix-sections.html' });
+  await rest();
+  const names = await page.evaluate(`[...document.querySelectorAll('.scrub-name')].map((n) => n.textContent)`);
+  assert.deepEqual(names, ['Chapter one', 'Thank you', 'A: Convergence proofs', 'B: Data']);
+
+  const slides = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s) => {
+    const h = s.querySelector('h1, h2');
+    const label = getComputedStyle(h, '::before').content;
+    return { heading: h.textContent, letter: h.dataset.appendixLetter ?? '', drawn: label !== 'none' && label !== 'normal', run: s.querySelector('.run')?.textContent ?? '' };
+  })`);
+  assert.deepEqual(slides.map((s) => [s.heading, s.letter, s.drawn]), [
+    ['A title', '', false], ['Chapter one', '', false], ['First', '', false], ['Second', '', false], ['Thank you', '', false], ['Loose slide', '', false],
+    ['Convergence proofs', 'A', true], ['Proof one', '', false], ['After the hidden part', '', false], ['Numerical data', 'B', true], ['Table one', '', false],
+  ]);
+  assert.deepEqual(slides.map((s) => s.run), ['', '', 'Chapter one', 'Chapter one', '', 'Appendix slides', '', 'Appendix A: Convergence proofs', 'Appendix A: Convergence proofs', '', 'Appendix B: Data']);
+
+  const outline = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')[6].querySelectorAll('.outline > li')].map((li) => [li.textContent, li.classList.contains('now'), getComputedStyle(li, '::before').content !== 'none'])`);
+  assert.deepEqual(outline, [['Chapter one', false, true], ['Appendix A: Convergence proofs', true, false], ['Appendix B: Numerical data', false, false]]);
+
+});
+
+test('a hidden slide does not take a number, before the closing slide or after it, in the show, in the print view, and on the band', { timeout: 60000 }, async (t) => {
+  const { page, rest } = await openDeck(t, '', { deck: 'test/pages/appendix-sections.html' });
+  const deck = 'test/pages/appendix-sections.html';
+  const shown = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s, i) => {
+    Reveal.slide(i);
+    return [s.querySelector('h1, h2').textContent, document.querySelector('.reveal .slide-number').textContent.replace(/\\s+/g, ' ').trim()];
+  })`);
+  const NUMBERS = [
+    ['A title', ''], ['Chapter one', ''], ['First', '1 / 2'], ['Second', '2 / 2'], ['Thank you', ''], ['Loose slide', 'A1'],
+    ['Convergence proofs', 'A2'], ['Proof one', 'A3'], ['After the hidden part', 'A4'], ['Numerical data', 'A5'], ['Table one', 'A6'],
+  ];
+  assert.deepEqual(shown, NUMBERS);
+
+  await page.evaluate(`Reveal.slide(${NUMBERS.findIndex(([h]) => h === 'Table one')})`);
+  await rest();
+  await page.evaluate('Reveal.slide(0)');
+  await page.waitFor(`document.querySelector('.scrub-name.viewed')?.textContent === 'A6'`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.scrub-tick')].map((t) => t.firstChild.textContent)`), ['1', '2']);
+
+  await printView(page, deckUrl(deck, 'print-pdf&still'));
+  const printed = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => [p.querySelector('h1, h2').textContent, p.querySelector('.slide-number-pdf')?.textContent.replace(/\\s+/g, '') ?? ''])`);
+  assert.deepEqual(printed, NUMBERS.map(([h, n]) => [h, n.replace(/ /g, '')]));
 });
 
 test('the slides of a stack have ticks, and a step down a stack is not a jump', { timeout: 60000 }, async (t) => {

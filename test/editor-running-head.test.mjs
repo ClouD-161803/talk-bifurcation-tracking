@@ -185,3 +185,72 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+const APPENDIX = 'test/pages/appendix-sections.html';
+
+async function openAppendix(t, platform) {
+  const page = await browser.newPage({ width: 1600, height: 1000 });
+  t.after(() => page.close());
+  await page.goto(`${server.origin}/${APPENDIX}?edit&still&edit-platform=${platform}`);
+  await page.waitFor(deckSettled);
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  page.source = readFileSync(APPENDIX, 'utf8');
+  assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`)).problems, []);
+  return page;
+}
+
+const letters = (page) => page.evaluate(`[...document.querySelectorAll('.reveal .slides > section.section h2')].map((h) => h.textContent + ' ' + (h.dataset.appendixLetter ?? '-'))`);
+const showSlide = async (page, heading) => {
+  const at = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)})`);
+  assert.ok(at > 0, `the slide ${heading} is not found`);
+  await page.evaluate(`Reveal.slide(${at})`);
+  await frames(page);
+};
+const thumbLetter = (heading) => `[...document.querySelectorAll('.beeson-edit-nav .row')].some((r) => [...r.querySelectorAll('*')].concat(r).some((el) => [...(el.shadowRoot?.querySelectorAll('section.section h2') ?? [])].some((h) => h.textContent === ${JSON.stringify(heading)} && h.dataset.appendixLetter === 'B')))`;
+const PASTED = '<!--beeson--><section class="section"><div class="sec"><h2>Pasted part</h2></div></section>';
+
+for (const platform of PLATFORMS) {
+  test(`the section slides of the appendix are lettered in the editor, the letters follow a paste, Hide Slide, and a move, and the label is neither selected nor saved (${platform})`, async (t) => {
+    const page = await openAppendix(t, platform);
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs A', 'Hidden part -', 'Numerical data B']);
+    await showSlide(page, 'Convergence proofs');
+    assert.notEqual(await page.evaluate(`getComputedStyle(document.querySelector('section.present h2'), '::before').content`), 'none');
+
+    await click(page, 'section.present .sec h2');
+    await click(page, 'section.present .sec h2');
+    await press(page, 'Mod+A', { command: 'selectAll' });
+    assert.equal(await page.evaluate('getSelection().toString()'), 'Convergence proofs');
+    await press(page, 'Escape');
+    await press(page, 'Escape');
+
+    await page.evaluate(`window.BeesonEditor.exec('slide.paste', ${JSON.stringify(PASTED)})`);
+    await frames(page);
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs A', 'Pasted part B', 'Hidden part -', 'Numerical data C']);
+    await page.waitFor(thumbLetter('Pasted part'));
+    const pasted = await render(page);
+    assert.ok(pasted.includes('<h2>Pasted part</h2>'), 'the section slide is not pasted');
+    assert.ok(!pasted.includes('data-appendix-letter'), 'the letter is written into the file');
+    await page.evaluate('window.BeesonEditor.undo()');
+    await frames(page);
+    assert.equal(await render(page), page.source);
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs A', 'Hidden part -', 'Numerical data B']);
+
+    await showSlide(page, 'Hidden part');
+    await page.evaluate(`window.BeesonEditor.exec('slide.hide')`);
+    await frames(page);
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs A', 'Hidden part B', 'Numerical data C']);
+    await page.evaluate('window.BeesonEditor.undo()');
+    await frames(page);
+
+    await showSlide(page, 'Convergence proofs');
+    await page.evaluate(`window.BeesonEditor.exec('slide.moveUp')`);
+    await page.evaluate(`window.BeesonEditor.exec('slide.moveUp')`);
+    await frames(page);
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs -', 'Hidden part -', 'Numerical data A']);
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('section.present h2'), '::before').content`), 'none');
+    const { text } = await saveAndReopen(page);
+    assert.ok(!text.includes('data-appendix-letter'), 'the letter is written into the file');
+    assert.deepEqual(await letters(page), ['Chapter one -', 'Convergence proofs -', 'Hidden part -', 'Numerical data A']);
+    assert.deepEqual(page.errors, []);
+  });
+}

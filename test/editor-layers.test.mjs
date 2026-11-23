@@ -1084,16 +1084,17 @@ describe('layers change the drawn order, not the steps', () => {
       assert.deepEqual(page.errors, []);
     });
 
-    test(`${platform}: Send Backward and Send to Back of the caption of a figure slide with a backdrop do not put it under the backdrop (C2)`, async (t) => {
+    test(`${platform}: Send Backward and Send to Back of the caption of a figure slide with a backdrop put it under the heading, not under the backdrop (C2)`, async (t) => {
       const page = await load(t, platform, LAYOUTS_SOURCE, BACKDROP, LAYOUTS);
-      const list = await named(page, CAP_ROWS);
+      assert.deepEqual(await named(page, CAP_ROWS), ['cap', 'h2']);
       await pick(page, CAP_ROWS, 'cap');
-      assert.deepEqual(await orders(page), { front: false, forward: false, backward: false, back: false });
+      assert.deepEqual(await orders(page), { front: false, forward: false, backward: true, back: true });
       await press(page, KEYS[platform].backward);
       await press(page, KEYS[platform].back);
       await frames(page);
-      assert.deepEqual(await named(page, CAP_ROWS), list);
-      assert.equal(await render(page), LAYOUTS_SOURCE, 'the caption is moved in the file');
+      assert.deepEqual(await named(page, CAP_ROWS), ['h2', 'cap']);
+      await pick(page, CAP_ROWS, 'cap');
+      assert.deepEqual(await orders(page), { front: true, forward: true, backward: false, back: false }, 'the caption can be sent under the backdrop');
       const at = await page.evaluate(`(() => { const r = document.querySelector(${js(CAP_EL.cap)}).getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
       assert.equal(await topAt(page, at, CAP_EL), 'cap', 'the backdrop is drawn over the caption');
       assert.deepEqual(page.errors, []);

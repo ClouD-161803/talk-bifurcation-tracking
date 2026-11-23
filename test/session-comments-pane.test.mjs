@@ -356,6 +356,47 @@ test('the pane groups the threads by their slide, and two slides with one number
   clean(a);
 });
 
+test('a slide of a vertical stack after a hidden slide has the number of its row in the navigator in the pane and in the status bar', { timeout: 300_000 }, async (t) => {
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p>First slide</p>
+</section>
+
+<section data-visibility="hidden">
+  <h2>Hidden</h2>
+  <p>Hidden slide</p>
+</section>
+
+<section>
+  <section>
+    <h2>Up</h2>
+    <p>Upper slide</p>
+  </section>
+  <section>
+    <h2>Down</h2>
+    <p>Lower slide</p>
+  </section>
+</section>
+`);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await a.evaluate(`(() => {
+    const s = [...document.querySelectorAll('.reveal .slides section')].find((s) => s.querySelector(':scope > h2')?.textContent === 'Up');
+    const { h, v } = Reveal.getIndices(s);
+    Reveal.slide(h, v);
+    window.__shown = s;
+  })()`);
+  await a.waitFor('Reveal.getCurrentSlide() === window.__shown');
+  await click(a, '.reveal section.present > p');
+  await comment(a, 'On Up');
+  const row = await a.evaluate(`document.querySelectorAll('.beeson-edit-nav .row .no')[2].textContent`);
+  assert.equal(row, '2');
+  await sees(a, `[...document.querySelectorAll('${PANE} .list > *')].map((n) => n.localName === 'h3' ? 'heading ' + n.textContent : n.querySelector('.text')?.textContent)`, [`heading Slide ${row}`, 'On Up']);
+  await sees(a, `document.querySelector('.beeson-edit-bottom .count').textContent.split(' of ')[0]`, `Slide ${row}`);
+  clean(a);
+});
+
 test('a reply being typed when its thread is deleted by another person becomes the draft of a new comment on the same element', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await show(a, 'One');

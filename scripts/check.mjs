@@ -189,7 +189,16 @@ async function checkHeads() {
   await page.close();
 }
 
+async function listDrafts() {
+  const page = await browser.newPage();
+  const drafts = await page.evaluate(`[...new DOMParser().parseFromString(${JSON.stringify(readFileSync(options.deck, 'utf8'))}, 'text/html').querySelectorAll('.reveal .slides > section')]
+    .flatMap((slide, i) => slide.hasAttribute('data-draft') ? ['draft: slide ' + (i + 1) + ', ' + (slide.querySelector('h1, h2')?.textContent.replace(/\\s+/g, ' ').trim() || 'without a heading')] : [])`);
+  for (const draft of drafts) console.log(draft);
+  await page.close();
+}
+
 try {
+  await listDrafts();
   for (const theme of themes) {
     for (const file of readdirSync(options.out)) {
       if (file.startsWith(`${theme}-`) && file.endsWith('.png')) rmSync(join(options.out, file));

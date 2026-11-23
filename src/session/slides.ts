@@ -45,7 +45,7 @@ export function slidesOf(text: string, tokens: Token[] = tokenize(text)): Slide[
     if (!appendix && top.classes.includes('closing')) appendix = true;
     if (top.inner.length === 0) {
       out.push({ start: top.start, end: top.end, open: top.open, number: shown });
-      if (!uncounted) past++;
+      if (!uncounted && top.vis !== 'hidden') past++;
       continue;
     }
     for (let i = 0; i < top.inner.length; i++) {

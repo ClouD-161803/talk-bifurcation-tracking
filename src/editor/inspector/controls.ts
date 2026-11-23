@@ -124,6 +124,7 @@ const CSS = `
 .beeson-edit-inspector .ed-chooser .what span:last-child { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beeson-edit-inspector .ed-popup { display: flex; align-items: center; justify-content: space-between; width: calc(100% - 32px); height: 40px; margin: 6px 16px 12px; padding: 0 10px 0 12px; border: 0; border-radius: 9px; background: var(--ed-control); box-shadow: 0 0 0 1px var(--ed-line), 0 1px 2px rgba(0, 0, 0, 0.06); color: var(--ed-text); font: 600 16px/1 var(--ed-font); cursor: default; }
 .beeson-edit-inspector .ed-popup:disabled { color: var(--ed-faint); }
+.beeson-edit-inspector .ed-popup > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beeson-edit-inspector .ed-swatches { display: flex; flex: 1; justify-content: space-between; }
 .beeson-edit-inspector .ed-swatches button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px var(--ed-edge); cursor: default; }
 .beeson-edit-inspector .ed-swatches button[aria-pressed="true"] { outline: 2px solid var(--ed-select); outline-offset: 2px; }

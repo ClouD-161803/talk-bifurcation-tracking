@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
@@ -2252,6 +2252,38 @@ describe('the step at which a backdrop starts', () => {
     return render(page);
   }
 
+  test('the Start menu of the Backdrop pane shows the step of a long text as Step 2, on one line', async (t) => {
+    const long = 'Why is it useful? It enables you to describe the dynamics around an invariant object analytically, with a normal form of the vector field';
+    const source = readFileSync(DECK, 'utf8').replace('data-backdrop-play>Second<', `data-backdrop-play>${long}<`);
+    const file = 'test/pages/.backdrop-play-long.html';
+    writeFileSync(file, source);
+    t.after(() => rmSync(file, { force: true }));
+    const page = await browser.newPage({ width: 1600, height: 1000 });
+    t.after(() => page.close().catch(() => {}));
+    const url = `${server.origin}/${file}?edit&still`;
+    await page.goto(url);
+    await page.evaluate('localStorage.clear()');
+    await page.goto(url);
+    await page.waitFor(deckSettled);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${js(source)})`)).problems, []);
+    await page.evaluate('Reveal.slide(1)');
+    await frames(page);
+    if (!(await page.evaluate(`window.BeesonEditor.state('shell.format')`)).checked) await exec(page, 'shell.format');
+    await exec(page, 'backdrop.select');
+    await page.waitFor(`!!document.querySelector('${PANEL} [aria-label="Start"]')`);
+    await frames(page);
+    const start = await page.evaluate(`(() => {
+      const b = document.querySelector('${PANEL} [aria-label="Start"]'), text = b.querySelector('span');
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top)));
+      return { text: text.textContent, lines: lines.size, inside: text.scrollWidth <= text.clientWidth && b.scrollHeight <= b.clientHeight };
+    })()`);
+    assert.deepEqual(start, { text: 'Step 2', lines: 1, inside: true });
+    assert.deepEqual(page.errors, []);
+  });
+
   for (const platform of ['mac', 'other']) {
     test(`the Start menu of the Backdrop pane writes data-backdrop-play on the first element of the chosen step, and With the Slide takes it off (${platform})`, async (t) => {
       const page = await browser.newPage({ width: 1600, height: 1000 });
@@ -2273,9 +2305,7 @@ describe('the step at which a backdrop starts', () => {
       const listed = await items(page);
       await press(page, 'Escape');
       assert.deepEqual(listed.map(([, on]) => on), [false, false, true]);
-      assert.equal(listed[0][0], 'With the Slide');
-      assert.match(listed[1][0], /^Step 1: .*First$/);
-      assert.match(listed[2][0], /^Step 2: .*Second$/);
+      assert.deepEqual(listed.map(([text]) => text), ['With the Slide', 'Step 1', 'Step 2'], 'the steps are not named as in the step menu of the Steps pane');
       const first = await choose(page, 1);
       assert.match(first, /<p class="fragment" data-fragment-index="0" data-backdrop-play(="")?>First<\/p>\s*<p class="fragment" data-fragment-index="1">Second<\/p>/);
       assert.equal(await undoLabel(page), 'Undo Start');

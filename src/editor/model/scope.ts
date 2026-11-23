@@ -18,7 +18,7 @@ export const DATA_ATTRS = [
   'data-stagger', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-color', 'data-trajectories-colormap', 'data-trajectories-ramp',
   'data-trajectories-select', 'data-trajectories-shade', 'data-surface-accent', 'data-surface-points', 'data-surface-state',
   'data-surface-violet', 'data-tone', 'data-turn', 'data-unhighlight', 'data-zoom', 'data-zscale',
-  'data-visibility', 'data-timing', 'data-figure', 'data-part', 'data-transition', 'data-group', 'data-locked', 'data-autoslide',
+  'data-visibility', 'data-draft', 'data-timing', 'data-figure', 'data-part', 'data-transition', 'data-group', 'data-locked', 'data-autoslide',
   'data-guides', 'data-anchor', 'data-from', 'data-to', 'data-kind', 'data-name', 'data-key', 'data-pdf', 'data-page',
 ];
 

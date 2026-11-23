@@ -7,7 +7,7 @@ import type { GroupAction } from '../commands/order.ts';
 import { scopeOf } from '../model/groups.ts';
 import { apartOf, turnersOf } from './drag.ts';
 import type { Box, Guide, Handle, Spacing } from './snap.ts';
-import { BY_ITSELF, CONTAINER, RESIZABLE, captionsOf, objectsOf, figureFrame, frameOf, frameRect, isTextSized, movableOf, orientedBox, pictureOf, scaleAt, sizedOf, toScreen, turnable as turns } from './hit.ts';
+import { BY_ITSELF, CONTAINER, LINE, RESIZABLE, captionsOf, objectsOf, figureFrame, frameOf, frameRect, isTextSized, movableOf, orientedBox, pictureOf, scaleAt, sizedOf, toScreen, turnable as turns } from './hit.ts';
 
 export const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
@@ -132,6 +132,12 @@ export function turned(box: Box, deg: number, x: number, y: number): { x: number
   const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
   return { x: cx + (x - cx) * Math.cos(a) - (y - cy) * Math.sin(a), y: cy + (x - cx) * Math.sin(a) + (y - cy) * Math.cos(a) };
 }
+
+const outline = (b: Box, deg: number): Box => {
+  const ps = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => turned(b, deg, b.left + u * b.width, b.top + v * b.height));
+  const left = Math.min(...ps.map((q) => q.x)), top = Math.min(...ps.map((q) => q.y));
+  return { left, top, width: Math.max(...ps.map((q) => q.x)) - left, height: Math.max(...ps.map((q) => q.y)) - top };
+};
 
 export function groupFrame(els: Element[], deg: number): Box {
   if (!deg) return groupReach(els);
@@ -298,7 +304,7 @@ export class Frames {
   }
 
   private handles(el: Element): boolean {
-    return !(el.matches(BY_ITSELF) && !el.matches('tycho-viewer')) && !((sizedOf(el).length || el.matches('.backdrop')) && !isTextSized(el));
+    return !el.matches(LINE) && !(el.matches(BY_ITSELF) && !el.matches('tycho-viewer')) && !((sizedOf(el).length || el.matches('.backdrop')) && !isTextSized(el));
   }
 
   caretElement(): Element | null {
@@ -448,16 +454,13 @@ export class Frames {
     }
 
     const columns: { els: Element[]; at: Box; handled: boolean }[] = [];
-    const bounds = (els: Element[]) => {
-      const rs = els.map((el) => el.getBoundingClientRect());
-      const left = Math.min(...rs.map((r) => r.left)), top = Math.min(...rs.map((r) => r.top));
-      return { left, top, width: Math.max(...rs.map((r) => r.right)) - left, height: Math.max(...rs.map((r) => r.bottom)) - top };
-    };
     if (!view.moving && !turn) {
-      if (this.group) columns.push({ els: selected, at: bounds(selected), handled: false });
+      if (this.group) columns.push({ els: selected, at: outline(this.group, this.groupDeg), handled: false });
       else {
-        for (const o of shown) columns.push({ els: o.els, at: bounds(o.els), handled: false });
-        for (const el of selected) if (!drawn.has(el)) columns.push({ els: [el], at: bounds([el]), handled: this.handles(el) });
+        for (const o of shown) columns.push({ els: o.els, at: outline(o.box, o.deg), handled: false });
+        selected.forEach((el, i) => {
+          if (!drawn.has(el)) columns.push({ els: [el], at: outline(boxes[i], orients[i].deg), handled: this.handles(el) });
+        });
       }
     }
     while (this.locks.length < columns.length) this.padlock();
@@ -477,10 +480,10 @@ export class Frames {
         b.replaceChildren(icon(closed ? 'lock' : 'unlock', 16));
       }
       const bar = f.els.length === 1 && f.els[0].localName === 'table' ? ROW_BAR : 0;
-      const at = { left: f.at.left - 6 - HANDLE_GAP - HANDLE - bar, top: f.at.top - 6 + (f.handled ? ROW : 0), width: HANDLE, height: HANDLE };
+      const at = { left: f.at.left - HANDLE_GAP - HANDLE - bar, top: f.at.top + (f.handled ? ROW : 0), width: HANDLE, height: HANDLE };
       Object.assign(b.style, { left: `${at.left}px`, top: `${at.top}px` });
       buttons.push(at);
-      const column = { left: at.left, top: f.at.top - 6, width: HANDLE, height: at.top + HANDLE - (f.at.top - 6) };
+      const column = { left: at.left, top: f.at.top, width: HANDLE, height: at.top + HANDLE - f.at.top };
       for (const el of f.els) this.columns.set(el, column);
     });
     const act = columns.length ? groupAction(app) : null;
@@ -495,8 +498,8 @@ export class Frames {
         this.grouping.classList.toggle('filled', filled);
         this.grouping.innerHTML = groupIcon(filled);
       }
-      const all = bounds(selected);
-      const at = columns.length === 1 ? { ...buttons[0], top: buttons[0].top + ROW } : { left: all.left - 6 - HANDLE_GAP - HANDLE, top: all.top - 6 - ROW, width: HANDLE, height: HANDLE };
+      const left = Math.min(...columns.map((c) => c.at.left)), top = Math.min(...columns.map((c) => c.at.top));
+      const at = columns.length === 1 ? { ...buttons[0], top: buttons[0].top + ROW } : { left: left - HANDLE_GAP - HANDLE, top: top - ROW, width: HANDLE, height: HANDLE };
       Object.assign(this.grouping.style, { left: `${at.left}px`, top: `${at.top}px` });
       buttons.push(at);
       if (columns.length === 1) {
@@ -518,9 +521,10 @@ export class Frames {
     if (hot && !framed && !view.moving) place(this.hoverFrame, grow(frameRect(hot), 6));
     this.handle.hidden = !hot || hot.hasAttribute('data-locked') || (hot.matches(BY_ITSELF) && !hot.matches('tycho-viewer')) || (!!this.gripsOf(hot) && !isTextSized(hot));
     if (!this.handle.hidden && hot) {
-      const r = hot.getBoundingClientRect();
+      const o = orientOf(hot, scale);
+      const r = outline(grow(o.box, 6), o.deg);
       const bar = hot.localName === 'table' ? ROW_BAR : 0;
-      Object.assign(this.handle.style, { left: `${r.left - 6 - HANDLE_GAP - HANDLE - bar}px`, top: `${r.top - 6}px` });
+      Object.assign(this.handle.style, { left: `${r.left - HANDLE_GAP - HANDLE - bar}px`, top: `${r.top}px` });
     }
     this.drawGuides();
     const spoke = view.spoke;

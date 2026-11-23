@@ -136,7 +136,9 @@ export function install(app: App): void {
     const cur = app.current();
     const i = cur ? slides.indexOf(cur) : -1;
     if (i < 0) {
-      countEl.textContent = `Slide ${d.getSlidePastCount() + 1} of ${d.getTotalSlides()}`;
+      const top = cur ? slides.findIndex((s) => s.contains(cur)) : -1;
+      const before = slides.slice(0, Math.max(top, 0)).filter(isHidden).length;
+      countEl.textContent = `Slide ${d.getSlidePastCount() + 1 - before} of ${d.getTotalSlides() - slides.filter(isHidden).length}`;
       return;
     }
     const n = showPlaces(slides)[i];

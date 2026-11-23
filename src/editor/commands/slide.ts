@@ -3,6 +3,7 @@ import { DEFAULT_REGIONS, type Command } from '../commands.ts';
 import type { Doc } from '../model/doc.ts';
 import { NEW_LAYOUTS, type Layout, type NewLayout } from '../model/templates.ts';
 import { droppedOrder, isHidden, type MoveTo, type Navigator } from '../navigator/navigator.ts';
+import { DRAFT, isDraft } from '../draft-slide.ts';
 import { groupsOf, sectionHeading } from '../navigator/sorter.ts';
 import { drawInto } from '../navigator/thumbs.ts';
 import { setOwnTex } from '../text/elements.ts';
@@ -404,6 +405,24 @@ export function install(app: App): void {
         const t = targets(a);
         const hide = !t.every(isHidden);
         for (const s of t) docOf(a).hide(s, hide);
+        navOf(a).refresh();
+      },
+    },
+    {
+      id: 'slide.draft',
+      label: 'Set as Draft',
+      keys: { mac: ['Mod+Alt+Shift+D'] },
+      in: ['navigator', 'canvas'],
+      inText: true,
+      menu: slideMenu(41),
+      context: ['slide', 'canvas'],
+      enabled: (a) => targets(a).length > 0,
+      checked: (a) => targets(a).length > 0 && targets(a).every(isDraft),
+      undoable: true,
+      run: (a) => {
+        const t = targets(a);
+        const on = !t.every(isDraft);
+        for (const s of t) docOf(a).setTag(s, { attrs: { [DRAFT]: on ? '' : null } }, on ? 'draft' : 'undraft');
         navOf(a).refresh();
       },
     },
