@@ -5,7 +5,7 @@ import type { Client } from './client.ts';
 import { bdi } from './dom.ts';
 import { presenceOf, type Presence, type Resolved } from './presence.ts';
 
-const SLIDE = new Set(['slide.cut', 'slide.delete', 'slide.hide', 'slide.layoutChooser', 'slide.moveDown', 'slide.moveUp', 'slide.moveTo', 'slide.moveSection', 'slide.reset']);
+const SLIDE = new Set(['slide.cut', 'slide.delete', 'slide.draft', 'slide.hide', 'slide.layoutChooser', 'slide.moveDown', 'slide.moveUp', 'slide.moveTo', 'slide.moveSection', 'slide.reset']);
 const OF_SLIDES = new Set(['edit.cut', 'element.delete']);
 const OF_TEXT = new Set(['element.delete', 'text.bigger', 'text.smaller', 'text.indent', 'text.outdent', 'text.joinBackward', 'text.joinForward', 'text.newParagraph']);
 const OF_SPAN = new Set(['text.flow.delete', 'text.flow.newParagraph']);

@@ -1,5 +1,6 @@
 import type { App, Pane } from '../app.ts';
-import { rangesOf, showRange } from '../shown-steps.ts';
+import { completeRange, showRange } from '../shown-steps.ts';
+import { draftChip, isDraft } from '../draft-slide.ts';
 import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
@@ -91,6 +92,8 @@ html.beeson-nav .beeson-edit-nav { display: flex; }
 .beeson-edit-nav .row .dots i { width: 5px; height: 5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
 .beeson-edit-nav .row .trans { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; border-bottom-right-radius: 5px; background: var(--nav-select); clip-path: polygon(100% 0, 100% 100%, 0 100%); pointer-events: none; }
 .beeson-edit-nav .row .trans[hidden] { display: none; }
+.beeson-edit-nav .row .beeson-draft-chip { position: absolute; left: 4px; top: 4px; }
+.beeson-edit-nav .row.skip .beeson-draft-chip { display: none; }
 .beeson-edit-nav .row.skip { align-items: center; padding-top: 2px; padding-bottom: 2px; }
 .beeson-edit-nav .row.skip .frame { height: 5px; box-shadow: none; outline: 0; border-top: 1px solid var(--nav-muted); border-bottom: 1px solid var(--nav-muted); border-radius: 0; }
 .beeson-edit-nav .row.skip .pic, .beeson-edit-nav .row.skip .dots, .beeson-edit-nav .row.skip .trans { display: none; }
@@ -110,7 +113,7 @@ html.beeson-nav .beeson-edit-nav { display: flex; }
 .beeson-edit-peek :is(.fragment, .r-stack > *).beeson-off { visibility: hidden !important; }
 `;
 
-type Row = { el: HTMLButtonElement; no: HTMLElement; pic: HTMLElement; dots: HTMLElement; trans: HTMLElement; num: HTMLElement; title: HTMLElement; kind: HTMLElement };
+type Row = { el: HTMLButtonElement; no: HTMLElement; pic: HTMLElement; dots: HTMLElement; trans: HTMLElement; draft: HTMLElement; num: HTMLElement; title: HTMLElement; kind: HTMLElement };
 
 type Place = { current: Element | null; slides: Element[]; nav: boolean };
 
@@ -324,7 +327,8 @@ export class Navigator implements Pane {
     const trans = document.createElement('span');
     trans.className = 'trans';
     trans.hidden = true;
-    frame.append(pic, dots, trans);
+    const draft = draftChip();
+    frame.append(pic, dots, trans, draft);
     const sr = (cls: string) => {
       const s = document.createElement('span');
       s.className = `${cls} sr`;
@@ -343,7 +347,7 @@ export class Navigator implements Pane {
       if (!this.drag) this.timer = window.setTimeout(() => this.showPeek(slide, el), PEEK_DELAY);
     });
     el.addEventListener('pointerleave', () => this.hidePeek());
-    return { el, no, pic, dots, trans, num, title, kind };
+    return { el, no, pic, dots, trans, draft, num, title, kind };
   }
 
   refresh(): void {
@@ -382,7 +386,9 @@ export class Navigator implements Pane {
       row.dots.hidden = !steps;
       const effect = transitionName(this.app, slide);
       row.trans.hidden = !effect;
-      const label = `Slide ${i + 1}: ${title}${hidden ? ', hidden' : ''}${steps ? ', with steps' : ''}${effect ? `, with the transition ${effect}` : ''}`;
+      const draft = isDraft(slide);
+      row.draft.hidden = !draft;
+      const label = `Slide ${i + 1}: ${title}${hidden ? ', hidden' : ''}${draft ? ', draft' : ''}${steps ? ', with steps' : ''}${effect ? `, with the transition ${effect}` : ''}`;
       if (row.el.getAttribute('aria-label') !== label) row.el.setAttribute('aria-label', label);
       row.el.title = `Slide ${i + 1}: ${title}`;
     });
@@ -654,8 +660,7 @@ export class Navigator implements Pane {
       el.classList.remove('beeson-hover', 'beeson-overflow', 'current-fragment', 'past', 'future');
       if (el.classList.contains('fragment')) el.classList.add('visible');
     }
-    const ranges = rangesOf(clone);
-    showRange(clone, ranges.length > 1 ? ranges[0] : null);
+    showRange(clone, completeRange(clone));
     clone.classList.add('present');
     clone.style.display = 'block';
     const deck = document.createElement('div');
