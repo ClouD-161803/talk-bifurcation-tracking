@@ -475,7 +475,6 @@ export class PlotView {
   private cue: 'none' | 'held' | 'shown' = 'none';
   private live = false;
   private once = false;
-  // the tabs and the bar take their height once their labels are typeset, and the area is shrunk
   private resized = new ResizeObserver(() => this.fit());
 
   constructor(el: HTMLElement) {
