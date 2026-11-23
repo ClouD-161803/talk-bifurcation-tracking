@@ -603,7 +603,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } 
   if (unheard) {
     await page.waitFor('window.__plays.some((p) => !p.paused)');
     await page.evaluate('window.__unheard = true');
-    await page.waitFor(`window.__recorded.currentTime < ${from - 1}`, 60000);
+    await page.waitFor(`window.__recorded.currentTime > 0.5 && window.__recorded.currentTime < ${from - 1}`, 60000);
     await page.evaluate('window.__unheard = false');
   }
   const later = `window.__plays.find((p) => !p.paused && (p.time > ${from + 0.5} || (p.time < ${from - 0.1} && ${from} + (p.at - window.__click?.at) / 1000 >= window.__recorded.duration)))`;
