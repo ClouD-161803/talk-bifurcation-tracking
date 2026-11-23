@@ -868,7 +868,7 @@ describe('frames of the selection on dark and light', () => {
     let locks = await padlocks(page);
     assert.equal(locks.length, 1, 'a selected group does not have one padlock');
     const m1 = await box(page, '.shape.m1');
-    assert.ok(Math.abs(locks[0].top - (m1.top - 6)) <= 1, 'the padlock of a group is not at the top of its frame');
+    assert.ok(Math.abs(locks[0].top - m1.top) <= 1, 'the padlock of a group is not at the top of its frame');
     await click(page, locks[0]);
     await settle(page);
     assert.deepEqual(await locked(page, '.shape[data-group]'), [true, true, true], 'the padlock does not lock the group');
@@ -1804,6 +1804,8 @@ describe('the padlock of each kind of element', () => {
   after(async () => { await browser?.close(); });
 
   const settle = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+  const HANDLE_GAP = 10;
+  const ROW_BAR = 24;
 
   const KINDS = [
     ['a paragraph', 'p.said'],
@@ -1861,6 +1863,44 @@ describe('the padlock of each kind of element', () => {
     };
   })()`);
 
+  function assertAtFrame(p, what, { bar = 0, seen = true } = {}) {
+    assert.equal(p.locks.length, 1, `${what} does not have one padlock`);
+    assert.equal(p.frames.length, 1, `${what} does not have one frame`);
+    const [lock] = p.locks, [frame] = p.frames;
+    assert.ok(Math.abs(frame.left - HANDLE_GAP - bar - lock.right) <= 1, `${what}: the padlock is not left of the frame, its right edge at ${lock.right} for a frame at ${frame.left}`);
+    const top = p.handle ? p.handle.bottom + 1 : frame.top;
+    if (p.handle) assert.ok(Math.abs(p.handle.top - frame.top) <= 1, `${what}: the handle is not at the top of the frame, at ${p.handle.top} for a frame at ${frame.top}`);
+    assert.ok(Math.abs(lock.top - top) <= 1, `${what}: the padlock is not at the top of the frame${p.handle ? ', under the handle' : ''}, at ${lock.top} for ${top}`);
+    if (seen) assert.ok(lock.hit, `${what}: the padlock is not in view`);
+  }
+
+  test('every kind of element has a padlock at the upper left corner of its frame, at every zoom', { timeout: 600000 }, async (t) => {
+    const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=mac', page: { width: 1600, height: 1000 }, clear: true });
+    t.after(() => page.close().catch(() => {}));
+    for (const zoom of [null, 2]) {
+      for (const [what, selector] of KINDS) {
+        await show(page, selector);
+        await page.evaluate(`window.BeesonEditorShell.stage.setZoom(null), true`);
+        await settle(page);
+        if (zoom) {
+          await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present ${selector}').getBoundingClientRect(); window.BeesonEditorShell.stage.setZoom(${zoom}, { x: r.left + Math.min(r.width / 2, 40), y: r.top + Math.min(r.height / 2, 40) }); return true; })()`);
+          await settle(page);
+        }
+        await pick(page, selector);
+        assertAtFrame(await placed(page), `${what} at the zoom ${zoom ?? 'to fit'}`, { bar: selector.startsWith('table') ? ROW_BAR : 0, seen: !zoom });
+      }
+    }
+    await show(page, 'svg.line');
+    await page.evaluate(`window.BeesonEditorShell.stage.setZoom(null), true`);
+    await pick(page, 'svg.line');
+    const { locks } = await placed(page);
+    const line = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present svg.line').getBoundingClientRect(); return { left: r.left, top: r.top }; })()`);
+    assert.equal(locks.length, 1, 'a line does not have one padlock');
+    assert.ok(locks[0].hit, 'the padlock of a line is not in view');
+    assert.ok(Math.abs(line.left - 6 - HANDLE_GAP - locks[0].right) <= 1 && Math.abs(line.top - 6 - locks[0].top) <= 1, `the padlock of a line is not at the upper left corner of its box: ${JSON.stringify(locks[0])} for a line at ${JSON.stringify(line)}`);
+    assert.deepEqual(page.errors, []);
+  });
+
   test('the padlock of each kind of element locks and unlocks it, as one entry of the history', { timeout: 600000 }, async (t) => {
     const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=mac', page: { width: 1600, height: 1000 }, clear: true });
     t.after(() => page.close().catch(() => {}));
@@ -1878,6 +1918,17 @@ describe('the padlock of each kind of element', () => {
       await page.evaluate('window.BeesonEditor.undo()');
       await page.waitFor(`window.BeesonEditor.selection().every((el) => !el.hasAttribute('data-locked'))`);
       await byteExact(page);
+    }
+    assert.deepEqual(page.errors, []);
+  });
+
+  test('on a phone, the padlocks of a tycho viewer in a plate and of a PDF figure in a stack are drawn at their frames', { timeout: 120000 }, async (t) => {
+    const page = await editorPage(browser, { deck: DECK, query: 'edit&still', page: { width: 390, height: 844, mobile: true }, clear: true });
+    t.after(() => page.close().catch(() => {}));
+    for (const [what, selector] of [['a tycho viewer in the plate of a figure slide', '.plated tycho-viewer'], ['a PDF figure in a stack of a wide slide', '.stacked-pdf img']]) {
+      await show(page, selector);
+      await pick(page, selector);
+      assertAtFrame(await placed(page), `${what} on a phone`);
     }
     assert.deepEqual(page.errors, []);
   });
