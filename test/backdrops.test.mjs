@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
+import { serve } from '../scripts/webdriver.mjs';
 import { builtIn } from '../src/backdrops.ts';
 import { systemOf } from '../src/poincare.ts';
 import { ALPHAS, planeOf, shownTori, toriSpec } from '../src/tori.ts';
@@ -880,4 +881,80 @@ test('each page of the print view draws the normal form in the state of its step
   })`);
   assert.deepEqual(pages, [...NORMAL_STATES, 'resonant', 'flow', 'flow'].map((s) => [s, true, true]));
   assert.deepEqual(page.errors, []);
+});
+
+const ORDER = 'test/pages/backdrop-order.html';
+const layers = `((slide) => {
+  if (!document.getElementById('order-probe')) {
+    const style = document.createElement('style');
+    style.id = 'order-probe';
+    style.textContent = '.backdrop canvas { pointer-events: auto !important; }';
+    document.head.append(style);
+  }
+  const textRect = (el) => {
+    if (el.matches('.qr')) return [el.getBoundingClientRect()];
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return [...range.getClientRects()];
+  };
+  {
+    slide.closest('.pdf-page')?.scrollIntoView({ block: 'start' });
+    const backdrop = slide.querySelector('.backdrop');
+    const box = backdrop.getBoundingClientRect();
+    const out = {};
+    for (const el of slide.querySelectorAll('h1, h2, p, .qr')) {
+      const r = textRect(el).find((r) => r.width && r.left < box.right && box.left < r.right && r.top < box.bottom && box.top < r.bottom);
+      if (!r) continue;
+      const x = (Math.max(r.left, box.left) + Math.min(r.right, box.right)) / 2, y = (Math.max(r.top, box.top) + Math.min(r.bottom, box.bottom)) / 2;
+      const hits = document.elementsFromPoint(x, y);
+      const own = hits.findIndex((h) => el.contains(h)), drawn = hits.findIndex((h) => h.localName === 'canvas' && backdrop.contains(h));
+      out[el.matches('.qr') ? 'qr' : el.localName + (el.className ? '.' + el.className : '')] = own < 0 || drawn < 0 ? 'missing' : own < drawn ? 'over' : 'under';
+    }
+    return out;
+  }
+})`;
+const ORDERED = [
+  { h1: 'over', 'p.sub': 'over' },
+  { h2: 'over' },
+  { h2: 'over', p: 'over' },
+  { h1: 'over', 'p.sub': 'over', qr: 'under' },
+];
+
+test('headings and text are drawn over the backdrop on every kind of slide, in both modes and in the print view, and a QR code under it', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(ORDER, 'still'));
+  await page.waitFor(deckSettled);
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
+    const seen = [];
+    for (let h = 0; h < ORDERED.length; h++) {
+      await page.evaluate(`Reveal.slide(${h})`);
+      await page.waitFor(`Reveal.getIndices().h === ${h} && getComputedStyle(Reveal.getCurrentSlide()).opacity === '1'`);
+      seen.push(await page.evaluate(`${layers}(Reveal.getCurrentSlide())`));
+    }
+    assert.deepEqual(seen, ORDERED, `the order in the ${theme} mode`);
+  }
+  await printView(page, deckUrl(ORDER, 'print-pdf&still'));
+  const printed = [];
+  for (let n = 0; n < ORDERED.length; n++) printed.push(await page.evaluate(`${layers}(document.querySelectorAll('.pdf-page section')[${n}])`));
+  assert.deepEqual(printed, ORDERED, 'the order in the print view');
+  assert.deepEqual(page.errors, []);
+  const server = await serve('.');
+  t.after(() => server.close());
+  const served = await launch({ offline: false });
+  t.after(() => served.close());
+  const editor = await served.newPage({ width: 1600, height: 1000 });
+  await editor.goto(`${server.origin}/${ORDER}?edit&still`);
+  await editor.waitFor(deckSettled);
+  await editor.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  const edited = [];
+  for (let h = 0; h < ORDERED.length; h++) {
+    await editor.evaluate(`Reveal.slide(${h})`);
+    await editor.waitFor(`Reveal.getIndices().h === ${h} && getComputedStyle(Reveal.getCurrentSlide()).opacity === '1'`);
+    edited.push(await editor.evaluate(`${layers}(Reveal.getCurrentSlide())`));
+  }
+  assert.deepEqual(edited, ORDERED, 'the order in the editor');
+  assert.deepEqual(editor.errors, []);
 });

@@ -174,11 +174,11 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
   return { el, sync };
 }
 
-export function stepButton(open: (keyboard: boolean) => void): { el: HTMLButtonElement; text: HTMLElement } {
+export function stepButton(open: (keyboard: boolean) => void, label = 'Step of the color'): { el: HTMLButtonElement; text: HTMLElement } {
   const el = make('button', 'ed-step');
   el.type = 'button';
   el.setAttribute('aria-haspopup', 'menu');
-  el.setAttribute('aria-label', 'Step of the color');
+  el.setAttribute('aria-label', label);
   const text = make('span');
   el.append(text, glyph('chevron-down', 14));
   keepFocus(el);
