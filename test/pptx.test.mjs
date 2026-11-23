@@ -719,3 +719,10 @@ test('the still of a recorded slide with the words of a step over it is the pict
     assert.ok(seen.mean <= LAYERS.mean && seen.max <= LAYERS.max && seen.few <= LAYERS.few, `slide ${n}, step ${k}: ${JSON.stringify(seen)}`);
   }
 });
+
+test('a strip bundle is exported as the still of each of its steps, without a recording', { timeout: 300000 }, () => {
+  const parts = exportDeck('test/pages/bundle.html');
+  assertPackage(parts);
+  assert.deepEqual([...parts.keys()].filter((name) => name.endsWith('.mp4')), []);
+  assert.equal(slideCount(parts), 4);
+});

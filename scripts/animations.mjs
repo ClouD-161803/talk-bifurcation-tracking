@@ -22,7 +22,7 @@ const HELPER = `window.__animate ??= (() => {
   document.head.append(style);
   const clock = ${CLOCK};
   ${FULL_RANGE}
-  const all = () => [...document.querySelectorAll('.pdf-page :is(.surface, .plot)')];
+  const all = () => [...document.querySelectorAll('.pdf-page :is(.surface:not([data-bundle]), .plot)')];
   const plotOf = (el) => Beeson.plots.find((p) => p.el === el);
   const surfaceOf = (el) => Beeson.surfaces.find((s) => s.el === el);
   const toBase64 = (u) => {
@@ -74,7 +74,7 @@ const HELPER = `window.__animate ??= (() => {
     list() {
       const every = all();
       return [...document.querySelectorAll('.pdf-page')].map((page) => {
-        const own = [...page.querySelectorAll('.surface, .plot')];
+        const own = [...page.querySelectorAll('.surface:not([data-bundle]), .plot')];
         return own.filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && !el.closest('.fragment:not(.visible)'))
           .map((el) => {
             const r = el.getBoundingClientRect(), p = page.getBoundingClientRect();
