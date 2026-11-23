@@ -22,6 +22,14 @@ const at = `(() => { const i = ${FRAME}.Reveal.getIndices(); return i.h + '/' + 
 const send = (message) => `(${FRAME}.postMessage(${JSON.stringify(JSON.stringify(message))}, '*'), true)`;
 const setState = (h, f) => send({ method: 'setState', args: [{ indexh: h, indexv: 0, indexf: f, paused: false, overview: false }] });
 const KEY_RIGHT = send({ method: 'triggerKey', args: [39] });
+const KEY_LEFT = send({ method: 'triggerKey', args: [37] });
+const moves = `${FRAME}.__moves`;
+
+async function stepTo(page, key, step) {
+  const before = await page.evaluate('window.__heard.length');
+  await page.evaluate(key);
+  await page.waitFor(`window.__heard.slice(${before}).includes('${step}')`);
+}
 
 async function currentFrame(t) {
   const page = await browser.newPage({ width: 1280, height: 800 });
@@ -44,6 +52,7 @@ async function currentFrame(t) {
     return true;
   })()`);
   await page.waitFor(`(() => { try { return !!${FRAME}.document.querySelector('.reveal.ready'); } catch { return false; } })()`, 30000);
+  await page.evaluate(`(() => { const w = ${FRAME}; w.__moves = []; for (const e of ['slidechanged', 'fragmentshown', 'fragmenthidden']) w.Reveal.on(e, () => w.__moves.push(${at.replaceAll(FRAME, 'w')})); return true; })()`);
   return page;
 }
 
@@ -70,4 +79,28 @@ test('the frame of the current slide of the speaker view is not set back by a st
   await page.evaluate(setState(1, 3));
   await page.evaluate(setState(1, 1));
   await page.waitFor(`${at} === '1/1'`);
+});
+
+test('the frame of the current slide of the speaker view skips the echoes of a step forward and back taken before the first echo came back', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 0));
+  await page.waitFor(`${at} === '1/0'`);
+  await stepTo(page, KEY_RIGHT, '1/1');
+  await stepTo(page, KEY_RIGHT, '1/2');
+  await stepTo(page, KEY_LEFT, '1/1');
+  const before = await page.evaluate(`${moves}.length`);
+  for (const [h, f] of [[1, 1], [1, 2], [1, 1], [1, 4]]) await page.evaluate(setState(h, f));
+  await page.waitFor(`${at} === '1/4'`);
+  assert.deepEqual(await page.evaluate(`${moves}.slice(${before})`), ['1/4'], 'the frame is moved by an echo of its own steps');
+});
+
+test('the frame of the current slide of the speaker view follows the deck after a step of the speaker that the deck sent no echo of', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 1));
+  await page.waitFor(`${at} === '1/1'`);
+  await stepTo(page, KEY_RIGHT, '1/2');
+  await page.evaluate(setState(1, 3));
+  await page.waitFor(`${at} === '1/3'`);
+  await page.evaluate(setState(1, 2));
+  await page.waitFor(`${at} === '1/2'`);
 });

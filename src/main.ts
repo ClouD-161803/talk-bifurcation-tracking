@@ -134,10 +134,9 @@ function receiveSteps(deck: Deck): void {
     const state = m?.method === 'setState' ? m.args?.[0] : null;
     if (!state || typeof state !== 'object') return;
     ev.stopImmediatePropagation();
-    const at = posted.lastIndexOf(stepOf(state));
-    const stale = at >= 0 && at < posted.length - 1;
+    const at = posted.indexOf(stepOf(state));
     posted = at >= 0 ? posted.slice(at + 1) : [];
-    if (stale) return;
+    if (at >= 0) return;
     const config = deck.getConfig();
     const posts = config.postMessageEvents;
     config.postMessageEvents = false;
