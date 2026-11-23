@@ -483,6 +483,8 @@ describe('a preview runs until the backdrop is traced', () => {
 
     test(`a backdrop hidden in the shown layer is not traced by Trace Backdrop or Play Slide (${platform})`, async () => {
       const page = await previewPage(platform, HIDDEN, { motion: true, step: 5000 });
+      await page.evaluate(`document.querySelector('.beeson-step-tabs button').click()`);
+      await page.waitFor(`document.querySelector('.beeson-step-tabs button').getAttribute('aria-pressed') === 'true'`);
       assert.equal(await page.evaluate(`document.querySelector('section.present > .backdrop').classList.contains('beeson-off')`), true, 'the backdrop is not hidden in the first layer');
       assert.equal((await state(page, 'preview.backdrop')).enabled, false, 'Trace Backdrop is enabled');
       assert.equal((await state(page, 'preview.slide')).enabled, true, 'Play Slide is dimmed on a slide with steps');
