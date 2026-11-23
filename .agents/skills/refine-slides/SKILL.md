@@ -23,7 +23,7 @@ List what you find, slide by slide, before you change anything. Look for these p
 
 ## Tighten without losing anything
 
-When the talk is too long, count one slide per minute, find the slides that are not needed for the main point, and move them behind the closing slide as backup slides. Move what you cut from a slide into its `aside.notes`, so that the speaker keeps it. Do not change a number, a claim, or an equation.
+When the talk is too long, count one slide per minute, find the slides that are not needed for the main point, and move them behind the closing slide as backup slides. Treat what you cut from a slide by the rule on speaker notes in `AGENTS.md`. Do not change a number, a claim, or an equation.
 
 ## Write in the voice of the group
 
@@ -33,4 +33,4 @@ Reread every sentence that you wrote with a thing as its subject, and do not rep
 
 ## Report
 
-Run `npm run check` and `npm run pdf` at the end. Say in your last message what you changed per slide, what you moved to the notes or to the backup slides, and what a person still has to decide.
+Run `npm run check` and `npm run pdf` at the end. Say in your last message what you changed per slide, what you moved to the notes or to the backup slides, what you cut, and what a person still has to decide.

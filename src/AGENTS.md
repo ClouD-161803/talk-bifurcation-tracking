@@ -1,8 +1,28 @@
 # AGENTS.md of the template source
 
-The rules below are for work on the template itself: the theme, the editor, the exports, and the tests. They add to the root `AGENTS.md`.
+The rules below are for changes to the template in beeson-group/slides: the theme, the editor, the exports, the tests, and the documentation. They add to the root `AGENTS.md`, whose sections from "Changes to the template" on are for the same changes. None of them applies when you write a talk.
 
-Do not write comments or docstrings in the source, the scripts, or the tests, as ruled under Documentation in the root `AGENTS.md`. Write the reason for a workaround into a name, a test, or this file.
+## Documentation
+
+- Write each fact in one place, and link to it from the others.
+- Do not write comments or docstrings in any file of the repository. Write what a reader needs to know, e.g. the reason for a workaround, into a name, a test, `REFERENCE.md`, or this file. `test/comments.test.mjs` fails on every comment, apart from the license banner at the top of each bundle.
+- `README.md` is hand-written for human readers by the maintainers, in their voice. If you have to edit it, keep this voice, and do not restyle it to the rules of this file.
+
+## Terms
+
+- Before you coin a word, use the word that PowerPoint, Keynote, reveal.js, CSS, or everyday English already has.
+- Give narrowed and coined words an entry in `GLOSSARY.md` as soon as they are settled. Name classes, attributes, and the labels of the editor after the glossary.
+- Keep one meaning per word across the theme, the editor, `REFERENCE.md`, and the demo deck.
+
+## Commits and PRs
+
+- Conventional commit titles, plain language: `fix(editor): undo no longer drops a typed word`.
+
+## Reviewing a PR
+
+- In this repository, PR-Agent is run only at the pushes to PRs from branches of this repository, and commands in comments are ignored.
+- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in the bundles of `theme/`, from `npm run build`, either. They are compiled and committed on purpose.
+- Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
 
 ## Bundles and vendored files
 

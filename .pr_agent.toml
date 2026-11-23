@@ -8,4 +8,4 @@ committable_code_suggestions = true
 num_code_suggestions_per_chunk = 4
 
 [config]
-repo_context_files = ["AGENTS.md", "REFERENCE.md"]
+repo_context_files = ["AGENTS.md", "src/AGENTS.md", "REFERENCE.md"]
