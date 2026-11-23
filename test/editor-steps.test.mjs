@@ -214,7 +214,7 @@ for (const platform of PLATFORMS) {
   test(`Preview plays the steps of the slide and ends on its last layer on ${platform}`, async (t) => {
     const page = await open(t, platform, { deck: 'test/pages/layers.html' });
     const layers = () => page.evaluate(`[...document.querySelectorAll('.beeson-step-tabs button[aria-pressed]')].map((b) => (b.getAttribute('aria-pressed') === 'true' ? '*' : '') + b.textContent)`);
-    assert.deepEqual(await layers(), ['*Up to step 2', 'From step 3']);
+    assert.deepEqual(await layers(), ['Up to step 2', '*From step 3']);
     assert.deepEqual((await rows(page)).filter((r) => r.step).map((r) => [r.step, r.text.slice(0, 12)]), [['0', 'The old step'], ['1', 'The old span'], ['2', 'The old lead'], ['2', 'The new lead'], ['3', 'The new step']]);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row.locked .chip')].map((c) => c.disabled)`), [true]);
     await recordPreview(page, `({

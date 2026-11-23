@@ -78,25 +78,9 @@ export function showRange(slide: Element, range: StepRange | null): void {
   }
 }
 
-const lastInPlace = (child: Element): boolean => {
-  for (let up: Element | null = child; up; up = up.parentElement?.closest(CHILD) ?? null) {
-    const kin = childrenOf(up.parentElement as Element);
-    if (kin[kin.length - 1] !== up) return false;
-  }
-  return true;
-};
-
-export function completeIndex(slide: Element, ranges: StepRange[] = rangesOf(slide)): number {
-  const lasts = new Set(stacksOf(slide).map((s) => childrenOf(s).at(-1)).filter((c): c is Element => !!c && lastInPlace(c)));
-  if (!lasts.size) return 0;
-  const shown = fragmentsOf(slide).filter((f) => lasts.has(f.el));
-  const at = ranges.findIndex((r) => shown.every((f) => shownAt(f, r.to)));
-  return at < 0 ? ranges.length - 1 : at;
-}
-
 export const completeRange = (slide: Element): StepRange | null => {
   const ranges = rangesOf(slide);
-  return ranges.length > 1 ? ranges[completeIndex(slide, ranges)] : null;
+  return ranges.length > 1 ? ranges[ranges.length - 1] : null;
 };
 
 export const shownChild = (slide: Element): Element | null => stacksOf(slide).flatMap(childrenOf).find((c) => !c.classList.contains(OFF)) ?? null;
@@ -150,7 +134,7 @@ export class ShownSteps {
   }
 
   private at(slide: Element, ranges: StepRange[]): number {
-    const { child, i } = this.chosen.get(slide) ?? { child: null, i: completeIndex(slide, ranges) };
+    const { child, i } = this.chosen.get(slide) ?? { child: null, i: ranges.length - 1 };
     const f = child && slide.contains(child) ? fragmentsOf(slide).find((x) => x.el === child) : undefined;
     if (!f) return Math.min(i, ranges.length - 1);
     const fits = ranges.flatMap((r, k) => (shownAt(f, r.to) ? [k] : []));
@@ -263,7 +247,7 @@ export class ShownSteps {
   }
 
   shown(slide: Element): Pick {
-    return this.chosen.get(slide) ?? { child: null, i: completeIndex(slide) };
+    return this.chosen.get(slide) ?? { child: null, i: rangesOf(slide).length - 1 };
   }
 
   show(slide: Element, pick: Pick): void {

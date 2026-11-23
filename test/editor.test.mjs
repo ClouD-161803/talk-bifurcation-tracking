@@ -1314,16 +1314,16 @@ test('a slide with elements faded out at a step is edited one layer at a time', 
   const go = async (h) => { await page.evaluate(`Reveal.slide(${h})`); await sleep(100); };
   const swap = ['old-lead', 'old-step', 'old-span', 'new-lead', 'new-step'];
 
-  assert.deepEqual(await shown(swap), ['old-lead', 'old-step', 'old-span']);
-  assert.deepEqual(await layers(), ['*Up to step 2', 'From step 3']);
-  await choose('From step 3');
-  assert.deepEqual(await layers(), ['Up to step 2', '*From step 3']);
   assert.deepEqual(await shown(swap), ['new-lead', 'new-step']);
+  assert.deepEqual(await layers(), ['Up to step 2', '*From step 3']);
+  await choose('Up to step 2');
+  assert.deepEqual(await layers(), ['*Up to step 2', 'From step 3']);
+  assert.deepEqual(await shown(swap), ['old-lead', 'old-step', 'old-span']);
 
   const panels = ['panel-0', 'panel-1', 'panel-2', 'panel-3'];
   await go(1);
-  assert.deepEqual(await layers(), ['*Before step 1', 'Step 1', 'Step 2', 'From step 3']);
-  assert.deepEqual(await shown(panels), ['panel-0']);
+  assert.deepEqual(await layers(), ['Before step 1', 'Step 1', 'Step 2', '*From step 3']);
+  assert.deepEqual(await shown(panels), ['panel-3']);
   await choose('Step 2');
   assert.deepEqual(await shown(panels), ['panel-2']);
   await choose('From step 3');
@@ -1334,7 +1334,7 @@ test('a slide with elements faded out at a step is edited one layer at a time', 
   assert.deepEqual(await shown(['plain-1', 'plain-2']), ['plain-1', 'plain-2']);
 
   await go(0);
-  assert.deepEqual(await layers(), ['Up to step 2', '*From step 3']);
+  assert.deepEqual(await layers(), ['*Up to step 2', 'From step 3']);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), text);
   assert.deepEqual(page.errors, []);
 });
