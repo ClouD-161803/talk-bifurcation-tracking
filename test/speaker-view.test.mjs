@@ -104,3 +104,10 @@ test('the frame of the current slide of the speaker view follows the deck after 
   await page.evaluate(setState(1, 2));
   await page.waitFor(`${at} === '1/2'`);
 });
+
+test('the frame of the current slide of the speaker view does not post the step that it opens at', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(KEY_RIGHT);
+  await page.waitFor(`window.__heard.length > 0`);
+  assert.deepEqual(await page.evaluate('window.__heard'), ['1/0'], 'the frame posts its opening step, which the speaker view sends to the deck');
+});

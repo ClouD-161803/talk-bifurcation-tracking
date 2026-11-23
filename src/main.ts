@@ -117,11 +117,20 @@ const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? 
 
 function receiveSteps(deck: Deck): void {
   let posted: string[] = [];
-  let setting = false;
+  let last: string | null = null;
   const post = () => {
+    const config = deck.getConfig();
+    if (!config.postMessageEvents) return;
     const step = stepOf(deck.getState());
-    if (!setting && deck.getConfig().postMessageEvents && posted.at(-1) !== step) posted.push(step);
+    if (last !== null && step !== last) {
+      last = step;
+      posted.push(step);
+      return;
+    }
+    config.postMessageEvents = false;
+    queueMicrotask(() => (config.postMessageEvents = true));
   };
+  deck.on('ready', () => (last = stepOf(deck.getState())));
   for (const type of ['slidechanged', 'fragmentshown', 'fragmenthidden']) deck.on(type, post);
   window.addEventListener('message', (ev) => {
     if (ev.source !== window.parent || typeof ev.data !== 'string' || !deck.isReady()) return;
@@ -140,12 +149,11 @@ function receiveSteps(deck: Deck): void {
     const config = deck.getConfig();
     const posts = config.postMessageEvents;
     config.postMessageEvents = false;
-    setting = true;
     try {
       deck.setState(state as Parameters<Deck['setState']>[0]);
     } finally {
       config.postMessageEvents = posts;
-      setting = false;
+      last = stepOf(deck.getState());
     }
   });
 }
