@@ -20,7 +20,7 @@ Agree with the speaker on the talk before you write a slide. Follow the rules un
 - Show a worked example before the general formula, with the symbols of the formula. Define on a slide the terms that are used on the next slide.
 - Write a claim on a slide only when a paper of `references.bib` states it, and cite the paper there. Give the page of each claim in your hand-over. Ask the speaker when you cannot find a page.
 - Write each callout as one plain sentence that a first-year graduate student can read.
-- Split a slide with more than one idea or about 50 words into two slides. Do not make the type smaller, and do not set widths to make the text fit.
+- Split a slide with more than one idea or about 50 words into two slides, or cut text by the rule on speaker notes in `AGENTS.md`. Do not make the type smaller, and do not set widths to make the text fit.
 - Write nothing on a slide that is not part of the talk, e.g. a placeholder, "TODO", a file name, or a note to the speaker. List what is missing in your hand-over instead.
 - Scale a raster figure down to at most 3840 px across before you add it, and save a photograph as JPEG.
 
