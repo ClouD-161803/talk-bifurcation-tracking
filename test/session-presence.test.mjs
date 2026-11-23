@@ -220,7 +220,7 @@ test('a text element that another page types in takes a caret, a selection, and 
 
   const moveTo = `{ slides: [Reveal.getCurrentSlide()], gap: 0 }`;
   await front(ben);
-  for (const [id, slides, arg] of [['slide.delete', false], ['slide.hide', false], ['slide.cut', true], ['slide.moveTo', false, moveTo]]) {
+  for (const [id, slides, arg] of [['slide.delete', false], ['slide.hide', false], ['slide.draft', false], ['slide.cut', true], ['slide.moveTo', false, moveTo]]) {
     await unbubble(ben);
     await ben.evaluate(slides ? `${C}.app.selection.set('slides', [Reveal.getCurrentSlide()])` : `${C}.app.selection.clear()`);
     assert.ok(await ben.evaluate(`${C}.app.commands.enabled(${JSON.stringify(id)})`), `${id} is enabled`);
@@ -233,6 +233,8 @@ test('a text element that another page types in takes a caret, a selection, and 
   await show(ben, 'One');
   await ben.evaluate(`${C}.app.commands.run('slide.hide')`);
   await until(() => ben.evaluate(`document.querySelectorAll('.reveal .slides > section')[0].hasAttribute('data-visibility')`), 'slide One to be hidden');
+  await ben.evaluate(`${C}.app.commands.run('slide.draft')`);
+  await until(() => ana.evaluate(`document.querySelectorAll('.reveal .slides > section')[0].hasAttribute('data-draft')`), 'slide One to be a draft on the page of Ana');
 
   await show(ben, 'Two');
   await ben.evaluate(`${C}.app.commands.run('slide.duplicate')`);

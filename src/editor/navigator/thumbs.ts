@@ -1,6 +1,6 @@
 import type { App } from '../app.ts';
 import { isRuntimeClass } from '../render.ts';
-import { rangesOf, showRange } from '../shown-steps.ts';
+import { completeRange, showRange } from '../shown-steps.ts';
 import { whenLoaded } from '../../viewers.ts';
 
 const CSS = `
@@ -207,8 +207,7 @@ export function cloneSlide(slide: Element, scale: number): HTMLElement {
     for (const c of [...el.classList]) if (isRuntimeClass(c) && !c.startsWith('plot-')) el.classList.remove(c);
   }
   if (window.MathJax) hideTex(clone);
-  const ranges = rangesOf(clone);
-  showRange(clone, ranges.length > 1 ? ranges[0] : null);
+  showRange(clone, completeRange(clone));
   clone.classList.add('present');
   clone.style.display = 'block';
   clone.style.top = '0';
@@ -293,7 +292,7 @@ export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: n
   else drawBackdrops(slide, clone);
 }
 
-const QUIET = new Set(['contenteditable', 'tabindex', 'aria-hidden', 'hidden', 'role', 'aria-label', 'data-appendix', 'data-visibility']);
+const QUIET = new Set(['contenteditable', 'tabindex', 'aria-hidden', 'hidden', 'role', 'aria-label', 'data-appendix', 'data-visibility', 'data-draft']);
 
 function seen(m: MutationRecord): boolean {
   if (m.type !== 'attributes') return true;

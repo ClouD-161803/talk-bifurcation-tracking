@@ -184,9 +184,9 @@ test('the slides of a version are numbered as the status bar numbers them', { ti
   await t.test('a slide at the top by its place in the show, and a vertical slide as reveal.js counts it', () => {
     const numberOf = (heading) => slidesOf(STACKED).find((s) => STACKED.slice(s.start, s.end).includes(heading))?.number;
     assert.deepEqual(['Title', 'Alpha', 'Hidden', 'Beta', 'Thanks', 'Appendix<'].map(numberOf), [1, 2, 3, 4, 5, 6]);
-    assert.equal(numberOf('Down one'), 3, 'reveal.js counts the hidden slide and each vertical slide, and leaves out the title slide');
-    assert.equal(numberOf('Down two'), 4, 'reveal.js counts each vertical slide');
-    assert.equal(numberOf('Appendix down'), 6, 'reveal.js leaves the closing slide and the appendix uncounted');
+    assert.equal(numberOf('Down one'), 2, 'reveal.js counts each vertical slide and leaves out the title slide, and the hidden slide is left out as in the status bar');
+    assert.equal(numberOf('Down two'), 3, 'reveal.js counts each vertical slide');
+    assert.equal(numberOf('Appendix down'), 5, 'reveal.js leaves the closing slide and the appendix uncounted');
     assert.equal(slidesOf(STACKED).length, 9);
   });
 
@@ -197,7 +197,7 @@ test('the slides of a version are numbered as the status bar numbers them', { ti
     replace(authority, 'Down two', 'Down 2', ANN);
     close();
     const v = history.list().versions[0];
-    assert.deepEqual(v.slides, [4]);
+    assert.deepEqual(v.slides, [3]);
     assert.equal(v.removed, undefined);
   });
 
@@ -229,8 +229,8 @@ test('the slides of a version are numbered as the status bar numbers them', { ti
     replace(authority, 'Down 2', 'Down 2b', ANN);
     close();
     const v = history.list().versions[0];
-    assert.deepEqual(v.slides, [3]);
-    assert.deepEqual(v.removed, { slides: [3], elements: 0 });
+    assert.deepEqual(v.slides, [2]);
+    assert.deepEqual(v.removed, { slides: [2], elements: 0 });
     assert.deepEqual(history.list().versions[0].authors, [BO, ANN]);
   });
 

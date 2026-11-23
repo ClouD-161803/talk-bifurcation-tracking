@@ -44,6 +44,7 @@ const FIXED_POINT = 5.5;
 const FEWEST_HALF = 4;
 const SLOWEST_TURN = 0.004;
 const CROSS = 5;
+const MARKS: Partial<Record<ColormapName, string>> = { Blues_r: '--data-5' };
 const TRIMS: Partial<Record<ColormapName, { light: [number, number]; dark: [number, number] }>> = { Blues_r: { light: [0, 0.5], dark: [0, 0.9] } };
 
 function decode(text: string): Int16Array {
@@ -145,6 +146,8 @@ function draw(frame: Frame<State>, seconds: number, duration: number): void {
     g.fill();
   });
 
+  const tone = MARKS[state.colormap];
+  const mark = tone ? colors.tone(tone) : colors.mark;
   const fixedPoint = (x: number, y: number, diamond: boolean) => {
     const cx = X(x), cy = Y(y), r = FIXED_POINT;
     g.beginPath();
@@ -155,7 +158,7 @@ function draw(frame: Frame<State>, seconds: number, duration: number): void {
       g.lineTo(cx - r * 1.25, cy);
       g.closePath();
     } else g.arc(cx, cy, r, 0, TAU);
-    g.fillStyle = colors.mark;
+    g.fillStyle = mark;
     g.fill();
     g.lineWidth = 1.5;
     g.strokeStyle = colors.ground;
@@ -172,7 +175,7 @@ function draw(frame: Frame<State>, seconds: number, duration: number): void {
     const cx = X(center[0]), cy = Y(center[1]);
     g.globalAlpha = shown * saddle;
     g.lineCap = 'round';
-    for (const [width, color] of [[5.5, colors.ground], [2.5, colors.mark]] as const) {
+    for (const [width, color] of [[5.5, colors.ground], [2.5, mark]] as const) {
       g.beginPath();
       for (const s of [1, -1]) {
         g.moveTo(cx - CROSS, cy - CROSS * s);

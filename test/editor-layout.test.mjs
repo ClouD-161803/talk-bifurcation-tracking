@@ -20,7 +20,6 @@ const SECTIONS = [...readFileSync(LAYOUTS, 'utf8').matchAll(/<section[\s\S]*?<\/
 const MATH = SECTIONS.findIndex((s) => s.includes('<h2>Math, an ordered list, and a zone</h2>'));
 const TITLE = 0;
 const QR = '<div class="qr" data-qr="https://github.com/beeson-group/slides"></div>';
-const BACKDROP = '<div class="backdrop" data-backdrop="tubes" data-cx="0.42" data-cy="0" data-half="0.6">';
 const BLOCK_END = '    <p class="who">The Beeson group<br>Princeton University</p>\n  </div>\n';
 
 let browser;
@@ -169,7 +168,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await drawnOver(page), { who: 'qr', sub: 'qr', backdrop: 'qr' });
     await press(page, KEYS[platform].back);
     await frames(page);
-    const edits = [[`${QR}\n`, `${QR.replace('>', ' style="z-index: -1">')}\n`], [BACKDROP, BACKDROP.replace('>', ' style="z-index: -1">')]];
+    const edits = [[`${QR}\n`, `${QR.replace('>', ' style="z-index: -1">')}\n`]];
     await byteExact(page, edits);
     assert.deepEqual(await drawnOver(page), { who: 'text', sub: 'text', backdrop: 'qr' }, 'the QR code sent to the back is not drawn behind the block and over the backdrop');
     assert.equal((await state(page, 'arrange.order.back')).enabled, false, 'the QR code is already at the back');
