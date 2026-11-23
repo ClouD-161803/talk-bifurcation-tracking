@@ -1795,3 +1795,90 @@ test('selected words on a slide are drawn on a tint of the mode of the deck, wit
   }
   assert.deepEqual(page.errors, []);
 });
+
+describe('the padlock of each kind of element', () => {
+  const DECK = 'test/pages/editor-locks.html';
+
+  let browser;
+  before(async () => { browser = await launch(); });
+  after(async () => { await browser?.close(); });
+
+  const settle = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+
+  const KINDS = [
+    ['a paragraph', 'p.said'],
+    ['a list', 'ul.listed li'],
+    ['a formula', 'div.math'],
+    ['a table', 'table.tabled'],
+    ['a code box', 'pre'],
+    ['a PDF figure', '.pdf img'],
+    ['a figure with a caption', '.captioned img'],
+    ['a TikZ figure', '.tikz'],
+    ['a tycho viewer', 'tycho-viewer.lone'],
+    ['a tycho viewer wider than the slide', 'tycho-viewer.broad'],
+    ['a video', '.clip video'],
+    ['a plate of two images', '.left-image'],
+    ['a QR code', '.qr'],
+    ['a shape', '.shape.loose'],
+    ['a group', '.shape.m1'],
+    ['a child of a stack', '.r-stack .first p'],
+    ['a tycho viewer in the plate of a figure slide', '.plated tycho-viewer'],
+    ['a PDF figure in a stack of a wide slide', '.stacked-pdf img'],
+    ['a plot', '.plotted'],
+    ['a surface', '.surface'],
+  ];
+
+  async function show(page, selector) {
+    await page.evaluate(`(() => { const el = document.querySelector('.reveal .slides ${selector}'); Reveal.slide(Reveal.getIndices(el.closest('.slides > section')).h); return true; })()`);
+    await page.evaluate(`window.BeesonEditor.exec('selection.clear').then(() => true)`);
+    await page.waitFor(`!!document.querySelector('.reveal section.present ${selector}')?.getBoundingClientRect().width`);
+    await settle(page);
+  }
+
+  async function pick(page, selector) {
+    const p = await page.evaluate(`(() => {
+      const r = [...document.querySelectorAll('.reveal section.present ${selector}')].find((e) => e.getBoundingClientRect().width).getBoundingClientRect();
+      const v = window.BeesonEditorShell.stage.viewport;
+      const left = Math.max(r.left, v.left), top = Math.max(r.top, v.top);
+      return { x: (left + Math.min(r.right, v.right)) / 2, y: top + Math.min((Math.min(r.bottom, v.bottom) - top) / 2, 40) };
+    })()`);
+    await click(page, p);
+    await page.waitFor(`window.BeesonEditor.selection().length > 0`);
+    await settle(page);
+  }
+
+  const placed = (page) => page.evaluate(`(() => {
+    const box = (d) => { const r = d.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
+    const shown = (s) => [...document.querySelectorAll(s)].filter((d) => !d.hidden && d.getClientRects().length);
+    const locks = shown('.beeson-overlay .beeson-lock');
+    const frames = shown('.beeson-overlay .beeson-frame:is(.selected, .union)').map(box);
+    const handle = shown('.beeson-overlay .beeson-handle').map(box)[0] ?? null;
+    return {
+      locks: locks.map((d) => ({ ...box(d), hit: document.elementFromPoint(box(d).left + 11, box(d).top + 11)?.closest('.beeson-lock') === d })),
+      frames,
+      handle,
+      selected: window.BeesonEditor.selection().length,
+    };
+  })()`);
+
+  test('the padlock of each kind of element locks and unlocks it, as one entry of the history', { timeout: 600000 }, async (t) => {
+    const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=mac', page: { width: 1600, height: 1000 }, clear: true });
+    t.after(() => page.close().catch(() => {}));
+    const lockedOf = () => page.evaluate(`window.BeesonEditor.selection().map((el) => el.hasAttribute('data-locked'))`);
+    for (const [what, selector] of KINDS) {
+      await show(page, selector);
+      await pick(page, selector);
+      const before = await lockedOf();
+      assert.ok(before.length && before.every((l) => !l), `${what} is locked before the press`);
+      const [lock] = (await placed(page)).locks;
+      assert.ok(lock, `${what} does not have a padlock`);
+      await click(page, { x: lock.left + 11, y: lock.top + 11 });
+      await page.waitFor(`window.BeesonEditor.selection().length > 0 && window.BeesonEditor.selection().every((el) => el.hasAttribute('data-locked'))`);
+      assert.equal((await placed(page)).locks.length, 1, `${what} does not keep its padlock once locked`);
+      await page.evaluate('window.BeesonEditor.undo()');
+      await page.waitFor(`window.BeesonEditor.selection().every((el) => !el.hasAttribute('data-locked'))`);
+      await byteExact(page);
+    }
+    assert.deepEqual(page.errors, []);
+  });
+});
