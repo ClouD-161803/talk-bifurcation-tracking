@@ -603,11 +603,11 @@ async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } 
   if (unheard) {
     await page.waitFor('window.__plays.some((p) => !p.paused)');
     await page.evaluate('window.__unheard = true');
-    await sleep(1000 * (await page.evaluate('window.BeesonEditor.selection()[0].duration') - from + 1));
+    await page.waitFor(`window.__recorded.currentTime < ${from - 1}`, 60000);
     await page.evaluate('window.__unheard = false');
   }
   const later = `window.__plays.find((p) => !p.paused && (p.time > ${from + 0.5} || (p.time < ${from - 0.1} && ${from} + (p.at - window.__click?.at) / 1000 >= window.__recorded.duration)))`;
-  await page.waitFor(`!!${later}`, unheard ? 5000 : 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
+  await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
   const started = await page.evaluate('window.__click');
@@ -617,6 +617,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } 
   const time = first.time < from - 0.1 && from + ran >= duration ? first.time + duration : first.time;
   assert.ok(time >= from - 0.1 && time < from + ran + 0.5, `the video plays from ${first.time}, read ${ran} s after the click, and not from the frame ${from} of the slider`);
   const on = await page.evaluate(later);
+  if (unheard) assert.ok(on.time < from, `the record at ${on.time} s, past the end of the video, is not taken`);
   assert.ok(Math.abs(on.slider - on.time) < 0.5, `the slider at ${on.slider} does not follow the video at ${on.time}`);
   s = await page.evaluate(PLAYED);
   assert.equal(s.paused, false, 'the video does not play');
