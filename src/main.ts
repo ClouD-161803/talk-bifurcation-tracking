@@ -115,6 +115,16 @@ function fromSpeaker(ev: MessageEvent): void {
 type Indices = { indexh?: number; indexv?: number; indexf?: number };
 const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? -1}`;
 
+function passKeys(): void {
+  window.addEventListener('keydown', (ev) => {
+    ev.stopImmediatePropagation();
+    const speaker = window.parent as typeof window;
+    const passed = new speaker.KeyboardEvent('keydown', ev);
+    Object.defineProperty(passed, 'keyCode', { value: ev.keyCode });
+    if (!speaker.document.dispatchEvent(passed)) ev.preventDefault();
+  }, true);
+}
+
 function receiveSteps(deck: Deck): void {
   let posted: string[] = [];
   let left: string | null = null;
@@ -320,6 +330,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   const hooks: { internal?: Internal } = {};
   if (!EDITING) plugins.push({ id: 'beeson-restore', init: (reveal: unknown) => { hooks.internal = reveal as Internal; addRestoreSteps(document); } });
   if (RECEIVER) receiveSteps(deck);
+  if (RECEIVER && !/postMessageEvents=true/.test(location.search)) passKeys();
   const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
