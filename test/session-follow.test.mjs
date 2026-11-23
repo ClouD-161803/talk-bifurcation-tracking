@@ -44,7 +44,7 @@ async function select(page, ...expressions) {
 async function session(t, names, options = {}) {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t, { env: { SLIDES_GONE_MS: '8000' } });
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '2000', SLIDES_GONE_MS: '8000' } });
   const url = sessionUrl(server.edit);
   const pages = [];
   for (const name of names) pages.push(await open(browser, url, { name, ...options }));
@@ -241,6 +241,7 @@ test('following stops at the avatar, Stop, Escape, a selection, a slide, an edit
     await ben.evaluate(`${F}.start(${JSON.stringify(cleoId)})`);
     await following(ben, cleoId);
     await untilPill(ben, { text: 'Following Cleo', button: 'Stop', on: true });
+    await new Promise((done) => setTimeout(done, 1000));
     await cleo.evaluate('setTimeout(() => { const end = Date.now() + 2000; while (Date.now() < end); }), true');
     await cleo.close();
     await untilPill(ben, { text: 'Cleo left the session', button: null, on: false });
