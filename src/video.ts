@@ -3,6 +3,7 @@ import type { Deck } from './reveal.d.ts';
 const running = new WeakSet<HTMLVideoElement>();
 const turns = new WeakMap<HTMLVideoElement, number>();
 let turn = 0;
+let revealSeeks = () => true;
 const guarded = new WeakSet<HTMLVideoElement>();
 
 const HIDES = '.fade-out, .fade-in-then-out:not(.current-fragment), .current-visible:not(.current-fragment)';
@@ -59,7 +60,7 @@ async function start(videos: HTMLVideoElement[]): Promise<void> {
   if (!videos.every(ready)) {
     const take = (e: Event) => {
       const v = e.target as HTMLVideoElement;
-      if (v.currentTime > 0) taken.add(v);
+      if (v.currentTime > 0 || !revealSeeks()) taken.add(v);
     };
     for (const v of videos) {
       v.pause();
@@ -130,6 +131,7 @@ function leave(slide: Element): void {
 
 export function initVideos(deck: Deck): void {
   const speaker = deck.isSpeakerNotes();
+  revealSeeks = () => deck.getConfig().autoPlayMedia !== false;
   const sync = () => {
     const slide = deck.getCurrentSlide();
     if (slide) syncVideos(slide, speaker);
