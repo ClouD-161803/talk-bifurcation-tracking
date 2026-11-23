@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>Headings and text over the backdrop</title>
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css" />
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css" />
+    <link rel="stylesheet" href="../../theme/beeson.css" />
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section class="title">
+          <div class="backdrop" data-backdrop="tubes" data-cx="0" data-cy="0" data-half="0.6"></div>
+          <div class="title-text">
+            <h1>A title slide with a backdrop</h1>
+            <p class="sub">Its words are drawn over the trajectories</p>
+          </div>
+        </section>
+        <section class="section">
+          <div class="sec">
+            <h2>Background</h2>
+            <ul class="outline" data-auto></ul>
+          </div>
+          <div class="backdrop" data-backdrop="tubes" data-cx="0" data-cy="0" data-half="0.6" style="translate: -700px 0px; width: 1580px"></div>
+        </section>
+        <section>
+          <h2>An ordinary slide with a backdrop behind its words</h2>
+          <p>A paragraph that runs under the backdrop on the right of the slide.</p>
+          <div class="backdrop" data-backdrop="tubes" data-cx="0" data-cy="0" data-half="0.6" style="translate: -1200px 0px; width: 1920px"></div>
+        </section>
+        <section class="closing">
+          <div class="backdrop" data-backdrop="tubes" data-cx="0.42" data-cy="0" data-half="0.6"></div>
+          <div class="title-text">
+            <h1>Thank you</h1>
+            <p class="sub">Questions</p>
+          </div>
+          <div class="qr" data-qr="https://github.com/beeson-group/slides"></div>
+        </section>
+      </div>
+    </div>
+    <script src="../../theme/vendor/reveal/reveal.js"></script>
+    <script src="../../theme/beeson.js"></script>
+    <script>
+      Beeson.start({});
+    </script>
+  </body>
+</html>
