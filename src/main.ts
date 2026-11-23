@@ -25,7 +25,7 @@ import { coverAll, initVideos } from './video.ts';
 import { typesetLabel } from './drawn-text.ts';
 import { initViewers } from './viewers.ts';
 import { exported, themeFile, unpackLarge } from './files.ts';
-import type { RevealOptions, SlideEvent } from './reveal.d.ts';
+import type { Deck, RevealOptions, SlideEvent } from './reveal.d.ts';
 
 function numberOf(slide: HTMLElement | null | undefined, counted: HTMLElement[]): [string, string, string] {
   if (slide?.dataset.appendix) return [`A${slide.dataset.appendix}`, '', ''];
@@ -104,12 +104,77 @@ function fromSpeaker(ev: MessageEvent): void {
   let m: { namespace?: string; eventName?: string; state?: unknown } | null = null;
   try {
     const from = ev.source as Window | null;
-    if (from?.opener === window) speaker = from;
+    if (from?.opener === window) {
+      speaker = from;
+      if (from.document.readyState === 'loading') from.document.close();
+    }
     if (from?.parent?.opener === window && typeof ev.data === 'string') m = JSON.parse(ev.data);
   } catch {
     return;
   }
   if (m?.namespace === 'beeson' && m.eventName === 'edit') (PLAYED || TAB ? toEditor('edit', m.state ?? window.Reveal.getState()) : edit());
+}
+
+type Indices = { indexh?: number; indexv?: number; indexf?: number };
+const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? -1}`;
+
+function passKeys(): void {
+  window.addEventListener('keydown', (ev) => {
+    ev.stopImmediatePropagation();
+    const speaker = window.parent as typeof window;
+    const passed = new speaker.KeyboardEvent('keydown', ev);
+    Object.defineProperty(passed, 'keyCode', { value: ev.keyCode });
+    if (!speaker.document.dispatchEvent(passed)) ev.preventDefault();
+  }, true);
+}
+
+function receiveSteps(deck: Deck): void {
+  let posted: string[] = [];
+  let left: string | null = null;
+  let last: string | null = null;
+  const post = () => {
+    const config = deck.getConfig();
+    if (!config.postMessageEvents) return;
+    const step = stepOf(deck.getState());
+    if (last !== null && step !== last) {
+      if (!posted.length) left = last;
+      last = step;
+      posted.push(step);
+      return;
+    }
+    config.postMessageEvents = false;
+    queueMicrotask(() => (config.postMessageEvents = true));
+  };
+  deck.on('ready', () => (last = stepOf(deck.getState())));
+  for (const type of ['slidechanged', 'fragmentshown', 'fragmenthidden']) deck.on(type, post);
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window.parent || typeof ev.data !== 'string' || !deck.isReady()) return;
+    let m: { method?: string; args?: Indices[] } | null = null;
+    try {
+      m = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    const state = m?.method === 'setState' ? m.args?.[0] : null;
+    if (!state || typeof state !== 'object') return;
+    ev.stopImmediatePropagation();
+    const step = stepOf(state);
+    const at = posted.indexOf(step);
+    if (at >= 0 || (posted.length && step === left)) {
+      posted = posted.slice(at + 1);
+      return;
+    }
+    posted = [];
+    const config = deck.getConfig();
+    const posts = config.postMessageEvents;
+    config.postMessageEvents = false;
+    try {
+      deck.setState(state as Parameters<Deck['setState']>[0]);
+    } finally {
+      config.postMessageEvents = posts;
+      last = stepOf(deck.getState());
+    }
+  });
 }
 
 function edit(): void {
@@ -267,6 +332,8 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   });
   const hooks: { internal?: Internal } = {};
   if (!EDITING) plugins.push({ id: 'beeson-restore', init: (reveal: unknown) => { hooks.internal = reveal as Internal; addRestoreSteps(document); } });
+  if (RECEIVER) receiveSteps(deck);
+  if (RECEIVER && !/postMessageEvents=true/.test(location.search)) passKeys();
   const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
