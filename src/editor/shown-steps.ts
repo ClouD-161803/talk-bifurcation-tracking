@@ -146,7 +146,7 @@ export class ShownSteps {
   private arrive(slide: Element | null): void {
     if (slide === this.here) return;
     this.here = slide;
-    if (slide) this.chosen.delete(slide);
+    if (slide && stacksOf(slide).length) this.chosen.delete(slide);
   }
 
   private at(slide: Element, ranges: StepRange[]): number {
