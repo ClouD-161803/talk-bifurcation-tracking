@@ -197,18 +197,22 @@ try {
 
     for (const [n, [h, v]] of slides.entries()) {
       const name = `${theme}-${String(n + 1).padStart(2, '0')}.png`;
-      const page = await browser.newPage();
-      await page.goto(deckAt(`theme=${theme}&still`, `/${h}/${v}`));
-      await page.waitFor(deckSettled);
-      const at = await page.evaluate('Reveal.getIndices()');
-      if (at.h !== h || (at.v ?? 0) !== v) {
-        page.errors.push(`opened at #/${at.h}/${at.v ?? 0}, set hash: true in Reveal.initialize`);
+      for (let opens = 1; ; opens++) {
+        const page = await browser.newPage();
+        await page.goto(deckAt(`theme=${theme}&still`, `/${h}/${v}`));
+        await page.waitFor(deckSettled);
+        const at = await page.evaluate('Reveal.getIndices()');
+        if (at.h !== h || (at.v ?? 0) !== v) {
+          page.errors.push(`opened at #/${at.h}/${at.v ?? 0}, set hash: true in Reveal.initialize`);
+        }
+        const shot = await page.screenshot();
+        const errors = [...page.errors, ...(await page.evaluate(deckProblems))];
+        await page.close();
+        if (opens === 1 && errors.some((error) => error.startsWith('WebGL is not available'))) continue;
+        writeFileSync(join(options.out, name), shot);
+        for (const error of errors) failures.push(`${name} (#/${h}/${v}): ${error}`);
+        break;
       }
-      writeFileSync(join(options.out, name), await page.screenshot());
-      for (const error of [...page.errors, ...(await page.evaluate(deckProblems))]) {
-        failures.push(`${name} (#/${h}/${v}): ${error}`);
-      }
-      await page.close();
     }
     console.log(`${theme}: ${slides.length} slides saved to ${options.out}/${theme}-*.png`);
 
