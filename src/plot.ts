@@ -475,6 +475,8 @@ export class PlotView {
   private cue: 'none' | 'held' | 'shown' = 'none';
   private live = false;
   private once = false;
+  // the tabs and the bar take their height once their labels are typeset, and the area is shrunk
+  private resized = new ResizeObserver(() => this.fit());
 
   constructor(el: HTMLElement) {
     this.el = el;
@@ -572,6 +574,8 @@ export class PlotView {
     this.overlay = document.createElement('div');
     this.overlay.className = 'plot-labels';
     this.area.append(this.svgEl, this.overlay);
+    this.resized.disconnect();
+    this.resized.observe(this.area);
     this.body.append(this.area);
 
     const controls = document.createElement('div');

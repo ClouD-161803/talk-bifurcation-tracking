@@ -106,6 +106,18 @@ test('a panel with a cell is placed in it, and the other panels share the row wi
   assert.deepEqual(boxes.corners, [[140, 60, 220, 380], [0, 0, boxes.H, boxes.W]]);
 });
 
+test('a plot opened at its slide is laid out again once the labels of its tabs are typeset', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/plot-steps.html', 'still', '/1'));
+  await page.waitFor(deckSettled);
+  const size = `(() => { const a = document.querySelector('[data-plot="data"] .plot-area'); return [a.offsetHeight, Number(a.querySelector('svg').getAttribute('viewBox').split(' ')[3])]; })()`;
+  await page.waitFor(`document.querySelector('[data-plot="data"] .plot-tabs').offsetHeight > 30`);
+  const [area, drawn] = await page.evaluate(size);
+  assert.equal(drawn, area);
+});
+
 test('a fault in a plot is reported with its path', () => {
   const faults = [
     [(p) => delete p.panels, /^panels: a list is expected/],
