@@ -246,3 +246,109 @@ test('a bundle is turned by a drag in the editor, shown in the Surface pane with
   await page.waitFor(`window.BeesonEditor.render().includes('<div class="surface" data-bundle="ring" data-azimuth="${az}" data-elevation="${el}">')`);
   assert.deepEqual(page.errors, []);
 });
+
+const POINT = 'test/pages/bundle-point.html';
+const POINT_STATES = ['', 'start', 'nudge', 'flow', 'flow a'];
+
+test('a bundle is reported when its times are not increasing fractions of the period, one for each point of the orbit', () => {
+  const orbit = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
+  for (const times of [[0, 0.5], [0, 0.5, 0.5], [0, 0.5, 1], [0.1, 0.05, 0.5], [-0.1, 0.2, 0.5], 'a']) {
+    assert.match(parseBundle(JSON.stringify({ orbit, strips: [], times })), /times/, JSON.stringify(times));
+  }
+  assert.equal(typeof parseBundle(JSON.stringify({ orbit, strips: [], times: [0, 0.3, 0.6] })), 'object');
+});
+
+const point = `Promise.all([...document.querySelectorAll('.surface[data-bundle]')].filter((s) => s.getClientRects().length).map(async (s) => {
+  const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let drawn = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) drawn++;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+  const label = (at) => s.querySelector('.label[data-at="' + at + '"]');
+  const place = (at) => [parseFloat(label(at).style.left), parseFloat(label(at).style.top)];
+  const [x0, y0] = place('start'), [x1, y1] = place('nudge');
+  return {
+    state: s.dataset.shown,
+    drawn: drawn / (data.length / 4),
+    digest: [...digest.slice(0, 8)].join('.'),
+    start: Number(label('start').style.opacity),
+    nudge: Number(label('nudge').style.opacity),
+    a: Number(label('a').style.opacity),
+    lap: Number(s.closest('section').querySelector('[data-surface-lap]').style.opacity),
+    reach: Math.hypot(x1 - x0, y1 - y0),
+  };
+}))`;
+
+test('a moving point is drawn at each of its states, live and in the print view, with its labels at its start and past its arrow', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+
+  const page = await browser.newPage();
+  await page.goto(deckUrl(POINT, 'still'));
+  await page.waitFor(deckSettled);
+  const live = [];
+  for (let f = -1; f <= 3; f++) {
+    await page.evaluate(`Reveal.slide(0, 0, ${f})`);
+    live.push(...(await page.evaluate(point)));
+  }
+  assert.deepEqual(page.errors, []);
+  assert.deepEqual(live.map((s) => s.state), POINT_STATES);
+  const at = (state) => live.find((s) => s.state === state);
+  assert.equal(new Set(live.map((s) => s.digest)).size, POINT_STATES.length);
+  assert.ok(at('flow a').drawn > at('flow').drawn + 0.01, JSON.stringify(live));
+  assert.deepEqual(live.map((s) => s.start), [0, 1, 1, 1, 1]);
+  assert.deepEqual(live.map((s) => s.nudge), [0, 0, 1, 0, 0]);
+  assert.deepEqual(live.map((s) => s.a), [0, 0, 0, 0, 1]);
+  assert.deepEqual(live.map((s) => s.lap), [0, 0, 0, 1, 1]);
+  assert.ok(at('nudge').reach > 90, `the label of the nudge is ${at('nudge').reach} px from the start, and the arrow is 90 px long`);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl(POINT, 'print-pdf&still'));
+  const pages = await print.evaluate(point);
+  assert.deepEqual(print.errors, []);
+  assert.deepEqual(pages.map((s) => s.state).filter((state, i, all) => state !== all[i - 1]), POINT_STATES);
+  for (const s of pages) {
+    const l = at(s.state);
+    assert.deepEqual([s.start, s.nudge, s.a, s.lap], [l.start, l.nudge, l.a, l.lap], `a page at the state "${s.state}"`);
+    assert.ok(Math.abs(s.drawn - l.drawn) < 0.002, `a page at the state "${s.state}" is drawn over ${s.drawn}, and the slide over ${l.drawn}`);
+  }
+});
+
+const watch = (step, done) => `new Promise((resolve) => {
+  const s = document.querySelector('.surface[data-bundle]'), section = s.closest('section');
+  const lab = s.querySelector('.label[data-at="nudge"]'), lap = section.querySelector('[data-surface-lap]');
+  const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
+  const seen = [];
+  const t0 = performance.now();
+  ${step};
+  const frame = (now) => {
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let hash = 0;
+    for (let i = 0; i < data.length; i += 4) hash = (hash * 31 + data[i] + 7 * data[i + 1] + 13 * data[i + 2]) | 0;
+    seen.push({ t: now - t0, nudge: Number(lab.style.opacity), lap: Number(lap.style.opacity), hash });
+    if (${done}) resolve(seen);
+    else requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})`;
+
+test('a moving point flows around its orbit once per lap, and the elements with data-surface-lap are faded in after the first', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(POINT));
+  await page.waitFor(deckSettled);
+  await page.evaluate('Reveal.slide(0, 0, 0)');
+
+  const nudged = await page.evaluate(watch('Reveal.next()', 'seen.at(-1).nudge === 1'));
+  assert.ok(nudged.filter((f) => f.nudge > 0 && f.nudge < 1).length >= 2, `the arrow is faded in over ${JSON.stringify(nudged.map((f) => f.nudge))}`);
+
+  const flowed = await page.evaluate(watch('Reveal.next()', 'seen.at(-1).lap === 1'));
+  const first = flowed.find((f) => f.lap > 0);
+  assert.ok(first.t >= 6000, `the elements with data-surface-lap are faded in ${first.t} ms after the step, before the end of the first lap`);
+  assert.ok(flowed.some((f) => f.lap > 0 && f.lap < 1), 'the elements with data-surface-lap are faded in over several frames');
+  assert.ok(flowed.every((f, i) => i === 0 || f.nudge <= flowed[i - 1].nudge) && flowed.at(-1).nudge === 0, `the label of the nudge is faded out while the point flows, over ${JSON.stringify(flowed.map((f) => f.nudge))}`);
+  const hashes = new Set(flowed.filter((f) => f.t < 6000).map((f) => f.hash));
+  assert.ok(hashes.size >= 3, `the point is drawn at ${hashes.size} places in its first lap`);
+  assert.deepEqual(page.errors, []);
+});
