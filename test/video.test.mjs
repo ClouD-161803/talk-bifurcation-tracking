@@ -123,7 +123,7 @@ test('a video that the person plays while its step waits for another video is le
   assert.deepEqual(page.errors, []);
 });
 
-test('without the autoplay of reveal.js, as in the editor, a video that the person plays from 0 s while its step waits for another video is not rewound', { timeout: 120000 }, async (t) => {
+for (const [how, play] of [['with a seek to 0 s', 'left.currentTime = 0, void left.play().catch(() => {})'], ['without a seek', 'void left.play().catch(() => {})']]) test(`without the autoplay of reveal.js, as in the editor, a video that the person plays from 0 s ${how} while its step waits for another video is not rewound`, { timeout: 120000 }, async (t) => {
   held = Promise.withResolvers();
   t.after(() => { held.resolve(); held = null; });
   const page = await newPage(t);
@@ -131,7 +131,7 @@ test('without the autoplay of reveal.js, as in the editor, a video that the pers
   await page.waitFor('!!window.Reveal?.isReady?.()');
   await page.evaluate('(Reveal.configure({ autoPlayMedia: false }), Reveal.next(), true)');
   await page.waitFor(`right.preload === 'auto' && right.readyState < 3 && left.readyState >= 3 && left.paused`);
-  await page.evaluate('(left.currentTime = 0, void left.play().catch(() => {}), true)');
+  await page.evaluate(`(${play}, true)`);
   await page.waitFor('!left.paused && left.currentTime > 1.5');
   held.resolve();
   await page.waitFor('!right.paused && right.currentTime > 0.5', 30000);

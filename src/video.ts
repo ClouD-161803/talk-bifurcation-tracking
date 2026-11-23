@@ -60,15 +60,15 @@ async function start(videos: HTMLVideoElement[]): Promise<void> {
   if (!videos.every(ready)) {
     const take = (e: Event) => {
       const v = e.target as HTMLVideoElement;
-      if (v.currentTime > 0 || !revealSeeks()) taken.add(v);
+      if (!revealSeeks() || (e.type === 'seeking' && v.currentTime > 0)) taken.add(v);
     };
     for (const v of videos) {
       v.pause();
       if (!ready(v)) v.preload = 'auto';
-      v.addEventListener('seeking', take);
+      for (const type of ['seeking', 'play']) v.addEventListener(type, take);
     }
     await Promise.race([Promise.all(videos.filter((v) => !ready(v)).map((v) => once(v, ['canplay', 'error']))), sleep(5000)]);
-    for (const v of videos) v.removeEventListener('seeking', take);
+    for (const v of videos) for (const type of ['seeking', 'play']) v.removeEventListener(type, take);
   }
   const seeks = current().filter((v) => v.currentTime > 0).map((v) => {
     v.currentTime = 0;
