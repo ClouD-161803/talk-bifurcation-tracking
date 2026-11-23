@@ -22,7 +22,8 @@ Do not write comments or docstrings in the source, the scripts, or the tests, as
 - pdf.js is vendored from its legacy build. Its default build calls methods that are missing in the Safari version before the current one.
 - In a Dependabot PR of the npm packages, only `package.json` and `package-lock.json` are changed. Before its merge, run `npm run vendor` and `npm run build` on its branch, and commit `theme/vendor/` and the bundles.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
-- The engine of the Poincaré sections and of the tori, in `src/dots.ts`, `src/poincare.ts`, and `src/tori.ts`, was written for a talk of the group, not ported from DyLAN code. The files of `theme/backdrops/` hold data computed by DyLAN, which is allowed.
+- The engine of the Poincaré sections and of the tori, in `src/dots.ts`, `src/poincare.ts`, and `src/tori.ts`, was written for a talk of the group, not ported from DyLAN code.
+- `src/normal-form.ts` is a port of the figure on the slide "Normal form example" of the normal-forms talk of the group. It draws a planar saddle and its normal form from their closed-form flows, and it was not ported from DyLAN code. The files of `theme/backdrops/` hold data computed by DyLAN, which is allowed.
 - Load the file of a built-in backdrop of `theme/backdrops/` only in a deck that draws it. `theme/beeson.js` is loaded by every deck, hence keep the data of a backdrop out of it.
 - `realpathSync` of Node keeps the short names of Windows, e.g. `RUNNER~1`. `realpathSync.native` and `realpath` of `fs/promises` resolve them.
 - On Windows, another program may hold `index.html` open for a moment. A rename over it is therefore tried again.

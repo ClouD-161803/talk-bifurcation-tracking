@@ -7,6 +7,7 @@ export type Colors = {
   text: string;
   ground: string;
   mark: string;
+  tone(name: string): string;
   map(name: ColormapName, at: number, trim?: [number, number]): string;
 };
 
@@ -22,11 +23,14 @@ export type Frame<S> = {
 export type Kind<D, S> = {
   margin: number;
   endless: boolean;
-  file(el: HTMLElement): string;
+  file(el: HTMLElement): string | null;
   prepare(data: D, el: HTMLElement): S;
   extent(state: S): Extent;
   span(state: S, duration: number): number;
   draw(frame: Frame<S>, seconds: number, duration: number): void;
+  states?: string[];
+  initial?: string;
+  sync?(state: S, name: string, animate: boolean): void;
 };
 
 export const TAU = 2 * Math.PI;
