@@ -104,7 +104,10 @@ function fromSpeaker(ev: MessageEvent): void {
   let m: { namespace?: string; eventName?: string; state?: unknown } | null = null;
   try {
     const from = ev.source as Window | null;
-    if (from?.opener === window) speaker = from;
+    if (from?.opener === window) {
+      speaker = from;
+      if (from.document.readyState === 'loading') from.document.close();
+    }
     if (from?.parent?.opener === window && typeof ev.data === 'string') m = JSON.parse(ev.data);
   } catch {
     return;
@@ -115,13 +118,34 @@ function fromSpeaker(ev: MessageEvent): void {
 type Indices = { indexh?: number; indexv?: number; indexf?: number };
 const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? -1}`;
 
+function passKeys(): void {
+  window.addEventListener('keydown', (ev) => {
+    ev.stopImmediatePropagation();
+    const speaker = window.parent as typeof window;
+    const passed = new speaker.KeyboardEvent('keydown', ev);
+    Object.defineProperty(passed, 'keyCode', { value: ev.keyCode });
+    if (!speaker.document.dispatchEvent(passed)) ev.preventDefault();
+  }, true);
+}
+
 function receiveSteps(deck: Deck): void {
   let posted: string[] = [];
-  let setting = false;
+  let left: string | null = null;
+  let last: string | null = null;
   const post = () => {
+    const config = deck.getConfig();
+    if (!config.postMessageEvents) return;
     const step = stepOf(deck.getState());
-    if (!setting && deck.getConfig().postMessageEvents && posted.at(-1) !== step) posted.push(step);
+    if (last !== null && step !== last) {
+      if (!posted.length) left = last;
+      last = step;
+      posted.push(step);
+      return;
+    }
+    config.postMessageEvents = false;
+    queueMicrotask(() => (config.postMessageEvents = true));
   };
+  deck.on('ready', () => (last = stepOf(deck.getState())));
   for (const type of ['slidechanged', 'fragmentshown', 'fragmenthidden']) deck.on(type, post);
   window.addEventListener('message', (ev) => {
     if (ev.source !== window.parent || typeof ev.data !== 'string' || !deck.isReady()) return;
@@ -134,19 +158,21 @@ function receiveSteps(deck: Deck): void {
     const state = m?.method === 'setState' ? m.args?.[0] : null;
     if (!state || typeof state !== 'object') return;
     ev.stopImmediatePropagation();
-    const at = posted.lastIndexOf(stepOf(state));
-    const stale = at >= 0 && at < posted.length - 1;
-    posted = at >= 0 ? posted.slice(at + 1) : [];
-    if (stale) return;
+    const step = stepOf(state);
+    const at = posted.indexOf(step);
+    if (at >= 0 || (posted.length && step === left)) {
+      posted = posted.slice(at + 1);
+      return;
+    }
+    posted = [];
     const config = deck.getConfig();
     const posts = config.postMessageEvents;
     config.postMessageEvents = false;
-    setting = true;
     try {
       deck.setState(state as Parameters<Deck['setState']>[0]);
     } finally {
       config.postMessageEvents = posts;
-      setting = false;
+      last = stepOf(deck.getState());
     }
   });
 }
@@ -307,6 +333,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   const hooks: { internal?: Internal } = {};
   if (!EDITING) plugins.push({ id: 'beeson-restore', init: (reveal: unknown) => { hooks.internal = reveal as Internal; addRestoreSteps(document); } });
   if (RECEIVER) receiveSteps(deck);
+  if (RECEIVER && !/postMessageEvents=true/.test(location.search)) passKeys();
   const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 

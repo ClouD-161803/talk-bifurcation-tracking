@@ -4,7 +4,9 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 
 const DECK = 'test/pages/speaker-steps.html';
-const CURRENT = 'receiver&progress=false&history=false&transition=none&autoSlide=0&backgroundTransition=none&scrollActivationWidth=false&postMessageEvents=true';
+const FRAMES = 'receiver&progress=false&history=false&transition=none&autoSlide=0&backgroundTransition=none&scrollActivationWidth=false';
+const CURRENT = `${FRAMES}&postMessageEvents=true`;
+const UPCOMING = `${FRAMES}&controls=false`;
 
 let browser;
 let server;
@@ -22,6 +24,14 @@ const at = `(() => { const i = ${FRAME}.Reveal.getIndices(); return i.h + '/' + 
 const send = (message) => `(${FRAME}.postMessage(${JSON.stringify(JSON.stringify(message))}, '*'), true)`;
 const setState = (h, f) => send({ method: 'setState', args: [{ indexh: h, indexv: 0, indexf: f, paused: false, overview: false }] });
 const KEY_RIGHT = send({ method: 'triggerKey', args: [39] });
+const KEY_LEFT = send({ method: 'triggerKey', args: [37] });
+const moves = `${FRAME}.__moves`;
+
+async function stepTo(page, key, step) {
+  const before = await page.evaluate('window.__heard.length');
+  await page.evaluate(key);
+  await page.waitFor(`window.__heard.slice(${before}).includes('${step}')`);
+}
 
 async function currentFrame(t) {
   const page = await browser.newPage({ width: 1280, height: 800 });
@@ -44,6 +54,7 @@ async function currentFrame(t) {
     return true;
   })()`);
   await page.waitFor(`(() => { try { return !!${FRAME}.document.querySelector('.reveal.ready'); } catch { return false; } })()`, 30000);
+  await page.evaluate(`(() => { const w = ${FRAME}; w.__moves = []; for (const e of ['slidechanged', 'fragmentshown', 'fragmenthidden']) w.Reveal.on(e, () => w.__moves.push(${at.replaceAll(FRAME, 'w')})); return true; })()`);
   return page;
 }
 
@@ -70,4 +81,85 @@ test('the frame of the current slide of the speaker view is not set back by a st
   await page.evaluate(setState(1, 3));
   await page.evaluate(setState(1, 1));
   await page.waitFor(`${at} === '1/1'`);
+});
+
+test('the frame of the current slide of the speaker view skips the echoes of a step forward and back taken before the first echo came back', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 0));
+  await page.waitFor(`${at} === '1/0'`);
+  await stepTo(page, KEY_RIGHT, '1/1');
+  await stepTo(page, KEY_RIGHT, '1/2');
+  await stepTo(page, KEY_LEFT, '1/1');
+  const before = await page.evaluate(`${moves}.length`);
+  for (const [h, f] of [[1, 1], [1, 2], [1, 1], [1, 4]]) await page.evaluate(setState(h, f));
+  await page.waitFor(`${at} === '1/4'`);
+  assert.deepEqual(await page.evaluate(`${moves}.slice(${before})`), ['1/4'], 'the frame is moved by an echo of its own steps');
+});
+
+test('the frame of the current slide of the speaker view follows the deck after a step of the speaker that the deck sent no echo of', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 1));
+  await page.waitFor(`${at} === '1/1'`);
+  await stepTo(page, KEY_RIGHT, '1/2');
+  await page.evaluate(setState(1, 3));
+  await page.waitFor(`${at} === '1/3'`);
+  await page.evaluate(setState(1, 2));
+  await page.waitFor(`${at} === '1/2'`);
+});
+
+test('the frame of the current slide of the speaker view does not post the step that it opens at', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(KEY_RIGHT);
+  await page.waitFor(`window.__heard.length > 0`);
+  assert.deepEqual(await page.evaluate('window.__heard'), ['1/0'], 'the frame posts its opening step, which the speaker view sends to the deck');
+});
+
+test('the frame of the current slide of the speaker view is not set back by a state that the deck sent before the step of the speaker reached it', { timeout: 60000 }, async (t) => {
+  const page = await currentFrame(t);
+  await page.evaluate(setState(1, 0));
+  await page.waitFor(`${at} === '1/0'`);
+  await stepTo(page, KEY_RIGHT, '1/1');
+  const before = await page.evaluate(`${moves}.length`);
+  for (const [h, f] of [[1, 0], [1, 1], [1, 3]]) await page.evaluate(setState(h, f));
+  await page.waitFor(`${at} === '1/3'`);
+  assert.deepEqual(await page.evaluate(`${moves}.slice(${before})`), ['1/3'], 'the frame is set back by a state of the deck that is older than its step');
+});
+
+test('a key pressed in the frame of the upcoming slide of the speaker view reaches the speaker view and not the frame', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage({ width: 1280, height: 800 });
+  t.after(() => page.close());
+  await page.goto(`${server.origin}/${DECK}?still`);
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => {
+    window.__keys = [];
+    document.addEventListener('keydown', (ev) => window.__keys.push(ev.keyCode));
+    const frame = document.createElement('iframe');
+    frame.className = 'upcoming';
+    frame.width = 1280;
+    frame.height = 720;
+    frame.src = ${JSON.stringify(`/${DECK}?${UPCOMING}#/1/0`)};
+    document.body.append(frame);
+    return true;
+  })()`);
+  const UP = `document.querySelector('iframe.upcoming').contentWindow`;
+  await page.waitFor(`(() => { try { return !!${UP}.document.querySelector('.reveal.ready'); } catch { return false; } })()`, 30000);
+  await page.evaluate(`(${UP}.focus(), true)`);
+  await page.waitFor(`document.activeElement === document.querySelector('iframe.upcoming')`);
+  const start = await page.evaluate(`${UP}.Reveal.getIndices().f ?? -1`);
+  await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+  await page.waitFor(`window.__keys.includes(39)`);
+  assert.equal(await page.evaluate(`${UP}.Reveal.getIndices().f ?? -1`), start, 'the key steps the preview of the upcoming slide');
+});
+
+test('the page of the speaker view finishes loading, so that Firefox does not hold back the messages of the deck to it', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage({ width: 1280, height: 800 });
+  t.after(() => page.evaluate('(window.__speaker?.close(), true)').catch(() => {}).then(() => page.close()));
+  await page.goto(`${server.origin}/${DECK}?still`);
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => { const open = window.open; window.open = (...args) => (window.__speaker = open.apply(window, args)); return true; })()`);
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 's', code: 'KeyS', windowsVirtualKeyCode: 83, text: 's', unmodifiedText: 's' });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
+  await page.waitFor(`!!window.__speaker?.document.querySelector('#current-slide iframe')`, 30000);
+  await page.waitFor(`window.__speaker.document.readyState === 'complete'`);
 });
