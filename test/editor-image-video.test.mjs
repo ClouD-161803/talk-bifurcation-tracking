@@ -565,7 +565,7 @@ const RECORD = `(() => {
   window.__events = [];
   for (const type of ['seeking', 'seeked', 'waiting', 'playing', 'pause', 'play', 'ended', 'emptied', 'loadstart', 'stalled', 'abort', 'canplay', 'loadeddata']) v.addEventListener(type, () => window.__events.push([Math.round(performance.now()), type, Number(v.currentTime.toFixed(2)), v.paused, v.readyState]));
   const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
-  for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
+  v.addEventListener('timeupdate', add);
   document.addEventListener('click', (e) => {
     if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
   });
@@ -586,7 +586,7 @@ const playAt = (page) => page.evaluate(`(() => { const r = document.querySelecto
 
 const playedOn = (plays, from, click, duration) => plays.find((p) => !p.paused && (p.time > from + 0.5 || (p.time < from - 0.1 && from + (p.at - click?.at) / 1000 >= duration)));
 
-async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
+async function playInPlace(t, platform, { late = 0, hold = 0, seek = false } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
   const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
@@ -602,6 +602,10 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
   if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
+  if (seek) {
+    await page.waitFor('window.__plays.some((p) => !p.paused)');
+    await page.evaluate(`(() => { const v = window.__recorded; v.currentTime = ${from + 2}; v.dispatchEvent(new Event('playing')); return true; })()`);
+  }
   const later = `(${playedOn})(window.__plays, ${from}, window.__click, window.__recorded.duration)`;
   await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
@@ -651,6 +655,8 @@ for (const platform of PLATFORMS) {
 test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', { late: 3000 }));
 
 test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
+
+test('Play in the Video pane is checked from a record of the video when the video plays again before the slider follows it', (t) => playInPlace(t, 'other', { seek: true }));
 
 test('Play in the Video pane is checked from a record of the video when the video runs past its end between two records', () => {
   const click = { at: 11024.9, paused: false, time: 12.031445 };
