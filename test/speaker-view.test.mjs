@@ -151,3 +151,15 @@ test('a key pressed in the frame of the upcoming slide of the speaker view reach
   await page.waitFor(`window.__keys.includes(39)`);
   assert.equal(await page.evaluate(`${UP}.Reveal.getIndices().f ?? -1`), start, 'the key steps the preview of the upcoming slide');
 });
+
+test('the page of the speaker view finishes loading, so that Firefox does not hold back the messages of the deck to it', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage({ width: 1280, height: 800 });
+  t.after(() => page.evaluate('(window.__speaker?.close(), true)').catch(() => {}).then(() => page.close()));
+  await page.goto(`${server.origin}/${DECK}?still`);
+  await page.waitFor(deckSettled);
+  await page.evaluate(`(() => { const open = window.open; window.open = (...args) => (window.__speaker = open.apply(window, args)); return true; })()`);
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 's', code: 'KeyS', windowsVirtualKeyCode: 83, text: 's', unmodifiedText: 's' });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 's', code: 'KeyS', windowsVirtualKeyCode: 83 });
+  await page.waitFor(`!!window.__speaker?.document.querySelector('#current-slide iframe')`, 30000);
+  await page.waitFor(`window.__speaker.document.readyState === 'complete'`);
+});

@@ -104,7 +104,10 @@ function fromSpeaker(ev: MessageEvent): void {
   let m: { namespace?: string; eventName?: string; state?: unknown } | null = null;
   try {
     const from = ev.source as Window | null;
-    if (from?.opener === window) speaker = from;
+    if (from?.opener === window) {
+      speaker = from;
+      if (from.document.readyState === 'loading') from.document.close();
+    }
     if (from?.parent?.opener === window && typeof ev.data === 'string') m = JSON.parse(ev.data);
   } catch {
     return;
