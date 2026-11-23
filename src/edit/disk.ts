@@ -1,39 +1,22 @@
-// index.html on disk as one more replica of a session. the text of the authority is written at
-// most once per 250 ms of quiet and at the latest 1 s after the first unwritten operation, by a
-// temporary file next to the file and a rename over it, and at once at a stop. a change that the
-// edit command did not write itself is found by a stat every 500 ms and before each write, and
-// merged as an operation of the author file, where the file wins a conflict. its base is the
-// nearest text among the last one that another program wrote and the ones that the edit command
-// wrote after it. the reads and the writes are done one at a time
-
 import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
-import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { open, readFile, realpath, rename, stat } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, copy, diff, mergePatches, type Patch } from '../session/patch.ts';
+import { apply, diff, mergePatches, unsliced, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
 const LATEST = 1000;
 const POLL = 500;
-// a changed file is taken once its size and modification time have not changed for 300 ms, or for
-// 2 s when it looks partly written, or 5 s when it is empty, and at a stop the wait ends after 7 s
 const STABLE = 300;
 const SETTLE = 2000;
 const SETTLE_EMPTY = 5000;
 const SETTLE_AT_STOP = 7000;
-// the chain of the texts written or read keeps the last 5000 of them, and at most 64 MB of the
-// patches that lead back to them
 const CHAIN_TEXTS = 5000;
 const CHAIN_BYTES = 64 * 1024 * 1024;
-// the search for the base of a change of the file yields to the event loop after SLICE ms, ends
-// after BUDGET ms with the nearest text found so far, and gives up a line diff of more than
-// MAX_LINES lines, as changes() does, and a character diff of more than MAX_EDITS characters. it
-// keeps the lines of a text of the chain every few steps, about KEPT_CHARS characters in all, so
-// that a candidate is rebuilt from a kept text near it
 const SLICE = 15;
 const BUDGET = 5000;
 const MAX_LINES = 2000;
@@ -42,8 +25,6 @@ const KEPT_CHARS = 16 * 1024 * 1024;
 
 export class NotUtf8 extends Error {}
 
-// the text of the bytes of a file without a leading byte-order mark, and whether it had one. bytes
-// that are not valid UTF-8 are refused rather than replaced
 export function decode(bytes: Buffer): { text: string; bom: boolean } {
   const text = bytes.toString('utf8');
   if (!Buffer.from(text, 'utf8').equals(bytes)) throw new NotUtf8('the file is not valid UTF-8');
@@ -52,20 +33,17 @@ export function decode(bytes: Buffer): { text: string; bom: boolean } {
 
 const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : text, 'utf8');
 
-// whether a text ends with the end tag of html and white space, read in its last 256 characters
 const endsHtml = (text: string | Buffer) => /<\/html>\s*$/i.test(typeof text === 'string' ? text.slice(-256) : text.subarray(-256).toString('latin1'));
 
-// the change time is left out, since a rename changes it on some systems
+export const hasConflict = (text: string) => /^<{7}(?: |\r?$)/m.test(text) && /^={7}\r?$/m.test(text) && /^>{7}(?: |\r?$)/m.test(text);
+const CONFLICT = 'index.html holds the conflict markers of git. The session keeps the last text without them, and takes the file again once they are resolved';
+
 export const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
-// the mode of a file, given to the temporary file that replaces it. a file on Windows has no mode
-// but the read-only flag, and a read-only file is not replaced by a rename there anyway
 const modeOf = (s: Stats) => (process.platform === 'win32' ? null : s.mode & 0o7777);
 
 const RETRY = new Set(['EPERM', 'EBUSY', 'EACCES']);
 
-// a rename over a file that another program may hold open for a moment, as on Windows, for the
-// other files of .session/
 export async function renameRetried(from: string, to: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -77,7 +55,6 @@ export async function renameRetried(from: string, to: string): Promise<void> {
   }
 }
 
-// up to tries renames, with waits of 10 ms, 20 ms, and so on between them
 export function renameRetriedSync(from: string, to: string, tries = 21): void {
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (let attempt = 0; ; attempt++) {
@@ -90,9 +67,6 @@ export function renameRetriedSync(from: string, to: string, tries = 21): void {
   }
 }
 
-// a file that cannot be read set aside as aside, moved or else copied, so that a write in its place
-// does not lose it. false when neither works, e.g. while another program holds it open on Windows,
-// hence the file must then not be written over. a file that is gone counts as set aside
 export function setAsideSync(file: string, aside: string, move = true): boolean {
   if (move) {
     try {
@@ -110,9 +84,7 @@ export function setAsideSync(file: string, aside: string, move = true): boolean 
   }
 }
 
-// a step of a task of the disk, i.e. a stat, a resolve, a read, or a write of a file, or a pause. a
-// task is a generator of its steps, hence it is left at a step when the edit command stops
-type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
+type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { syncFolder: string } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
@@ -125,14 +97,35 @@ function perform(step: Step): Promise<unknown> {
   if ('stat' in step) return stat(step.stat).catch(missing);
   if ('resolve' in step) return realpath(step.resolve).catch(() => step.resolve);
   if ('read' in step) return readFile(step.read);
-  return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
+  if ('syncFolder' in step) return syncFolder(step.syncFolder);
+  return writeSynced(step.write, step.bytes, step.mode);
+}
+
+async function writeSynced(file: string, bytes: Buffer, mode: number | null): Promise<void> {
+  const handle = await open(file, 'w');
+  try {
+    await handle.writeFile(bytes);
+    if (mode !== null) await handle.chmod(mode);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function syncFolder(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const handle = await open(dir, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {}
 }
 
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
 
-// the patches that turn text back into before. the common start and end are skipped by chunks, and
-// the changes are found on the whole lines between them, so that a small change of a large deck is
-// cheap. they are not widened to tokens as in diff(), since only their size matters here
 function reverse(text: string, before: string): Patch[] {
   const max = Math.min(text.length, before.length);
   let pre = 0, suf = 0;
@@ -146,11 +139,9 @@ function reverse(text: string, before: string): Patch[] {
   const found = changes(text.slice(from, to), before.slice(from, before.length - text.length + to)) ?? [
     { start: pre - from, end: text.length - suf - from, text: before.slice(pre, before.length - suf) },
   ];
-  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy(p.text) }));
+  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: unsliced(p.text) }));
 }
 
-// the lines of a text turned back by a delta of the chain. count is told the lines that the delta
-// removes and adds
 function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by: number) => void): string[] {
   const starts = new Array<number>(lines.length);
   for (let i = 0, at = 0; i < lines.length; i++) {
@@ -168,7 +159,6 @@ function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by:
   };
   const out: string[] = [];
   let next = 0;
-  // the patches that touch a common line are applied together, to the lines that they touch
   for (let j = 0; j < delta.length; ) {
     const a = lineOf(delta[j].start);
     let k = j, b = lineOf(delta[j].end);
@@ -188,15 +178,9 @@ function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by:
   return out;
 }
 
-// the size of a line diff, i.e. the lines removed and added, and the characters that differ
-// inside them, and the steps back from the head of the text that it was measured on
 type Rank = { lines: number; chars: number; steps: number };
 const order = (r: Rank, s: Rank) => r.lines - s.lines || r.chars - s.chars || r.steps - s.steps;
 
-// the size of a line diff of the lines a and b, found with the Myers algorithm. a run of changed
-// lines counts the characters that a diff of its two sides deletes and inserts, hence a text that
-// holds a word typed into a line that theirs changed around it is nearer than the text before the
-// word. null when more than cap lines differ
 function measure(a: string[], b: string[], cap: number): { lines: number; chars: number } | null {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -219,11 +203,9 @@ function measure(a: string[], b: string[], cap: number): { lines: number; chars:
         break;
       }
     }
-    // the row of the diagonals -d to d, for the way back
     rows.push(v.slice(off - d, off + d + 1));
   }
   if (found < 0) return null;
-  // the way back, one removed or added line per round, joined into runs of changed lines
   const runs: { a0: number; a1: number; b0: number; b1: number }[] = [];
   let x = n, y = m;
   for (let d = found; d > 0; d--) {
@@ -239,7 +221,6 @@ function measure(a: string[], b: string[], cap: number): { lines: number; chars:
   let chars = 0;
   for (const r of runs) {
     const old = a.slice(pre + r.a0, pre + r.a1).join('\n'), now = b.slice(pre + r.b0, pre + r.b1).join('\n');
-    // whole lines removed or added count their line breaks
     if (r.a0 === r.a1 || r.b0 === r.b1) {
       chars += old.length + now.length + 1;
       continue;
@@ -249,9 +230,6 @@ function measure(a: string[], b: string[], cap: number): { lines: number; chars:
   return { lines: found, chars };
 }
 
-// the characters that a diff of old and now deletes and inserts, found with the Myers algorithm.
-// a diff of more than MAX_EDITS characters counts every character between the common start and
-// end, which is more, hence a long rewrite is not measured for long
 function edits(old: string, now: string): number {
   let p = 0;
   while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
@@ -281,15 +259,8 @@ function removeQuietly(file: string): void {
   } catch {}
 }
 
-// a write that failed, with the number of operations that are not in the file
 export type WriteError = { message: string; unwritten: number };
 
-// onWriteError is called at each failed write, and with null at the first write that succeeds after
-// one failed. onWritten is called with n and the text once the file holds the text of version n of
-// the authority, and onPoll at each check of the file every poll ms. quiet, latest, and poll are
-// the times of the writes and the checks in ms, stable and partial the times that a changed file
-// must not change before it is taken, when it looks complete and when it looks partly written, and
-// budget the time of the search for the base of a change of the file, shorter in the tests
 export type DiskOptions = {
   log?: (message: string) => void;
   onWriteError?: (error: WriteError | null) => void;
@@ -305,31 +276,20 @@ export type DiskOptions = {
 
 export class Disk {
   readonly file: string;
-  // the file that is written, i.e. the target of file when it is a symbolic link, so that the link
-  // is kept, and its mode
   private target: string;
   private mode: number | null = null;
   bom: boolean;
   private authority: Authority;
   private known = '';
   private written: string;
-  // the text last taken from a write of another program
   private taken: string | null = null;
-  // the number of operations of the authority in the text written or read last
+  private conflict: string | null = null;
   private writtenN: number;
-  // the failed writes in a row, and the time before which a failed write is not tried again
   private failures = 0;
   private retryAt = 0;
-  // the newest text written or read, and a chain of the patches that turn each text written or read
-  // before it back into the one before, newest last. these texts are the candidate bases of a change
-  // of the file
   private head: string;
   private back: Patch[][] = [];
   private backBytes = 0;
-  // the texts written since the last text that another program wrote, i.e. the steps back that the
-  // search for a base goes. a program that writes the file has read at least its own last text,
-  // hence an older text is not its base, although it may be nearer: a program that changes First
-  // into Second would otherwise add Second next to First, and it could not take a change back
   private reach = 0;
   private firstUnwritten: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -372,7 +332,6 @@ export class Disk {
       this.known = signature(info);
       this.mode = modeOf(info);
     } catch {}
-    // a temporary file left by an edit command that was killed during a write
     const dir = dirname(this.target), prefix = `.${basename(this.target)}.`;
     try {
       for (const name of readdirSync(dir)) {
@@ -389,11 +348,8 @@ export class Disk {
     }, this.timing.poll);
   }
 
-  // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
-  // after the first operation that is not written
   schedule(): void {
     if (this.stopped) return;
-    // a monotonic clock, since a step of the wall clock would move the deadline
     const now = performance.now();
     this.firstUnwritten ??= now;
     if (this.timer) clearTimeout(this.timer);
@@ -404,9 +360,6 @@ export class Disk {
     }, wait);
   }
 
-  // the text of the authority written at a stop of the edit command, after a change of the file is
-  // merged, and the number of operations that are not in the file. a task in flight is left at its
-  // next step, hence its write cannot land after this one
   stop(): Promise<number> {
     return (this.stopping ??= (async () => {
       this.stopped = true;
@@ -423,7 +376,6 @@ export class Disk {
     })());
   }
 
-  // resolves once a write or a check in progress is over
   async idle(): Promise<void> {
     while (this.busy) await this.busy;
   }
@@ -438,8 +390,6 @@ export class Disk {
     await this.busy;
   }
 
-  // a task run asynchronously, and left at the first step that ends after a stop, unless it is the
-  // last task, i.e. the one of the stop
   private async drive(task: Task<unknown>, last = false): Promise<void> {
     let next = task.next();
     while (!next.done) {
@@ -470,8 +420,6 @@ export class Disk {
 
   private *write(limit = Infinity): Task {
     this.firstUnwritten = null;
-    // a change of the file since the last write is merged first, so that it is not overwritten, and
-    // so is a change made while the temporary file is written
     for (let tries = 0; tries < 5; tries++) {
       if (!(yield* this.check(limit))) {
         this.log(`${this.file} is still being written by another program, and the edit command does not write it`);
@@ -482,10 +430,9 @@ export class Disk {
     this.schedule();
   }
 
-  // the text of the authority into the file, by a temporary file and a rename, or changed when
-  // another program wrote the file in the meantime
   private *put(): Task<'changed' | void> {
     const text = this.authority.text, n = this.authority.n;
+    if (this.conflict) return;
     if (text === this.written) {
       this.writtenN = n;
       this.onWritten(n, text);
@@ -495,11 +442,7 @@ export class Disk {
     let renamed = false, made: Stats;
     try {
       yield { write: tmp, bytes: encode(text, this.bom), mode: this.mode };
-      // a write after the rename changes the signature of the temporary file
       made = yield { stat: tmp };
-      // the rename is done between two steps, i.e. right after the check for a stop, so that a write
-      // that began before a stop does not land after it. it is tried again for a moment when another
-      // program holds the file open, as on Windows
       for (let attempt = 0; !renamed; attempt++) {
         const now = statSync(this.target, { throwIfNoEntry: false });
         if ((now ? signature(now) : '') !== this.known) return 'changed';
@@ -514,8 +457,6 @@ export class Disk {
     } catch (e) {
       const message = (e as Error).message;
       this.log(`could not write ${this.file}${this.stopped ? '' : ', trying again'}: ${message}`);
-      // a write that keeps failing, as on a full disk or in a read-only folder, is tried again at most
-      // every 5 s
       this.failures++;
       this.retryAt = performance.now() + Math.min(5000, this.timing.quiet * 2 ** this.failures);
       this.onWriteError({ message, unwritten: this.authority.n - this.writtenN });
@@ -534,32 +475,21 @@ export class Disk {
       this.retryAt = 0;
       this.onWriteError(null);
     }
+    yield { syncFolder: dirname(this.target) };
   }
 
-  // a change of the file that the edit command did not write, or false when the file was still
-  // being written after limit ms
   private *check(limit: number): Task<boolean> {
-    // the file is resolved again, since a program may have replaced a symbolic link by a file, or a
-    // file by a link, and the new target is then read as a change and written from now on
     const target: string = yield { resolve: this.file };
     if (target !== this.target) [this.target, this.known] = [target, ''];
     const info: Stats | null = yield { stat: this.target };
-    // a file that is gone is written again
     if (!info) {
       this.known = '';
       return true;
     }
     this.mode = modeOf(info);
-    // the signature is taken before the read, so that a write after the read is seen at the next check
     let sig = signature(info);
     if (sig === this.known) return true;
     let bytes: Buffer = yield { read: this.target };
-    // the file is taken once its size and modification time have not changed for a while, since a
-    // program may be writing it: 300 ms for a file that looks complete, whatever its size, and longer
-    // for a file that looks partly written, i.e. empty, shorter than half of the text before, not
-    // valid UTF-8, or without the end tag of html that the text before had. a write in steps whose
-    // first step looks complete, or whose pause is longer, is taken in parts, and a change of the
-    // same size within the resolution of the modification time is seen only by the read at the end
     const { stable, partial } = this.timing;
     const before = Buffer.byteLength(this.written), ended = endsHtml(this.written), started = performance.now();
     let since = started, told = false;
@@ -593,12 +523,20 @@ export class Disk {
       this.known = sig;
       return true;
     }
-    // the bytes of the last write or read, as after a touch of the file
+    if (hasConflict(read.text) && !hasConflict(this.written)) {
+      if (this.conflict === null) this.log(`${this.file} holds the conflict markers of git, hence it is not taken, and the edits of the session are written into it once the markers are gone`);
+      this.conflict = this.known = sig;
+      this.onWriteError({ message: CONFLICT, unwritten: this.authority.n - this.writtenN });
+      return true;
+    }
+    if (this.conflict !== null) {
+      this.conflict = null;
+      if (!this.failures) this.onWriteError(null);
+    }
     if (read.text === this.written && read.bom === this.bom) {
       this.known = sig;
       return true;
     }
-    // the signature is kept only after the merge, since a stop leaves this task at a step of the merge
     yield* this.merge(read.text);
     this.known = sig;
     this.bom = read.bom;
@@ -608,18 +546,10 @@ export class Disk {
     return true;
   }
 
-  // the text now on disk, written by another program from a text that it read some time before
   private *merge(theirs: string): Task {
     if (theirs !== this.authority.text) {
-      // the rest of a write in two steps whose first step was taken, i.e. a text that extends the one
-      // last taken, is merged on it, since its tail is not in any text of the chain. a rest written
-      // into a handle on a file that a write of the edit command has replaced is not in the file
       const base = this.taken !== null && theirs.startsWith(this.taken) ? this.taken : yield* this.nearest(theirs);
-      // theirs is a text that the file held before edits of the session, as from an editor that
-      // saves a copy it did not reload, or from a git checkout. the newer edits of the session are
-      // kept and written back, since a stale save must not revert the edits of everyone
       if (base === theirs) this.log(`${this.file} was written with an earlier text of the session, and the edit command keeps the newer edits and writes them back`);
-      // the session may have changed while the chain was searched
       const current = this.authority.text;
       const file = diff(base, theirs);
       const session = diff(base, current);
@@ -631,13 +561,6 @@ export class Disk {
     this.reach = 0;
   }
 
-  // the text nearest to theirs among the last reach + 1 of the chain, i.e. with the smallest line
-  // diff to it, then with the fewest characters changed inside the changed lines, then the newest.
-  // the texts are rebuilt as lines from the head back, and each gets a lower bound of its rank: the
-  // lines that it has more or fewer of than theirs, and the difference of the lengths. the texts are
-  // then measured in the order of their bounds, until the bound of the next is above the best rank
-  // found. a change based on a text older than the chain is merged on the kept text nearest to it,
-  // hence the edits of the session between the two texts are reverted, since the file lacks them
   private *nearest(theirs: string): Task<string> {
     const back = this.back, budget = this.timing.budget, reach = Math.min(this.reach, back.length);
     let slice = performance.now();
@@ -647,8 +570,6 @@ export class Disk {
       yield { sleep: 0 };
       slice = performance.now();
     }
-    // the count of each line in the text minus its count in theirs, and the lines counted more or
-    // fewer times
     const counts = new Map<string, number>();
     let distance = 0;
     const count = (lines: string[], by: number) => {
@@ -666,12 +587,12 @@ export class Disk {
     const every = Math.max(1, Math.ceil((reach * Math.max(1, length)) / KEPT_CHARS));
     const kept = new Map<number, string[]>();
     const bounds: Rank[] = [];
-    // a cast, since the narrowing of typescript does not see the assignments in consider()
-    let best = null as { rank: Rank; lines: string[] } | null, over = false;
-    const consider = (steps: number, at: string[]) => {
-      const size = measure(at, mine, Math.min(best?.rank.lines ?? MAX_LINES, MAX_LINES));
+    type Candidate = { rank: Rank; lines: string[] };
+    let best: Candidate | null = null, over = false;
+    const better = (current: Candidate | null, steps: number, at: string[]): Candidate | null => {
+      const size = measure(at, mine, Math.min(current?.rank.lines ?? MAX_LINES, MAX_LINES));
       const rank = size && { ...size, steps };
-      if (rank && (!best || order(rank, best.rank) < 0)) best = { rank, lines: at };
+      return rank && (!current || order(rank, current.rank) < 0) ? { rank, lines: at } : current;
     };
     for (let steps = 0; ; steps++) {
       if (steps) {
@@ -682,8 +603,7 @@ export class Disk {
       if (distance === 0 && length === theirs.length && lines.join('\n') === theirs) return theirs;
       bounds.push({ lines: distance, chars: Math.abs(length - theirs.length), steps });
       if (steps % every === 0) kept.set(steps, lines);
-      // the head is measured first, so that a search cut short by the budget has a base
-      if (steps === 0) consider(0, lines);
+      if (steps === 0) best = better(best, 0, lines);
       if (steps === reach) break;
       yield* breathe();
       if ((over = performance.now() >= deadline)) break;
@@ -700,20 +620,16 @@ export class Disk {
     bounds.sort(order);
     for (const bound of bounds) {
       if (over || (best && order(bound, best.rank) > 0) || bound.lines > MAX_LINES) break;
-      if (bound.steps) consider(bound.steps, yield* rebuild(bound.steps));
+      if (bound.steps) best = better(best, bound.steps, yield* rebuild(bound.steps));
       yield* breathe();
       over = performance.now() >= deadline;
     }
-    // the search does not cover a chain whose texts are all near theirs by their bounds, e.g. after
-    // thousands of moves of slides, on a slow machine
     if (over) this.log(`the search for the text that another program changed into ${this.file} was cut after ${budget / 1000} s, and the change is merged on the nearest text found by then`);
     if (best) return best.lines.join('\n');
-    // every text is too far from theirs for a line diff, and the one with the smallest bound is taken
     return (yield* rebuild(bounds[0].steps)).join('\n');
   }
 }
 
-// the text of index.html at a start, or an error that says why it cannot be read
 export function readText(file: string): { text: string; bom: boolean } {
   return decode(readFileSync(file));
 }

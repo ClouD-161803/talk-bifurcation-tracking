@@ -1,6 +1,3 @@
-// helpers of the tests of a copy in the editor of one deck and a paste into the editor of another,
-// on the two decks of test/pages/cross-deck/
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { deckSettled } from '../../scripts/chrome.mjs';
@@ -13,11 +10,11 @@ export const QUERY = 'edit&still&edit-platform=other';
 export const MARK = '<!--beeson-->';
 export const FILES = 'A slide with the files of deck A';
 export const BACKDROP = 'A slide with the backdrop of deck A';
+export const PDF = 'A slide with a PDF figure of deck A';
 export const FIRST_B = 'The first slide of deck B';
 
 const js = JSON.stringify;
 
-// the storage of the origin emptied: the drafts, the files kept for them, and the private file system
 const CLEAR = `(async () => {
   localStorage.clear();
   await new Promise((done) => { const r = indexedDB.deleteDatabase('beeson-media'); r.onsuccess = r.onerror = r.onblocked = () => done(); });
@@ -26,7 +23,6 @@ const CLEAR = `(async () => {
   return true;
 })()`;
 
-// the editor on the deck at url, whose file is file, with every block paired
 export async function openDeck(browser, url, file) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   await page.goto(url);
@@ -41,8 +37,6 @@ export async function openDeck(browser, url, file) {
   return page;
 }
 
-// deck B given the macros of deck A, as written in its page, hence a paste opens no dialog of the
-// macros, which test/editor-cross-deck-macros.test.mjs covers
 const MACROS_OF_A = String.raw`({ orb: ['\\mathcal{O}_{\\half #1}', 1], half: '\\tfrac{1}{2}', dash: '\\text{a--b}', unused: '\\mathrm{u}' })`;
 export async function withMacrosOfA(page) {
   await page.evaluate(`(() => { window.beesonTex = { macros: ${MACROS_OF_A} }; return true; })()`);
@@ -54,7 +48,6 @@ export const status = (page) => page.evaluate('window.BeesonEditor.status()');
 
 const indexOf = (title) => `[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('h2')?.textContent.trim() === ${js(title)})`;
 
-// the slide headed title shown and selected in the navigator, by a click on its row
 export async function selectRow(page, title) {
   const i = await page.evaluate(indexOf(title));
   assert.ok(i >= 0, `the slide ${title} is not found`);
@@ -64,14 +57,11 @@ export async function selectRow(page, title) {
   return i;
 }
 
-// the text that Copy of the slide headed title puts on the clipboard
 export async function copySlide(page, title) {
   await selectRow(page, title);
   return page.evaluate(`(async () => { const d = new DataTransfer(); await window.BeesonEditor.exec('slide.copy', d); return d.getData('text/plain'); })()`);
 }
 
-// the text that Copy of the figure of the image matched by image, on the slide headed title, puts
-// on the clipboard
 export async function copyFigure(page, title, image) {
   await selectRow(page, title);
   await selectFigure(page, `.reveal section.present ${image}`);
@@ -79,8 +69,6 @@ export async function copyFigure(page, title, image) {
   return page.evaluate(`(async () => { const d = new DataTransfer(); await window.BeesonEditor.exec('edit.copy', d); return d.getData('text/plain'); })()`);
 }
 
-// slides pasted after the slide headed title, or elements pasted on it. the end of the paste is
-// not waited for here, since a dialog may be shown before it, and pasted() waits for it
 export async function pasteSlides(page, title, text) {
   await selectRow(page, title);
   await page.evaluate(`(() => { window.__pasted = false; Promise.resolve(window.BeesonEditor.exec('slide.paste', ${js(text)})).then(() => { window.__pasted = true; }, (e) => { window.__pasted = String(e); }); return true; })()`);
@@ -96,8 +84,6 @@ export async function pasted(page, timeout = 30000) {
   assert.equal(await page.evaluate('window.__pasted'), true);
 }
 
-// text with its origin changed by change, which is given the parsed origin and returns the new
-// one, written with the escapes of the editor
 export function withOrigin(text, change) {
   const m = text.match(/<!--beeson-origin (.*?)-->/s);
   assert.ok(m, 'the text does not name its origin');
@@ -105,24 +91,17 @@ export function withOrigin(text, change) {
   return text.replace(m[0], () => `<!--beeson-origin ${json}-->`);
 }
 
-// the dialog over the page while the files of a paste are read, and whether it is drawn, which it
-// is only after a delay
-// a script after which the page reports the pointers of kind: 'touch' for a phone, i.e. a coarse
-// pointer alone, and 'none' for a machine without a pointer, as a runner of the tests may be
 export const POINTER = (kind) => `(() => { const real = window.matchMedia.bind(window); const answer = { '(any-pointer: fine)': false, '(any-pointer: coarse)': ${kind === 'touch'} }; window.matchMedia = (q) => (q in answer ? { matches: answer[q], media: q, addEventListener() {}, removeEventListener() {} } : real(q)); return true; })()`;
 
 export const BUSY = 'dialog.beeson-edit-dialog.paste-busy';
 export const BUSY_DRAWN = `(() => { const d = document.querySelector('${BUSY}[open]'); return !!d && getComputedStyle(d).opacity === '1'; })()`;
 
-// the section of text headed title
 export function sectionOf(text, title) {
   const h = text.indexOf(`<h2>${title}</h2>`);
   assert.ok(h >= 0, `the slide ${title} is not in the text`);
   return text.slice(text.lastIndexOf('<section', h), text.indexOf('</section>', h) + '</section>'.length);
 }
 
-// a save into a folder of the private file system, which the stub of showDirectoryPicker gives as
-// the folder that the person chooses. it returns the saved text and the size of each file of media/
 export const SAVE_INTO = (folder) => `(async () => {
   const root = await navigator.storage.getDirectory();
   const dir = await root.getDirectoryHandle(${js(folder)}, { create: true });
@@ -138,8 +117,4 @@ export const SAVE_INTO = (folder) => `(async () => {
   return { text: await (await deck.getFile()).text(), files };
 })()`;
 
-// the decks do not have a favicon, which a browser asks a server for. a paste into deck B asks it
-// for each path of a pasted file and for each path under media/ that it would take, and a path
-// that deck B does not have is answered with 404. from another port, its first read of deck A is
-// refused by the browser
-export const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico') && !/status of 404 .*\/cross-deck\/b\//.test(e) && !(/blocked by CORS policy|net::ERR_FAILED/.test(e) && e.includes('/cross-deck/a/')));
+export const errors = (page) => page.errors.filter((e) => !/status of 404 .*\/cross-deck\/b\//.test(e) && !(/blocked by CORS policy|net::ERR_FAILED/.test(e) && e.includes('/cross-deck/a/')));

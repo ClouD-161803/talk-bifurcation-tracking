@@ -1,19 +1,11 @@
-// the pictures of a session in Chrome: a name of the edit command written only into the edits of
-// the page that uploaded the file, a name unique to the page while another page is in the session,
-// the store of the page keyed by the new name, undo and redo after a rename, the limits of a
-// picture and a video, the deadline of an upload, the save state after the picture of a failed
-// upload is removed, an upload that the session refuses given up, an upload whose answer was lost
-// sent again without a second copy, and an upload cut on the network sent again at a reconnect.
-// the uploads of a page are sent through a proxy of the test, by which they are held, stalled, cut,
-// or refused
-
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { pdfFigureStatus } from '../scripts/pdf-figures.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, STATE, talk, TEXT } from './helpers/client.mjs';
@@ -26,19 +18,10 @@ const LIGHT = readFileSync(resolve('demo/figure-light.png'));
 const DARK = readFileSync(resolve('demo/figure-dark.png'));
 const FAILED = (path) => `Could not send ${path}. Try again`;
 const IMG = /<img [^>]*src="(media\/[^"]+)"[^>]*>/g;
-// the media/ paths of the images of each slide of text
 const sources = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(IMG)].map((m) => m[1]));
-// whether the image of the page with alt is shown from path and loaded
 const SHOWN_ALT = (alt, path) => `(() => { const i = document.querySelector('.reveal .slides img[alt=${JSON.stringify(alt)}]'); return !!i && i.getAttribute('src') === ${JSON.stringify(path)} && i.complete && i.naturalWidth > 0; })()`;
-// the number of images in the deck as the page reads it
 const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
-// the errors in the console of a page for an upload that the proxy refused, cut, or lost
 const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
-// the number of elements of the page that show the whole of text where a person sees it: the element
-// is inside the window and does not cut the text at its end, and every line of the text is inside
-// each box that clips it. a line is as tall as the letters of its font, which in most fonts is
-// taller than a line of height 1. with scroll, an element that scrolls vertically shows the part
-// of text that a scroll of it reaches
 const SEEN = (text, scroll = false) => `[...document.body.querySelectorAll('*')].filter((el) => {
   const has = (e) => e.textContent.includes(${JSON.stringify(text)});
   if (!has(el) || [...el.children].some(has) || getComputedStyle(el).visibility !== 'visible') return false;
@@ -58,7 +41,6 @@ const SEEN = (text, scroll = false) => `[...document.body.querySelectorAll('*')]
 const BAR = `document.querySelector('.beeson-edit-titlebar').getBoundingClientRect().height`;
 const TITLE = `document.querySelector('.beeson-edit-titlebar .doc .state').textContent`;
 
-/** A file of bytes at name in a new folder dir of the talk folder, for a drop. */
 function file(server, dir, name, bytes) {
   mkdirSync(join(server.root, dir), { recursive: true });
   const path = join(server.root, dir, name);
@@ -66,7 +48,6 @@ function file(server, dir, name, bytes) {
   return path;
 }
 
-/** A file put into media/ of the talk by hand, which the deck does not name. */
 function leftover(server, name, bytes) {
   mkdirSync(join(server.talk, 'media'), { recursive: true });
   writeFileSync(join(server.talk, 'media', name), bytes);
@@ -75,22 +56,12 @@ function leftover(server, name, bytes) {
 const disk = (server, path) => readFileSync(join(server.talk, path));
 const media = (server) => readdirSync(join(server.talk, 'media')).sort();
 
-/** Writes index.html with html added after the paragraph of slide Two, as another program would. */
 function writeOutside(server, html) {
   const text = server.read();
   assert.ok(text.includes('<p>Second slide</p>'));
   writeFileSync(server.file, text.replace('<p>Second slide</p>', `<p>Second slide</p>\n  ${html}`));
 }
 
-/**
- * A proxy of the test in front of the edit command, and the address of the editor through it. Each
- * PUT of media/ is handled by the next mode given to next(), and is passed on once none is left.
- * With hold it is forwarded at release(), with stall it is read and never answered, and with cut
- * its connection is closed. With refuse it is answered 500 without being forwarded, with large it
- * is answered 413 as the relay answers a body over its limit, and with lose it is forwarded and
- * answered 504 once the edit command has answered. While down is set, every
- * PUT is cut, since Chrome sends a PUT again once when its connection is closed.
- */
 async function proxy(t, edit) {
   const modes = [];
   const held = [];
@@ -156,7 +127,6 @@ test('a name that the edit command gives is written only into the edits of the p
     const ann = await tab(browser, p.url);
     const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
     await converge(server, [ann, ben]);
-    // the upload of Ann is held while Ben drops a picture of the same name
     p.next('hold');
     await show(ann, 'One');
     await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
@@ -166,7 +136,6 @@ test('a name that the edit command gives is written only into the edits of the p
     await until(() => sources(server.read())[1].length, 'the picture of Ben in index.html');
     await front(ann);
     await ann.waitFor(`${IMAGES} === 2`);
-    // on the page of Ann, the image of Ben is not shown from the file of Ann
     assert.doesNotMatch(await ann.evaluate(`document.querySelectorAll('.reveal .slides > section')[1].querySelector('img').getAttribute('src')`), /^blob:/);
     p.release();
     const [one, two] = sources(await converge(server, [ann, ben]));
@@ -176,7 +145,6 @@ test('a name that the edit command gives is written only into the edits of the p
     assert.match(two[0], /^media\/plot-[0-9a-z]{4}\.png$/);
     assert.ok(disk(server, one[0]).equals(LIGHT), `${one[0]} is the picture of Ann`);
     assert.ok(disk(server, two[0]).equals(DARK), `${two[0]} is the picture of Ben`);
-    // Ben shows his picture from its object URL, and Ann from the file in media/
     await show(ann, 'Two');
     await ann.waitFor(SHOWN(two[0]));
     clean(ann);
@@ -232,7 +200,6 @@ test('the names that the edit command gives to the files of one drop are written
     await dropFiles(ann, [file(server, 'c', 'fig.1.png', LIGHT), file(server, 'c', 'fig-1.png', DARK)]);
     await ann.waitFor(`${IMAGES} === 4`);
     const [, two] = sources(await converge(server, [ann]));
-    // the files are named by the page as by the edit command, hence nothing is renamed
     assert.deepEqual(two, ['media/fig-1.png', 'media/fig-1-2.png']);
     assert.deepEqual(two.map(which), ['light', 'dark']);
   });
@@ -246,7 +213,6 @@ test('the names that the edit command gives to the files of one drop are written
     p.next('pass', 'refuse');
     await show(bea, 'One');
     await dropFiles(bea, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
-    // the second file is given another name by the rename of the first
     await bea.waitFor(`/^Could not send media\\/plot\\S*\\.png\\. Try again$/.test(${STATE})`);
     await click(bea, '.beeson-session-action');
     const [one] = sources(await converge(server, [bea]));
@@ -309,46 +275,183 @@ test('a picture over 16 MB is refused on the host as well, a video of the host u
   assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
   assert.equal(await refuse('IMG_2041.heic', 'image/heic', 1), 'IMG_2041.heic cannot be sent to the others, since a session does not take .heic files. Save it as a PNG or a JPEG.');
   assert.equal(await refuse('clip.MKV', 'video/x-matroska', 1), 'clip.MKV cannot be sent to the others, since a session does not take .mkv files. Save it as an MP4 or a WebM.');
-  // a paste of slides gives a file the type that the edit command serves it with
-  assert.equal(await refuse('clip.mkv', 'application/octet-stream', 1), 'clip.mkv cannot be sent to the others, since a session does not take .mkv files. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.');
-  assert.equal(await refuse('scan', '', 1), 'scan cannot be sent to the others, since a session does not take files without an extension. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.');
+  assert.equal(await refuse('clip.mkv', 'application/octet-stream', 1), 'clip.mkv cannot be sent to the others, since a session does not take .mkv files. Save an image as a PNG or a JPEG, and a video as an MP4 or a WebM.');
+  assert.equal(await refuse('scan', '', 1), 'scan cannot be sent to the others, since a session does not take files without an extension. Save an image as a PNG or a JPEG, and a video as an MP4 or a WebM.');
   clean(ann);
 });
 
 const PDF = resolve('test/pages/figure.pdf');
-// figure.pdf as a file made in the page, for a command that takes its files as an argument
 const PDF_FILE = `new File([Uint8Array.from(atob(${JSON.stringify(readFileSync(PDF).toString('base64'))}), (c) => c.charCodeAt(0))], 'figure.pdf', { type: 'application/pdf' })`;
-// the first bytes of a PNG
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const NO_PDF = 'figure.pdf cannot be sent to the others, since a session does not take .pdf files. Add a PDF figure in the editor without a session.';
-// the middle of the image of selector that is drawn
 const middle = async (page, selector) => {
   const drawn = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0)`;
-  // a picture has a width once its file is loaded, which may be after its slide is shown
   await page.waitFor(`!!${drawn}`);
   return page.evaluate(`(() => { const r = ${drawn}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 };
-// the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
 const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
 
-test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 300_000 }, async (t) => {
+const pdfsOf = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(/<img [^>]*data-pdf="([^"]+)"/g)].map((m) => m[1]));
+const states = (server) => pdfFigureStatus(server.file).map((f) => f.state);
+
+test('a PDF that is dropped, or chosen with Replace…, is written into media/ with its renders, and npm run tex finds them current', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const ann = await tab(browser, sessionUrl(server.edit));
   await show(ann, 'Two');
   await dropFiles(ann, [PDF]);
-  await ann.waitFor(`(${C}.app.note?.text ?? '') === ${JSON.stringify(NO_PDF)}`).catch(async () => assert.fail(`the reason of the drop reads ${await ann.evaluate(`${C}.app.note?.text ?? null`)}`));
-  assert.equal(await ann.evaluate(IMAGES), 0);
+  await ann.waitFor(`${IMAGES} === 2`).catch(async () => assert.fail(`the PDF is not added: ${await ann.evaluate(`${C}.app.note?.text ?? null`)}`));
+  let text = await converge(server, [ann]);
+  assert.deepEqual(sources(text)[1], ['media/figure-dark.png', 'media/figure-light.png']);
+  assert.deepEqual(pdfsOf(text)[1], ['media/figure.pdf', 'media/figure.pdf']);
+  assert.ok(disk(server, 'media/figure.pdf').equals(readFileSync(PDF)));
+  assert.deepEqual(media(server), ['figure-dark.png', 'figure-light.png', 'figure.pdf']);
+  assert.deepEqual(states(server), ['current', 'current']);
+
+  await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${IMAGES} === 1`);
-  const before = await converge(server, [ann]);
-  await click(ann, await middle(ann, '.reveal .slides img'));
-  assert.equal(await ann.evaluate(`${C}.app.commands.enabled('media.replace')`), true);
-  assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), NO_PDF);
-  assert.equal(await converge(server, [ann]), before);
-  assert.deepEqual(media(server), ['plot.png']);
+  await ann.waitFor(`${IMAGES} === 3`);
+  await converge(server, [ann]);
+  await click(ann, await middle(ann, '.reveal .slides img:not([data-pdf])'));
+  assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), 'taken');
+  await until(() => pdfsOf(server.read())[0].length === 2, 'the PDF figure on slide One in index.html', 30_000);
+  text = await converge(server, [ann]);
+  assert.deepEqual(pdfsOf(text), [['media/figure-2.pdf', 'media/figure-2.pdf'], ['media/figure.pdf', 'media/figure.pdf']]);
+  assert.deepEqual(sources(text)[0], ['media/figure-2-dark.png', 'media/figure-2-light.png']);
+  assert.ok(disk(server, 'media/figure-2.pdf').equals(readFileSync(PDF)));
+  assert.deepEqual(states(server), Array(4).fill('current'));
   clean(ann);
+});
+
+test('a PDF that the edit command renames is named by data-pdf on every page, also after an undo and a redo', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'figure.pdf', 'another file');
+  leftover(server, 'figure-dark.png', 'another picture');
+  const ann = await tab(browser, sessionUrl(server.edit));
+  await show(ann, 'Two');
+  await dropFiles(ann, [PDF]);
+  await ann.waitFor(`${IMAGES} === 2`);
+  const check = async (pages) => {
+    const text = await converge(server, pages);
+    assert.deepEqual(pdfsOf(text)[1], ['media/figure-2.pdf', 'media/figure-2.pdf']);
+    assert.deepEqual(sources(text)[1], ['media/figure-dark-2.png', 'media/figure-light.png']);
+    for (const page of pages) assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].map((i) => i.getAttribute('data-pdf'))`), ['media/figure-2.pdf', 'media/figure-2.pdf']);
+  };
+  await until(() => server.read().includes('figure-2.pdf'), 'the new name of the PDF in index.html', 30_000);
+  await check([ann]);
+  assert.ok(disk(server, 'media/figure-2.pdf').equals(readFileSync(PDF)));
+  assert.equal(readFileSync(join(server.talk, 'media/figure.pdf'), 'utf8'), 'another file');
+  assert.deepEqual(states(server), ['current', 'current']);
+  await keys(ann, 'Mod+Z');
+  await until(() => !server.read().includes('<img'), 'the undo of the drop in index.html', 15_000);
+  await converge(server, [ann]);
+  await keys(ann, 'Mod+Shift+Z');
+  await until(() => server.read().includes('<img'), 'the redo of the drop in index.html', 15_000);
+  await until(() => !server.read().includes('"media/figure.pdf"'), 'the new name of the PDF after the redo', 15_000);
+  await check([ann]);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await show(ben, 'Two');
+  await check([ann, ben]);
+  await ben.waitFor(SHOWN('media/figure-dark-2.png'), 15_000);
+  assert.deepEqual(media(server), ['figure-2.pdf', 'figure-dark-2.png', 'figure-dark.png', 'figure-light.png', 'figure.pdf']);
+  clean(ann);
+  clean(ben);
+});
+
+test('two pages that add PDFs of the same name at once each keep their own PDF and renders', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const blue = plainPdf('0 0 1');
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  p.next('hold');
+  await show(ann, 'One');
+  await dropFiles(ann, [PDF]);
+  await until(() => p.held.length, 'the upload of Ann to be held');
+  await show(ben, 'Two');
+  await dropFiles(ben, [file(server, 'b', 'figure.pdf', blue)]);
+  await until(() => pdfsOf(server.read())[1].length === 2, 'the PDF figure of Ben in index.html', 30_000);
+  p.release();
+  await until(() => pdfsOf(server.read())[0].length === 2, 'the PDF figure of Ann in index.html', 30_000);
+  const text = await converge(server, [ann, ben]);
+  const [one, two] = pdfsOf(text);
+  assert.equal(new Set(one).size, 1);
+  assert.equal(new Set(two).size, 1);
+  assert.match(one[0], /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.match(two[0], /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.ok(disk(server, one[0]).equals(readFileSync(PDF)), `${one[0]} is the PDF of Ann`);
+  assert.ok(disk(server, two[0]).equals(blue), `${two[0]} is the PDF of Ben`);
+  const renders = sources(text);
+  assert.equal(new Set([...renders[0], ...renders[1]]).size, 4, renders.flat().join(' '));
+  for (const [i, pdf] of [one[0], two[0]].entries()) assert.deepEqual(renders[i], ['dark', 'light'].map((m) => pdf.replace(/\.pdf$/, `-${m}.png`)));
+  assert.deepEqual(states(server), Array(4).fill('current'));
+  clean(ann);
+  clean(ben);
+});
+
+test('a PDF dropped by a guest reaches media/ through the relay, the host sees the figure only once its renders are in media/, and changes its page and Match the Mode', { timeout: 600_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, await relayed(t, server));
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const gus = await tab(browser, p.url, { name: 'Gus' });
+  assert.equal(await gus.evaluate(`${C}.host`), false);
+  await converge(server, [ann, gus]);
+  await show(ann, 'Two');
+  await ann.evaluate(`(window.__broken = [], addEventListener('error', (e) => e.target instanceof HTMLImageElement && window.__broken.push(e.target.getAttribute('src')), true), true)`);
+  p.next('hold');
+  await show(gus, 'Two');
+  await dropFiles(gus, [PDF]);
+  await until(() => p.held.length, 'the upload of Gus to be held');
+  await gus.waitFor(`${IMAGES} === 2`);
+  assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal .slides img').length`), 0);
+  p.release();
+  await until(() => pdfsOf(server.read())[1].length === 2, 'the PDF figure of Gus in index.html', 30_000);
+  let text = await converge(server, [ann, gus]);
+  const [pdf] = pdfsOf(text)[1];
+  assert.match(pdf, /^media\/figure-[0-9a-z]{4}\.pdf$/);
+  assert.ok(disk(server, pdf).equals(readFileSync(PDF)));
+  assert.deepEqual(states(server), ['current', 'current']);
+  await ann.waitFor(SHOWN(sources(text)[1][0]), 15_000);
+  assert.deepEqual(await ann.evaluate('window.__broken'), []);
+
+  await front(ann);
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'taken');
+  await until(() => server.read().includes('data-page="2"'), 'page 2 in index.html', 30_000);
+  text = await converge(server, [ann, gus]);
+  assert.deepEqual(pdfsOf(text)[1], [pdf, pdf]);
+  assert.equal(text.split('data-page="2"').length - 1, 2, text);
+  await front(ann);
+  assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
+  await until(() => sources(server.read())[1].length === 1, 'one render in index.html', 30_000);
+  text = await converge(server, [ann, gus]);
+  await gus.waitFor(SHOWN(sources(text)[1][0]), 15_000);
+  assert.deepEqual(states(server), ['current']);
+  clean(ann);
+  clean(gus);
+});
+
+test('a guest who drops a PDF over 16 MB is told of the limit, and the deck and media/ are kept', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { url } = await relayed(t, server);
+  const gus = await tab(browser, `${url}index.html?edit&session`, { name: 'Gus' });
+  const before = await converge(server, [gus]);
+  await show(gus, 'Two');
+  await dropFiles(gus, [file(server, 'a', 'noise.pdf', noisePdf())]);
+  await gus.waitFor(`/^noise\\.pdf is larger than 16 MB/.test(${C}.app.note?.text ?? '')`).catch(async () => assert.fail(`the reason of the drop reads ${await gus.evaluate(`${C}.app.note?.text ?? null`)}`));
+  assert.equal(await gus.evaluate(IMAGES), 0);
+  assert.equal(await converge(server, [gus]), before);
+  assert.ok(!existsSync(join(server.talk, 'media')) || !media(server).length, 'media/ is kept');
+  clean(gus);
 });
 
 test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 780_000 }, async (t) => {
@@ -372,18 +475,14 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   const text = await converge(server, [ann, ben]);
   const renders = sources(text)[1];
   assert.equal(renders.length, 2, text);
-  // while Ben is in the session, a new file is named uniquely to the page of Ann
   for (const [i, mode] of ['dark', 'light'].entries()) {
     assert.match(renders[i], new RegExp(`^media/figure-page-2-${mode}(-[0-9a-z]{4})?\\.png$`));
     assert.ok(disk(server, renders[i]).subarray(0, 8).equals(PNG), `${renders[i]} is a PNG`);
   }
   for (const written of ['data-pdf="media/figure.pdf"', 'data-page="2"']) assert.equal(text.split(written).length - 1, 2, text);
-  // the deck is shown in the dark mode
   await ben.waitFor(SHOWN(renders[0]), 15_000);
   assert.doesNotMatch(await ben.evaluate(`document.querySelector('.reveal .slides img.for-dark').src`), /^blob:/);
 
-  // without Match the Mode, the figure is one render in the colors of the PDF. the page of Ann is
-  // brought to the front, since a page behind another does not draw
   await front(ann);
   assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
   await until(() => sources(server.read())[1].length === 1, 'one render in index.html', 30_000);
@@ -391,7 +490,6 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   assert.match(own, /^media\/figure-page-2(-[0-9a-z]{4})?\.png$/);
   assert.ok(disk(server, own).subarray(0, 4).equals(PNG.subarray(0, 4)), `${own} is a PNG`);
   await ben.waitFor(SHOWN(own), 15_000);
-  // and with it again, a pair
   await front(ann);
   assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
   await until(() => sources(server.read())[1].length === 2, 'a pair of renders in index.html', 30_000);
@@ -402,19 +500,7 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   clean(ben);
 });
 
-// a PDF of one page of 1920 by 1080 pt that shows noise of 3840 by 2160 px without compression,
-// hence a file of 25 MB whose render in the colors of the PDF is a PNG over 16 MB
-function noisePdf() {
-  const [w, h] = [3840, 2160];
-  const pixels = randomBytes(w * h * 3);
-  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
-  const objects = [
-    ['<< /Type /Catalog /Pages 2 0 R >>'],
-    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
-    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
-    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
-    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
-  ];
+function pdfOf(objects) {
   const parts = [Buffer.from('%PDF-1.4\n')];
   let length = parts[0].length;
   const offsets = objects.map((o, i) => {
@@ -431,7 +517,29 @@ function noisePdf() {
   return Buffer.concat(parts);
 }
 
-// a talk whose slide Two holds a PDF figure of pdf in both modes
+function noisePdf() {
+  const [w, h] = [3840, 2160];
+  const pixels = randomBytes(w * h * 3);
+  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
+  return pdfOf([
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
+    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ]);
+}
+
+function plainPdf(rgb) {
+  const content = `q ${rgb} rg 200 150 m 300 150 l 300 250 l 200 250 l h f Q`;
+  return pdfOf([
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 4 0 R >>'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ]);
+}
+
 async function figureTalk(t, pdf) {
   const server = await talk(t);
   leftover(server, 'figure.pdf', pdf);
@@ -450,7 +558,6 @@ test('a render of a PDF figure over 16 MB is refused in a session with its reaso
   const files = media(server);
   await show(ann, 'Two');
   await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
-  // without Match the Mode, the figure is one render of the noise in the colors of the PDF
   const answer = await run(ann, 'media.matchMode', 'undefined');
   assert.match(answer, /^figure\.png is larger than 16 MB/, answer);
   assert.equal(await converge(server, [ann]), before);
@@ -458,7 +565,6 @@ test('a render of a PDF figure over 16 MB is refused in a session with its reaso
   clean(ann);
 });
 
-// the paths of the files in the store of media of a page
 const STORED = `[...${C}.shell.media.byPath.keys()].sort()`;
 
 for (const refused of ['dark', 'light']) {
@@ -497,7 +603,6 @@ test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB
   clean(gus, [/status of 413 .*media\/figure\.pdf$/]);
 });
 
-// a page behind the relay without a session is answered 413 by the edit command as well
 for (const how of ['left the session', 'edits another deck of the talk folder']) {
   test(`a guest who ${how} and changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay`, { timeout: 360_000 }, async (t) => {
     const browser = await launch({ offline: false });
@@ -526,8 +631,6 @@ test('the reason why a dropped file is not added is shown in full on a phone of 
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // a TIFF, since a browser knows its type on every system. a HEIC is without a type on a Windows
-  // that does not know it, and the editor then answers that it is not an image or a video
   const tiff = file(server, 'a', 'scan.tiff', Buffer.alloc(16));
   const big = file(server, 'a', 'big.png', Buffer.alloc(17 * 1024 * 1024));
   for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1280, 800, false], ['Cy', 1440, 900, false]]) {
@@ -542,8 +645,6 @@ test('the reason why a dropped file is not added is shown in full on a phone of 
         const title = await page.evaluate(TITLE);
         assert.equal(title.split(reason).length - 1, 1, title);
         assert.doesNotMatch(title, /\.\./);
-        // the save state draws the reason only while the title leaves out its state, which the
-        // wider letters of Linux may need at 1440 px
         assert.equal(await page.evaluate(`document.querySelector('.beeson-session-state .name').getClientRects().length > 0`), await page.evaluate(`document.querySelector('.beeson-edit-titlebar .doc').classList.contains('tight')`));
       }
       assert.equal(await page.evaluate(IMAGES), 0);
@@ -593,14 +694,11 @@ test('a warning of the editor is shown in full at every width of the window, fro
   await show(ben, 'Two');
   const reason = 'scan.tiff cannot be sent to the others, since a session does not take .tiff files. Save it as a PNG or a JPEG.';
   await ben.evaluate(`(${C}.app.note = { text: ${JSON.stringify(reason)}, warn: true }, ${C}.app.report(), true)`);
-  // the width at which the title takes the warning from the save state depends on the font of the
-  // system, hence every width is tried until the title has shown the warning at 40 widths in a row
   const cut = [];
   let roomy = 0;
   for (let width = 900; width <= 2600 && roomy < 40; width++) {
     await ben.send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
     await ben.waitFor(`innerWidth === ${width}`);
-    // the title is fitted in the frame of the resize, which is over after two animation frames
     const [seen, tight] = await ben.evaluate(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done([${SEEN(reason)}, document.querySelector('.beeson-edit-titlebar .doc').classList.contains('tight')]))))`);
     if (!seen) cut.push(width);
     roomy = tight ? 0 : roomy + 1;
@@ -616,9 +714,8 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
   const server = await talk(t);
   const ann = await open(browser, sessionUrl(server.edit), { width: 320, height: 700, mobile: true });
   await show(ann, 'Two');
-  // the note of a paste of a slide that names 12 files that a session does not take
   const names = ['IMG_2041.heic', 'pic.tiff', 'saved.jfif', 'anim.apng', 'song.ogg', 'clip.mkv', 'doc.pdf', 'data.json', 'a.b.heic', 'PHOTO.HEIC', 'photo.', 'scan'];
-  const note = names.map((n) => `figs/${n} was not copied: ${n} cannot be sent to the others, since a session does not take this file. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.`).join(' ');
+  const note = names.map((n) => `figs/${n} was not copied: ${n} cannot be sent to the others, since a session does not take this file. Save an image as a PNG or a JPEG, and a video as an MP4 or a WebM.`).join(' ');
   await ann.evaluate(`(${C}.app.note = { text: ${JSON.stringify(note)}, warn: true }, ${C}.app.report(), true)`);
   const NAME = `document.querySelector('.beeson-session-state .name')`;
   await ann.waitFor(`${NAME}.textContent === ${JSON.stringify(note)}`);
@@ -627,7 +724,6 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
     return r.height > 0 && r.top >= document.querySelector('.beeson-edit-titlebar').getBoundingClientRect().bottom && r.bottom <= innerHeight;
   })()`);
   assert.ok(inside, `the current slide is not inside the window under a title bar of ${await ann.evaluate(BAR)} px`);
-  // the last word is inside the line and the window once a touch scrolls the line
   const LAST = `(() => {
     const el = ${NAME};
     const range = document.createRange();
@@ -638,25 +734,22 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
     return w.height > 0 && w.top >= r.top - 1 && w.bottom <= r.bottom + 1 && w.bottom <= innerHeight;
   })()`;
   assert.equal(await ann.evaluate(LAST), false);
-  // a finger drags from the last line of the box up to its first line, again and again. the touch
-  // events are sent one by one, as in the other tests of a touch, since a synthesized scroll
-  // gesture did not move the line in the Chrome of the Linux and Windows runners
   const box = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 6, bottom: r.bottom - 6 }; })()`);
   const touch = (type, y) => ann.send('Input.dispatchTouchEvent', { type, touchPoints: y === undefined ? [] : [{ x: box.x, y }] });
   await ann.evaluate(`(() => {
     window.__touches = {};
     for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) addEventListener(type, (ev) => { const k = type + (${NAME}.contains(ev.target) ? ' in the line' : ' outside'); window.__touches[k] = (window.__touches[k] ?? 0) + 1; }, { capture: true, passive: true });
   })()`);
-  // what a failure needs to be read without the page: the box, what the finger hits, and the events
   const STUCK = `JSON.stringify((() => {
     const el = ${NAME};
     const cs = getComputedStyle(el);
     const hit = document.elementFromPoint(${box.x}, ${box.bottom});
     return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowY: cs.overflowY, maxHeight: cs.maxHeight, hit: hit ? hit.tagName + '.' + hit.className : null, touches: window.__touches };
   })())`;
-  for (let drags = 0; !(await ann.evaluate(LAST)); drags++) {
+  for (let drags = 0; ; drags++) {
+    const { last, top } = await ann.evaluate(`({ last: ${LAST}, top: ${NAME}.scrollTop })`);
+    if (last) break;
     assert.ok(drags < 60, `the last word is not reached after 60 drags of the line: ${await ann.evaluate(STUCK)}`);
-    const top = await ann.evaluate(`${NAME}.scrollTop`);
     await touch('touchStart', box.bottom);
     for (let i = 1; i <= 8; i++) await touch('touchMove', box.bottom + ((box.top - box.bottom) * i) / 8);
     await touch('touchEnd');
@@ -665,27 +758,47 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
   clean(ann);
 });
 
-test('an upload that stalls fails at its deadline, and Try again sends the picture and the edits after it', { timeout: 120_000 }, async (t) => {
+test('an upload that stalls fails at its deadline, and Try again sends the picture', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const p = await proxy(t, server.edit);
-  // the deadline shortened from 30 s to 1 s, to which 1 s per MB is added
   const ann = await tab(browser, `${p.url}&session-upload-wait=1000`);
-  const before = server.read();
   p.next('stall');
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
   await edit(ann, 1, 'p', ' typed');
   await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`, 15_000);
   assert.equal(await ann.evaluate(ACTION), 'Try again');
-  assert.equal(server.read(), before);
+  assert.match(server.read(), /<p>Second slide typed<\/p>/);
+  assert.doesNotMatch(server.read(), /media\/plot\.png/);
   await click(ann, '.beeson-session-action');
   const text = await converge(server, [ann]);
   assert.match(text, /<p>Second slide typed<\/p>/);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(p.puts, 2);
   assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
+  clean(ann, PROXIED);
+});
+
+test('an edit made during an upload reaches the deck before the upload ends, and the picture after it', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('hold');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await until(() => p.held.length === 1, 'the upload');
+  await edit(ann, 1, 'p', ' typed');
+  await until(() => server.read().includes('<p>Second slide typed</p>'), 'the edit in index.html');
+  assert.equal(p.held.length, 1);
+  assert.doesNotMatch(server.read(), /media\/plot\.png/);
+  p.release();
+  const text = await converge(server, [ann]);
+  assert.match(text, /<p>Second slide typed<\/p>/);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
   clean(ann, PROXIED);
 });
 
@@ -708,15 +821,12 @@ test('the save state of a failed upload is cleared once the deck no longer names
   clean(ann, PROXIED);
 });
 
-// the line of a file given up, which a guest cannot add to the talk folder of the host
 const LOST = {
   host: 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or add the file to media/ by hand and load the page again.',
   guest: 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or ask the host to add the file to media/, then load the page again.',
 };
 const SECRET = 'a secret of the relay of the tests';
 
-// the relay that the edit command of server shares the session through, with the port and the
-// address of its session as edit of proxy() takes them, through which the page is a guest
 async function relayed(t, server) {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
@@ -744,7 +854,6 @@ for (const who of ['host', 'guest']) {
     assert.deepEqual(sources(text)[0], ['media/plot.png']);
     assert.equal(p.puts, 1);
     assert.equal(await ann.evaluate(STATE), LOST[who]);
-    // the save state is cleared once the deck no longer names the picture
     await keys(ann, 'Mod+Z');
     await keys(ann, 'Mod+Z');
     await ann.waitFor(`${IMAGES} === 0`);
@@ -772,7 +881,6 @@ test('the reason why a dropped file is not added follows the line of a file give
     if (mobile) {
       await ann.waitFor(`${SEEN(LOST.host, true)} > 0 && ${SEEN(reason, true)} > 0`).catch(async () => assert.fail(`the line and the reason are not both read at ${width} px. the save state reads ${await ann.evaluate(STATE)}`));
     } else {
-      // the title leaves out the final full stop of a part that another part follows
       await ann.waitFor(`${TITLE}.includes('IMG_2041.heic')`);
       const title = await ann.evaluate(TITLE);
       for (const part of [LOST.host, reason]) assert.equal(title.split(part.replace(/\.$/, '')).length - 1, 1, title);
@@ -807,7 +915,6 @@ test('the save state of an upload given up is cleared once another page deletes 
   await front(ann);
   await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
   clean(ann, [/status of 413/]);
-  // the file given up is not in media/, which the page of Ben loads until the deletion
   clean(ben, [/status of 404 .*media\/plot\.png$/]);
 });
 
@@ -838,14 +945,11 @@ test('an upload whose answer was lost after the write is sent again without a se
     const sha = (body) => createHash('sha256').update(body).digest('hex');
     const put = (name, body, hash) => raw(port, 'PUT', `${base}.session/media/${name}?token=${token}`, { body, headers: hash ? { 'x-content-sha256': hash } : {} });
     assert.deepEqual((await put('x.png', 'one', sha('one'))).json(), { path: 'media/x.png' });
-    // the same bytes under the name, or under a numbered name of it, are answered without a write
     assert.deepEqual((await put('x.png', 'one', sha('one'))).json(), { path: 'media/x.png' });
     assert.deepEqual((await put('x.png', 'two', sha('two'))).json(), { path: 'media/x-2.png' });
     assert.deepEqual((await put('x.png', 'two', sha('two'))).json(), { path: 'media/x-2.png' });
     assert.deepEqual((await put('X.PNG', 'two', sha('two').toUpperCase())).json(), { path: 'media/x-2.png' });
-    // without the header, a new name is given as before
     assert.deepEqual((await put('x.png', 'one')).json(), { path: 'media/x-3.png' });
-    // a hash that is not the one of the body is refused
     assert.equal((await put('x.png', 'three', sha('one'))).status, 400);
     assert.deepEqual(media(server), ['x-2.png', 'x-3.png', 'x.png']);
   });
@@ -865,7 +969,6 @@ test('an upload cut on the network is sent again once the page is online again, 
   await goOffline(ann);
   await ann.waitFor(`${C}.connection === 'offline'`);
   await goOnline(ann);
-  // the page is online again once a poll is answered, which a page that joins makes happen at once
   await post(server.edit.port, `${server.edit.base}.session/hello`, { name: 'Ben' });
   const text = await converge(server, [ann]);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
@@ -881,10 +984,6 @@ test('an upload refused by an edit command that started again, before the hello 
   const port = server.edit.port;
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET });
   await converge(server, [ann]);
-  // the PUT of the upload is held from before the kill until after the start. a page whose rejoin
-  // has begun, 1 s after the kill, starts no upload before its hello, and a slow start of the edit
-  // command outlasts this second. every hello of Ann is held, hence her upload reaches the new edit
-  // command before her hello
   await ann.evaluate(`(__net.rule('/.session/media/', 'hold', { method: 'PUT', times: 1 }), true)`);
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
@@ -900,7 +999,5 @@ test('an upload refused by an edit command that started again, before the hello 
   const text = await converge(server, [ann]);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(await ann.evaluate(`__net.count('/.session/media/', 'PUT')`), 2);
-  // people.json is written at most once a second, hence a killed edit command may not know Ann
-  // after its start. her hello without a name is then answered 400, and sent again with her name
   clean(ann, [/status of 404/, /status of 400 .*\/\.session\/hello$/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/]);
 });

@@ -1,16 +1,10 @@
-// the Code pane of the Format tab with trusted input on either platform: the language of a code
-// box written as its class language-* and colored again at once, the numbers of its lines, and its
-// line steps in data-line-numbers, typed into a field or edited in the list of the groups. after
-// each edit an undo gives the file byte for byte, a redo gives the edit, and a save is opened again
-// without problems. a new code box gets a language and is colored
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -19,7 +13,6 @@ const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const CODE = '<code class="language-python" data-line-numbers="1-3|4|5-7|8-9">def halo_family():';
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const rendered = (page) => page.evaluate('window.BeesonEditor.render()');
 
 let browser;
@@ -33,7 +26,6 @@ after(async () => {
   server?.close();
 });
 
-// the editor on index.html with the Format tab shown, on the slide of its code box
 async function open(t, platform) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close());
@@ -49,7 +41,6 @@ async function open(t, platform) {
   return page;
 }
 
-// a point in line n of the code box, counted from 1, at its start or at its end
 const linePoint = (page, n, end = false) => page.evaluate(`(() => {
   const code = document.querySelector('.reveal section.present pre > code');
   const text = code.textContent;
@@ -66,7 +57,6 @@ const linePoint = (page, n, end = false) => page.evaluate(`(() => {
   return { x: ${end} ? box.right - 1 : box.left + 1, y: box.top + box.height / 2 };
 })()`);
 
-// the count of the ranges of a highlight of the painter, e.g. keyword
 const ranges = (page, name) => page.evaluate(`CSS.highlights.get(${JSON.stringify(`beeson-code-${name}`)})?.size ?? 0`);
 const pane = (page) => page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane ?? null`);
 const language = (page) => page.evaluate(`document.querySelector('${PANEL} .ed-lang .value').textContent`);
@@ -105,7 +95,6 @@ for (const platform of PLATFORMS) {
   test(`the language of a code box is chosen in the Code pane and colored again at once on ${platform}`, async (t) => {
     const page = await open(t, platform);
     const source = page.source;
-    // the box is colored in the editor without a change of its DOM
     assert.ok((await ranges(page, 'keyword')) > 3, 'the keywords of the box are not colored');
     const dom = await page.evaluate(`document.querySelector('.reveal section.present pre').innerHTML`);
     await clickText(page, await linePoint(page, 2));
@@ -127,7 +116,6 @@ for (const platform of PLATFORMS) {
     await press(page, 'Mod+Z');
     await frames(page);
     assert.ok((await ranges(page, 'keyword')) > 3, 'the box is not colored again after an undo');
-    // a language of the submenu of every language
     await clickText(page, `${PANEL} .ed-lang`);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     const sub = await page.evaluate(`(() => { const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === 'All Languages'); const r = item.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -141,7 +129,7 @@ for (const platform of PLATFORMS) {
     await undoRedo(page, platform, source, julia);
     assert.equal(await page.evaluate(`document.querySelector('.reveal section.present pre').innerHTML`), dom.replace('language-python', 'language-julia'), 'the painter changed the DOM of the box');
     assert.deepEqual(newProblems(page, julia), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`the line steps of a code box are typed, added from the selected lines, and removed on ${platform}`, async (t) => {
@@ -150,7 +138,6 @@ for (const platform of PLATFORMS) {
     await clickText(page, await linePoint(page, 1));
     await frames(page);
     assert.deepEqual(await groups(page), ['Lines 1–3 · With the slide', 'Line 4 · Step 1', 'Lines 5–7 · Step 2', 'Lines 8–9 · Step 3']);
-    // the field takes the groups separated by bars
     await clickText(page, `${PANEL} input[name="line-steps"]`);
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '1-2 | 4');
@@ -159,7 +146,6 @@ for (const platform of PLATFORMS) {
     const typed = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|4'));
     assert.equal(await rendered(page), typed);
     assert.deepEqual(await groups(page), ['Lines 1–2 · With the slide', 'Line 4 · Step 1']);
-    // a group that is not lines is refused, and the file is kept
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '1-|x');
     await press(page, 'Enter');
@@ -168,7 +154,6 @@ for (const platform of PLATFORMS) {
     assert.match((await page.evaluate('window.BeesonEditor.status()')).message, /not a group of lines/);
     await press(page, 'Escape');
     await undoRedo(page, platform, source, typed);
-    // the lines selected in the box by a drag become the next group
     const from = await linePoint(page, 5);
     const to = await linePoint(page, 6, true);
     await clickText(page, from);
@@ -180,7 +165,6 @@ for (const platform of PLATFORMS) {
     const added = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|4|5-6'));
     assert.equal(await rendered(page), added);
     assert.deepEqual(await groups(page), ['Lines 1–2 · With the slide', 'Line 4 · Step 1', 'Lines 5–6 · Step 2']);
-    // a group pointed at dims the other lines, and its button removes it
     const row = await page.evaluate(`(() => { const r = document.querySelectorAll('${PANEL} .ed-groups li')[1].getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; })()`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: row.x, y: row.y });
     await frames(page);
@@ -190,7 +174,6 @@ for (const platform of PLATFORMS) {
     const removed = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|5-6'));
     assert.equal(await rendered(page), removed);
     await undoRedo(page, platform, added, removed);
-    // without groups, the numbers of the lines are a switch
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '');
     await press(page, 'Backspace');
@@ -203,12 +186,11 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const bare = source.replace(CODE, CODE.replace(' data-line-numbers="1-3|4|5-7|8-9"', ''));
     assert.equal(await rendered(page), bare);
-    // the focus is still in the field, as after Enter in any field of the inspector
     await press(page, 'Escape');
     await undoRedo(page, platform, numbered, bare);
     assert.deepEqual(newProblems(page, bare), []);
     await saveAndReopen(page);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
@@ -226,5 +208,54 @@ test('a new code box gets a language, is colored, and is shown in the Code pane'
   assert.ok((await ranges(page, 'number')) >= 1, 'the number of a new code box is not colored');
   assert.equal(await pane(page), 'code');
   assert.equal(await language(page), 'Python');
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
+});
+
+const numberLayout = (page) => page.evaluate(`[...document.querySelectorAll('.reveal section.present pre')].map((pre) => {
+  const code = pre.querySelector(':scope > code');
+  const box = pre.getBoundingClientRect();
+  const scale = box.width / pre.offsetWidth;
+  const p = getComputedStyle(pre);
+  const n = getComputedStyle(pre, '::before');
+  const px = (v) => parseFloat(v) || 0;
+  const absolute = n.position === 'absolute';
+  const x = (absolute ? px(p.borderLeftWidth) + px(n.left) : px(p.borderLeftWidth) + px(p.paddingLeft)) + px(n.marginLeft);
+  const y = (absolute ? px(p.borderTopWidth) + px(n.top) : px(p.borderTopWidth) + px(p.paddingTop)) + px(n.marginTop);
+  const c = getComputedStyle(code);
+  const codeBox = code.getBoundingClientRect();
+  const lineTop = (codeBox.top - box.top) / scale + px(c.borderTopWidth) + px(c.paddingTop);
+  const text = code.firstChild;
+  const glyph = (i) => { const r = document.createRange(); r.setStart(text, i); r.setEnd(text, i + 1); return r.getBoundingClientRect(); };
+  const starts = [0];
+  for (let i = 0; i < text.data.length; i++) if (text.data[i] === '\\n') starts.push(i + 1);
+  const first = glyph(0);
+  return {
+    padding: p.padding,
+    y, lineTop,
+    numberLine: px(n.lineHeight), codeLine: px(c.lineHeight),
+    steps: starts.map((s, k) => (glyph(s).top - first.top) / scale - k * px(c.lineHeight)),
+    left: x, contentLeft: px(p.borderLeftWidth) + px(p.paddingLeft),
+    gap: (first.left - box.left) / scale - x - px(n.width), em: px(p.fontSize),
+  };
+})`);
+
+test('the line numbers of a code box are drawn on its lines whatever the padding of the box, in both modes', async (t) => {
+  const page = await editorPage(browser, { deck: 'test/pages/editor-code-padding.html', page: { width: 1600, height: 1000 } });
+  t.after(() => page.close());
+  for (const mode of ['dark', 'light']) {
+    await page.evaluate(`document.documentElement.dataset.theme = '${mode}'`);
+    await page.waitFor(`[...document.querySelectorAll('.reveal section.present pre')].every((p) => p.hasAttribute('data-beeson-lines'))`);
+    await frames(page);
+    const boxes = await numberLayout(page);
+    assert.deepEqual(boxes.map((b) => b.padding), ['24px 32px', '14px 20px']);
+    for (const b of boxes) {
+      const where = `in the box with padding ${b.padding} in the ${mode} mode`;
+      assert.ok(Math.abs(b.y - b.lineTop) < 1, `the first number is drawn ${b.y - b.lineTop}px below the first line of the code ${where}`);
+      assert.ok(Math.abs(b.numberLine - b.codeLine) < 0.5, `the numbers are not drawn on the line height of the code ${where}`);
+      assert.ok(b.steps.every((d) => Math.abs(d) < 1), `the lines of the code are not on one grid ${where}: ${b.steps}`);
+      assert.ok(Math.abs(b.left - b.contentLeft) < 1, `the numbers are drawn ${b.left - b.contentLeft}px off the padding ${where}`);
+      assert.ok(Math.abs(b.gap - b.em) < 1, `the gap between the numbers and the code is ${b.gap}px, not one em ${where}`);
+    }
+  }
+  assert.deepEqual(page.errors, []);
 });

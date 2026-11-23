@@ -1,8 +1,3 @@
-// the client of a session in Chrome when the edit command goes away: the offline state and Try now
-// across a kill and a restart, with an edit made offline that reaches index.html, a guest of the
-// relay told that the host's edit command is not running, the end of a session for a guest and for
-// the host, and the blocked state after an operation refused twice as invalid
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -15,10 +10,6 @@ import { post, raw, until } from './helpers/session.mjs';
 const SECRET = 'the secret of the group for this test';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const ACTION = `(() => { const b = document.querySelector('.beeson-session-action'); return b && !b.hidden ? b.textContent : null; })()`;
-// a request to an edit command that is not running fails in the console of the page, on a Mac also
-// as ERR_SOCKET_NOT_CONNECTED on a kept-alive socket during the stop. the first poll after a restart
-// is answered 404, since the token is of the edit command before, and a request after End session
-// through the relay is answered 410
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
 test('a page goes offline when the edit command stops, and Try now sends its edit to the edit command started again', { timeout: 300_000 }, async (t) => {
@@ -37,7 +28,6 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' offline');
   await page.waitFor(`${TEXT}.includes('<p>First slide offline</p>')`);
-  // the reconnects after 1 and 2 s fail, and the next one waits 4 s
   await page.waitFor(`${C}.retryAt - Date.now() > 3000`, 20_000);
   await server.start(['--port', String(port)]);
   await front(page);
@@ -47,8 +37,6 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide offline</p>'));
   assert.equal(await page.evaluate(STATE), 'Saved to index.html');
   assert.equal(await page.evaluate(ACTION), null);
-  // the hello without a name of the rejoin, refused when the kill lost the person of the page, which
-  // the page sends again with the name
   clean(page, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
 });
 
@@ -58,11 +46,7 @@ test('a guest is told that the host is not running, and the end of the session b
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const relayed = ['--relay', relay.url];
-  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s. the
-  // host is thus between two polls once a second. the edit command of this test therefore answers a
-  // poll with ended until it exits, 3 s after index.html is written, in place of 200 ms, and it is
-  // killed once the host is told the end
-  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '120000' } });
+  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
   const { port, key } = server.edit;
   const guestUrl = `${relay.url}/${key}/index.html?edit&session`;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
@@ -79,7 +63,7 @@ test('a guest is told that the host is not running, and the end of the session b
     assert.equal(await guest.evaluate(`document.querySelector('.beeson-session-state').classList.contains('warn')`), true);
     await server.start(['--port', String(port)]);
     await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay again');
-    await click(guest, '.beeson-session-action');
+    await guest.evaluate(`${C}.tryNow()`);
     await guest.waitFor(ONLINE, 20_000);
     await host.evaluate(`${C}.tryNow()`);
     await host.waitFor(ONLINE, 20_000);
@@ -112,25 +96,19 @@ test('a guest is told that the host is not running, and the end of the session b
   await t.test('the host is told that the session has ended when the edit command stops', { skip: process.platform === 'win32' && 'signals' }, async () => {
     server.edit.child.kill('SIGTERM');
     await host.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'The session has ended'`);
-    server.edit.child.kill('SIGKILL');
-    await server.edit.exited;
+        assert.equal(await server.edit.exited, 0);
     server.edit = null;
     assert.equal(await host.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html.');
     assert.equal(await host.evaluate(`${C}.connection`), 'ended');
   });
 
   clean(host, REFUSED);
-  // the hello without a name of the rejoin, refused when the kill lost the person of the guest, which
-  // the page sends again with the name
   clean(guest, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
 });
 
 test('a page refused at its first hello because the session is full says so, and joins once a place is free', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // the 64 places of the session are held by people who poll once, and who are not dropped meanwhile.
-  // a person who has not polled 5 s after the hello is dropped, and a crowded runner may take longer
-  // than 5 s to the hello of the page
   const server = await talk(t, { env: { SLIDES_GONE_MS: '3600000' } });
   const { port, key } = server.edit;
   const tokens = [];
@@ -163,8 +141,6 @@ test('a page whose operation is refused as invalid after a resync stops sending,
   await type(page, ' refused');
   await page.waitFor(`${STATE} === 'Your changes cannot be sent. Load the page again.'`);
   assert.equal(await page.evaluate(ACTION), 'Load again');
-  // the first refusal is followed by a resync and one more operation, and then nothing is sent. an
-  // operation would be sent in the frame that reads the next edit
   assert.equal(await ops(page), 2);
   await type(page, ' again');
   await page.waitFor(`${TEXT}.includes('refused again')`);
@@ -182,7 +158,6 @@ test('a page whose operation is refused as invalid after a resync stops sending,
   clean(page, [/status of 400/]);
 });
 
-// Present takes the full screen before the edits are sent, and a page that is offline cannot send them
 test('Present on a page that is offline ends its show and says that the changes are not sent', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());

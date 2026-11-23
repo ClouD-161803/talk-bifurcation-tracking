@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>The normal form saddle</title>
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css" />
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css" />
+    <link rel="stylesheet" href="../../theme/beeson.css" />
+    <script>
+      window.warnings = [];
+      const warn = console.warn.bind(console);
+      console.warn = (...args) => {
+        window.warnings.push(args.join(' '));
+        warn(...args);
+      };
+    </script>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h2>The saddle fitted to the slide</h2>
+          <div class="backdrop" data-backdrop="saddle"></div>
+        </section>
+        <section>
+          <h2>The saddle in a box, traced in 5 s</h2>
+          <div class="backdrop" data-backdrop="saddle" data-duration="5" style="translate: 960px 0px; width: 960px; height: 1080px"></div>
+        </section>
+      </div>
+    </div>
+    <script src="../../theme/vendor/reveal/reveal.js"></script>
+    <script src="../../theme/beeson.js"></script>
+    <script>
+      Beeson.start({});
+    </script>
+  </body>
+</html>

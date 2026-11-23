@@ -1,14 +1,8 @@
-// the submenu Speech of the Edit menu and of the menu of a text, as in Keynote: Start Speaking reads
-// aloud the selected text, else the text of the selected elements, else the text of the slide in
-// the order of the file, with the speechSynthesis of the browser. a formula is not read. neither
-// command changes the file or the history, and both are dimmed in a browser without speechSynthesis
-
 import type { App } from '../app.ts';
 import { HOST } from '../app.ts';
 
 const synth = (): SpeechSynthesis | undefined => (window as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
 
-// the text of el without its formulas, with a line break read as a space
 function said(el: Element): string {
   const copy = el.cloneNode(true) as Element;
   copy.querySelectorAll('mjx-container').forEach((m) => m.remove());

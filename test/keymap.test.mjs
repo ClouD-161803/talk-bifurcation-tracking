@@ -4,14 +4,12 @@ import { allowed, display, fallback, matches, parseKey } from '../src/editor/key
 
 const PLATFORMS = ['mac', 'other'];
 
-// a keydown as a browser reports it, with every modifier up unless it is given
 const event = (key, code, mods = {}, altGraph = false) => ({
   key, code, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
   getModifierState: (name) => name === 'AltGraph' && altGraph,
   ...mods,
 });
 
-// the modifiers of a chord as the flags of an event
 const flags = (c) => ({ shiftKey: c.shift, altKey: c.alt, ctrlKey: c.ctrl, metaKey: c.meta });
 
 test('parses key strings and resolves Mod per platform', () => {
@@ -28,8 +26,6 @@ test('parses key strings and resolves Mod per platform', () => {
   }
 });
 
-// every key string is matched by the event that types it, and not by the same event with one
-// modifier more or less, on both platforms
 const KEYS = [
   ['Mod+Z', 'z', 'KeyZ'], ['Mod+Shift+Z', 'Z', 'KeyZ'], ['Mod+Y', 'y', 'KeyY'], ['Mod+S', 's', 'KeyS'],
   ['Alt+ArrowUp', 'ArrowUp', 'ArrowUp'], ['Shift+F6', 'F6', 'F6'], ['F6', 'F6', 'F6'], ['PageDown', 'PageDown', 'PageDown'],
@@ -53,7 +49,6 @@ test('matches each key with its modifiers, and not with Shift, Alt, Ctrl, or Met
 test('AltGraph is never a shortcut on Windows and Linux, and Ctrl+Alt is not allowed there', () => {
   assert.equal(matches(event('z', 'KeyZ', { ctrlKey: true }, true), 'Mod+Z', 'other'), false);
   assert.equal(matches(event('z', 'KeyZ', { ctrlKey: true }), 'Mod+Z', 'other'), true);
-  // Firefox on a Mac may report Option as AltGraph
   assert.equal(matches(event('ArrowUp', 'ArrowUp', { altKey: true }, true), 'Alt+ArrowUp', 'mac'), true);
   assert.equal(allowed('Mod+Alt+G', 'other'), false);
   assert.equal(allowed('Ctrl+Alt+G', 'other'), false);
@@ -65,7 +60,6 @@ test('a letter typed with Option on a Mac, or on another script, is matched by i
   assert.equal(matches(event('´', 'KeyE', { altKey: true, metaKey: true }), 'Mod+Alt+E', 'mac'), true);
   assert.equal(matches(event('Dead', 'KeyE', { altKey: true, metaKey: true }), 'Mod+Alt+E', 'mac'), true);
   assert.equal(matches(event('я', 'KeyZ', { ctrlKey: true }), 'Mod+Z', 'other'), true);
-  // a Latin letter is matched by its key, as on a Dvorak layout
   assert.equal(matches(event('z', 'Slash', { metaKey: true }), 'Mod+Z', 'mac'), true);
   assert.equal(matches(event(';', 'KeyZ', { metaKey: true }), 'Mod+Z', 'mac'), false);
 });
@@ -93,7 +87,6 @@ test('Control falls back to Command on a Mac, and Meta to Ctrl elsewhere', () =>
   assert.equal(fallback(metaZ, 'mac'), null);
   assert.equal(fallback(ctrlZ, 'other'), null);
   assert.equal(fallback(event('z', 'KeyZ', { ctrlKey: true, metaKey: true }), 'mac'), null);
-  // the fallback keeps AltGraph, which is still refused
   assert.equal(matches(fallback(event('z', 'KeyZ', { metaKey: true }, true), 'other'), 'Mod+Z', 'other'), false);
 });
 

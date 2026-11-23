@@ -1,11 +1,8 @@
-// checks of the MP4 writer of the recordings, read back from the boxes of a written file
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mp4 } from '../scripts/mp4.mjs';
 import { boxes, find } from './helpers/mp4.mjs';
 
-// samples of 1 to 300 bytes, each filled with its index, with a key frame at the first sample
 const samples = (n) => Array.from({ length: n }, (_, i) => ({ data: Buffer.alloc(1 + ((i * 37) % 300), i & 255), key: i === 0 }));
 const avcC = Buffer.from([1, 0x64, 0, 0x34, 0xff, 0xe1, 0, 4, 0x67, 0x64, 0, 0x34, 1, 0, 4, 0x68, 0xee, 0x3c, 0x80]);
 const color = { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false };
@@ -19,7 +16,6 @@ test('a written file has its header before its samples, one size per frame, and 
   assert.deepEqual(tree.map((b) => b.type), ['ftyp', 'moov', 'mdat']);
   assert.equal(tree.at(-1).start + tree.at(-1).size, file.length);
 
-  // the durations of the movie, the track, and the media, in units of the timescale of mvhd and mdhd
   const mvhd = find(tree, 'moov/mvhd').body;
   const timescale = mvhd.readUInt32BE(12);
   assert.equal(mvhd.readUInt32BE(16) / timescale, frames / fps);
@@ -30,7 +26,6 @@ test('a written file has its header before its samples, one size per frame, and 
   const mdhd = find(tree, 'moov/trak/mdia/mdhd').body;
   assert.equal(mdhd.readUInt32BE(16) / mdhd.readUInt32BE(12), frames / fps);
 
-  // stsd holds one sample entry, avc1, with the size of the frames, the given avcC, and a colr box
   const stbl = find(tree, 'moov/trak/mdia/minf/stbl').children;
   const stsd = find(stbl, 'stsd').body;
   assert.equal(stsd.readUInt32BE(4), 1);
@@ -44,7 +39,6 @@ test('a written file has its header before its samples, one size per frame, and 
   assert.deepEqual(inner[0].body, avcC);
   const colr = inner[1].body;
   assert.equal(colr.toString('latin1', 0, 4), 'nclx');
-  // BT.709 primaries, transfer, and matrix, in limited range
   assert.deepEqual([colr.readUInt16BE(4), colr.readUInt16BE(6), colr.readUInt16BE(8), colr[10]], [1, 1, 1, 0]);
 
   const stts = find(stbl, 'stts').body;
@@ -58,7 +52,6 @@ test('a written file has its header before its samples, one size per frame, and 
   const sizes = Array.from({ length: frames }, (_, i) => stsz.readUInt32BE(12 + 4 * i));
   assert.deepEqual(sizes, input.map((s) => s.data.length));
 
-  // the chunks of stsc and stco point at the bytes of the samples in mdat, in order
   const stsc = find(stbl, 'stsc').body;
   const runs = Array.from({ length: stsc.readUInt32BE(4) }, (_, i) => [stsc.readUInt32BE(8 + 12 * i), stsc.readUInt32BE(12 + 12 * i)]);
   const stco = find(stbl, 'stco').body;

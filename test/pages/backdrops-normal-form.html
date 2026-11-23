@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>The normal form</title>
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css" />
+    <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css" />
+    <link rel="stylesheet" href="../../theme/beeson.css" />
+    <script>
+      window.warnings = [];
+      const warn = console.warn.bind(console);
+      console.warn = (...args) => {
+        window.warnings.push(args.join(' '));
+        warn(...args);
+      };
+    </script>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <h2>The normal form in its states</h2>
+          <div class="backdrop" data-backdrop="normalForm" data-backdrop-state="none" style="translate: -240px 0px; width: 960px; height: 1080px"></div>
+          <p class="fragment" data-fragment-index="1" data-backdrop-state="field">Field</p>
+          <p class="fragment" data-fragment-index="2" data-backdrop-state="stable">Stable</p>
+          <p class="fragment" data-fragment-index="3" data-backdrop-state="unstable">Unstable</p>
+          <p class="fragment" data-fragment-index="4" data-backdrop-state="directions">Directions</p>
+          <p class="fragment" data-fragment-index="5" data-backdrop-state="flow">Flow</p>
+          <p class="fragment" data-fragment-index="6" data-backdrop-state="linear">Linear</p>
+          <p class="fragment" data-fragment-index="7" data-backdrop-state="resonant">Resonant</p>
+        </section>
+        <section>
+          <h2>The normal form without states</h2>
+          <div class="backdrop" data-backdrop="normalForm"></div>
+        </section>
+        <section>
+          <h2>The normal form in an unknown state</h2>
+          <div class="backdrop" data-backdrop="normalForm" data-backdrop-state="saddle"></div>
+        </section>
+      </div>
+    </div>
+    <script src="../../theme/vendor/reveal/reveal.js"></script>
+    <script src="../../theme/beeson.js"></script>
+    <script>
+      Beeson.start({});
+    </script>
+  </body>
+</html>

@@ -1,16 +1,12 @@
-// the edit command, started as a child process on a temporary talk folder: hello, an operation,
-// the long poll of events, a refusal for a conflict, the atomic and debounced write of index.html,
-// a change of the file by another program merged as an operation of the author file, the version
-// of a page, media uploads, a byte-order mark, and the refusal of every request that does not
-// come from this computer with the key or that reaches out of the talk folder
-
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { connect, createServer as createNetServer } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, EDIT, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -42,7 +38,6 @@ test('the edit command serves a session and writes every edit into index.html', 
   assert.deepEqual(hello.people.map((p) => p.name), ['Ann']);
   const bo = (await post(port, api('hello'), { name: 'Bo' })).json();
   assert.equal(bo.color, 1);
-  // the ids of the persons, sent again at each hello as a browser does from localStorage
   const ann = { name: 'Ann', person: hello.person, client: hello.client };
   const boAgain = { name: 'Bo', person: bo.person, client: bo.client };
 
@@ -92,8 +87,6 @@ test('the edit command serves a session and writes every edit into index.html', 
     let v = hi.v;
     let seq = 0;
     let writtenAt = null;
-    // a time over the bound is measured again with fresh insertions, since a stall of the machine
-    // delays the write as well
     for (let tries = 0; tries < 3 && (writtenAt === null || writtenAt >= 2500); tries++) {
       await until(async () => text(file) === (await current()), 'the earlier operations to be written');
       const first = seq + 1;
@@ -134,7 +127,6 @@ test('the edit command serves a session and writes every edit into index.html', 
     writeFileSync(file, head.replace('<p>Second slidenih</p>', '<p>2nd slidenih, see X</p>'));
     await until(async () => (await current()) !== head && text(file) === (await current()), 'the change of the file to be merged');
     assert.equal(text(file).split('\n').find((line) => line.includes('2nd')), '  <p>2nd slidenih, see X</p>');
-    // the line is set back, since the next test edits it
     const again = (await post(port, api('hello'), { name: 'Dee', person: dee.person, client: dee.client })).json();
     const from = again.text.indexOf('<p>2nd slidenih, see X</p>');
     const back = { start: from, end: from + '<p>2nd slidenih, see X</p>'.length, text: '<p>Second slide</p>' };
@@ -150,7 +142,6 @@ test('the edit command serves a session and writes every edit into index.html', 
     const answer = (await post(port, api('op'), { token: bo.token, seq: 10, base: v, patches: [{ start: at, end: at + 6, text: 'Seconda' }] })).json();
     assert.equal(answer.ok, true);
     await until(() => text(file).includes('Seconda slide'), 'the operation to be written');
-    // the agent writes back the whole file it read before the operation, with its own edit
     writeFileSync(file, read.replace('<h2>Uno</h2>', '<h2>Uno, by the agent</h2>'));
     await until(async () => {
       const now = await current();
@@ -180,8 +171,6 @@ test('the edit command serves a session and writes every edit into index.html', 
 
   await t.test('a media upload is given a clean name, a free name, and a capped size', async () => {
     const { token, v } = (await post(port, api('hello'), ann)).json();
-    // the page polls as a page of a session does, since a page that has not polled 5 s after its
-    // hello is dropped, and a crowded runner may take longer for the uploads
     await raw(port, 'GET', `${api('events')}?token=${token}&since=${v}`);
     const put = (name, body, headers) => raw(port, 'PUT', api(`media/${name}?token=${token}`), { body, headers });
     assert.deepEqual((await put('My%20Plot%20(1).PNG', 'a')).json(), { path: 'media/my-plot-1.png' });
@@ -189,9 +178,10 @@ test('the edit command serves a session and writes every edit into index.html', 
     assert.deepEqual((await put('plot.png', 'c')).json(), { path: 'media/plot-2.png' });
     assert.deepEqual((await put('..%2F..%2Fescape.png', 'd')).json(), { path: 'media/escape.png' });
     assert.equal(text(join(talk, 'media', 'my-plot-1-2.png')), 'b');
+    assert.deepEqual((await put('Plot.PDF', '%PDF-1.4')).json(), { path: 'media/plot.pdf' });
+    assert.equal((await put('notes.txt', 'g')).status, 415);
     assert.equal((await put('run.exe', 'e')).status, 415);
     assert.equal((await put('index.html', 'f')).status, 415);
-    // a body over 64 MB is refused from its Content-Length, before it is sent
     const status = await new Promise((done, fail) => {
       const req = httpRequest({ host: '127.0.0.1', port, method: 'PUT', path: api(`media/big.mp4?token=${token}`), headers: { 'content-length': 64 * 1024 * 1024 + 1 } }, (res) => {
         res.resume();
@@ -256,7 +246,6 @@ test('the edit command serves a session and writes every edit into index.html', 
       await until(async () => text(file) === (await current()), 'the file to be written');
       const answer = (await post(port, api('op'), { token: hello.token, seq: 50, base: v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
       assert.equal(answer.ok, true);
-      // the poll may be answered with the operation before the stop, and is then made again
       let events = (await waiting).json();
       const again = events.ended ? null : raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${events.v}`);
       edit.child.kill('SIGTERM');
@@ -336,7 +325,6 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
     assert.deepEqual([bo.color, cy.color, di.color], [1, 2, 3]);
     assert.equal((await hello({ name: 'Eve' })).color, 0);
     await post(edit.port, api('bye'), { token: bo.token });
-    // present: Ann and Eve on tone 0, Cy on 2, and Di on 3
     assert.equal((await hello({ name: 'Flo' })).color, 1);
     await post(edit.port, api('bye'), { token: di.token });
     assert.equal((await hello({ name: 'Bo', person: bo.person })).color, 1);
@@ -353,7 +341,6 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
   await t.test('a rename reaches every page through people and known, and an operation names its person', async () => {
     const again = await hello({ name: 'Ann', person: ann.person, token: ann.token });
     const bo = await hello({ name: 'Bo', person: again.known.find((p) => p.name === 'Bo').person });
-    // a first poll of Ann gets the news of the hello of Bo, and a second one waits
     const first = await poll(ann, ann.v);
     const waiting = poll(ann, first.v);
     assert.deepEqual((await post(edit.port, api('name'), { token: bo.token, name: ' ANN ' })).json(), { taken: { name: 'Ann' } });
@@ -422,7 +409,6 @@ test('the end of sharing tells the guests and keeps the session of the host', { 
   assert.deepEqual(hostEvents.people.map((p) => p.name), ['Ana']);
   assert.equal((await fetch(`${relay.url}${edit.base}index.html`)).status, 502);
 
-  // shared again on the saved relay, the page of the guest is told the end until it says hello
   assert.equal((await post(edit.port, api('share'), {})).status, 200);
   assert.deepEqual((await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json()).ended, { by: 'Ana' });
   const again = await (await guest('hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Ben', person: ben.person, token: ben.token }) })).json();
@@ -435,7 +421,7 @@ test('the end of sharing tells the guests and keeps the session of the host', { 
   assert.equal(op.ok, true, 'the edit command keeps running for the host');
 });
 
-test('the address of a relay is https, or http on this computer', { timeout: 60_000 }, async (t) => {
+test('the address of a relay is https, or http on this computer, since a guest needs a secure context', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -446,7 +432,6 @@ test('the address of a relay is https, or http on this computer', { timeout: 60_
     assert.equal(answer.status, 400, relay);
     assert.deepEqual(answer.json(), { link: null, error: 'the address of the relay must start with https://' }, relay);
   }
-  // accepted, and not reached, since nothing listens on port 1
   for (const relay of ['https://127.0.0.1:1', 'http://127.0.0.1:1', 'http://localhost:1']) assert.equal((await share(relay)).status, 502, relay);
 });
 
@@ -462,7 +447,6 @@ if (process.platform !== 'win32') {
       const first = (await raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${hello.v}`)).json();
       const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: first.v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
       assert.equal(answer.ok, true);
-      // the first poll after the operation is answered with it, and the second one waits
       const next = (await raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${first.v}`)).json();
       const waiting = raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${next.v}`);
       await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
@@ -474,7 +458,49 @@ if (process.platform !== 'win32') {
   }
 }
 
-test('a request body aborted by the browser does not stop the edit command', { timeout: 60_000 }, async (t) => {
+test('a stop answers with ended the next poll of a page that arrives a second later', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const [ana, ben] = [(await post(edit.port, api('hello'), { name: 'Ana' })).json(), (await post(edit.port, api('hello'), { name: 'Ben' })).json()];
+  const first = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json();
+  const waiting = raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${first.v}`);
+  const before = (await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${ben.v}`)).json();
+  await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
+  edit.child.kill('SIGTERM');
+  const { ended } = (await waiting).json();
+  assert.ok(ended);
+  await new Promise((done) => setTimeout(done, 1000));
+  const late = await raw(edit.port, 'GET', `${api('events')}?token=${ben.token}&since=${before.v}`).catch((e) => ({ error: e.code ?? e.message }));
+  assert.deepEqual(late.error ?? late.json().ended, ended);
+  assert.equal(await edit.exited, 0);
+});
+
+test('a SIGTERM sent right after the address is printed stops the edit command as usual', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const preload = join(root, 'signal.mjs');
+  writeFileSync(preload, `const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = (chunk, ...rest) => {
+  const written = write(chunk, ...rest);
+  if (String(chunk).startsWith('{"url"')) process.kill(process.pid, 'SIGTERM');
+  return written;
+};
+`);
+  const env = { ...process.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, XDG_CONFIG_HOME: config, APPDATA: config };
+  const child = spawn(process.execPath, [EDIT, talk, '--no-open', '--port', '0'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => child.exitCode === null && child.signalCode === null && child.kill('SIGKILL'));
+  let stderr = '';
+  child.stderr.on('data', (chunk) => (stderr += chunk));
+  child.stdout.resume();
+  const { code, signal } = await new Promise((done) => child.once('exit', (code, signal) => done({ code, signal })));
+  assert.deepEqual({ code, signal }, { code: 0, signal: null }, stderr);
+  assert.ok(!existsSync(join(talk, '.session', 'lock')), 'the stop removes the lock');
+});
+
+test('a request body aborted by the browser does not stop the edit command',{ timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -484,7 +510,6 @@ test('a request body aborted by the browser does not stop the edit command', { t
   const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: 0, end: 0, text: '<!-- kept -->\n' }] })).json();
   assert.equal(answer.ok, true);
   for (const path of ['/x', api('media/clip.mp4')]) {
-    // a body of 1000 bytes announced, 2 sent, and the connection closed, as by a closed tab
     await new Promise((done, fail) => {
       const socket = connect(edit.port, '127.0.0.1', () => {
         socket.write(`${path.endsWith('.mp4') ? 'PUT' : 'POST'} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\nContent-Length: 1000\r\n\r\nab`, () => socket.destroy());
@@ -498,15 +523,40 @@ test('a request body aborted by the browser does not stop the edit command', { t
   await until(() => text(join(talk, 'index.html')).startsWith('<!-- kept -->'), 'the operation to be written');
 });
 
+test('a file made shorter while it is answered ends its connection, and the next answer is not sent in its place', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const size = 64 * 1024 * 1024;
+  const file = join(talk, 'media', 'clip.mp4');
+  mkdirSync(join(talk, 'media'));
+  writeFileSync(file, Buffer.alloc(size, 'a'));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const get = (path) => `GET ${edit.base}${path} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\n\r\n`;
+  const received = await new Promise((done) => {
+    const chunks = [];
+    const socket = connect(edit.port, '127.0.0.1', () => socket.write(get('media/clip.mp4')));
+    socket.once('data', () => {
+      writeFileSync(file, 'a');
+      socket.write(get('index.html'));
+    });
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.on('error', () => {});
+    socket.on('close', () => done(Buffer.concat(chunks).toString('latin1')));
+  });
+  const head = received.slice(0, received.indexOf('\r\n\r\n'));
+  assert.match(head, new RegExp(`^HTTP/1\\.1 200 [^]*\\r\\nContent-Length: ${size}(\\r\\n|$)`));
+  assert.ok(received.length - head.length - 4 < size, 'the file was made shorter before its last bytes were read');
+  assert.equal(received.split('HTTP/1.1 ').length - 1, 1, 'the bytes of a second answer are not sent where the browser reads the rest of the file');
+  assert.equal((await raw(edit.port, 'GET', `${edit.base}media/clip.mp4`)).text, 'a');
+});
+
 test('share requests at the same time leave no relay link running after the end of sharing', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const secret = 'a secret of the group, long enough';
   const relay = await startRelay({ host: '127.0.0.1', secret, guestMs: 2000 });
   t.after(() => relay.close());
-  // the edit command reaches the relay through a door, at which the requests of a share are held
-  // until the stop is sent. two requests sent at once can arrive in either order, and a stop that
-  // arrives before the share rightly leaves the link running
   const door = { held: null, arrived: () => {} };
   const through = createServer((req, res) => {
     const pass = () => {
@@ -529,7 +579,6 @@ test('share requests at the same time leave no relay link running after the end 
   t.after(() => stopEdit(edit));
   const share = `${edit.base}.session/share`;
   const guest = () => fetch(`${relay.url}${edit.base}index.html`).then((r) => r.status);
-  // a link left running registers the session again within a few round trips of the relay
   const unreachable = async () => {
     for (let i = 0; i < 40; i++) assert.equal(await guest(), 502, `guest request ${i}`);
   };
@@ -539,7 +588,6 @@ test('share requests at the same time leave no relay link running after the end 
   assert.deepEqual((await raw(edit.port, 'DELETE', share)).json(), { link: null });
   await unreachable();
 
-  // the stop is sent once the first request of the share is at the door, i.e. during the share
   let open;
   const arrived = new Promise((done) => (door.arrived = done));
   door.held = new Promise((done) => (open = done));
@@ -578,7 +626,6 @@ test('the saved secret of the relay is sent only to the saved address', { timeou
   assert.equal(moved.status, 400);
   assert.match(moved.json().error, /secret/);
   assert.deepEqual(seen, [], 'the saved secret reached another address');
-  // the saved address goes on with the saved secret
   assert.equal((await post(edit.port, share, {})).status, 200);
   assert.equal(JSON.parse(text(join(config, 'beeson-slides', 'relay.json'))).relay, relay.url);
 });
@@ -587,8 +634,6 @@ test('.session/ is ignored by git in a talk whose .gitignore does not name it', 
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(join(talk, '.gitignore'), 'node_modules/\n*.pdf\n');
-  // without the GIT_ variables of a git hook or of a caller, with which git init would set up the
-  // repository of GIT_DIR rather than the talk folder
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
   const git = (...args) => spawnSync('git', args, { cwd: talk, encoding: 'utf8', env });
   const hasGit = git('init', '-q').status === 0;
@@ -599,14 +644,13 @@ test('.session/ is ignored by git in a talk whose .gitignore does not name it', 
   if (hasGit) assert.deepEqual(git('status', '--porcelain', '-uall').stdout.split('\n').filter((l) => l.includes('.session')), []);
 });
 
-test('a dot folder or node_modules is not served under another spelling of its path', { timeout: 60_000 }, async (t) => {
+test('a dot folder or node_modules is not served under another spelling of its path, such as a trailing dot or a short name of Windows', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(talk, '.git'));
   writeFileSync(join(talk, '.git', 'config'), 'token');
   mkdirSync(join(talk, 'node_modules', 'x'), { recursive: true });
   writeFileSync(join(talk, 'node_modules', 'x', 'index.js'), 'x');
-  // a link inside the talk folder stands for a short name of Windows, e.g. GIT~1
   if (process.platform !== 'win32') {
     symlinkSync(join(talk, '.git'), join(talk, 'GIT~1'));
     symlinkSync(join(talk, 'node_modules'), join(talk, 'NODE_M~1'));
@@ -629,7 +673,6 @@ test('a page that knows the client id of another page cannot act as this page', 
   const bo = await hello({ name: 'Bo' });
   assert.match(ann.token ?? '', /^[A-Za-z0-9_-]{22,}$/, 'hello gives the page a secret token');
   assert.notEqual(ann.token, ann.client);
-  // the client id of Ann is public, since every page reads it in people, presence, and operations
   const id = bo.people.find((p) => p.name === 'Ann').client;
   const as = { client: id, token: id };
   const poll = async () => (await raw(edit.port, 'GET', `${api('events')}?client=${bo.client}&token=${bo.token}&since=${bo.v}`)).json();
@@ -699,7 +742,6 @@ test('an operation that arrives during the stop is refused rather than lost', { 
   const waiting = raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${first.v}`);
   await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
   edit.child.kill('SIGTERM');
-  // the answer of ended comes after the last write of index.html has begun
   assert.ok((await waiting).json().ended);
   const late = await post(edit.port, api('op'), { token: hello.token, seq: 1, base: first.v, patches: [{ start: 0, end: 0, text: '<!-- late -->\n' }] });
   assert.equal(await edit.exited, 0);
@@ -720,7 +762,6 @@ test('a second start in the same talk folder hands over the address of the first
   assert.equal(second.url, first.url);
   assert.equal(await second.exited, 0);
   assert.equal(first.child.exitCode, null, 'the first edit command goes on');
-  // a lock left by an edit command that died does not stop a new start
   first.child.kill('SIGKILL');
   await first.exited;
   const third = await startEdit(talk, { env });
@@ -736,7 +777,6 @@ test('a lock of an edit command that died does not stop a new start on its port,
   const first = await startEdit(talk, { env });
   const port = first.port;
   await stopEdit(first);
-  // a live process that is not an edit command, as after a restart of the computer
   const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' });
   t.after(() => other.kill());
   mkdirSync(join(talk, '.session'), { recursive: true });
@@ -753,7 +793,6 @@ const SECRET = 'a secret of the group, long enough';
 test('a Ctrl+C while a start with --relay waits for the relay keeps the acknowledged operations', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  // a relay that takes each connection and never answers
   const sockets = [];
   const hanging = createNetServer((socket) => sockets.push(socket));
   await new Promise((done) => hanging.listen(0, '127.0.0.1', done));
@@ -769,7 +808,6 @@ test('a Ctrl+C while a start with --relay waits for the relay keeps the acknowle
   const child = spawn(process.execPath, [EDIT, talk, '--no-open', '--port', String(port), '--relay', `http://127.0.0.1:${hanging.address().port}`], { env, stdio: 'ignore' });
   const exited = new Promise((done) => child.once('exit', (code, signal) => done({ code, signal })));
   t.after(() => child.exitCode === null && child.signalCode === null && child.kill('SIGKILL'));
-  // a tab of the last run comes back on the same port and key while the relay is asked
   const key = await until(() => existsSync(join(talk, '.session', 'key')) && text(join(talk, '.session', 'key')).trim(), 'the key of the session');
   const api = (route) => `/${key}/.session/${route}`;
   const hello = await until(() => post(port, api('hello'), { name: 'Ana' }).then((r) => r.status === 200 && r.json(), () => null), 'the hello of a page');
@@ -790,7 +828,6 @@ test('hellos and byes of many pages do not log out a page that is present', { ti
   const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).status, 200);
   const person = 'G'.repeat(22);
-  // more pages than the table of tokens holds, as by a loop of a guest or a long session
   for (let i = 0; i < 1030; i += 10) {
     await Promise.all(
       Array.from({ length: 10 }, async () => {
@@ -810,7 +847,6 @@ test('a second start refuses to run while the first edit command does not answer
   const env = { XDG_CONFIG_HOME: config, APPDATA: config };
   const first = await startEdit(talk, { env });
   t.after(() => stopEdit(first));
-  // a Ctrl+Z in the terminal of the first edit command
   first.child.kill('SIGSTOP');
   try {
     const second = await startEdit(talk, { env: { ...env, SLIDES_LOCK_TIMEOUT_MS: '300' } });
@@ -837,7 +873,6 @@ test('a guest who knows the person id of the host cannot rename the host or drop
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).status, 200);
   assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret: SECRET })).status, 200);
 
-  // person ids are public, since every page reads them in people and known
   const mallory = await guest({ name: 'Mallory', person: host.person });
   assert.equal(mallory.name, 'Claudio');
   assert.deepEqual(mallory.known.map((p) => p.name), ['Claudio'], 'the host is renamed by a guest');
@@ -852,14 +887,11 @@ test('names that look the same as a name present, or that show nothing, are refu
   t.after(() => stopEdit(edit));
   const hello = (name) => post(edit.port, `${edit.base}.session/hello`, { name });
   assert.equal((await hello('Claudio')).status, 200);
-  // a zero-width space, a soft hyphen, the fullwidth forms, a right-to-left override, and a joiner
-  for (const name of ['Claudio​', 'Cl­audio', 'Ｃｌａｕｄｉｏ', 'Claudio‮', '⁧Claudio', 'Clau‍dio']) {
+  for (const name of ['Claudio\u200b', 'Cl\u00adaudio', 'Ｃｌａｕｄｉｏ', 'Claudio\u202e', '\u2067Claudio', 'Clau\u200ddio']) {
     assert.deepEqual((await hello(name)).json(), { taken: { name: 'Claudio' } }, JSON.stringify(name));
   }
-  for (const name of ['​', '‮‍', '️', '⁦ ­']) assert.equal((await hello(name)).status, 400, JSON.stringify(name));
-  // a family emoji joined by zero-width joiners, an emoji with its variation selector, and names in
-  // Arabic, Hebrew, and Persian, the last with a zero-width non-joiner, are kept as typed
-  for (const name of ['\u{1F468}‍\u{1F469}‍\u{1F467} Ana', '❤️ Bo', 'سارا', 'דנה', 'نیک‌نام']) {
+  for (const name of ['\u200b', '\u202e\u200d', '\ufe0f', '\u2066 \u00ad']) assert.equal((await hello(name)).status, 400, JSON.stringify(name));
+  for (const name of ['👨\u200d👩\u200d👧 Ana', '❤\ufe0f Bo', 'سارا', 'דנה', 'نیک\u200cنام', '🏴\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f} Ian']) {
     const answer = await hello(name);
     assert.equal(answer.status, 200, JSON.stringify(name));
     assert.equal(answer.json().name, name);
@@ -900,7 +932,6 @@ test('a write of index.html that keeps failing is told to the pages, and the tex
   const api = (route) => `${edit.base}.session/${route}`;
   const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
   let since = host.v;
-  // the next answer of events whose writeError is matched by test
   const told = (test, what) =>
     until(async () => {
       const answer = (await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${since}`)).json();
@@ -952,6 +983,29 @@ test('a media upload needs the token of a page that is present', { timeout: 60_0
   assert.deepEqual((await put(`?token=${ana.token}`)).json(), { path: 'media/plot.png' });
 });
 
+test('the uploads of a run are limited in count and in bytes, and a file sent again is not counted', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { SLIDES_UPLOADS_MAX: '3', SLIDES_UPLOADS_MAX_BYTES: String(2 * 1024 * 1024), XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const { token } = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const put = (name, body, headers) => raw(edit.port, 'PUT', api(`media/${name}?token=${token}`), { body, headers });
+  const hashed = (body) => ({ 'x-content-sha256': createHash('sha256').update(body).digest('hex') });
+  const big = Buffer.alloc(1024 * 1024 + 1, 1);
+  assert.equal((await put('big.png', big)).status, 200);
+  const over = await put('bigger.png', big);
+  assert.equal(over.status, 413);
+  assert.match(over.json().error, /^the session took 1 MB of new files already, and it takes at most 2 MB/);
+  assert.equal((await put('a.png', 'a', hashed('a'))).status, 200);
+  assert.equal((await put('b.png', 'b')).status, 200);
+  assert.deepEqual((await put('a.png', 'a', hashed('a'))).json(), { path: 'media/a.png' }, 'a file sent again is refused');
+  const many = await put('c.png', 'c');
+  assert.equal(many.status, 413);
+  assert.match(many.json().error, /^the session took 3 new files already/);
+  assert.deepEqual(['big.png', 'bigger.png', 'a.png', 'b.png', 'c.png'].map((n) => existsSync(join(talk, 'media', n))), [true, false, true, true, false]);
+});
+
 test('a media upload takes every type of picture and video that the editor takes, and serves it with its type', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -972,7 +1026,6 @@ test('a media upload takes every type of picture and video that the editor takes
 test('a media upload through the relay is limited to 16 MB, and one of the host to 64 MB', { timeout: 120_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  // a relay that passes larger bodies, so that the limit of the edit command is tested
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, bodyBytes: 32 * 1024 * 1024 });
   t.after(() => relay.close());
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -993,7 +1046,6 @@ test('a media upload through the relay is limited to 16 MB, and one of the host 
 test('a page whose last poll was held is dropped 40 s after this poll arrived, not 40 s after its answer', { timeout: 180_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  // a hold of 2 s and a drop after 6 s in place of 25 s and 40 s
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_POLL_HOLD_MS: '2000', SLIDES_GONE_MS: '6000' } });
   t.after(() => stopEdit(edit));
   const api = (route) => `${edit.base}.session/${route}`;
@@ -1002,13 +1054,11 @@ test('a page whose last poll was held is dropped 40 s after this poll arrived, n
   const wes = await hello('Wes');
   const ann = await hello('Ann');
   const bo = await hello('Bo');
-  // after an operation, a poll that asks after the version of a hello is answered at once
   const at = DECK.indexOf('One');
   assert.equal((await post(edit.port, api('op'), { token: wes.token, seq: 1, base: wes.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json().ok, true);
   await poll(bo, bo.v);
   const annSeen = await poll(ann, ann.v);
 
-  // Wes polls again at each answer, as a page that is present does, and keeps the people of each
   const seen = [];
   let watching = true;
   void (async () => {
@@ -1021,8 +1071,6 @@ test('a page whose last poll was held is dropped 40 s after this poll arrived, n
   })().catch(() => {});
   t.after(() => (watching = false));
 
-  // the last poll of Ann is held, as for a page that went offline, and a round trip of another
-  // request makes sure that it arrived before the last request of Bo
   const held = poll(ann, annSeen.v);
   await raw(edit.port, 'GET', `${edit.base}index.html`);
   assert.ok((await poll(bo, bo.v)).ops.length > 0, 'the last poll of Bo is answered at once');
@@ -1038,8 +1086,6 @@ test('End session tells a guest whose poll is on its way that the session ended'
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
-  // a wait for the guests far longer than the test, which thus passes only when the wait ends once
-  // the guest is told
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_END_WAIT_MS: '600000' } });
   t.after(() => stopEdit(edit));
   const api = (route) => `${edit.base}.session/${route}`;
@@ -1048,7 +1094,6 @@ test('End session tells a guest whose poll is on its way that the session ended'
   assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret: SECRET })).status, 200);
   const ben = await (await guest('hello', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ben' }) })).json();
   const hostFirst = (await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).json();
-  // the poll of Ben is answered, and his next poll is on its way while the host ends the session
   const benFirst = await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json();
   const hostWaiting = raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${hostFirst.v}`).then((r) => r.json());
   const ending = raw(edit.port, 'DELETE', api('share'));
@@ -1067,7 +1112,6 @@ test('a start without --port takes the port of the last start in the talk folder
   const env = { XDG_CONFIG_HOME: config, APPDATA: config };
   const first = await startEdit(talk, { env });
   await stopEdit(first);
-  // the page of the host keeps its address, and with it the copies of its edits, while the port stays
   const second = await startEdit(talk, { env, port: null });
   t.after(() => stopEdit(second));
   assert.equal(second.port, first.port);
@@ -1092,20 +1136,17 @@ test('a page that said bye is not brought back by a poll or a presence that arri
   const ana = await hello({ name: 'Ana' });
   const ben = await hello({ name: 'Ben' });
   await post(edit.port, api('bye'), { token: ben.token });
-  // two requests of Ben that were on their way when the page left
   assert.equal((await post(edit.port, api('presence'), { token: ben.token, state: { slide: 1 } })).status, 404, 'a presence after the bye');
   assert.equal((await poll(ben)).status, 404, 'a poll after the bye');
   assert.deepEqual((await poll(ana)).json().people.map((p) => p.name), ['Ana'], 'the people after the bye of Ben');
-  // a hello with the token of the page brings it back, as a reload does
   const back = await hello({ name: 'Ben', person: ben.person, token: ben.token });
   assert.equal(back.client, ben.client);
   assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
 });
 
-test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
-  // the GAP of src/edit/people.ts
-  const GAP = 100;
+test('a page is answered at most ten times a second while operations come back to back', { timeout: 120_000 }, async (t) => {
   const ANSWERS = 4;
+  const MOST_ANSWERS_PER_SECOND = 10;
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -1113,7 +1154,6 @@ test('a page is answered at most once per GAP of its polls while operations come
   const api = (route) => `${edit.base}.session/${route}`;
   const ana = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
   const ben = (await post(edit.port, api('hello'), { name: 'Ben' })).json();
-  // the join of Ben is news for Ana, whose next answer then waits for GAP
   let since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json().v;
   const started = performance.now();
   let answers = 0;
@@ -1124,7 +1164,6 @@ test('a page is answered at most once per GAP of its polls while operations come
     }
     return performance.now();
   })();
-  // operations back to back until Ana has had every answer, so that each poll of Ana finds news
   const at = DECK.indexOf('</body>');
   let v = ben.v;
   for (let seq = 1; answers < ANSWERS; seq++) {
@@ -1133,7 +1172,7 @@ test('a page is answered at most once per GAP of its polls while operations come
     v = answer.v;
   }
   const span = (await polling) - started;
-  assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
+  assert.ok(span >= ((answers - 1) * 1000) / MOST_ANSWERS_PER_SECOND, `${answers} answers in ${Math.round(span)} ms`);
 });
 
 test('a hello that retires the token of a closed page refuses the operations and the polls of this page that arrive after it', { timeout: 90_000 }, async (t) => {
@@ -1145,7 +1184,6 @@ test('a hello that retires the token of a closed page refuses the operations and
   const at = DECK.indexOf('First slide') + 'First slide'.length;
   const both = [{ start: at, end: at, text: ' both' }];
   const closed = await call('hello', { name: 'Ann' });
-  // the next page sends the edit of the copy of the closed page, whose operation is on its way
   const next = await call('hello', { name: '', person: closed.person, retire: [closed.token] });
   assert.equal((await call('op', { token: next.token, seq: 1, base: next.v, patches: both })).ok, true);
   const late = await call('op', { token: closed.token, seq: 1, base: closed.v, patches: both });
@@ -1177,11 +1215,16 @@ test('a hello that names the client id of another page, or a value that is not a
   t.after(() => stopEdit(edit));
   const call = async (route, body) => (await post(edit.port, `${edit.base}.session/${route}`, body)).json();
   const ann = await call('hello', { name: 'Ann' });
-  // the client id and the person id of a page are public, its token is not
   const gus = await call('hello', { name: 'Gus', retire: [ann.client, ann.person, 'not a token', 42, null, { token: ann.client }] });
   assert.ok(gus.token);
   assert.ok((await call('hello', { name: 'Hal', retire: ann.client })).token);
   assert.ok((await call('hello', { name: 'Ivy', retire: 42 })).token);
   const op = await call('op', { token: ann.token, seq: 1, base: ann.v, patches: [{ start: 0, end: 0, text: '<!-- Ann -->' }] });
   assert.equal(op.ok, true);
+});
+
+test('Edit.cmd is checked out with CRLF line ends, since cmd.exe misreads the labels of a batch file with LF', () => {
+  const lines = text(join(import.meta.dirname, '..', 'Edit.cmd')).split('\n').slice(0, -1);
+  assert.ok(lines.length > 1);
+  assert.deepEqual(lines.filter((line) => !line.endsWith('\r')), []);
 });

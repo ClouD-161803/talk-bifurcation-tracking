@@ -1,42 +1,35 @@
-// File > Preamble… and File > Bibliography…, the sheets of preamble.tex and references.bib, and the
-// save of the two sources and of tex.js next to the deck. the sheets, the list of the citations,
-// and the readers of TeX are built into theme/editor-tex.js, which is loaded at their first use,
-// since editor.js is loaded at each edit and is kept under its budget. a save writes these files
-// only once they are read. the triggers of the list stay here: \cite{ typed in a text, Insert >
-// Citation… with its key, and a click on the number of a citation, which the Format pane shows
-
 import type { App } from '../app.ts';
+import { placeFigure } from '../commands/insert.ts';
 import { addCompanion } from '../file/files.ts';
 import { showFormat } from '../inspector/inspector.ts';
 import type { Control } from '../inspector/controls.ts';
+import { chooseFiles } from '../media/actions.ts';
 import { deckFolder } from '../media/save.ts';
+import { figureLink } from '../session/port.ts';
 import { make } from '../ui/dom.ts';
+import { themeUrl } from '../ui/script.ts';
 import { citedKeys, texScript, type Tex } from '../../texfile.ts';
 
 export type Which = 'preamble' | 'bibliography';
-// where the list of the bibliography puts the chosen papers: in place of the \cite{ typed before
-// the caret of host, at range in host, or into cite, in place of its paper at index or added to it
+export type Starter = 'data' | 'file' | 'blank';
 export type CiteTarget = { host: Element; typed?: boolean; range?: Range; cite?: HTMLElement; index?: number; anchor?: Element };
-// the service of theme/editor-tex.js. write and download save the changed sources and tex.js for
-// the text of the deck, as a companion of file/files.ts does. cite opens the list of the
-// bibliography, key takes a key of the open list, and pane fills el with the papers of cite
 export type TexSheets = {
   open(which: Which): Promise<void>;
-  // whether the sources are read, and their read without a question, false where it needs one
   loaded(): boolean;
   prepare(): Promise<boolean>;
   write(text: string, deck: FileSystemFileHandle): Promise<string>;
   download(text: string): string;
   dirty(): boolean;
-  // the deck drawn again with the tex.js next to it, and the sources read again when they were read
+  showing(): { which: Which; dialog: HTMLDialogElement } | null;
   redraw(): Promise<void>;
   cite(target: CiteTarget): void;
   key(ev: KeyboardEvent): boolean;
   pane(el: HTMLElement, cite: HTMLElement): void;
+  newFigure(from: Starter, file: File | null): Promise<void>;
+  editSource(figure: HTMLElement): void;
+  figurePane(el: HTMLElement, figure: HTMLElement): () => void;
 };
-// what editor.js gives theme/editor-tex.js: the app, the folder of the deck shared with the media
-// files, and the tex.js of the deck as the page loaded it
-export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null };
+export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null; link: typeof figureLink; place(name: string): Promise<Element | null>; why(): string | null };
 
 declare global {
   interface Window {
@@ -44,18 +37,14 @@ declare global {
   }
 }
 
-// read while editor.js runs, since the script of the page is not current after that
-const SELF = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
-
 let sheets: TexSheets | null = null;
+export const shownSheet = (): ReturnType<TexSheets['showing']> => sheets?.showing() ?? null;
 let loading: Promise<TexSheets> | null = null;
 let load: () => Promise<TexSheets> = () => Promise.reject(new Error('the sheets are not installed'));
 
-// the citation chosen by a click on its number, while the range of its text is around it
 let picked: HTMLElement | null = null;
 export const citationOf = (app: App): HTMLElement | null => (picked?.isConnected && app.selection.kind === 'text' && app.selection.items[0]?.contains(picked) ? picked : null);
 
-// the Citation pane of the Format tab, filled by theme/editor-tex.js
 export function citationPane(app: App): Control[] {
   const el = make('div', 'ed-sec');
   const sync = () => {
@@ -66,10 +55,19 @@ export function citationPane(app: App): Control[] {
   return [{ el, sync }];
 }
 
-// whether the deck loads the tex.js next to it, rather than the tex.js of another folder
+export function tikzPane(app: App): Control[] {
+  const el = make('div', 'ed-tikz');
+  const figure = app.selection.elements()[0] as HTMLElement;
+  let sync = (): void => {};
+  void load().then((s) => {
+    sync = s.figurePane(el, figure);
+    sync();
+  }, (e) => app.fail(e));
+  return [{ el, sync: () => sync() }];
+}
+
 const ownTex = (): boolean => [...document.scripts].some((s) => s.src === new URL('tex.js', location.href).href);
 
-/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. Rejects when it fails. */
 export function redrawTex(app: App): Promise<void> {
   if (!ownTex()) return Promise.resolve();
   return load().then((s) => s.redraw()).catch((e) => {
@@ -78,11 +76,12 @@ export function redrawTex(app: App): Promise<void> {
   });
 }
 
-// the text of a slide with the caret, which a citation can be put into
 function citeHost(app: App): HTMLElement | null {
   const host = app.selection.kind === 'text' ? app.selection.items[0] : null;
   return host instanceof HTMLElement && app.current()?.contains(host) && !host.closest('div.math, pre, aside.notes') ? host : null;
 }
+
+let why: (a: App) => string | null = () => null;
 
 export function install(app: App): void {
   const tex = (window as { beesonTex?: Tex }).beesonTex;
@@ -90,9 +89,9 @@ export function install(app: App): void {
   load = (): Promise<TexSheets> =>
     (loading ??= new Promise<TexSheets>((done, fail) => {
       const script = document.createElement('script');
-      script.src = SELF ? new URL('editor-tex.js', SELF).href : 'theme/editor-tex.js';
+      script.src = themeUrl('editor-tex.js');
       script.onload = () => {
-        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start })));
+        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start, link: figureLink, place: (name) => placeFigure(app, name), why: () => why(app) })));
         loading = null;
         fail(new Error('theme/editor-tex.js did not start'));
       };
@@ -103,12 +102,6 @@ export function install(app: App): void {
       document.head.append(script);
     }));
   const cite = (target: CiteTarget) => load().then((s) => s.cite(target), (e) => app.fail(e));
-  // the tex.js of a deck whose citations changed while the sources are not read: the references of
-  // tex.js that the deck still cites, or the keys that only references.bib has
-  // the citations taken out of the deck or added to it since it was opened, or since tex.js was
-  // last written, as the references of tex.js without the papers taken out, or as the keys that
-  // only references.bib has. a deck that cites other papers than its tex.js, e.g. a deck that
-  // shares the tex.js of another, keeps those references
   let opened: string[] | null = null;
   const own = ownTex();
   const uncited = (text: string): { script: string; keys: string[]; references: Tex['references'] } | { missing: string[] } | null => {
@@ -136,7 +129,6 @@ export function install(app: App): void {
         return (await s.prepare()) ? s.write(text, deck) : unread(c.missing);
       }
       const folder = await deckFolder(deck, 'tex.js');
-      // a tex.js written since the page read it, e.g. by npm run tex, is written again from the sources
       const now = await folder.getFileHandle('tex.js').then((h) => h.getFile()).then((f) => f.text(), () => null);
       if (now !== null && now !== texScript(start!)) {
         const s = await load();
@@ -168,12 +160,9 @@ export function install(app: App): void {
     },
     dirty: () => sheets?.dirty() ?? false,
   });
-  // the run ends once the sheet is shown, since a sheet of a deck opened from a file waits for the
-  // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
-  // in a session, the sources are the files of the talk folder, which the edit command reads
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in preamble.tex' : null), run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in references.bib' : null), run: () => open('bibliography') });
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',
@@ -189,14 +178,59 @@ export function install(app: App): void {
     },
   });
 
-  // the keys of the open list are taken before those of the editor, hence this install is run
-  // before installKeys of commands.ts
+  why = (a: App): string | null =>
+    !a.session ? 'TikZ figures are compiled only while the edit command runs. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.host() === false ? 'Only the host changes a TikZ figure' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the host machine' : null;
+  const starters: [Starter, string, string][] = [['data', 'From Data…', '.csv,text/csv'], ['file', 'From File…', '.tex'], ['blank', 'Blank', '']];
+  for (const [i, [from, label, accept]] of starters.entries())
+    app.commands.define({
+      id: `insert.tikz${from[0].toUpperCase()}${from.slice(1)}`,
+      label,
+      menu: { bar: 'Insert', group: 'element', order: 25.1 + i / 10, submenu: 'TikZ Figure' },
+      toolbar: { group: 'insert', order: 24.12 + i / 100, icon: 'line-curve', split: 'Media' },
+      enabled: (a) => !!a.current() && a.region() !== 'dialog',
+      run: async (a, arg) => {
+        const no = why(a);
+        if (no) {
+          a.note = { text: no, warn: true };
+          return a.report();
+        }
+        const files = accept ? ((arg as { files?: File[] } | undefined)?.files ?? (await chooseFiles(accept))) : [];
+        if (accept && !files.length) return;
+        await (await load()).newFigure(from, files[0] ?? null);
+      },
+    });
+
+  const figureOf = (a: App): HTMLElement | null => {
+    const els = a.selection.elements();
+    return els.length === 1 && els[0] instanceof HTMLElement && els[0].matches('.tikz') ? els[0] : null;
+  };
+  app.commands.define({
+    id: 'format.tikzSource',
+    label: 'Edit Source…',
+    menu: { bar: 'Format', group: 'mask', order: 97 },
+    enabled: (a) => !!figureOf(a) && a.region() !== 'dialog',
+    run: (a) => {
+      const no = why(a);
+      if (no) {
+        a.note = { text: no, warn: true };
+        return a.report();
+      }
+      const figure = figureOf(a)!;
+      return load().then((s) => s.editSource(figure));
+    },
+  });
+  window.addEventListener('dblclick', (ev) => {
+    const el = ev.target instanceof Element ? ev.target.closest('.tikz') : null;
+    if (!el || !app.current()?.contains(el) || el.hasAttribute('data-locked') || app.region() === 'dialog') return;
+    app.selection.set('elements', [el]);
+    void app.commands.run('format.tikzSource');
+  }, true);
+
   window.addEventListener('keydown', (ev) => {
     if (!sheets?.key(ev)) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
   }, true);
-  // \cite{ typed in a text opens the list, apart from the TeX of a formula being typed
   document.addEventListener('input', (ev) => {
     const s = getSelection();
     const n = s?.anchorNode;
@@ -205,7 +239,6 @@ export function install(app: App): void {
     const before = n.data.slice(0, s.anchorOffset);
     if (before.endsWith('\\cite{') && before.lastIndexOf('\\(') <= before.lastIndexOf('\\)')) void cite({ host, typed: true });
   });
-  // a click on the number of a citation selects the citation as the range of its text
   document.addEventListener('click', (ev) => {
     const el = ev.target instanceof HTMLElement && ev.target.matches('cite[data-key]') ? ev.target : null;
     const host = el && app.hostOf(el);
@@ -219,7 +252,6 @@ export function install(app: App): void {
     showFormat(app, 'citation');
     app.invalidate('selection');
   });
-  // the citation is let go once the range of a text of the slides is moved off it
   document.addEventListener('selectionchange', () => {
     const r = picked && getSelection()?.rangeCount ? getSelection()!.getRangeAt(0) : null;
     if (!r || !document.querySelector('.reveal .slides')?.contains(r.startContainer)) return;

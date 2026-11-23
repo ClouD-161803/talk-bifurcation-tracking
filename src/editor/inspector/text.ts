@@ -1,23 +1,14 @@
-// the Text pane of the Format tab, for a text with the caret or a selected text element, as the Text tab
-// of Keynote: the paragraph style in a pop-up, the Format Painter of PowerPoint, the formats of the
-// words with Change Case, the tone swatches and the step of their color, the alignment, the kind of
-// text and its bullet, the link, and the kind and the name of a theorem. every control runs a
-// command of commands/text.ts by its id, and a control of a command that is not defined is drawn
-// disabled. by the scope rule, only the styles of the type scale and the tones of the theme are
-// offered
-
 import type { App } from '../app.ts';
-import { entering } from '../commands/edit.ts';
 import { TONES as STEP_TONES, colorSteps, wordColors, type ColorStep } from '../commands/math.ts';
 import { deckKinds, theoremOf } from '../commands/text.ts';
+import { isShape, toneOfShape } from '../commands/shape.ts';
 import { kindOf, listKind, type ListKind, selectedTextElements, startList, styleOf, styleWhy } from '../text/elements.ts';
 import { around, FORMATS, inlineTargets, isTone, type FormatName } from '../text/inline.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { closeMenus, menuOpen, openMenu, type MenuItem } from '../ui/menu.ts';
-import { GLYPHS, button, glyph, keepFocus, note, numberField, row, section, segmented, textField, type Control, type Run } from './controls.ts';
+import { GLYPHS, button, entering, glyph, keepFocus, note, numberField, row, section, segmented, textField, type Control, type Run } from './controls.ts';
 import { COLOR_CSS, coloredItem, openSteps, stepButton, toneName } from './formula.ts';
 
-// the glyphs of the alignment of a text and of the bullets of the theme, on the grid of GLYPHS
 Object.assign(GLYPHS, {
   'text-left': ['M3.5 5h13', 'M3.5 8.5h9', 'M3.5 12h13', 'M3.5 15.5h9'],
   'text-center': ['M3.5 5h13', 'M5.5 8.5h9', 'M3.5 12h13', 'M5.5 15.5h9'],
@@ -41,7 +32,6 @@ const CSS = `
 .beeson-edit-inspector .ed-colored.words .sym { font: 12px/1.3 var(--ed-font); }
 `;
 
-// the brush of the Format Painter, on the grid of the glyphs of controls.ts
 function brush(): SVGSVGElement {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', '0 0 20 20');
@@ -61,8 +51,6 @@ function brush(): SVGSVGElement {
   return svg;
 }
 
-// the Format Painter: a click arms it for one paste of the style of the selection, and a double
-// click keeps it armed until it is clicked again, as in PowerPoint
 function painter(app: App, run: Run): Control {
   const b = make('button', 'ed-btn painter');
   b.type = 'button';
@@ -80,7 +68,6 @@ function painter(app: App, run: Run): Control {
   return { el: b, sync };
 }
 
-// the button Aa of PowerPoint, which opens the kinds of Change Case
 function changeCase(app: App): Control {
   const b = make('button', 'ed-btn case');
   b.type = 'button';
@@ -113,8 +100,6 @@ const TONES: [string, string, string][] = [
   ['red', 'Red', '--red'],
 ];
 
-// for several selected text elements, a value of each text of the text elements outside a formula, as the mixed
-// state of a control of Keynote is read, and else null
 function perText<T>(app: App, value: (host: Element, text: Node) => T): T[] | null {
   if (app.selection.kind !== 'elements' || app.selection.elements().length < 2) return null;
   return inlineTargets(app, true).flatMap(({ host, range }) => {
@@ -127,7 +112,6 @@ function perText<T>(app: App, value: (host: Element, text: Node) => T): T[] | nu
   });
 }
 
-// a format on every text of several text elements, on none, or on some
 function formatState(app: App, name: FormatName): () => boolean | 'mixed' | null {
   return () => {
     const on = perText(app, (host, n) => !!around(host, n, FORMATS[name].match));
@@ -136,16 +120,14 @@ function formatState(app: App, name: FormatName): () => boolean | 'mixed' | null
   };
 }
 
-// the tones of the texts of several text elements, with text for the text color of the theme
 const tonesOf = (app: App): Set<string> | null => {
-  const tones = perText(app, (host, n) => around(host, n, isTone)?.classList[0].slice(5) ?? 'text');
-  return tones && new Set(tones);
+  const shapes = app.selection.elements().filter(isShape);
+  const tones = perText(app, (host, n) => (shapes.some((el) => el.contains(host)) ? null : around(host, n, isTone)?.classList[0].slice(5) ?? 'text'));
+  return tones && new Set([...tones.filter((t) => t !== null), ...shapes.map(toneOfShape)]);
 };
 
 const BULLETS: ListKind[] = ['ul', 'dots', 'dashes'];
 
-// whether the kind of list of the selection is one of kinds, read for several text elements from
-// the kind of each, and null when one of them does not have a kind
 function listState(app: App, ...kinds: ListKind[]): () => boolean | 'mixed' | null {
   return () => {
     const els = app.selection.kind === 'elements' ? app.selection.elements() : [];
@@ -158,7 +140,6 @@ function listState(app: App, ...kinds: ListKind[]): () => boolean | 'mixed' | nu
   };
 }
 
-// the name of a text element that is not in the paragraph styles, e.g. a heading
 function tagName(app: App, textEl?: Element): string {
   const host = textEl ?? (app.selection.kind === 'text' ? app.selection.items[0] : app.selection.only());
   const el = host?.closest('h1, h2, h3, li, td, th, p, div') ?? host;
@@ -193,7 +174,6 @@ function stylePopup(app: App): Control {
   });
   const sync = () => {
     const on = ids.find((id) => app.commands.state(id).checked);
-    // several text elements of different styles show Mixed, as in Keynote
     const textEls = app.selection.kind === 'elements' && app.selection.elements().length > 1 ? selectedTextElements(app) : [];
     const names = new Set(textEls.map((el) => {
       const s = styleOf(app, el);
@@ -207,15 +187,10 @@ function stylePopup(app: App): Control {
   return { el: b, sync };
 }
 
-// a swatch of each tone, in the color that the tone has on the slide in its mode
-// Start at of a numbered list. the shown number typed into the field is entered with Return, Tab,
-// or a click outside it, which keeps the start of a list cut off by the editor, and a typed number
-// that is not whole is refused
 function startField(app: App, run: Run): Control {
   const field = numberField(app, {
     label: 'Start at',
     unit: '',
-    min: 1,
     refuse: true,
     same: true,
     value: () => startList(app)?.start ?? null,
@@ -228,8 +203,6 @@ function startField(app: App, run: Run): Control {
   let typed = false;
   input.addEventListener('focus', () => (typed = false));
   input.addEventListener('input', () => (typed = true));
-  // read in the capture phase, before the field enters or refuses the value. it gives true when
-  // the value is refused
   const read = (leave: boolean) => {
     const v = Number(input.value.trim().replace(',', '.'));
     if (input.disabled || !input.value.trim()) return false;
@@ -237,11 +210,9 @@ function startField(app: App, run: Run): Control {
     else if (leave && typed && v === startList(app)?.start) void run('text.list.start', { start: v });
     return !Number.isInteger(v);
   };
-  // Undo refuses the value as Tab and Return do, and it is then not run
   const entry = entering.get(input);
   if (entry) entering.set(input, { ...entry, enter: () => (read(false) ? false : entry.enter()) });
   input.addEventListener('blur', () => read(true), true);
-  // the field enters a whole number at Return itself, after which a blur does not enter it again
   input.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter') return;
     read(false);
@@ -265,7 +236,6 @@ function swatches(app: App, run: Run, step: () => ColorStep | null, fresh: () =>
       const o = fresh();
       if (o === false) return;
       if (!o) return void run(`text.tone.${tone}`);
-      // after a color at a new step, the pane shows the step that was made
       void Promise.resolve(run('text.color', { tone, step: o.step, ...(o.step === null ? { with: o.with } : {}) })).then(() => o.step === null && (fresh(), sync()));
     });
     el.append(b);
@@ -275,7 +245,6 @@ function swatches(app: App, run: Run, step: () => ColorStep | null, fresh: () =>
     const slide = app.current() ?? document.querySelector('.reveal');
     const style = slide ? getComputedStyle(slide) : null;
     const tones = tonesOf(app);
-    // at a step, the tones of a formula are offered, and the one of the words at this step is on
     const o = step();
     const at = o && wordColors(app).filter((c) => c.step === o.step);
     for (const { b, tone, token } of buttons) {
@@ -291,8 +260,6 @@ function swatches(app: App, run: Run, step: () => ColorStep | null, fresh: () =>
   return { el, sync };
 }
 
-// the step of the color of the swatches, From the Start until another is chosen in the pane, and
-// the words of the selection colored at a step, each with a button that takes its color off
 function colorStep(app: App, run: Run, changed: () => void): { step: () => ColorStep | null; fresh: () => ColorStep | null | false; parts: Control[] } {
   let options: ColorStep[] = [];
   let chosen: string | null = null;
@@ -301,15 +268,10 @@ function colorStep(app: App, run: Run, changed: () => void): { step: () => Color
     const els = app.selection.kind === 'text' ? app.selection.items : app.selection.elements();
     return els[els.length - 1];
   };
-  // the steps are read from the model of the slide when the pop-up is opened and when a color is
-  // set, and not at a sync, which is run at each move of the caret
   const read = () => {
     const a = anchor();
     options = a?.isConnected ? colorSteps(app, a) : [];
   };
-  // the chosen step read anew, found by its number and its first element, since its label holds
-  // words that an edit changes. a new step that a color has made is found by its element.
-  // false when it is not a step of the slide any more, which is reported
   const first = (o: ColorStep) => (o.step === null ? o.with : o.els[0]);
   const fresh = (): ColorStep | null | false => {
     const was = step();
@@ -346,8 +308,6 @@ const script = (base: string, mark: string, tag: 'sup' | 'sub') => () => {
   return span;
 };
 
-// the kind of the theorem of the pane in a pop-up of the kinds of the deck, its name in a field, and
-// a note on a kind that the preamble does not define
 function theoremSection(app: App, run: Run, el: HTMLElement): Control {
   const kind = () => el.getAttribute('data-kind') || 'theorem';
   const b = make('button', 'beeson-edit-select ed-theorem-kind');
@@ -424,7 +384,6 @@ export function textPane(app: App, run: Run): Control[] {
       { command: 'text.align.center', icon: 'text-center', title: 'Center' },
     ], 'Alignment')])]),
     section('Bullets & Lists', [
-      // Bullets keeps the bullets of a selection of bulleted lists, and else sets Arrows
       row([segmented(app, run, [
         { command: 'text.list.none', text: 'Paragraphs', title: 'Paragraphs', pressed: listState(app, 'none') },
         { command: 'text.list.ul', text: 'Bullets', title: 'Bullets', pressed: bulleted, click: () => (bulleted() === true ? undefined : run('text.list.ul')) },

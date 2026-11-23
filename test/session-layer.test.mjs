@@ -1,16 +1,11 @@
-// the layer of presence of a session in Chrome, on the edit command started on a temporary talk
-// folder: the frames, the name flags, the chips, and the caret bars that a page draws of the other
-// people, the presses that a chip takes, and the reads of layout that the layer makes
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
-import { C, clean, show } from './helpers/client.mjs';
+import { C, clean, converge, show } from './helpers/client.mjs';
 import { boxOf, drawn, el, select, session, untilDrawn } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const shape = (id, x, y, w, h, extra = '') => `<div class="shape tone-accent" id="${id}"${extra} style="width: ${w}px; height: ${h}px; translate: ${x}px ${y}px"><p>${id}</p></div>`;
-// the paragraph of slide One replaced by html
 const onOne = (...html) => ['  <p>First slide</p>', `  <p>First slide</p>\n  ${html.join('\n  ')}`];
 
 const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });
@@ -19,7 +14,6 @@ async function clickAt(page, x, y) {
   await mouse(page, 'mousePressed', x, y, { buttons: 1 });
   await mouse(page, 'mouseReleased', x, y);
 }
-// the selection of page by the ids of its items, or its kind
 const selected = (page) => page.evaluate(`(() => { const s = ${C}.app.selection; return s.kind === 'elements' ? s.items.map((e) => e.id || e.localName).join(' ') : s.kind; })()`);
 const center = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 
@@ -45,32 +39,25 @@ test('a chip takes a press on itself only, and a press beside it, on an element 
   await show(ana, 'One');
   await show(ben, 'One');
   await select(ana, el(0, '#mid'));
-  // each press is made on a chip, which a press that it takes expands for 3 s
   const collapsed = async () => (await untilDrawn(ben, (d) => d.flags[0]?.chip, 'the flag of Ana to collapse to a chip on the page of Ben')).flags[0];
   const c = center(await collapsed());
-  // the element under the chip begins right of its center, more than 6 px from a press 12 px left of it
   const under = await boxOf(ben, el(0, '#under'));
   assert.ok(under.x > c.x - 6 && under.x < c.x + 8 && under.y < c.y && under.y + under.h > c.y, `the element under lies under the chip, at ${JSON.stringify({ under, c })}`);
-  // the editor picks a text element within 6 px of a press, hence the other elements lie farther away
   const gap = await ben.evaluate(`Math.min(...[...${el(0, '*')}.parentElement.children].filter((e) => e.id !== 'under').map((e) => {
     const r = e.getBoundingClientRect();
     return Math.hypot(Math.max(r.left - ${c.x - 12}, 0, ${c.x - 12} - r.right), Math.max(r.top - ${c.y}, 0, ${c.y} - r.bottom));
   }))`);
   assert.ok(gap > 8, `the slide lies 12 px left of the center of the chip, ${gap} px from any other element`);
 
-  // a press 12 px left of the center of the chip, on the slide
   await select(ben, el(0, '#box'));
   await collapsed();
   await clickAt(ben, c.x - 12, c.y);
   await frame(ben);
   assert.equal(await selected(ben), 'none', 'a press beside the chip reaches the slide');
-  // a press 12 px right of the center of the chip, on the element under it
   await collapsed();
   await clickAt(ben, c.x + 12, c.y);
   await frame(ben);
   assert.equal(await selected(ben), 'under', 'a press on the element under the chip selects it');
-  // a press on the chip shows the name and does not reach the slide, with the element under it not
-  // selected, since a grip of the own frame takes a press before the chip
   await select(ben, el(0, '#box'));
   await collapsed();
   const was = await selected(ben);
@@ -79,7 +66,6 @@ test('a chip takes a press on itself only, and a press beside it, on an element 
   assert.equal(await selected(ben), was, 'a press on the chip does not reach the slide');
   assert.equal((await drawn(ben)).flags[0].chip, false, 'a press on the chip shows the name');
 
-  // a drag of the upper left grip of the own frame, near the chip of Ana on the same element
   await select(ana, el(0, '#box'));
   await select(ben, el(0, '#box'));
   const near = await collapsed();
@@ -94,7 +80,6 @@ test('a chip takes a press on itself only, and a press beside it, on an element 
   await frame(ben);
   assert.notEqual(await ben.evaluate(`${el(0, '#box')}.style.width`), width, 'a drag of the grip resizes the box');
 
-  // a click in the Slide Sorter where the chip of Ana is
   const hidden = await collapsed();
   await ben.evaluate(`${C}.app.commands.run('view.lightTable')`);
   await frame(ben);
@@ -142,7 +127,6 @@ test('a frame below the slide is not drawn over the speaker notes', { timeout: 1
   const pane = await boxOf(ben, `document.querySelector('.beeson-edit-pane')`);
   const f = d.frames[0];
   assert.ok(f.y < pane.y - 8 && f.y + f.h > pane.y + 8, `the frame crosses the top of the notes pane, at ${JSON.stringify({ f, pane })}`);
-  // a point of the left edge of the frame is hit where it is drawn
   await ben.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.beeson-presence .frame { pointer-events: auto !important; }' }))`);
   const at = (y) => ben.evaluate(`document.elementFromPoint(${f.x + 1}, ${y})?.classList.contains('frame') ?? false`);
   assert.equal(await at(pane.y - 6), true, 'the frame is drawn on the canvas');
@@ -165,7 +149,6 @@ test('the flag of an element at the top edge of the slide is drawn whole in a la
   clean(ben);
 });
 
-// the caret bar of page with its box, and the flag over it
 const CARET = `(() => {
   const c = document.querySelector('.beeson-presence .caret');
   if (!c) return null;
@@ -184,7 +167,6 @@ test('the caret of a person has a name flag at its top, unless the frame of the 
   const d = await untilDrawn(ben, (d) => d.carets.length === 1 && d.frames.length === 1 && d.flags.length === 1, 'the frame, the flag, and the caret of Ana on the page of Ben');
   assert.equal(d.flags[0].client, await ana.evaluate(`${C}.client`), 'the one flag is that of the frame of Ana');
   assert.equal((await ben.evaluate(CARET)).flag, null, 'the caret does not have a flag of its own');
-  // the paragraph taken out of the selection of Ana as Ben hears it, so that only the caret is drawn
   await front(ben);
   await ben.evaluate(`(() => { const c = ${C}; const all = c.resolved.bind(c); c.resolved = () => all().map((r) => ({ ...r, selected: [] })); c.app.invalidate('selection'); })()`);
   const e = await until(async () => {
@@ -198,14 +180,36 @@ test('the caret of a person has a name flag at its top, unless the frame of the 
   clean(ben);
 });
 
-// the caret of the page in px of the slide: its center, its length, and its angle from upright, from
-// the box of the turned caret, whose width is the length times the sine of the angle
+test('two carets in one paragraph are drawn as two bars with the name flags of their people, and a selection of one of them as a highlight outside the text', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy']);
+  for (const page of [ana, ben, cy]) await show(page, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); const t = p.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
+  await until(() => cy.evaluate(`${C}.resolved().filter((r) => r.caret).length === 2`), 'the carets of Ana and Ben on the page of Cy');
+  const d = await untilDrawn(cy, (d) => d.carets.length === 2, 'the two caret bars on the page of Cy');
+  assert.deepEqual([...new Set(d.flags.map((f) => f.text))].sort(), ['Ana', 'Ben'], 'a name flag of each person');
+  assert.ok(Math.abs(d.carets[0].x - d.carets[1].x) > 20, `the bars are apart, at ${JSON.stringify(d.carets)}`);
+  const name = `beeson-c${await cy.evaluate(`${C}.resolved().find((r) => r.name === 'Ben').color % 4`)}`;
+  await until(async () => {
+    await front(cy);
+    await frame(cy);
+    return cy.evaluate(`[...(CSS.highlights.get(${JSON.stringify(name)}) ?? [])].map((r) => r.toString()).join() === 'Second'`);
+  }, 'the highlight of the selection of Ben on the page of Cy');
+  assert.equal(await cy.evaluate(`${p}.innerHTML`), 'Second slide');
+  const saved = await converge(server, [ana, ben, cy]);
+  assert.ok(saved.includes('  <p>Second slide</p>') && !saved.includes('beeson-c') && !saved.includes('highlight'), 'the file keeps the paragraph without the highlight');
+  clean(ana);
+  clean(ben);
+  clean(cy);
+});
+
 const REAL = `(() => {
   const r = getSelection().getRangeAt(0).getClientRects()[0];
   const sl = ${C}.app.slides(); const f = sl.getBoundingClientRect(); const k = f.width / sl.offsetWidth;
   return { x: (r.left + r.width / 2 - f.left) / k, y: (r.top + r.height / 2 - f.top) / k, length: Math.hypot(r.width, r.height) / k };
 })()`;
-// the caret bar of the layer in px of the slide: its center, its length, and its angle
 const BAR = `(() => {
   const c = document.querySelector('.beeson-presence .caret');
   if (!c) return null;
@@ -221,7 +225,6 @@ test('the caret bar in a turned text element is turned with it and as long as th
   await show(ben, 'One');
   await front(ana);
   await caretAtEnd(ana, el(0, '#turned p'));
-  // the caret at the end of the text node, which has a box, unlike a caret between elements
   await ana.evaluate(`(() => { const t = ${el(0, '#turned p')}.lastChild; getSelection().collapse(t, t.length); })()`);
   const real = await ana.evaluate(REAL);
   await until(() => ben.evaluate(`${C}.resolved()[0]?.caret?.at === 'turned words'.length`), 'the caret of Ana at the end of the text on the page of Ben');
@@ -233,13 +236,12 @@ test('the caret bar in a turned text element is turned with it and as long as th
   clean(ben);
 });
 
-// counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
   window.__reads = { all: 0, session: 0 };
   const note = () => {
     window.__reads.all++;
-    if (/session\\.js/.test(new Error().stack)) window.__reads.session++;
+    if (/\\/session\\.js/.test(new Error().stack)) window.__reads.session++;
   };
   const wrap = (proto, name) => {
     const f = proto[name];

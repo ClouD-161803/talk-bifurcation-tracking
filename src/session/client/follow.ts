@@ -1,29 +1,12 @@
-// following a person, as in UI.md sections 2 and 5. a click on the avatar of another person, or
-// Follow in its menu, follows the person: this page shows the slide of the person and brings the
-// selection or the caret of the person into view at its own zoom. a div over the canvas draws an
-// inset border in the tone of the person, with a pill at its top. a slide shown by following is not
-// an edit, hence it makes no entry of the history and leaves the deck unchanged.
-//
-// following stops at a click on the avatar or on Stop, at Escape in the pill, at an edit, a
-// selection, a slide shown by this page, and when this page presents. a zoom and a scroll do not
-// stop it. a person with two pages is followed on the page whose slide, selection, or caret changed
-// last, and two people who follow each other both stay where they are. the own avatar counts the
-// followers, and this page sends its mode present while it presents
-
 import type { Client } from './client.ts';
 import { bdi, make, style, textOf } from './dom.ts';
 import { addPersonItems, badge, everyone, onPersonPress } from './people.ts';
 import { presenceOf, type Resolved } from './presence.ts';
 
-// in ms, the time that the pill shows a notice, e.g. Stopped following Ana
 const NOTICE = 4000;
-// in px, the room that a box brought into view keeps from the edge of the canvas, and the
-// thickness of a ruler of canvas/rulers.ts
 const ROOM = 24;
 const RULER = 18;
 
-// the div is an item of the grid of the body over the canvas, as every child of the body, hence it
-// is laid out without a read of layout. only the pill takes pointer events
 const CSS = `
 html.beeson-editor body > .beeson-session-follow { grid-area: canvas; position: relative; z-index: 52; display: flex; justify-content: center; align-items: flex-start; min-width: 0; min-height: 0; pointer-events: none; }
 html.beeson-editor body > .beeson-session-follow[hidden], html.beeson-previewing body > .beeson-session-follow { display: none; }
@@ -40,9 +23,7 @@ html.beeson-editor body > .beeson-session-follow[hidden], html.beeson-previewing
 `;
 
 export type Follow = {
-  // the person followed, or null
   readonly target: string | null;
-  // in ms, the time that the pill shows a notice, e.g. shortened by a test
   notice: number;
   start(person: string): void;
   stop(): void;
@@ -50,17 +31,14 @@ export type Follow = {
 
 let active: Follow | null = null;
 
-// stops following, e.g. at a comment or at Version History of a later pane
 export function stopFollowing(): void {
   active?.stop();
 }
 
-// the controller of following, e.g. for a test
 export function followOf(): Follow | null {
   return active;
 }
 
-// the order in which the slide, the selection, or the caret of each other page last changed
 const ids = new WeakMap<Element, number>();
 let nextId = 0;
 const idOf = (el: Element | null | undefined): number => {
@@ -82,14 +60,11 @@ function track(client: Client): void {
   for (const id of [...moved.keys()]) if (!now.has(id)) moved.delete(id);
 }
 
-// the pages of person, the one whose slide, selection, or caret changed last first
 export function pagesOf(client: Client, person: string): Resolved[] {
   const at = (r: Resolved) => moved.get(r.client)?.at ?? 0;
   return client.resolved().filter((r) => r.person === person).sort((a, b) => at(b) - at(a));
 }
 
-// the first name of a person in a running text, e.g. Following Ana, or the whole name when another
-// person present has the same first name
 export function callName(client: Client, person: string): string {
   const all = everyone(client);
   const name = all.find((p) => p.person === person)?.name ?? client.known.find((p) => p.person === person)?.name ?? '';
@@ -98,7 +73,6 @@ export function callName(client: Client, person: string): string {
   return (twin ? name.trim() : first) || name;
 }
 
-// the count of the people who follow this person, as a sentence
 export function followersText(client: Client): string {
   const people = new Set(client.resolved().filter((r) => r.following === client.person && r.person !== client.person).map((r) => r.person));
   if (!people.size) return '';
@@ -126,15 +100,11 @@ export function install(client: Client): void {
   document.body.append(live);
 
   let target: string | null = null;
-  // a notice after following stopped
   let note: { person: string; left: boolean } | null = null;
   let noteTimer = 0;
-  // set while this part changes the slide or the selection
   let guard = false;
-  // the slide that following showed, and the current slide at the last change of the slide
   let shown: Element | null = null;
   let prev: Element | null = app.current();
-  // the page and the elements last brought into view
   let viewed = '';
   let frame = 0;
   let mode: 'follow' | 'present' | 'history' = 'follow';
@@ -177,8 +147,6 @@ export function install(client: Client): void {
     }, controller.notice);
   };
 
-  // the own avatar shows the count of the followers, and the avatar of the person followed is
-  // pressed. people.ts draws the avatars first, at each change of the people
   const paintAvatars = () => {
     for (const b of document.querySelectorAll<HTMLElement>('.beeson-session-people .beeson-session-avatar[data-person]')) {
       const person = b.dataset.person!;
@@ -202,8 +170,6 @@ export function install(client: Client): void {
     }
   };
 
-  // the selection or the caret of page in view, scrolled at the own zoom when it is outside the
-  // canvas
   const bringIntoView = (page: Resolved) => {
     const els = (page.selected.length ? page.selected : page.caret ? [page.caret.el] : []).filter((el) => el.isConnected);
     const boxes = els.map((el) => el.getBoundingClientRect()).filter((b) => b.width || b.height);
@@ -236,7 +202,6 @@ export function install(client: Client): void {
       if (key !== viewed && slide === app.current()) {
         viewed = key;
         cancelAnimationFrame(frame);
-        // after the slide is laid out
         frame = requestAnimationFrame(() => target && bringIntoView(page));
       }
     }
@@ -303,7 +268,6 @@ export function install(client: Client): void {
     if (target) stop();
     else if (note && !note.left) start(note.person);
   });
-  // on the window before the keys of the editor, which may take Escape on its way to the pill
   window.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape' || !pill.contains(document.activeElement) || (!target && !note)) return;
     ev.preventDefault();
@@ -318,8 +282,6 @@ export function install(client: Client): void {
 
   app.listen('slide', () => {
     const now = app.current();
-    // a slide taken off the page, e.g. by an edit of another person, is replaced by another one,
-    // which this page did not choose
     const mine = !!prev?.isConnected;
     prev = now;
     if (!guard && target && mine && now !== shown) stop();
@@ -331,15 +293,14 @@ export function install(client: Client): void {
   client.port.onChange(() => stop());
   app.listen('report', () => box.classList.toggle('rulers', rulers()));
 
-  // this page presents while the show is laid over it, or while the presenter view is open
   let playing = false;
   const watched = new WeakSet<Element>();
-  const presenter = new MutationObserver(() => played());
+  const shows = new MutationObserver(() => played());
   const played = () => {
     const dialog = document.querySelector('dialog.beeson-edit-presenter');
     if (dialog && !watched.has(dialog)) {
       watched.add(dialog);
-      presenter.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+      shows.observe(dialog, { attributes: true, attributeFilter: ['open'] });
     }
     const now = !!document.querySelector('body > .beeson-edit-show') || !!dialog?.hasAttribute('open');
     if (now === playing) return;
@@ -347,7 +308,6 @@ export function install(client: Client): void {
     presence()?.set({ mode: now ? 'present' : 'edit' });
     if (now) stop();
   };
-  const shows = new MutationObserver(played);
   shows.observe(document.body, { childList: true });
 
   client.on('resolved', () => {
@@ -368,7 +328,6 @@ export function install(client: Client): void {
     ended = true;
     clearTimeout(noteTimer);
     shows.disconnect();
-    presenter.disconnect();
     onPersonPress(null);
     box.remove();
     live.remove();

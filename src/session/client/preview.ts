@@ -1,12 +1,5 @@
-// the preview of a version or of a text set aside: the deck as the edit command serves it with
-// version=<id> or aside=<id>, in an iframe over the canvas, under a bar with the date, the authors,
-// a button per changed slide, what was removed, Show changes, and the actions. the text is read
-// once and given to the iframe as srcdoc, with a base of the address that serves it. the page in
-// the iframe is a deck without the editor, of the same origin, hence the outlines of the changed
-// elements are drawn into it from here, from the marks of the version
-
 import { tokenize, type Token } from '../../editor/tokens.ts';
-import type { AsideInfo, Mark, VersionDetail, VersionInfo } from '../protocol.ts';
+import type { AsideInfo, Mark, Removal, VersionDetail, VersionInfo } from '../protocol.ts';
 import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
@@ -38,26 +31,20 @@ const CSS = `
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
 `;
 
-// drawn into the page of the iframe, which hides the controls of the show as the canvas of the
-// editor does
 const FRAME_CSS = `
 .reveal :is(.progress, .scrub, .slide-number), .theme-switch { display: none !important; }
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }
 section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
+del[data-beeson-removed] { color: var(--beeson-removed); text-decoration: line-through; }
+html.beeson-hide-changes del[data-beeson-removed] { display: none; }
 html:not(.beeson-hide-changes) :is([data-beeson-changed].fragment, [data-beeson-changed] .fragment) { opacity: 1 !important; visibility: visible !important; }
 `;
 
-// the bar is wrapped onto two rows, with Name this version in More, below this width in px
 const TWO_ROWS = 600;
 
-// the keys that reach reveal.js in the preview, which move through its slides
 const NAVIGATION = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
-// text with a base element and FRAME_CSS at the start of its head, so that its relative addresses
-// resolve as in a page loaded from href. the address of the page is about:srcdoc, which may not be
-// changed to one of http, hence the history of the page is not written, e.g. the hash of the slide
-// by reveal.js
 function withBase(text: string, tokens: Token[], href: string): string {
   const head = tokens.find((t) => t.type === 'start' && t.name === 'head');
   const at = head ? head.end : (tokens.find((t) => t.type === 'start')?.start ?? 0);
@@ -67,7 +54,6 @@ function withBase(text: string, tokens: Token[], href: string): string {
 
 type Child = { start: number; end: number; name: string };
 
-// the direct children of an element given as its text, with their ranges and names
 function childrenOf(html: string): Child[] {
   const out: Child[] = [];
   const stack: { name: string; start: number }[] = [];
@@ -86,15 +72,10 @@ function childrenOf(html: string): Child[] {
   return out;
 }
 
-// a changed element: the child of a slide by its name, its place among the children of this name,
-// and the number of them, or the slide itself when name is null, with the person id of who changed
-// it and its range in the text
 export type Target = { slide: number; name: string | null; nth: number; of: number; author: string; start: number; end: number };
 
 const touches = (m: Mark, start: number, end: number) => (m.start < m.end ? m.start < end && start < m.end : start < m.start && m.start < end);
 
-// the elements of the slides that the marks of a version touch. a mark between the children of a
-// slide is of an element removed, which the bar names instead
 export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[] {
   const out = new Map<string, Target>();
   slides.forEach((s, k) => {
@@ -117,13 +98,9 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
   return [...out.values()];
 }
 
-// the ranges of the text nodes of el that the marks add, by author. the text tokens of the range
-// [start, end) of the element in text are put one to one on its text nodes, in order, hence an
-// element with a script or with math is left out, and so is one whose text nodes do not read as its
-// text tokens, e.g. with a character reference or a carriage return. math is what MathJax finds
-// with theme/mathjax-config.js after the page is drawn: \( and \[, the escapes \\ and \$, an
-// environment, and \ref or \eqref. a dollar or a backslash before a letter is left as written
-function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], out: Map<string, Range[]>): void {
+type Struck = { removal: Removal; node: Text | Element; offset: number };
+
+function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], removals: Removal[], out: Map<string, Range[]> | null, struck: Struck[]): void {
   if (/\\[([\\$]|\\(?:begin|(?:eq)?ref)\b|<(script|math)\b/i.test(text.slice(start, end))) return;
   let lo = 0;
   for (let hi = tokens.length; lo < hi; ) {
@@ -137,6 +114,13 @@ function addedIn(el: Element, text: string, tokens: Token[], start: number, end:
   const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   while (walk.nextNode()) nodes.push(walk.currentNode as Text);
   if (nodes.length !== texts.length || texts.some((t, i) => text.slice(t.start, t.end) !== nodes[i].data)) return;
+  for (const r of removals) {
+    if (r.at <= start || r.at >= end) continue;
+    const i = texts.findIndex((t, k) => t.start <= r.at && r.at <= t.end && /\S/.test(nodes[k].data));
+    if (i >= 0) struck.push({ removal: r, node: nodes[i], offset: r.at - texts[i].start });
+    else if (!texts.length) struck.push({ removal: r, node: el, offset: 0 });
+  }
+  if (!out) return;
   const mine = marks.filter((m) => m.start < end && start < m.end);
   texts.forEach((t, i) => {
     for (const m of mine) {
@@ -150,9 +134,6 @@ function addedIn(el: Element, text: string, tokens: Token[], start: number, end:
   });
 }
 
-// the sections of the page that are slides, by the index of the slide in the text. reveal.js takes
-// a hidden slide out of the page once its plugins are started, which may be after the page is
-// loaded, hence a hidden slide is without a section also while it is still in the page
 function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | null)[] {
   const shown = [...doc.querySelectorAll('.reveal .slides section')].filter((s) => !s.querySelector('section') && !/^hidden/i.test(s.getAttribute('data-visibility') ?? ''));
   let i = 0;
@@ -161,7 +142,6 @@ function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | nu
 
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
 
-// the parts of the bar of a version, built once and changed where a version differs
 type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; notes: HTMLElement; failed: HTMLElement; actions: HTMLElement };
 
 export type Actions = {
@@ -178,15 +158,12 @@ export class Preview {
   private versionBar: VersionBar | null = null;
   private frame: HTMLIFrameElement | null = null;
   private changes = true;
-  // the key of what is shown, e.g. version:<id>
   private key = '';
   private version: VersionInfo | null = null;
-  // the read of the text of what is shown, and of nothing else
   private read: { key: string; text: Promise<string> } | null = null;
   private text: string | null = null;
   private slides: Slide[] = [];
   private sections: (Element | null)[] = [];
-  // the slide chosen in the bar while the page was loading
   private asked: number | null = null;
   private menu: OpenMenu | null = null;
 
@@ -208,7 +185,6 @@ export class Preview {
     new ResizeObserver(layout).observe(pane);
   }
 
-  // over the canvas, and above the pane where the pane is a sheet over the bottom of the canvas
   layout(): void {
     if (this.el.hidden) return;
     const c = this.client.shell.history.canvas();
@@ -218,7 +194,6 @@ export class Preview {
     this.el.classList.toggle('two', c.width < TWO_ROWS);
   }
 
-  // the page, its text, and its elements let go
   hide(): void {
     this.el.hidden = true;
     this.key = '';
@@ -238,7 +213,6 @@ export class Preview {
     return url.href;
   }
 
-  // the text of what is shown, read once for its page and its download
   private textOf(kind: 'version' | 'aside', id: string): Promise<string> {
     const key = `${kind}:${id}`;
     if (this.read?.key === key) return this.read.text;
@@ -254,8 +228,6 @@ export class Preview {
     return text;
   }
 
-  // a new iframe for each page, since a second page in one iframe would add an entry to the history
-  // of the tab
   private frameFor(kind: 'version' | 'aside'): HTMLIFrameElement {
     const frame = make('iframe');
     frame.title = kind === 'version' ? 'The deck at this version' : 'The text set aside';
@@ -270,17 +242,12 @@ export class Preview {
     return frame;
   }
 
-  // the page of text in frame, resolved with its window once it is loaded
   private write(frame: HTMLIFrameElement, text: string, tokens: Token[], href: string): Promise<Window | null> {
     const loaded = new Promise<Window | null>((done) => frame.addEventListener('load', () => done(frame.contentWindow), { once: true }));
     frame.srcdoc = withBase(text, tokens, href);
     return loaded;
   }
 
-  // the keys of the page in the preview, which does not reach the window of the editor: Esc is
-  // handed to the window, where it closes an open menu or else leaves Version History, the arrows
-  // move through the slides, and the other keys are kept from reveal.js and the theme, e.g. O of
-  // the overview and E of the editor
   private keys(w: Window): void {
     w.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
@@ -319,17 +286,16 @@ export class Preview {
     more.setAttribute('aria-haspopup', 'menu');
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
     const name = () => this.version && this.actions.name(this.version);
-    actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name, 'name'), more);
+    actions.append(label, this.button('Restore this version', restore), this.button('Tag this version', name, 'name'), more);
     return { info, date, who, slides: make('div', 'slides'), shown: '', notes: make('span', 'notes'), failed: make('span', 'removed'), actions };
   }
 
-  // the menu of More, which holds Name this version where the bar is narrow. a second press closes it
   private more(button: HTMLElement, keyboard: boolean): void {
     const v = this.version;
     if (this.menu) return this.menu.close();
     if (!v) return;
     const items: MenuItem[] = [];
-    if (this.el.classList.contains('two')) items.push({ label: 'Name this version', run: () => this.actions.name(v) });
+    if (this.el.classList.contains('two')) items.push({ label: 'Tag this version', run: () => this.actions.name(v) });
     items.push({ label: 'Download This Version', run: () => void this.download('version', v.id) });
     const m = this.client.shell.menu(items, {
       anchor: button.getBoundingClientRect(),
@@ -344,8 +310,6 @@ export class Preview {
     this.menu = m;
   }
 
-  // the bar of version v, where only what differs from the bar shown is changed, so that the focus
-  // and an open menu of More stay at a new read of the list
   showVersion(v: VersionInfo): void {
     const key = `version:${v.id}`;
     const fresh = key !== this.key;
@@ -394,7 +358,6 @@ export class Preview {
     void this.fillAside(a.id, info, slides);
   }
 
-  // the page of the text set aside, at the first slide on which it differs from the current deck
   private async fillAside(id: string, info: HTMLElement, bar: HTMLElement): Promise<void> {
     const key = this.key;
     const frame = this.frameFor('aside');
@@ -403,9 +366,6 @@ export class Preview {
       if (key !== this.key) return;
       const tokens = tokenize(text);
       const slides = slidesOf(text, tokens);
-      // a slide differs when no slide of the current deck reads as it does. in a text with as many
-      // slides as the current deck, a slide differs as well when the slide at its place reads
-      // differently, which lists a slide that was only moved
       const now = this.client.snapshot()?.mine ?? text;
       const current = slidesOf(now).map((s) => now.slice(s.start, s.end));
       const kept = new Set(current);
@@ -437,8 +397,6 @@ export class Preview {
     }
   }
 
-  // the page of the version, with the outlines of the changed elements, at the first changed slide
-  // that is shown
   private async fill(v: VersionInfo): Promise<void> {
     const key = this.key;
     this.text = null;
@@ -464,25 +422,20 @@ export class Preview {
     const targets = targetsOf(text, this.slides, detail.marks);
     const notes = new Set<number>();
     const added = new Map<string, Range[]>();
+    const struck: Struck[] = [];
     const tone = (author: string) => personOf(this.client, author)?.color ?? 'var(--muted)';
-    // without CSS.highlights, e.g. in an older browser, the changed elements are outlined alone
     const css = (w as Window & typeof globalThis).CSS?.highlights ? (w as Window & typeof globalThis) : null;
     for (const t of targets) {
       const section = this.sections[t.slide];
-      // the children that the theme appends, e.g. a running head, are not in the text
       const same = !section || t.name === null ? [section] : [...section.children].filter((c) => c.localName === t.name && !c.matches('[data-generated], [data-restore]'));
       const el = same[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
       (el as HTMLElement).style.setProperty('--beeson-changed', tone(t.author));
-      // the parser of the page adds or moves a child, e.g. a p that it closes at a ul, hence the nth
-      // child of a name is the one of the text only when the page has as many of them
-      if (css && same.length === t.of) addedIn(el, text, tokens, t.start, t.end, detail.marks, added);
-      // the notes are not drawn on the slide, hence their change is named in the bar
+      const parsedAsWritten = same.length === t.of;
+      if (parsedAsWritten) addedIn(el, text, tokens, t.start, t.end, detail.marks, detail.removals ?? [], css && added, struck);
       if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
-    // the added characters tinted with a highlight of each author, in its tone resolved in the page,
-    // since a highlight does not take the custom properties of the element
     let rules = '';
     [...added].forEach(([author, ranges], k) => {
       css!.CSS.highlights.set(`beeson-changed-${k}`, new css!.Highlight(...ranges));
@@ -492,8 +445,20 @@ export class Preview {
       probe.remove();
     });
     if (rules) doc.head.appendChild(doc.createElement('style')).textContent = rules;
+    for (const s of struck.sort((a, b) => b.removal.at - a.removal.at)) {
+      const del = doc.createElement('del');
+      del.setAttribute('data-beeson-removed', s.removal.author);
+      del.style.setProperty('--beeson-removed', tone(s.removal.author));
+      const who = personOf(this.client, s.removal.author);
+      del.title = who ? `Removed by ${who.name}` : 'Removed in index.html outside the editor';
+      const parsed = doc.createElement('template');
+      parsed.innerHTML = s.removal.text;
+      del.textContent = parsed.content.textContent;
+      if (!del.textContent) continue;
+      if (s.node.nodeType === Node.TEXT_NODE) (s.node as Text).splitText(s.offset).before(del);
+      else (s.node as Element).append(del);
+    }
     if (notes.size && this.versionBar) this.versionBar.notes.textContent = `Notes of ${slidesText([...notes].sort((x, y) => x - y))} changed`;
-    // a slide with a changed element first, and of a number without one, a slide of this number
     const marked = (k: number) => targets.some((t) => t.slide === k);
     const first = this.slides.findIndex((s, k) => this.sections[k] && v.slides.includes(s.number) && (marked(k) || !this.slides.some((o, j) => o.number === s.number && marked(j))));
     if (first >= 0) this.show(this.sections[first]!);
@@ -501,15 +466,12 @@ export class Preview {
     if (this.asked !== null) this.go(this.asked);
   }
 
-  // the slide numbered n shown in the preview, once the page is loaded. a hidden slide has the number
-  // of the slide after it, and it is not in the page
   go(n: number): void {
     if (!this.slides.length) this.asked = n;
     const k = this.slides.findIndex((s, i) => s.number === n && this.sections[i]);
     if (k >= 0) this.show(this.sections[k]!);
   }
 
-  // section shown in the preview, once reveal.js is ready there
   private show(section: Element): void {
     const reveal = (this.frame?.contentWindow as (Window & { Reveal?: RevealLike }) | null | undefined)?.Reveal;
     if (!reveal) return;

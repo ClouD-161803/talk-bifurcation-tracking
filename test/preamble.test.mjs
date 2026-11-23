@@ -1,7 +1,3 @@
-// the reader of a LaTeX preamble of src/preamble.ts: the definitions that are read into the macros
-// and the environments of MathJax, the packages mapped to its extensions, the kinds of theorem, the
-// files that a preamble names, and the lines that are skipped with their reason
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { USUAL, kindsOf, readPreamble } from '../src/preamble.ts';
@@ -30,7 +26,6 @@ test('a macro is read from \\newcommand, \\renewcommand, and \\providecommand, w
     Z: '\\mathbb{Z}',
     half: '\\frac',
   });
-  // the 12 after \half is not part of its definition, as in TeX, and it is listed
   assert.deepEqual(reasons(p), ['9: 12 | not a definition']);
 });
 
@@ -89,7 +84,6 @@ test('an operator and an environment are read', () => {
 });
 
 test('a package is mapped to the extension of MathJax that covers it, and one without an extension is skipped', () => {
-  // the commands of bm and of xspace are macros of theme/mathjax-config.js in every deck
   const p = read([
     '\\usepackage{amsmath, amssymb}',
     '\\usepackage[dvipsnames]{xcolor}',

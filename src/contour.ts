@@ -1,13 +1,3 @@
-// the level curves of a function sampled on a regular grid, traced with marching squares. used by the
-// zero-velocity curves of the hill backdrop in backdrops.ts and by the cut of a surface in surface.ts
-
-/**
- * Returns the curves on which the samples g change sign, each as a list of alternating x and y
- * values. The (nx + 1) by (ny + 1) samples of g are stored row by row, with the sample (i, j) at
- * x0 + i dx and y0 + j dy. A crossing is placed on a cell edge by linear interpolation. A cell
- * with four crossings, i.e. a cell at a saddle, is split into two pairs of crossings in a fixed
- * order. With close set, a closed curve is ended on its first point.
- */
 export function isolines(g: Float64Array, nx: number, ny: number, x0: number, y0: number, dx: number, dy = dx, close = false): number[][] {
   const at = (i: number, j: number) => g[j * (nx + 1) + i];
   const links = new Map<string, string[]>(), where = new Map<string, [number, number]>();
@@ -43,7 +33,6 @@ export function isolines(g: Float64Array, nx: number, ny: number, x0: number, y0
       const [x, y] = where.get(cur) ?? [0, 0];
       p.push(x, y);
       const next: string | undefined = links.get(cur)?.find((k) => !seen.has(k));
-      // a curve of two crossings is open, since the second is linked back to the first anyway
       if (!next && close && p.length > 4 && links.get(cur)?.includes(start)) p.push(p[0], p[1]);
       cur = next;
     }

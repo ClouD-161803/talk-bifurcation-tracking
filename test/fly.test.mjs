@@ -1,6 +1,3 @@
-// checks of the fly of src/fly.ts, i.e. an element moved by its step from the box of a source to its
-// own box, in a test deck in Chrome, played and drawn still
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
@@ -23,7 +20,6 @@ test('a step flies its element in from the box of its source and then clears the
   const flying = await page.evaluate(probe);
   assert.match(flying.transition, /^transform 0\.5s /);
   assert.notEqual(flying.transform, 'none');
-  // the origin is the center of the ring, in pixels of the slide from the corner of the box
   const [x, y] = flying.origin.split(' ').map(parseFloat);
   assert.ok(Math.abs(x - 45) < 0.5 && Math.abs(y - 50) < 0.5, flying.origin);
   assert.equal(flying.held, false);

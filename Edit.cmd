@@ -1,5 +1,4 @@
 @echo off
-rem starts the edit command of this talk folder and opens the editor in the default browser
 cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 goto nonode

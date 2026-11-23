@@ -1,25 +1,13 @@
-// the menu bar, with the menus File, Edit, Insert, Slide, Format, Arrange, View, and Help drawn
-// from the commands of the registry when they are opened, the name and the state of the file in
-// the middle, and at the right Which? and the Autosave switch. a title is a menu item of a menubar
-// with a roving tabindex: Left and Right move between the titles, and Down, Enter, or Space opens
-// the menu. while a menu is open, the pointer over another title opens its menu, and Left and
-// Right in a menu open the menu beside it. a menu without an item is dimmed. the Help menu opens
-// with a search field over the commands of every menu, as in macOS
-
 import type { App } from '../app.ts';
 import { canWrite, fileName } from '../file/files.ts';
 import { injectStyle, make, wire } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { closeMenus, menuItems, menuOpen, openMenu, type OpenMenu } from '../ui/menu.ts';
 
-// the least width of the title of the file, in CSS px
 const MIN_TITLE = 40;
 
-// the order of the menu bar of Keynote
 export const MENUS = ['File', 'Edit', 'Insert', 'Slide', 'Format', 'Arrange', 'View', 'Help'];
 
-// the title clips its text, hence its line is as tall as the letters of the font. a line of height 1
-// is shorter in most fonts, and in Segoe UI by enough to cut the descenders
 const CSS = `
 .beeson-edit-titlebar { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr); align-items: center; column-gap: 12px; height: 28px; padding: 0 8px 0 6px; box-sizing: border-box; font: 13px/1 var(--ed-font); color: var(--ed-text); user-select: none; -webkit-user-select: none; }
 .beeson-edit-menubar { display: flex; align-items: center; }
@@ -49,6 +37,8 @@ const CSS = `
 .beeson-edit-titlebar.narrow { overflow: hidden; }
 .beeson-edit-titlebar.narrow .beeson-edit-menubar [role=menuitem] { padding: 0 4px; }
 .beeson-edit-titlebar.narrow .right .name { display: none; }
+.beeson-edit-note { position: absolute; top: 100%; left: 8px; right: 8px; width: fit-content; max-width: 480px; margin: 6px auto 0; padding: 6px 10px; box-sizing: border-box; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); color: var(--ed-guide); font: 12px/1.35 var(--ed-font); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); overflow-wrap: anywhere; }
+.beeson-edit-note[hidden] { display: none; }
 `;
 
 export function install(app: App): void {
@@ -75,7 +65,7 @@ export function install(app: App): void {
   autosave.append(make('span', 'name', 'Autosave'), make('span', 'track'));
   if (!canWrite()) {
     autosave.disabled = true;
-    autosave.title = 'Autosave needs a browser that writes the file in place, i.e. Chrome or Edge';
+    autosave.title = 'Autosave is available where the file can be written in place, i.e. in Chrome or Edge';
   }
   right.append(which, autosave);
   row.append(bar, doc, right);
@@ -123,7 +113,6 @@ export function install(app: App): void {
     open = { title, menu };
   }
 
-  // the next title that has a menu, in the direction of step
   function sibling(from: HTMLButtonElement, step: 1 | -1, opening: boolean): void {
     let i = titles.indexOf(from);
     for (let n = 0; n < titles.length; n++) {
@@ -167,15 +156,9 @@ export function install(app: App): void {
   }
   bar.addEventListener('focusin', dim);
 
-  // the title of the file is centered between the menus and the buttons at the right while there is
-  // room for it. with less room, as in PowerPoint and Keynote, the state is left out first, then
-  // the name is cut with an ellipsis, and below a few letters the title is hidden. in a window
-  // narrower than the menus and the buttons, e.g. with a wide interface font, the buttons then
-  // lose their names and the menus are set closer, and the row clips what is left over
   function fit(): void {
     doc.classList.remove('tight', 'gone');
     row.classList.remove('narrow');
-    // the name and the state shrink together, hence a long state is cut before the name is by a pixel
     const cut = () => doc.scrollWidth > doc.clientWidth || fileEl.scrollWidth > fileEl.clientWidth || stateEl.scrollWidth > stateEl.clientWidth;
     if (!cut()) return;
     doc.classList.add('tight');
@@ -183,12 +166,31 @@ export function install(app: App): void {
     if (row.scrollWidth > row.clientWidth) row.classList.add('narrow');
   }
 
+  const note = make('div', 'beeson-edit-note');
+  note.setAttribute('aria-live', 'polite');
+  note.hidden = true;
+  let noted = '';
+  const hide = () => {
+    note.hidden = true;
+    removeEventListener('keydown', hide, true);
+    removeEventListener('pointerdown', hide, true);
+  };
+  function warn(): void {
+    const text = app.line.warn ? app.line.text : '';
+    if (text === noted) return;
+    noted = text;
+    if (!text || (getComputedStyle(stateEl).display !== 'none' && !doc.classList.contains('gone'))) return hide();
+    note.textContent = text;
+    note.hidden = false;
+    addEventListener('keydown', hide, true);
+    addEventListener('pointerdown', hide, true);
+  }
+
   const fail = (e: unknown) => app.fail(e);
   wire(which, () => app.files.showProblems(), fail);
   wire(autosave, () => app.commands.run('file.autosave'), fail);
   app.listen('report', () => {
     fileEl.textContent = app.handle?.name ?? fileName();
-    // in a session the edits go to the edit command, and its save state takes the place of the switch
     autosave.hidden = !!app.session;
     autosave.setAttribute('aria-pressed', String(app.autosave));
     autosave.classList.toggle('on', app.autosave);
@@ -197,10 +199,12 @@ export function install(app: App): void {
     stateEl.title = app.line.title;
     stateEl.classList.toggle('warn', app.line.warn);
     fit();
+    warn();
   });
   new ResizeObserver(fit).observe(row);
   app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], dim);
   const header = document.querySelector('.beeson-edit-header');
   if (header) header.prepend(row);
   else document.body.append(row);
+  row.after(note);
 }

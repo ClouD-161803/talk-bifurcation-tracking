@@ -1,8 +1,3 @@
-// an apply of the synchronous editor at the end of div.slides, see src/editor/session/session.ts. a
-// slide added after the last slide, with New Slide, Duplicate Slide, or by hand, and the last slide
-// taken off, are applied on the page of another person without a reload, and this page then looks
-// as a fresh page opened on the text
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -18,14 +13,12 @@ after(() => browser?.close());
 const SECTIONS = `document.querySelectorAll('.reveal .slides > section').length`;
 const NEW = '<section>\n  <h2>Added at the end</h2>\n  <p>A slide of another person.</p>\n</section>\n';
 
-// the text with bytes put right before the end tag of div.slides
 function beforeEnd(text, bytes) {
   const at = text.indexOf('</div>\n</div>\n<script');
   assert.ok(at > 0 && text.slice(0, at).endsWith('</section>\n\n'), 'the deck ends with a slide and a blank line');
   return text.slice(0, at) + bytes + text.slice(at);
 }
 
-// the text without its closing slide and the blank line after it
 function withoutLast(text) {
   const from = text.lastIndexOf('<section class="closing">');
   const to = text.indexOf('</section>\n\n', from) + '</section>\n\n'.length;

@@ -5,11 +5,11 @@ description: Use when someone wants existing slides tightened, shortened, cleane
 
 # Refine existing slides
 
-Find the problems by looking at the deck, then fix them with the layout classes. Passing `npm run check` is not enough, since only page errors are reported.
+Find the problems by looking at the deck, then fix them with the layout classes. `npm run check` reports the problems listed under [Tooling in `REFERENCE.md`](../../../REFERENCE.md#tooling), but not text that overlaps a figure, the footnote, or the running head.
 
 ## Look at the complete slides
 
-Run `npm run pdf`, and read the last page of each slide in `slides.pdf`. If you cannot read a PDF with your tools, turn the pages into images first, e.g. with `pdftoppm` or PyMuPDF. In the screenshots of `npm run check`, each slide is shown before its first step, and text past the edge of a slide is cut off without an error. Open the light PNGs of `npm run check` as well, since a figure may be visible in one mode only.
+Run `npm run pdf`, and read the last page of each slide in `slides.pdf`. If you cannot read a PDF with your tools, turn the pages into images first, e.g. with `pdftoppm` or PyMuPDF. In the screenshots of `npm run check`, each slide is shown before its first step. Open the light PNGs of `npm run check` as well, since a figure may be visible in one mode only.
 
 List what you find, slide by slide, before you change anything. Look for these problems.
 
@@ -23,7 +23,7 @@ List what you find, slide by slide, before you change anything. Look for these p
 
 ## Tighten without losing anything
 
-When the talk is too long, count one slide per minute, find the slides that are not needed for the main point, and move them behind the closing slide as backup slides. Move what you cut from a slide into its `aside.notes`, so that the speaker keeps it. Do not change a number, a claim, or an equation.
+When the talk is too long, count one slide per minute, find the slides that are not needed for the main point, and move them behind the closing slide as backup slides. Treat what you cut from a slide by the rule on speaker notes in `AGENTS.md`. Do not change a number, a claim, or an equation.
 
 ## Write in the voice of the group
 
@@ -33,4 +33,4 @@ Reread every sentence that you wrote with a thing as its subject, and do not rep
 
 ## Report
 
-Run `npm run check` and `npm run pdf` at the end. Say in your last message what you changed per slide, what you moved to the notes or to the backup slides, and what a person still has to decide.
+Run `npm run check` and `npm run pdf` at the end. Say in your last message what you changed per slide, what you moved to the notes or to the backup slides, what you cut, and what a person still has to decide.

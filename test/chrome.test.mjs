@@ -1,9 +1,7 @@
-// checks of the Chrome lookup in scripts/chrome.mjs, with a stand-in executable for each OS
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -73,22 +71,17 @@ test('a profile is removed while a helper process of Chrome still writes to it',
   assert.ok(!existsSync(profile));
 });
 
-// with the network allowed, Chrome downloads components and models into its profile in the
-// background, about 13 s after its start. On Windows, such a file is still locked at close(), and
-// the removal of the profile fails
 test('Chrome does not download a component or a model into its profile', { timeout: 90000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto('chrome://version');
-  // the path is filled in after the load of the page
   await page.waitFor(`!!document.getElementById('profile_path')?.textContent.trim()`);
   const profile = dirname(await page.evaluate(`document.getElementById('profile_path').textContent.trim()`));
+  const deadline = Date.now() + 20000;
+  while (!existsSync(join(profile, 'Local State')) && Date.now() < deadline) await sleep(100);
   assert.ok(existsSync(join(profile, 'Local State')), `${profile} is not the profile of the browser`);
   await sleep(25000);
-  // the folders of the models, of the components, and of one component. Without a download, Chrome
-  // writes only the index of the components and, on Linux, the path of the Widevine module that is
-  // installed with it. A downloaded module is in a folder of its version
   const written = ['component_crx_cache/metadata.json', 'WidevineCdm/latest-component-updated-widevine-cdm'];
   const downloaded = ['optimization_guide_model_store', 'component_crx_cache', 'WidevineCdm'].flatMap((name) => (existsSync(join(profile, name)) ? readdirSync(join(profile, name)).map((file) => `${name}/${file}`) : []));
   assert.deepEqual(downloaded.filter((file) => !written.includes(file)), []);
@@ -98,7 +91,6 @@ test('an early exit of Chrome is reported', (t) => {
   const out = mkdtempSync(join(tmpdir(), 'slides-check-'));
   t.after(() => rmSync(out, { recursive: true, force: true }));
 
-  // node is used as the executable, since it exits at once on the flags of Chrome
   const { status, stderr } = spawnSync(process.execPath, ['scripts/check.mjs', '--out', out], {
     env: { ...process.env, CHROME_PATH: process.execPath },
     encoding: 'utf8',
@@ -117,10 +109,7 @@ test('a Chrome that does not answer is reported', { skip: process.platform === '
   process.env.CHROME_PATH = join(root, 'chrome');
   writeFileSync(process.env.CHROME_PATH, '#!/bin/sh\nexec sleep 30\n', { mode: 0o755 });
 
-  const browser = await launch({ timeout: 200 });
-
-  await assert.rejects(browser.newPage(), /did not answer/);
-  await browser.close();
+  await assert.rejects(launch({ timeout: 200 }), /did not answer/);
 });
 
 test('a page opened with motion is shown without reduced motion', { timeout: 60000 }, async (t) => {
@@ -132,9 +121,6 @@ test('a page opened with motion is shown without reduced motion', { timeout: 600
   assert.equal(await page.evaluate(`matchMedia('(prefers-reduced-motion: no-preference)').matches`), true);
 });
 
-// Chrome does not answer a call that is in flight when its page is closed, and at times it does not
-// answer a call sent after the close either. such a call in a cleanup waited for the limit of the
-// browser, 120 s by default, in a test that had passed
 test('a call to a closed page fails at once, and a call in flight at the close fails with it', { timeout: 60000 }, async (t) => {
   const browser = await launch({ timeout: 10000 });
   t.after(() => browser.close());
@@ -148,10 +134,6 @@ test('a call to a closed page fails at once, and a call in flight at the close f
   await assert.rejects(page.send('Page.reload'), /the page is closed/);
 });
 
-// within 1 s of its last change, the editor keeps the unsaved edits of a page in the storage of the
-// browser under a key that starts with beeson-draft:, and offers them on a dialog over the slide of
-// the next page of the deck. on a slow runner, the next page of a test file was offered the edits
-// of the page before
 test('a page does not keep the unsaved edits of the editor in the storage, unless it is opened with drafts', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-drafts-'));
@@ -175,13 +157,9 @@ test('a page does not keep the unsaved edits of the editor in the storage, unles
   assert.deepEqual(await withDrafts.evaluate(kept), ['edits', 'dark']);
 });
 
-// on a Windows runner of GitHub, about one page in a few thousand is refused one of its files with
-// net::ERR_NO_BUFFER_SPACE, while ports and memory are free. the page of this test reports the
-// error at its first load only
 test('a page that is refused a file with net::ERR_NO_BUFFER_SPACE is loaded again', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));
-  // with an icon in the page, Chrome does not ask the server for a favicon, which it does not have
   writeFileSync(join(root, 'page.html'), `<!doctype html><link rel="icon" href="data:,"><script>
     const loads = Number(localStorage.getItem('loads') ?? 0) + 1;
     localStorage.setItem('loads', loads);
@@ -199,14 +177,11 @@ test('a page that is refused a file with net::ERR_NO_BUFFER_SPACE is loaded agai
   await page.goto(`${server.origin}/page.html`);
   assert.equal(await page.evaluate(`localStorage.getItem('loads')`), '2', 'the page is not loaded again');
   assert.deepEqual(page.errors, []);
-  // another error is kept, and its page is not loaded again
   await page.goto(`${server.origin}/page.html?other`);
   assert.equal(await page.evaluate(`localStorage.getItem('loads')`), '3');
   assert.deepEqual(page.errors, ['console.error: another error']);
 });
 
-// the network service of the Chrome started by this process, found by its parent, since Chromes of
-// other test files run at the same time
 function networkService() {
   const rows = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout.split('\n');
   const procs = rows.map((row) => row.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean).map(([, pid, ppid, command]) => ({ pid: Number(pid), ppid: Number(ppid), command }));
@@ -214,8 +189,6 @@ function networkService() {
   return procs.find((p) => browsers.has(p.ppid) && p.command.includes('network.mojom.NetworkService'))?.pid;
 }
 
-// on a Windows runner of GitHub, the network service of Chrome crashes at times, and Chrome starts
-// it again. the load in flight is then lost, and it is made again
 test('a load in flight when the network service of Chrome crashes is made again', { skip: process.platform === 'win32', timeout: 60000 }, async (t) => {
   const { createServer } = await import('node:http');
   const server = createServer((request, response) => setTimeout(() => response.end('<!doctype html><link rel="icon" href="data:,"><p>loaded</p>'), 1000)).listen(0, '127.0.0.1');
@@ -238,8 +211,6 @@ test('a load in flight when the network service of Chrome crashes is made again'
   assert.equal(await page.evaluate('document.body.textContent'), 'loaded');
 });
 
-// without theme/mathjax-config.js, MathJax is started with its default font, which it asks its CDN
-// for. the page of this test reports such an error after the refused file, at its first load only
 test('the errors of a load that is refused a file are dropped with the load', { timeout: 60000 }, async (t) => {
   const { serve } = await import('../scripts/webdriver.mjs');
   const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));
@@ -266,13 +237,8 @@ test('the errors of a load that is refused a file are dropped with the load', { 
   assert.deepEqual(page.errors, ['console.error: an error of the page before']);
 });
 
-// in R7.1, the process of a test file of the editor stayed alive for 20 s to 50 s after its last test,
-// since the stderr pipe of Chrome was held open by chrome_crashpad_handler and GoogleUpdater, which
-// inherit it and outlive Chrome, and close() left a timer of 2 s. the timer is found in every run,
-// and the pipe when a helper is still running 200 ms after close()
 test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, async () => {
   const { serve } = await import('../scripts/webdriver.mjs');
-  // the count of each kind of resource, of which an earlier test may still hold some
   const kinds = () => Object.fromEntries(['PipeWrap', 'ProcessWrap', 'Timeout'].map((k) => [k, process.getActiveResourcesInfo().filter((r) => r === k).length]));
   const before = kinds();
   const server = await serve('.');
@@ -287,13 +253,68 @@ test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, 
   for (const k of Object.keys(now)) assert.ok(now[k] <= before[k], `close() leaves ${JSON.stringify(now)}, against ${JSON.stringify(before)} before launch()`);
 });
 
-// on Windows, TcpPortRandomizationWin causes net::ERR_NO_BUFFER_SPACE on 127.0.0.1 loopback
-// fetches, including inside iframes where goto() reload recovery does not run
+test('chromeArgs disables MacAppCodeSignClone on macOS only, in the one --disable-features of a platform', async () => {
+  const { chromeArgs } = await import('../scripts/chrome.mjs');
+  const features = (platform) => chromeArgs({ profile: 'p', platform }).filter((arg) => arg.startsWith('--disable-features='));
+  assert.deepEqual(features('darwin'), ['--disable-features=MacAppCodeSignClone']);
+  for (const platform of ['win32', 'linux']) {
+    assert.ok(features(platform).length <= 1, `Chrome reads only the last of ${features(platform)}`);
+    assert.ok(!features(platform).join().includes('MacAppCodeSignClone'));
+  }
+});
+
+function codeSignClones() {
+  const folder = join(dirname(execFileSync('getconf', ['DARWIN_USER_TEMP_DIR'], { encoding: 'utf8' }).trim()), 'X');
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder)
+    .filter((name) => name.endsWith('.code_sign_clone'))
+    .flatMap((name) => readdirSync(join(folder, name)).map((clone) => join(name, clone)));
+}
+
+test('Chrome does not copy its app into a temp folder of macOS', { skip: process.platform !== 'darwin', timeout: 60000 }, async () => {
+  for (let attempt = 1; ; attempt++) {
+    const before = new Set(codeSignClones());
+    const browser = await launch();
+    await browser.newPage();
+    const copies = codeSignClones().filter((clone) => !before.has(clone));
+    await browser.close();
+    if (copies.length === 0) return;
+    assert.ok(attempt < 3, `a copy of the app was made at each of 3 starts of Chrome, the last one at ${copies}`);
+  }
+});
+
+test('close() leaves Chrome to exit after Browser.close, and does not end it with a signal', { skip: process.platform === 'win32', timeout: 10000 }, async (t) => {
+  pipeChrome(t, 'slowClose');
+  const signaled = join(dirname(process.env.CHROME_PATH), 'signaled');
+  const browser = await launch({ timeout: 5000 });
+  await browser.close();
+  assert.ok(!existsSync(signaled));
+});
+
+test('close() ends a Chrome that does not exit after Browser.close', { skip: process.platform === 'win32', timeout: 10000 }, async (t) => {
+  pipeChrome(t, 'hangClose');
+  const signaled = join(dirname(process.env.CHROME_PATH), 'signaled');
+  const browser = await launch({ timeout: 500 });
+  await browser.close();
+  assert.ok(existsSync(signaled));
+});
+
 test('chromeArgs disables TcpPortRandomizationWin on Windows only', async () => {
   const { chromeArgs } = await import('../scripts/chrome.mjs');
   assert.equal(typeof chromeArgs, 'function');
   assert.ok(chromeArgs({ profile: 'p', platform: 'win32' }).includes('--disable-features=TcpPortRandomizationWin'));
   assert.ok(!chromeArgs({ profile: 'p', platform: 'linux' }).includes('--disable-features=TcpPortRandomizationWin'));
+});
+
+test('on the Windows runners, chromeArgs draws WebGL in WARP and composites the page in software', async () => {
+  const { chromeArgs } = await import('../scripts/chrome.mjs');
+  const flags = ['--use-angle=d3d11-warp', '--disable-gpu-compositing'];
+  for (const flag of flags) {
+    assert.ok(chromeArgs({ profile: 'p', platform: 'win32', ci: true }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'win32', ci: false }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'linux', ci: true }).includes(flag), flag);
+    assert.ok(!chromeArgs({ profile: 'p', platform: 'darwin', ci: true }).includes(flag), flag);
+  }
 });
 
 test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeout: 60000 }, async (t) => {
@@ -320,7 +341,9 @@ test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeo
   ]);
 });
 
-function pipeChrome(t, mode) {
+const startHold = 700;
+
+function pipeChrome(t, mode, { hold = 0 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'slides-pipe-chrome-'));
   const previous = process.env.CHROME_PATH;
   t.after(() => {
@@ -332,18 +355,31 @@ function pipeChrome(t, mode) {
   writeFileSync(
     exe,
     `#!/usr/bin/env node
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${hold});
 const fs = require('node:fs');
 const mode = ${JSON.stringify(mode)};
 const input = fs.createReadStream(null, { fd: 3 });
 const output = fs.createWriteStream(null, { fd: 4 });
 const send = (msg) => output.write(JSON.stringify(msg) + '\\0');
+fs.writeFileSync(__dirname + '/ready', '');
+fs.appendFileSync(__dirname + '/log', 'launch ');
+const exitWithoutWaitingForPipeRead = () => process.kill(process.pid, 'SIGKILL');
+process.on('SIGTERM', () => {
+  fs.writeFileSync(__dirname + '/signaled', '');
+  exitWithoutWaitingForPipeRead();
+});
 let buf = '';
 let creates = 0;
 let targets = 0;
 const closed = [];
+const ready = Date.now() + (mode === 'slowStart' ? 1500 : 0);
 input.setEncoding('utf8');
-input.on('data', (chunk) => {
+input.on('data', function read(chunk) {
   buf += chunk;
+  if (Date.now() < ready) {
+    setTimeout(() => read(''), ready - Date.now());
+    return;
+  }
   for (let end; (end = buf.indexOf('\\0')) >= 0;) {
     const msg = JSON.parse(buf.slice(0, end));
     buf = buf.slice(end + 1);
@@ -356,6 +392,7 @@ input.on('data', (chunk) => {
       send({ id: msg.id, result: { sessionId: 's' + msg.params.targetId } });
     } else if (msg.method === 'Target.closeTarget') {
       closed.push(msg.params.targetId);
+      fs.appendFileSync(__dirname + '/log', 'closeTarget ');
       if (mode === 'hangCloseFirst' && msg.params.targetId === 't1') continue;
       send({ id: msg.id, result: { success: true } });
     } else if (msg.method === 'Page.enable') {
@@ -367,9 +404,17 @@ input.on('data', (chunk) => {
       send({ id: msg.id, result: {} });
     } else if (msg.method === 'Runtime.evaluate') {
       send({ id: msg.id, result: { result: { value: { creates, targets, closed } } } });
+    } else if (msg.method === 'Page.captureScreenshot') {
+      if (mode === 'hangShotOnce' && !fs.existsSync(__dirname + '/hung')) {
+        fs.writeFileSync(__dirname + '/hung', '');
+        continue;
+      }
+      send({ id: msg.id, result: { data: '' } });
     } else if (msg.method === 'Browser.close') {
+      fs.appendFileSync(__dirname + '/log', 'close ');
       send({ id: msg.id, result: {} });
-      process.exit(0);
+      if (mode === 'slowClose') setTimeout(exitWithoutWaitingForPipeRead, 300);
+      else if (mode !== 'hangClose') process.exit(0);
     } else {
       send({ id: msg.id, result: {} });
     }
@@ -379,36 +424,57 @@ input.on('data', (chunk) => {
     { mode: 0o755 },
   );
   process.env.CHROME_PATH = exe;
+  return Object.assign(async () => {
+    while (!existsSync(join(root, 'ready'))) await sleep(10);
+  }, { log: () => readFileSync(join(root, 'log'), 'utf8') });
 }
 
-// on a Windows runner, newPage() can hang on Page.enable on a fresh about:blank tab right after
-// closing an earlier page, while later targets on the same browser succeed
+test('a Chrome whose first screenshot is not answered is closed and launched again, and the page of the probe is left open', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  const chrome = pipeChrome(t, 'hangShotOnce');
+  const browser = await launch({ probe: 500 });
+  await browser.close();
+
+  assert.equal(chrome.log(), 'launch close launch close ');
+});
+
 test('newPage recovers when a fresh target does not answer Page.enable', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
-  pipeChrome(t, 'hangFirst');
-  const browser = await launch({ timeout: 400 });
+  const ready = pipeChrome(t, 'hangFirst', { hold: startHold });
+  const browser = await launch({ timeout: 400, probe: 0 });
+  await ready();
   t.after(() => browser.close());
   const page = await browser.newPage();
   const state = await page.evaluate('state');
   assert.deepEqual(state, { creates: 2, targets: 2, closed: ['t1'] });
 });
 
+test('the first page of a Chrome that starts slower than the setup of a page is opened within the timeout', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  pipeChrome(t, 'slowStart');
+  const browser = await launch({ timeout: 4000, setup: 300, probe: 0 });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  assert.deepEqual(await page.evaluate('state'), { creates: 1, targets: 1, closed: [] });
+});
+
 test('newPage recovers when Target.createTarget hangs or Target.closeTarget hangs during cleanup', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
-  pipeChrome(t, 'hangCreateFirst');
-  const browserA = await launch({ timeout: 400 });
+  const readyA = pipeChrome(t, 'hangCreateFirst', { hold: startHold });
+  const browserA = await launch({ timeout: 400, probe: 0 });
+  await readyA();
   t.after(() => browserA.close());
   const pageA = await browserA.newPage();
   assert.deepEqual(await pageA.evaluate('state'), { creates: 2, targets: 1, closed: [] });
 
-  pipeChrome(t, 'hangCloseFirst');
-  const browserB = await launch({ timeout: 400 });
+  const readyB = pipeChrome(t, 'hangCloseFirst', { hold: startHold });
+  const browserB = await launch({ timeout: 400, probe: 0 });
+  await readyB();
   t.after(() => browserB.close());
   const pageB = await browserB.newPage();
   assert.deepEqual(await pageB.evaluate('state'), { creates: 2, targets: 2, closed: ['t1'] });
 });
 
 test('newPage recovers immediately when a fresh target detaches during setup', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
-  pipeChrome(t, 'detachFirst');
-  const browser = await launch({ timeout: 3000 });
+  const ready = pipeChrome(t, 'detachFirst', { hold: startHold });
+  const browser = await launch({ timeout: 3000, probe: 0 });
+  await ready();
   t.after(() => browser.close());
   const started = Date.now();
   const page = await browser.newPage();
@@ -417,8 +483,40 @@ test('newPage recovers immediately when a fresh target detaches during setup', {
 });
 
 test('newPage still fails when every target hangs on Page.enable', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
-  pipeChrome(t, 'hangAll');
-  const browser = await launch({ timeout: 500 });
+  const ready = pipeChrome(t, 'hangAll', { hold: startHold });
+  const browser = await launch({ timeout: 500, probe: 0 });
+  await ready();
   t.after(() => browser.close());
   await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
+});
+
+test('close() ends without an error when the profile cannot be removed, and names the profile on stderr', { skip: process.platform === 'win32' || process.getuid?.() === 0, timeout: 15000 }, async (t) => {
+  pipeChrome(t, 'answerAll');
+  const parent = mkdtempSync(join(tmpdir(), 'slides-locked-'));
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = parent;
+  t.after(() => {
+    chmodSync(parent, 0o755);
+    rmSync(parent, { recursive: true, force: true });
+  });
+  let browser;
+  try {
+    browser = await launch({ timeout: 5000, probe: 0 });
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+  const [profile] = readdirSync(parent);
+  chmodSync(parent, 0o555);
+  const written = [];
+  const write = process.stderr.write;
+  t.mock.method(process.stderr, 'write', function (chunk, ...rest) {
+    written.push(String(chunk));
+    return write.call(this, chunk, ...rest);
+  });
+
+  await browser.close();
+
+  assert.ok(existsSync(join(parent, profile)));
+  assert.equal(written.filter((text) => text.includes(join(parent, profile))).length, 1, written.join(''));
 });

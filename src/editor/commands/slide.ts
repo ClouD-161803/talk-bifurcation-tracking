@@ -1,14 +1,9 @@
-// the commands of the Slide menu: new slide with the gallery of the layouts, duplicate, delete,
-// hide and show, move up and down, and cut, copy, and paste of slides, and the move and the rename
-// of a section of the Slide Sorter. each command acts on the slides selected in the navigator, or on
-// the current slide, through the document model, and is one entry of the history however many
-// slides it changes
-
 import type { App } from '../app.ts';
 import { DEFAULT_REGIONS, type Command } from '../commands.ts';
 import type { Doc } from '../model/doc.ts';
 import { NEW_LAYOUTS, type Layout, type NewLayout } from '../model/templates.ts';
 import { droppedOrder, isHidden, type MoveTo, type Navigator } from '../navigator/navigator.ts';
+import { DRAFT, isDraft } from '../draft-slide.ts';
 import { groupsOf, sectionHeading } from '../navigator/sorter.ts';
 import { drawInto } from '../navigator/thumbs.ts';
 import { setOwnTex } from '../text/elements.ts';
@@ -19,18 +14,13 @@ import { injectStyle, touchOnly } from '../ui/dom.ts';
 import { arrive, originComment } from './origin.ts';
 import { display } from '../keymap.ts';
 
-// the mark that opens the text of slides on the clipboard, so that a paste in the navigator tells
-// slides apart from other text
 export const MARK = '<!--beeson-->';
 
-// the width of the picture of a tile of the gallery, and its columns, as in the Add a Slide popover
-// of Keynote
 const PIC = 112;
 const COLUMNS = 3;
 
 const LABELS: Record<NewLayout, string> = { title: 'Title', section: 'Section', content: 'Content', titleOnly: 'Title Only', narrow: 'Content, Narrow', wide: 'Content, Wide', figure: 'Figure', split: 'Split', closing: 'Closing' };
 
-// the prompts of the empty text elements of a new slide, which are not written into the file
 const CSS = `
 html.beeson-editor .reveal:not(.beeson-peek) .slides section :is(h1, h2, p)[contenteditable="true"]:empty::before { color: var(--muted, #888); pointer-events: none; }
 html.beeson-editor .reveal:not(.beeson-peek) .slides section :is(h1, h2)[contenteditable="true"]:empty::before { content: "Title"; }
@@ -53,7 +43,6 @@ html.beeson-editor .reveal:not(.beeson-peek) .slides section > p[contenteditable
 .beeson-edit-gallery .tile span { text-align: center; }
 `;
 
-// the document model, which main.ts creates
 export function docOf(app: App): Doc {
   return app.doc;
 }
@@ -63,29 +52,23 @@ const sections = (app: App): Element[] => [...app.slides().querySelectorAll(':sc
 const ready = (app: App): boolean => !!app.pairing?.root;
 const targets = (app: App): Element[] => (ready(app) ? navOf(app).selected() : []);
 
-// the slide after which a new or pasted slide is put, and the node before which it is inserted
 function placeAfter(app: App): { root: Element; before: Element | null } {
   const last = navOf(app).selected().at(-1) ?? null;
   return { root: app.slides(), before: last?.nextElementSibling ?? null };
 }
 
-// the slides shown and selected after a command, with the focus kept in the navigator when the
-// command was run from it, and on the tile of the current slide while the Slide Sorter is shown
 function land(app: App, slides: Element[], current: Element | null, focusNav: boolean): void {
   const nav = navOf(app);
   nav.select(slides, current);
   if (focusNav || nav.table?.shown) nav.focus(current);
 }
 
-// whether Select All and Delete of the Edit menu act on the slides, i.e. while a row of the navigator
-// or a tile of the Slide Sorter has the focus, as in the Slide Sorter of PowerPoint
 export function onSlides(app: App): boolean {
   const active = document.activeElement;
   if (active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea'))) return false;
   return app.region() === 'navigator' || !!active?.closest('.beeson-edit-sorter .tile');
 }
 
-// the caret is put into the first empty heading of slide, or else at the start of its first text element
 function caretInto(slide: Element): void {
   const textEl = slide.querySelector<HTMLElement>('h1[contenteditable="true"], h2[contenteditable="true"]') ?? slide.querySelector<HTMLElement>('[contenteditable="true"]');
   if (!textEl) return;
@@ -100,7 +83,6 @@ function caretInto(slide: Element): void {
 
 async function newSlide(app: App, layout: NewLayout, before = placeAfter(app).before): Promise<Element> {
   const slide = await docOf(app).insertSlide(layout, before);
-  // the slide is hidden under the Slide Sorter, hence its tile takes the focus, as at Duplicate
   if (navOf(app).table?.shown) land(app, [slide], slide, true);
   else {
     navOf(app).select([slide], slide);
@@ -109,15 +91,11 @@ async function newSlide(app: App, layout: NewLayout, before = placeAfter(app).be
   return slide;
 }
 
-// the layout of the slide that New Slide adds: the layout of a content, figure, or split slide,
-// as PowerPoint repeats the layout of the slide before, and content after a title, section, or
-// closing slide
 function nextLayout(app: App): Layout {
   const s = navOf(app).selected().at(-1);
   return (['narrow', 'wide', 'figure', 'split'] as Layout[]).find((l) => s?.classList.contains(l)) ?? 'content';
 }
 
-// the slides put into the order of desired, one move per slide out of place
 async function applyOrder(app: App, desired: Element[]): Promise<void> {
   const doc = docOf(app);
   const root = app.slides();
@@ -127,7 +105,6 @@ async function applyOrder(app: App, desired: Element[]): Promise<void> {
   }
 }
 
-// the order after each selected slide is moved one place up, or down, past a slide not selected
 function shifted(list: Element[], moved: Set<Element>, up: boolean): Element[] {
   const out = [...list];
   const idx = up ? out.map((_, i) => i) : out.map((_, i) => out.length - 1 - i);
@@ -145,8 +122,6 @@ const canShift = (app: App, up: boolean): boolean => {
   return t.length > 0 && shifted(list, new Set(t), up).some((s, i) => s !== list[i]);
 };
 
-// the text of slides on the clipboard: the mark, the origin of commands/origin.ts, then each slide
-// as it is written into the file
 export function clipText(app: App, slides: Element[]): string {
   const doc = docOf(app);
   const eol = app.source?.crlf ? '\r\n' : '\n';
@@ -154,8 +129,6 @@ export function clipText(app: App, slides: Element[]): string {
   return [MARK, originComment(texts.join(eol)), ...texts].join(eol);
 }
 
-// the sections of a text of the clipboard, each without the white space before it, or null for a
-// text without the mark
 export function slidesIn(text: string): string[] | null {
   const at = text.indexOf(MARK);
   if (at < 0 || text.slice(0, at).trim()) return null;
@@ -171,17 +144,12 @@ export function slidesIn(text: string): string[] | null {
   return out;
 }
 
-// an id that is already on the page is renamed in a pasted slide, together with the plots that
-// name it, so that a cut slide is pasted with its own ids
 function freshIds(app: App, text: string): string {
   return docOf(app).freshIds(text, (id) => !!document.getElementById(id));
 }
 
-// the text last copied, for a paste from a menu where the clipboard of the system cannot be read
 let copied = '';
 
-// the text of the clipboard read for a paste from a menu. a page without navigator.clipboard,
-// e.g. over http from another machine, is refused as a read that the browser denies
 export async function readClipboard(): Promise<{ text: string; refused: boolean }> {
   if (!navigator.clipboard?.readText) return { text: '', refused: true };
   return navigator.clipboard.readText().then(
@@ -190,8 +158,6 @@ export async function readClipboard(): Promise<{ text: string; refused: boolean 
   );
 }
 
-// the note of a refused read, after which the key pastes from its own event. on a phone, the
-// browser asks for the read again at the next Paste
 export function refusedRead(app: App): void {
   const how = touchOnly() ? 'Choose Paste again and allow it when the browser asks' : `Press ${display('Mod+V', app.platform)} to paste`;
   app.note = { text: `The browser did not let the editor read the clipboard. ${how}`, warn: true };
@@ -229,8 +195,6 @@ async function pasteSlides(app: App, text: string, focusNav: boolean): Promise<b
   return true;
 }
 
-// a section of the Slide Sorter, i.e. a section slide with the slides under it, moved to gap, an
-// index in the slides of the deck, and the name of a section, i.e. the heading of its section slide
 export type MoveSection = { head: Element; gap: number };
 export type RenameSection = { head: Element; text: string };
 
@@ -238,9 +202,6 @@ export const sectionSlides = (app: App, head: Element): Element[] => groupsOf(se
 
 const escapeText = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// the gallery of the eight layouts and of Title Only, drawn as the samples of the layout chooser of
-// commands/layout.ts. a click or Enter on a layout adds a slide of it after the current one. back
-// is the element that had the focus before the gallery was opened
 type Gallery = HTMLDialogElement & { anchor?: HTMLElement | null; back?: HTMLElement | null };
 let gallery: HTMLDialogElement | null = null;
 
@@ -254,16 +215,12 @@ function closeGallery(back = true): void {
   if (back && to?.isConnected) to.focus({ preventScroll: true });
 }
 
-// the gallery opened as a popover at anchor, a button of the toolbar or of the navigator, or else
-// at the right of the row of the current slide in the navigator
 function openGallery(app: App, anchor: HTMLElement | null): void {
   closeGallery(false);
   const dialog = document.createElement('dialog') as Gallery;
   dialog.className = 'beeson-edit-gallery';
   dialog.setAttribute('aria-label', 'New slide');
-  // a popover leaves the toolbar live, and a click on one of its buttons closes the gallery and runs it
   dialog.dataset.popover = '';
-  // a click blurs the button of the toolbar, hence the button is looked up when it is not given
   dialog.back = anchor ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   dialog.anchor = anchor ?? document.querySelector<HTMLElement>('.beeson-edit-top [data-command="slide.gallery"]');
   const head = document.createElement('div');
@@ -321,8 +278,6 @@ function openGallery(app: App, anchor: HTMLElement | null): void {
   (tiles.find((t) => t.layout === nextLayout(app)) ?? tiles[0]).tile.focus();
 }
 
-// the gallery is a popover under its anchor, or over it when there is no room under it, and
-// else at the right of the row of the current slide, inside the window
 function place(dialog: HTMLElement, anchor: HTMLElement | null, row: HTMLElement | null): void {
   const w = dialog.offsetWidth;
   const h = dialog.offsetHeight;
@@ -345,14 +300,8 @@ export function install(app: App): void {
   injectStyle('slide', CSS);
   const c = app.commands;
   const inNav = () => app.region() === 'navigator';
-  // Move Slide Up and Down are dimmed while the slide or a text of it has the focus, where Alt with
-  // an arrow does not move the slide, as it adds a row to a table or moves the caret there. a menu
-  // opened with the pointer leaves the focus where it was
   const onSlide = (a: App) => (a.region() === 'canvas' || a.region() === 'text') && !document.activeElement?.closest('.beeson-edit-menu');
   const slideMenu = (order: number, group = 'slide') => ({ bar: 'Slide', group, order });
-  // Duplicate Slide and Delete Slide list the keys of Edit > Duplicate and Edit > Delete where the
-  // keys hand their runs to them, e.g. in the navigator, and not where the key is dimmed, e.g. with
-  // the caret in a cell
   const keysFrom = (edit: string, id: string) => (a: App) => {
     const c = a.commands.get(edit);
     return c && (c.in ?? DEFAULT_REGIONS).includes(a.region()) && c.runsAs?.(a) === id && a.commands.enabled(edit) ? edit : id;
@@ -370,9 +319,6 @@ export function install(app: App): void {
       run: async (a) => void (await newSlide(a, nextLayout(a))),
     },
     {
-      // Add Section of the menus of the navigator of PowerPoint, as Insert > New Slide > Section:
-      // a section slide after the slide under the pointer or the selected slides, or at the end
-      // from the empty part of the navigator
       id: 'slide.newSection',
       label: 'New Section',
       menu: slideMenu(11),
@@ -414,8 +360,6 @@ export function install(app: App): void {
     {
       id: 'slide.duplicate',
       label: (a) => (targets(a).length > 1 ? 'Duplicate Slides' : 'Duplicate Slide'),
-      // its key is Mod+D of Edit > Duplicate, which runs this command in the navigator and with
-      // nothing selected, and duplicates a selected element
       menu: slideMenu(20),
       listedAs: keysFrom('edit.duplicate', 'slide.duplicate'),
       context: ['slide', 'canvas'],
@@ -426,9 +370,6 @@ export function install(app: App): void {
         const doc = docOf(a);
         const copies: Element[] = [];
         for (const s of targets(a)) {
-          // the copy is the next shown slide of s, and it takes the data-transition of s, which is
-          // the transition into s. the transition out of s is thus set again where the copy changed
-          // it, and the copy leaves by the old transition out of s, which stays on the slide after it
           const out = transitionOf(a, s);
           const raw = nextShown(a, s)?.getAttribute('data-transition') ?? null;
           const copy = await doc.duplicate(s);
@@ -443,7 +384,6 @@ export function install(app: App): void {
     {
       id: 'slide.delete',
       label: (a) => (targets(a).length > 1 ? 'Delete Slides' : 'Delete Slide'),
-      // its key is ⌫ of Edit > Delete, which runs this command in the navigator
       menu: slideMenu(30),
       listedAs: keysFrom('element.delete', 'slide.delete'),
       context: ['slide', 'canvas'],
@@ -465,6 +405,24 @@ export function install(app: App): void {
         const t = targets(a);
         const hide = !t.every(isHidden);
         for (const s of t) docOf(a).hide(s, hide);
+        navOf(a).refresh();
+      },
+    },
+    {
+      id: 'slide.draft',
+      label: 'Set as Draft',
+      keys: { mac: ['Mod+Alt+Shift+D'] },
+      in: ['navigator', 'canvas'],
+      inText: true,
+      menu: slideMenu(41),
+      context: ['slide', 'canvas'],
+      enabled: (a) => targets(a).length > 0,
+      checked: (a) => targets(a).length > 0 && targets(a).every(isDraft),
+      undoable: true,
+      run: (a) => {
+        const t = targets(a);
+        const on = !t.every(isDraft);
+        for (const s of t) docOf(a).setTag(s, { attrs: { [DRAFT]: on ? '' : null } }, on ? 'draft' : 'undraft');
         navOf(a).refresh();
       },
     },
@@ -572,9 +530,6 @@ export function install(app: App): void {
       },
     },
     {
-      // Select All of the Edit menu acts on the elements of the slide, and in the navigator the
-      // same keys select every slide, as in the navigators of Keynote and PowerPoint. it follows
-      // Paste in the thumbnail menu, as in both apps
       id: 'slide.selectAll',
       label: 'Select All Slides',
       keys: { mac: ['Mod+A'], other: ['Mod+A'] },
@@ -584,11 +539,8 @@ export function install(app: App): void {
       run: (a) => land(a, sections(a), a.current(), true),
     },
   ];
-  // an undo and a redo of a slide command show and select the slides from before and after it
   for (const d of defs) c.define(d.undoable ? { ...d, run: (a, arg) => navOf(a).keeping(d.id, () => d.run(a, arg)) } : d);
 
-  // the clipboard keys in the navigator act on the slides, through the events that carry the
-  // clipboard in every browser
   const onClip = (ev: ClipboardEvent) => {
     if (ev.defaultPrevented || app.region() !== 'navigator' || !ready(app)) return;
     if (ev.type === 'paste') {

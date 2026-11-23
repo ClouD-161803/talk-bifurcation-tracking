@@ -1,6 +1,3 @@
-// checks of the surfaces: the effective potential of src/surfaces.ts and its libration points, and the
-// surface of the demo deck in Chrome, stepped through its states live and in the print view
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -9,8 +6,6 @@ import { effectivePotential, levelCurves, librationPoints, sample, surfaceFuncti
 const MU = 0.05;
 const { sum } = effectivePotential(MU);
 
-// the roots of the quintics of Szebehely, Theory of Orbits, 1967, section 4.5, at mu = 0.05, found by
-// bisection in double precision
 const KNOWN = {
   L1: [0.7152253503677874, 0],
   L2: [1.2280936671005072, 0],
@@ -19,7 +14,6 @@ const KNOWN = {
   L5: [0.45, -Math.sqrt(3) / 2],
 };
 
-// the gradient and the Hessian of f at (x, y), by central differences of step h
 function derivatives(f, x, y, h = 1e-4) {
   const fx = (f(x + h, y) - f(x - h, y)) / (2 * h), fy = (f(x, y + h) - f(x, y - h)) / (2 * h);
   const fxx = (f(x + h, y) - 2 * f(x, y) + f(x - h, y)) / h ** 2, fyy = (f(x, y + h) - 2 * f(x, y) + f(x, y - h)) / h ** 2;
@@ -56,7 +50,6 @@ test('the zero-velocity curve at the Jacobi constant of L1 passes through L1', (
   const n = 200, box = [-1.5, 1.5], d = 3 / n;
   const g = sample(sum, box, box, n, n, -3.2);
   const [L1] = librationPoints(MU);
-  // the distance from L1 to the nearest point of the curves at C
   const nearest = (C) => Math.min(...levelCurves(g, box, box, n, n, -C / 2).flatMap((c) => {
     const out = [];
     for (let i = 0; i < c.length; i += 2) out.push(Math.hypot(c[i] - L1.x, c[i + 1] - L1.y));
@@ -77,8 +70,6 @@ test('the cut of the effective potential is at -C/2, with C from data-C or else 
   assert.equal(surfaceFunction('nothing', {}), null);
 });
 
-// the state of the surface and a digest of its canvas, on the slide of the surface or on each of its
-// pages in the print view, for the surfaces of the slides headed title
 const TITLE = 'Explain concepts, visually';
 const surfaces = (title = TITLE) => `Promise.all([...document.querySelectorAll('.surface')].filter((s) => s.getClientRects().length && s.closest('section').querySelector('h2')?.textContent === ${JSON.stringify(title)}).map(async (s) => {
   const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
@@ -98,7 +89,6 @@ test('the surface of the demo deck is drawn at each of its states, live and in t
   await page.goto(deckUrl('test-deck.html', 'still'));
   await page.waitFor(deckSettled);
   const h = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('.surface'))`);
-  // the label of each point shown is at the point, also after a turn of the camera
   const live = [], astray = [];
   const labeled = async (where) => {
     for (const m of (await page.evaluate(`Beeson.surfaces[0].probe()`)).points) {
@@ -110,7 +100,6 @@ test('the surface of the demo deck is drawn at each of its states, live and in t
     live.push(...(await page.evaluate(surfaces())));
     await labeled(`at the state ${states[f + 1]}`);
   }
-  // a drag turns the surface, and the slide is not changed by it as by a swipe
   const turned = await page.evaluate(`(async () => {
     const s = document.querySelector('.surface'), r = s.getBoundingClientRect();
     const drag = (type, x) => s.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', isPrimary: true, clientX: x, clientY: r.top + r.height / 2, bubbles: true }));
@@ -134,20 +123,14 @@ test('the surface of the demo deck is drawn at each of its states, live and in t
   await printView(print, deckUrl('test-deck.html', 'print-pdf&still'));
   const pages = await print.evaluate(surfaces());
   assert.deepEqual(print.errors, []);
-  // the last page is the step that restores the dimmed fragments, at the last state
   assert.deepEqual(pages.map((s) => s.state), [...states, 'cut']);
   assert.equal(new Set(pages.map((s) => s.digest)).size, states.length);
-  // the pixels are not compared one by one, since a canvas read back a few times is moved to the
-  // processor by Chrome, and the copy of the WebGL image is then rounded differently
   pages.forEach((s, i) => {
     const slide = live[Math.min(i, live.length - 1)];
     assert.ok(Math.abs(s.drawn - slide.drawn) < 0.002, `the page of the state ${s.state} is drawn over ${s.drawn}, and the slide over ${slide.drawn}`);
   });
 });
 
-// a change of state takes 1.4 s, or 2.6 s when the cutting plane is slid. a quick step is taken
-// 0.4 s after the last one, while the surface is still being changed, as when a talk is stepped back
-// in a hurry, and a settled step is taken once the change has ended
 test('the points of the surface are drawn on it or hidden at every step, forward to cut and back to gravitational', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -157,7 +140,6 @@ test('the points of the surface are drawn on it or hidden at every step, forward
   const h = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('.surface'))`);
   const probe = `Beeson.surfaces.find((s) => s.el.closest('section') === Reveal.getCurrentSlide()).probe()`;
   const wait = (ms) => new Promise((done) => setTimeout(done, ms));
-  // each state with the index of the fragment that sets it
   const forward = [['gravitational', 0], ['centrifugal', 1], ['effective', 2], ['extrema', 3], ['cut', 4]];
   const backward = [['extrema', 3], ['effective', 2], ['centrifugal', 1], ['gravitational', 0]];
   const TOLERANCE = 0.02;
@@ -202,23 +184,16 @@ test('the points of the surface are drawn on it or hidden at every step, forward
   assert.deepEqual(buried, []);
 });
 
-// the demo slide whose surface points are picked out with data-surface-points, data-surface-accent,
-// and data-surface-violet. its surface is at the state extrema from the fragment of index 4 on
 const MARKED = 'Color the terms and the points';
 const SADDLES = ['L1', 'L2', 'L3'], MAXIMA = ['L4', 'L5'];
-// the opacity of a point left out of data-surface-points, UNLIT in src/surface.ts
 const UNLIT = 0.18;
 
-// the opacity lit and the tone of each point of the surface on the current slide, and the opacity of
-// the label of the point
 const marked = `(() => {
   const s = Beeson.surfaces.find((s) => s.el.closest('section') === Reveal.getCurrentSlide()), p = s.probe();
   const label = (name) => Number(s.el.querySelector('.label[data-at="' + name + '"]').style.opacity);
   return { state: p.state, settled: p.settled, points: Object.fromEntries(p.points.map((m) => [m.name, { lit: m.lit, tone: m.tone, label: label(m.name) }])) };
 })()`;
 
-// asserts that the points named in lit are at full opacity in tone, and the other points are dimmed
-// to UNLIT in the color of the text. with every point in lit, every point is in the color of the text
 function expectPoints(seen, lit, tone, where) {
   const every = lit.length === SADDLES.length + MAXIMA.length;
   for (const [name, m] of Object.entries(seen.points)) {
@@ -236,7 +211,6 @@ test('the points of a surface are dimmed and colored by data-surface-points, dat
   await page.waitFor(deckSettled);
   const h = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(MARKED)})`);
 
-  // the fragment that sets extrema does not have the attributes, hence every point is lit
   await page.evaluate(`Reveal.slide(${h}, 0, 3)`);
   const all = await page.evaluate(marked);
   assert.equal(all.state, 'extrema');
@@ -245,8 +219,6 @@ test('the points of a surface are dimmed and colored by data-surface-points, dat
   await page.evaluate(`Reveal.slide(${h}, 0, 4)`);
   const saddles = await page.evaluate(marked);
   expectPoints(saddles, SADDLES, 'accent', 'at the step of the saddles');
-  // a dimmed label is faded with its point. a lit label is at least at BEHIND of src/surface.ts, the
-  // opacity of a point behind the surface
   for (const name of MAXIMA) assert.ok(saddles.points[name].label <= UNLIT + 1e-3, `the label of ${name} is at ${saddles.points[name].label}`);
   for (const name of SADDLES) assert.ok(saddles.points[name].label >= 0.3 - 1e-3, `the label of ${name} is at ${saddles.points[name].label}`);
 
@@ -256,9 +228,6 @@ test('the points of a surface are dimmed and colored by data-surface-points, dat
   expectPoints(await page.evaluate(marked), SADDLES, 'accent', 'after the step back to the saddles');
   assert.deepEqual(page.errors, []);
 
-  // without still, a step that changes only the points leaves the sheets settled. the points are not
-  // changed in the frame of the step, and they reach their targets in a few time constants of 0.15 s.
-  // the page is set to motion, since a runner may prefer reduced motion, under which the points jump
   const live = await browser.newPage({ motion: true });
   await live.goto(deckUrl('test-deck.html'));
   await live.waitFor(deckSettled);
@@ -270,7 +239,6 @@ test('the points of a surface are dimmed and colored by data-surface-points, dat
   assert.equal(step.points.L4.lit, 1);
   assert.equal(step.points.L4.tone, 'text');
   assert.equal(step.points.L1.tone, 'accent');
-  // the end of the fade is waited for, since a crowded runner may draw a frame or two in 1.5 s
   await live.waitFor(`Object.entries((${marked}).points).every(([name, m]) => Math.abs(m.lit - (${JSON.stringify(SADDLES)}.includes(name) ? 1 : ${UNLIT})) < 1e-3)`, 60000);
   expectPoints(await live.evaluate(marked), SADDLES, 'accent', 'after the live step of the saddles');
   assert.deepEqual(live.errors, []);
@@ -287,7 +255,6 @@ test('a surface takes the camera of the surface with the same attributes on the 
   assert.equal(next, h + 1);
   await page.evaluate(`Reveal.slide(${h}, 0, 3)`);
   const camera = (s) => `{ azimuth: ${s}.azimuth, elevation: ${s}.elevation, resume: ${s}.resume }`;
-  // a diagonal drag turns the camera of the first surface in azimuth and elevation, and pauses its turn
   const handed = await page.evaluate(`(() => {
     const s = document.querySelector('.surface'), r = s.getBoundingClientRect();
     const drag = (type, x, y) => s.dispatchEvent(new PointerEvent(type, { pointerType: 'touch', isPrimary: true, clientX: x, clientY: y, bubbles: true }));

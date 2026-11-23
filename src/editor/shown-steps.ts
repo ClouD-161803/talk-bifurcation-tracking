@@ -1,43 +1,27 @@
-// the steps of a slide that the editor shows at once. every step of a slide is shown while it is
-// edited, but an element that is hidden at a step, e.g. a derivation faded out and replaced by
-// another one in its place, would then lie under the elements shown after it. the steps of such a
-// slide are cut into ranges at each step at which an element is hidden, and the slide is shown one
-// range at a time, as it is at the last step of the range. a switch in the status bar and the same
-// buttons as tabs under the slide choose the range, and a slide without such an element is shown
-// whole, without them
-
+import type { TabPick } from './app.ts';
 import { injectStyle } from './ui/dom.ts';
 
 export type StepRange = { from: number; to: number };
-export type Fragment = { el: Element; step: number; kind: 'in' | 'out' | 'only' };
+export type Fragment = { el: Element; step: number; kind: 'in' | 'out' | 'only' | 'span'; end: number };
 
-// a fade-out fragment is hidden from its step on, and current-visible and fade-in-then-out are shown
-// at their step only. semi-fade-out and fade-in-then-semi-out are still seen, and do not cut a range
 const OUT = '.fade-out';
 const ONLY = '.current-visible, .fade-in-then-out';
 export const OFF = 'beeson-off';
+export const STACK = 'r-stack';
+export const CHILD = '.r-stack > *';
 
-// the index of a fragment as the file gives it. reveal.js numbers the indexes of the page from 0
-// at its start, and an edit writes the index of the file into the page, hence the editor reads the
-// indexes of the tags, set at the install of commands/steps.ts, and the page only without it
 let readIndex = (el: Element): string | null => el.getAttribute('data-fragment-index');
 export function setIndexReader(read: (el: Element) => string | null): void {
   readIndex = read;
 }
 export const fragmentIndex = (el: Element): string | null => readIndex(el);
 
-// the index of each element that the editor put into a text element from a text, as the text gives it,
-// i.e. in the numbers of the file. reveal.js numbers it again with the page, and the element does
-// not have a tag in the file, hence this index is the one written for it
 const placed = new WeakMap<Element, string>();
 export function notePlaced(root: Element): void {
   for (const el of root.querySelectorAll('[data-fragment-index]')) placed.set(el, el.getAttribute('data-fragment-index')!);
 }
 export const placedIndex = (el: Element): string | undefined => placed.get(el);
 
-// the index of each copy set to the index of the file of its element of live, the elements of a
-// copy of a part of the page with an index, in the same order, so that a text taken from the page
-// gives the numbers of the file
 export function fileIndexes(live: Element[], copies: Element[]): void {
   copies.forEach((c, i) => {
     const v = live[i] ? readIndex(live[i]) : null;
@@ -45,15 +29,31 @@ export function fileIndexes(live: Element[], copies: Element[]): void {
   });
 }
 
-// the fragments of a slide outside its notes, with their steps numbered from 1 in the order of
-// reveal.js: by data-fragment-index, then the fragments without one in document order
+const own = (slide: Element, el: Element): boolean => !el.closest('aside.notes') && el.closest('section') === slide;
+
+export const stacksOf = (slide: Element): Element[] => [...slide.querySelectorAll(`.${STACK}`)].filter((s) => own(slide, s));
+
+export const childrenOf = (stack: Element): Element[] => [...stack.children].filter((c) => !c.hasAttribute('data-generated'));
+
 export function fragmentsOf(slide: Element): Fragment[] {
-  const els = [...slide.querySelectorAll('.fragment')].filter((el) => !el.closest('aside.notes'));
-  const given = els.map((el) => parseFloat(readIndex(el) ?? ''));
+  const kids = new Set(stacksOf(slide).flatMap(childrenOf));
+  const els = [...slide.querySelectorAll('*')].filter((el) => (el.classList.contains('fragment') || kids.has(el)) && own(slide, el));
+  const steps = els.filter((el) => el.classList.contains('fragment'));
+  const given = steps.map((el) => parseFloat(readIndex(el) ?? ''));
   let next = Math.max(0, ...given.filter((i) => !Number.isNaN(i))) + 1;
   const index = given.map((i) => (Number.isNaN(i) ? next++ : i));
   const order = [...new Set(index)].sort((a, b) => a - b);
-  return els.map((el, i) => ({ el, step: order.indexOf(index[i]) + 1, kind: el.matches(OUT) ? 'out' : el.matches(ONLY) ? 'only' : 'in' }));
+  const stepOf = (el: Element) => {
+    const i = steps.indexOf(el);
+    return i < 0 ? 0 : order.indexOf(index[i]) + 1;
+  };
+  return els.map((el) => {
+    const step = stepOf(el);
+    if (!kids.has(el)) return { el, step, kind: el.matches(OUT) ? 'out' : el.matches(ONLY) ? 'only' : 'in', end: Infinity };
+    const kin = childrenOf(el.parentElement as Element);
+    const later = kin[kin.indexOf(el) + 1];
+    return { el, step, kind: 'span', end: later ? stepOf(later) : Infinity };
+  });
 }
 
 export function rangesOf(slide: Element): StepRange[] {
@@ -61,25 +61,29 @@ export function rangesOf(slide: Element): StepRange[] {
   const last = Math.max(0, ...fragments.map((f) => f.step));
   const cuts = new Set<number>();
   for (const f of fragments) {
-    const at = f.kind === 'out' ? f.step : f.kind === 'only' ? f.step + 1 : 0;
+    const at = f.kind === 'out' ? f.step : f.kind === 'only' ? f.step + 1 : f.kind === 'span' ? f.end : 0;
     if (at > 0 && at <= last) cuts.add(at);
   }
   const starts = [0, ...[...cuts].sort((a, b) => a - b)];
   return starts.map((from, i) => ({ from, to: i + 1 < starts.length ? starts[i + 1] - 1 : last }));
 }
 
-export const shownAt = (f: Fragment, step: number): boolean => (f.kind === 'in' ? f.step <= step : f.kind === 'out' ? step < f.step : step === f.step);
+export const shownAt = (f: Fragment, step: number): boolean =>
+  f.kind === 'in' ? f.step <= step : f.kind === 'out' ? step < f.step : f.kind === 'span' ? f.step <= step && step < f.end : step === f.step;
 
-// the fragments not shown at the last step of range are marked with OFF, together with the
-// fragments inside them, since the styles of the editor show every fragment. the fragments are in
-// document order, hence an outer fragment is marked before the ones inside it. a null range clears
-// the marks
 export function showRange(slide: Element, range: StepRange | null): void {
   for (const f of fragmentsOf(slide)) {
-    const up = f.el.parentElement?.closest('.fragment');
+    const up = f.el.parentElement?.closest(`.fragment, ${CHILD}`);
     f.el.classList.toggle(OFF, !!range && (!shownAt(f, range.to) || (!!up && up.classList.contains(OFF))));
   }
 }
+
+export const completeRange = (slide: Element): StepRange | null => {
+  const ranges = rangesOf(slide);
+  return ranges.length > 1 ? ranges[ranges.length - 1] : null;
+};
+
+export const shownChild = (slide: Element): Element | null => stacksOf(slide).flatMap(childrenOf).find((c) => !c.classList.contains(OFF)) ?? null;
 
 export function label(range: StepRange, last: boolean): string {
   if (range.from === 0) return range.to === 0 ? 'Before step 1' : `Up to step ${range.to}`;
@@ -87,93 +91,138 @@ export function label(range: StepRange, last: boolean): string {
   return range.from === range.to ? `Step ${range.from}` : `Steps ${range.from}–${range.to}`;
 }
 
-// the tabs hang under the slide on the pasteboard, or above the slide when the canvas does not have
-// the room, so that the versions of a text stacked in one place can be found without a cover over
-// the slide
 const CSS = `
 .beeson-step-tabs { position: fixed; z-index: 52; display: flex; gap: 2px; font: 12px/1 var(--ed-font); }
 .beeson-step-tabs[hidden], html.beeson-previewing .beeson-step-tabs { display: none; }
 .beeson-step-tabs button { min-width: 24px; height: 26px; padding: 0 10px; border: 1px solid var(--ed-line); border-radius: 6px; background: var(--ed-panel); color: var(--ed-text); font: inherit; white-space: nowrap; cursor: default; }
 .beeson-step-tabs button:hover { background: var(--ed-bg); }
 .beeson-step-tabs button[aria-pressed="true"] { border-color: var(--ed-select); background: var(--ed-select); color: var(--ed-on-select); }
+.beeson-step-tabs button.add { min-width: 26px; padding: 0 8px; font-size: 15px; }
 .beeson-step-tabs button:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 `;
-// the gap between the slide and its tabs, in CSS px
 const GAP = 4;
+const HOLD_MS = 500;
+export type TabAction = 'add' | 'menu' | 'delete';
+
+export type Pick = TabPick;
 
 export class ShownSteps {
-  readonly box = document.createElement('span');
   readonly tabs = document.createElement('div');
   private readonly slide: () => Element | null;
   private readonly onChange: () => void;
-  // the range chosen on each slide, kept while the editor is open
-  private readonly chosen = new WeakMap<Element, number>();
+  private readonly chosen = new WeakMap<Element, Pick>();
   private key = '';
+  private here: Element | null = null;
+  private pressed = false;
+  act: ((what: TabAction, at: DOMRect, child: Element | null) => void) | null = null;
 
   constructor(slide: () => Element | null, onChange: () => void) {
     this.slide = slide;
     this.onChange = onChange;
-    this.box.className = 'beeson-shown-steps';
     this.tabs.className = 'beeson-step-tabs';
-    for (const el of [this.box, this.tabs]) {
-      el.setAttribute('role', 'group');
-      el.setAttribute('aria-label', 'Steps shown on the slide');
-      el.hidden = true;
-    }
+    this.tabs.setAttribute('role', 'group');
+    this.tabs.setAttribute('aria-label', 'Steps shown on the slide');
+    this.tabs.hidden = true;
     injectStyle('step-tabs', CSS);
     document.body.append(this.tabs);
   }
 
-  // the marks, the switch, and the tabs follow the current slide and its steps
+  private arrive(slide: Element | null): void {
+    if (slide === this.here) return;
+    this.here = slide;
+    if (slide && stacksOf(slide).length) this.chosen.delete(slide);
+  }
+
+  private at(slide: Element, ranges: StepRange[]): number {
+    const { child, i } = this.chosen.get(slide) ?? { child: null, i: ranges.length - 1 };
+    const f = child && slide.contains(child) ? fragmentsOf(slide).find((x) => x.el === child) : undefined;
+    if (!f) return Math.min(i, ranges.length - 1);
+    const fits = ranges.flatMap((r, k) => (shownAt(f, r.to) ? [k] : []));
+    return fits.includes(i) ? i : (fits[0] ?? 0);
+  }
+
   refresh(): void {
-    // a preview of the steps shows every range in turn, and the last one at its end
     if (document.documentElement.classList.contains('beeson-previewing')) return;
     const slide = this.slide();
+    this.arrive(slide);
     const ranges = slide ? rangesOf(slide) : [];
-    if (!slide || ranges.length < 2) {
+    if (!slide || (ranges.length < 2 && !stacksOf(slide).length)) {
       if (slide) showRange(slide, null);
-      for (const el of [this.box, this.tabs]) {
-        el.hidden = true;
-        el.replaceChildren();
-      }
+      this.tabs.hidden = true;
+      this.tabs.replaceChildren();
       this.key = '';
       return;
     }
-    const at = Math.min(this.chosen.get(slide) ?? 0, ranges.length - 1);
+    const at = this.at(slide, ranges);
     showRange(slide, ranges[at]);
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
-    this.box.hidden = this.tabs.hidden = false;
-    // the buttons are made again only for other labels, so that a pressed button keeps the focus
-    const key = labels.join('|');
+    this.tabs.hidden = false;
+    const stacked = stacksOf(slide).length > 0;
+    const key = [...labels, stacked ? '+' : ''].join('|');
     if (key !== this.key) {
       this.key = key;
-      const head = document.createElement('span');
-      head.textContent = 'Shows';
-      const buttons = () => labels.map((text, i) => {
+      const tabs = labels.map((text, i) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = text;
         b.title = `Show the slide as it is at step ${ranges[i].to}, without the elements hidden by then and those shown after it`;
         b.addEventListener('click', (ev) => {
           if (ev.detail > 0) b.blur();
+          if (this.pressed) {
+            this.pressed = false;
+            return;
+          }
           const now = this.slide();
           if (now) this.choose(now, i);
         });
+        const menu = () => {
+          const now = this.slide();
+          if (now) this.act?.('menu', b.getBoundingClientRect(), this.childAt(now, i));
+        };
+        b.addEventListener('contextmenu', (ev) => {
+          ev.preventDefault();
+          menu();
+        });
+        b.addEventListener('keydown', (ev) => {
+          if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const now = this.slide();
+          if (now) this.act?.('delete', b.getBoundingClientRect(), this.childAt(now, i));
+        });
+        b.addEventListener('pointerdown', (ev) => {
+          if (ev.pointerType !== 'touch') return;
+          this.pressed = false;
+          const timer = setTimeout(() => {
+            this.pressed = true;
+            menu();
+          }, HOLD_MS);
+          const end = () => clearTimeout(timer);
+          b.addEventListener('pointerup', end, { once: true });
+          b.addEventListener('pointercancel', end, { once: true });
+          b.addEventListener('pointerleave', end, { once: true });
+        });
         return b;
       });
-      this.box.replaceChildren(head, ...buttons());
-      this.tabs.replaceChildren(...buttons());
-    }
-    for (const el of [this.box, this.tabs]) {
-      el.querySelectorAll('button').forEach((b, i) => {
-        b.setAttribute('aria-pressed', String(i === at));
-        b.classList.toggle('on', i === at);
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'add';
+      add.textContent = '+';
+      add.title = 'Add a tab with a copy of the tab shown, just before the next tab';
+      add.setAttribute('aria-label', 'Add Tab');
+      add.addEventListener('click', (ev) => {
+        if (ev.detail > 0) add.blur();
+        this.act?.('add', add.getBoundingClientRect(), null);
       });
+      this.tabs.replaceChildren(...tabs, ...(stacked ? [add] : []));
     }
+    this.tabs.querySelectorAll('button:not(.add)').forEach((b, i) => {
+      b.setAttribute('aria-pressed', String(i === at));
+      b.classList.toggle('on', i === at);
+    });
     this.place();
   }
 
-  // the tabs are set at the lower left corner of the slide, outside it, and clipped to the cell
   private place(): void {
     const cell = document.querySelector('.beeson-edit-canvas')?.getBoundingClientRect();
     const slide = document.querySelector('.reveal:not(.beeson-peek)')?.getBoundingClientRect();
@@ -184,7 +233,6 @@ export class ShownSteps {
     Object.assign(this.tabs.style, { left: `${x}px`, top: `${y}px`, clipPath: `inset(${cell.top - y}px ${x + w - cell.right}px ${y + h - cell.bottom}px ${cell.left - x}px)` });
   }
 
-  // the last range of the slide is chosen, e.g. at the end of a preview of its steps
   showLast(): void {
     const slide = this.slide();
     const ranges = slide ? rangesOf(slide) : [];
@@ -192,16 +240,36 @@ export class ShownSteps {
     else this.refresh();
   }
 
+  childAt(slide: Element, i: number): Element | null {
+    const range = rangesOf(slide)[i];
+    const kids = new Set(stacksOf(slide).flatMap(childrenOf));
+    return (range && fragmentsOf(slide).find((f) => kids.has(f.el) && shownAt(f, range.to))?.el) || null;
+  }
+
+  shown(slide: Element): Pick {
+    return this.chosen.get(slide) ?? { child: null, i: rangesOf(slide).length - 1 };
+  }
+
+  show(slide: Element, pick: Pick): void {
+    if (slide === this.slide()) this.arrive(slide);
+    this.chosen.set(slide, pick);
+    if (slide === this.slide()) this.refresh();
+  }
+
   private choose(slide: Element, i: number): void {
-    this.chosen.set(slide, i);
+    this.arrive(slide);
+    const ranges = rangesOf(slide);
+    showRange(slide, ranges[i] ?? null);
+    this.chosen.set(slide, { child: shownChild(slide), i });
     this.refresh();
     this.onChange();
   }
 
-  // the range in which el is shown is chosen, e.g. for an undo of a change to a hidden element
   reveal(el: Element): void {
     const slide = this.slide();
-    if (!slide || !slide.contains(el) || !el.closest(`.${OFF}`)) return;
+    if (!slide || !slide.contains(el)) return;
+    if (slide !== this.here) this.refresh();
+    if (!el.closest(`.${OFF}`)) return;
     const ranges = rangesOf(slide);
     for (let i = 0; i < ranges.length; i++) {
       showRange(slide, ranges[i]);
@@ -214,21 +282,12 @@ export class ShownSteps {
   }
 }
 
-// the step model of a slide, pure and without the DOM. the elements of a slide that can be a step
-// are items in document order, and a plan puts them into groups, i.e. the steps in their order,
-// each with the items shown together, and into the finals, the items with data-final, which are
-// shown last, one by one. every change of the Steps tab is a new plan, written as the indexes of
-// the slide by itemsOf
-
 export type Item = { fragment: boolean; index: number | null; final: boolean };
 export type Plan = { groups: number[][]; finals: number[] };
-// an item is shown at a click, or together with the item before it, as Start in PowerPoint
 export type Start = 'click' | 'with';
 
 const copy = (p: Plan): Plan => ({ groups: p.groups.map((g) => [...g]), finals: [...p.finals] });
 
-// the plan of the items in the order of reveal.js: by index, then the fragments without an index
-// one by one in document order. a fragment without an index and with data-final is shown last
 export function planOf(items: Item[]): Plan {
   const byIndex = new Map<number, number[]>();
   const loose: number[][] = [];
@@ -243,7 +302,6 @@ export function planOf(items: Item[]): Plan {
   return { groups: [...indexed, ...loose], finals };
 }
 
-// the step of item i counted from 0 over the groups and then the finals, or -1 with the slide
 export function stepAt(plan: Plan, i: number): number {
   const g = plan.groups.findIndex((g) => g.includes(i));
   if (g >= 0) return g;
@@ -251,15 +309,12 @@ export function stepAt(plan: Plan, i: number): number {
   return f >= 0 ? plan.groups.length + f : -1;
 }
 
-// the first item of a group in document order is shown at a click, and the others with it
 export function startOf(plan: Plan, i: number): Start | null {
   const g = plan.groups.find((g) => g.includes(i));
   if (g) return Math.min(...g) === i ? 'click' : 'with';
   return plan.finals.includes(i) ? 'click' : null;
 }
 
-// the items as the plan writes them. the group at position k gets the index base + k, where base
-// is the lowest index of the items or 1, and a final item does not have an index
 export function itemsOf(items: Item[], plan: Plan): Item[] {
   const given = items.filter((it) => it.fragment && it.index !== null).map((it) => it.index as number);
   const base = given.length ? Math.min(1, ...given) : 1;
@@ -278,8 +333,6 @@ function without(plan: Plan, i: number): Plan {
   return p;
 }
 
-// item i put into a step of its own in the gap before the group at position gap of plan, or with
-// the slide for null. a gap past the last group is a new last step
 export function moveTo(plan: Plan, i: number, gap: number | null): Plan {
   const p = without(plan, i);
   if (gap === null) return p;
@@ -288,8 +341,20 @@ export function moveTo(plan: Plan, i: number, gap: number | null): Plan {
   return p;
 }
 
-// item i put into the group at position to, into a new first or last group, or with the slide for
-// null
+export function moveTabTo(plan: Plan, head: number, inner: number[], gap: number): Plan {
+  const own = plan.groups.findIndex((g) => g.includes(head));
+  const ownInner = own >= 0 ? plan.groups[own].filter((x) => inner.includes(x)) : [];
+  const later = plan.groups.map((g, k) => (k === own ? [] : g.filter((x) => inner.includes(x)))).filter((g) => g.length);
+  const group = [[head, ...ownInner], ...later];
+  const moved = new Set(group.flat());
+  const p = copy(plan);
+  p.groups = p.groups.map((g) => g.filter((x) => !moved.has(x))).filter((g) => g.length);
+  p.finals = p.finals.filter((x) => x !== head);
+  const at = plan.groups.slice(0, Math.max(0, gap)).filter((g) => g.some((x) => !moved.has(x))).length;
+  p.groups.splice(at, 0, ...group);
+  return p;
+}
+
 export function setStep(plan: Plan, i: number, to: number | 'first' | 'last' | null): Plan {
   if (to === 'first') return moveTo(plan, i, 0);
   if (to === null) return moveTo(plan, i, null);
@@ -302,8 +367,6 @@ export function setStep(plan: Plan, i: number, to: number | 'first' | 'last' | n
   return p;
 }
 
-// With Previous joins the group of item i, with the items shown with it, to the group before, and
-// On Click starts a new group after it at item i, with the items of its group that follow it
 export function setStart(plan: Plan, i: number, start: Start): Plan {
   const g = plan.groups.findIndex((g) => g.includes(i));
   if (g < 0 || startOf(plan, i) === start) return plan;
@@ -319,7 +382,6 @@ export function setStart(plan: Plan, i: number, start: Start): Plan {
   return p;
 }
 
-// item i shown last, after every step, or put back as the last step
 export function setFinal(plan: Plan, i: number, on: boolean): Plan {
   if (plan.finals.includes(i) === on) return plan;
   const p = without(plan, i);
@@ -328,9 +390,6 @@ export function setFinal(plan: Plan, i: number, on: boolean): Plan {
   return p;
 }
 
-// item i moved one step earlier or later, as with the arrows of the Animation Pane of PowerPoint:
-// an item alone in its group swaps with the group beside it, and an item shown with others gets a
-// step of its own beside its group
 export function shift(plan: Plan, i: number, by: -1 | 1): Plan {
   const g = plan.groups.findIndex((g) => g.includes(i));
   if (g < 0) return plan;
@@ -342,16 +401,11 @@ export function shift(plan: Plan, i: number, by: -1 | 1): Plan {
   return p;
 }
 
-// every eligible item in a step of its own in document order, the finals kept last, and every
-// other item with the slide
 export function oneByOne(plan: Plan, eligible: boolean[]): Plan {
   const finals = plan.finals.filter((i) => eligible[i]);
   return { groups: eligible.flatMap((ok, i) => (ok && !finals.includes(i) ? [[i]] : [])), finals };
 }
 
-// the index named by a data-keep of n after the items before were written as after. the step of
-// index n is followed to its new index, which is that of the earliest of its items still in a
-// group, and n is kept when none is
 export function remapKeep(n: number, before: Item[], after: Item[]): number {
   const moved = before.flatMap((it, i) => (it.fragment && it.index === n && after[i].fragment && after[i].index !== null ? [after[i].index as number] : []));
   return moved.length ? Math.min(...moved) : n;

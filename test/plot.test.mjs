@@ -1,11 +1,7 @@
-// checks of the plot element of src/plot.ts, i.e. the parser of the JSON script, the interpolation
-// between frames, the loop, and the markup of the labels. a plot of a test deck is played and
-// printed in Chrome
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
-import { cells, formatNumber, frameAt, framesAt, loopFade, loopFrame, nearest, parseMarkup, parsePlot, scaled, timeAt, traceTo, valueAt } from '../src/plot.ts';
+import { cells, formatNumber, frameAt, framesAt, loopFade, loopFrame, nearest, parsePlot, plotTexts, scaled, timeAt, traceTo, valueAt } from '../src/plot.ts';
 
 const minimal = () => ({
   panels: [{ id: 'p', x: { range: [0, 1] }, y: { range: [0, 1] } }],
@@ -161,7 +157,6 @@ test('a trace ends between two frames', () => {
 });
 
 test('the loop runs over the frames, holds the last one, and starts again', () => {
-  // 11 frames in 2 s, held for 1 s
   assert.equal(loopFrame(0, 11, 2, 1), 0);
   assert.equal(loopFrame(1, 11, 2, 1), 5);
   assert.equal(loopFrame(2.5, 11, 2, 1), 10);
@@ -170,7 +165,6 @@ test('the loop runs over the frames, holds the last one, and starts again', () =
 });
 
 test('the frames of a tab with times are shown at their times, and the loop runs over these times', () => {
-  // 3 frames at 0, 0.5, and 2 s, held for 1 s, where the duration of 99 s is not used
   const times = [0, 0.5, 2];
   assert.equal(timeAt(0.5, 3, 99, times), 0.25);
   assert.equal(timeAt(1.5, 3, 99, times), 1.25);
@@ -179,21 +173,17 @@ test('the frames of a tab with times are shown at their times, and the loop runs
   assert.equal(loopFrame(1.25, 3, 99, 1, times), 1.5);
   assert.equal(loopFrame(2.5, 3, 99, 1, times), 2);
   assert.equal(loopFrame(4.25, 3, 99, 1, times), 1.5);
-  // without times, the frames are shown at even steps over the duration
   assert.equal(timeAt(1.5, 3, 4, null), 3);
   assert.equal(frameAt(3, 3, 4, null), 1.5);
 });
 
 test('the moving marks are held through the hold and faded in at the start of the next pass', () => {
-  // passes of 2 s, each held for 1 s, with a fade of 0.5 s, over which the held frame is faded out
-  // at 1 minus the opacity of the next pass
   assert.equal(loopFade(0, 2, 1, 0.5), 1);
   assert.equal(loopFade(2.4, 2, 1, 0.5), 1);
   assert.equal(loopFade(2.99, 2, 1, 0.5), 1);
   assert.equal(loopFade(3, 2, 1, 0.5), 0);
   assert.equal(loopFade(3.25, 2, 1, 0.5), 0.5);
   assert.equal(loopFade(3.5, 2, 1, 0.5), 1);
-  // a fade longer than a pass is cut to the pass, and a fade of 0 keeps the marks
   assert.equal(loopFade(4, 2, 1, 4), 0.5);
   assert.equal(loopFade(3.1, 2, 1, 0), 1);
 });
@@ -217,27 +207,18 @@ test('a trace is read as a list of points, or with the last frame of its faint l
   assert.throws(() => parsePlot(plot({ points: points.slice(1) })), { message: /^tabs\[0\]\.data\.m: 2 frames are given, and the tab has 3 values/ });
 });
 
-test('a label is set in runs of the markup', () => {
-  assert.deepEqual(parseMarkup('$\\lambda_h = 3$'), [
-    { text: 'λ', italic: true, shift: null },
-    { text: 'h', italic: true, shift: 'sub' },
-    { text: ' = 3', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$\\mathrm{L}_{12}$ family'), [
-    { text: 'L', italic: false, shift: null },
-    { text: '12', italic: false, shift: 'sub' },
-    { text: ' family', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$\\mathcal{EH}^{+}$ and $\\mathcal{N}$'), [
-    { text: 'ℰℋ', italic: false, shift: null },
-    { text: '+', italic: false, shift: 'sup' },
-    { text: ' and 𝒩', italic: false, shift: null },
-  ]);
-  assert.deepEqual(parseMarkup('$-1$ and -1'), [{ text: '−1 and -1', italic: false, shift: null }]);
-  assert.deepEqual(parseMarkup('$x^{2}$'), [
-    { text: 'x', italic: true, shift: null },
-    { text: '2', italic: false, shift: 'sup' },
-  ]);
+test('every text of a plot is listed once, for its formulas to be typeset ahead', () => {
+  const spec = minimal();
+  spec.parameter = { label: '$A$' };
+  spec.panels[0].title = 'panel';
+  spec.panels[0].x = { range: [0, 1], ticks: [0, { at: 1, text: '$x_1$' }], title: '$x$' };
+  spec.panels[0].labels = [{ at: [0, 0], text: '$\\LL{1}$' }];
+  spec.marks.push({ id: 'l', panel: 'p', kind: 'label' }, { id: 'e', panel: 'p', kind: 'events' });
+  spec.tabs[0].label = 'first';
+  spec.tabs[0].panels = { p: { title: '$p$' } };
+  spec.tabs[0].data.l = { at: [0, 0], text: ['$t = 0$', '$t = 1$'] };
+  spec.tabs[0].data.e = [{ frame: 1, at: [0, 0], text: 'crossing' }, { frame: 1, at: [1, 1], text: '$A$' }];
+  assert.deepEqual(plotTexts(parsePlot(spec)), ['$A$', 'panel', '$x$', '0', '$x_1$', '$\\LL{1}$', 'first', '$p$', '$t = 0$', '$t = 1$', 'crossing']);
 });
 
 test('a number is written with a minus sign, and without the sign of a zero', () => {
@@ -248,8 +229,6 @@ test('a number is written with a minus sign, and without the sign of a zero', ()
   assert.equal(formatNumber(-0.001, 2), '0.00');
 });
 
-// the state of the plot at every frame for 3 s: the pass, the opacity of the moving marks and of the
-// copies of the held frame, the paths of the trace and of its copy, and the faint line
 const crossfade = `(async () => {
   const view = Beeson.plots[0], samples = [];
   const d = (node) => node?.querySelector('.plot-trace')?.getAttribute('d') ?? null;
@@ -277,26 +256,20 @@ test('at the restart of a loop, the held frame is faded out while the next pass 
   await page.goto(deckUrl('test/pages/plot-loop.html'));
   await page.waitFor(deckSettled);
   const { samples, ghost } = await page.evaluate(crossfade);
-  // the faint line of the trace ends at its second frame
   assert.equal((ghost.match(/[ML]/g) ?? []).length, 2);
   const fading = samples.filter((s) => s.held.length);
   assert.ok(fading.length > 3, `${fading.length} frames of a crossfade are drawn`);
   for (const s of samples) {
-    // the opacity of the marks and of the held copies sums to 1 at every frame, hence the plot is
-    // not empty at the restart
     assert.ok(s.live.every((a) => Math.abs(a - s.fade) < 1e-6), JSON.stringify(s));
     if (s.held.length) {
       assert.equal(s.held.length, s.live.length);
       assert.ok(s.held.every((a) => Math.abs(a + s.fade - 1) < 1e-6), JSON.stringify(s));
       assert.ok(s.pass > 0 && s.fade < 1);
-      // a text of the held frame is gone before a text of the next pass is shown
       assert.equal(s.heldText.length, s.liveText.length);
       assert.ok(s.heldText.every((a) => Math.abs(a - Math.max(0, 1 - 2 * s.fade)) < 1e-6), JSON.stringify(s));
       assert.ok(s.liveText.every((a) => Math.abs(a - Math.max(0, 2 * s.fade - 1)) < 1e-6), JSON.stringify(s));
     } else assert.equal(s.fade, 1, JSON.stringify(s));
   }
-  // the copy holds the whole path, while the next pass is traced from its first frame. the path is
-  // read on the frame before a crossfade, since a slow runner may start the samples after a pass
   const k = samples.findIndex((s, i) => i > 0 && s.held.length && !samples[i - 1].held.length);
   assert.ok(k > 0, 'a crossfade begins within the samples');
   const full = samples[k - 1].trace;
@@ -306,12 +279,13 @@ test('at the restart of a loop, the held frame is faded out while the next pass 
 });
 
 const state = `(() => {
+  const textOf = (el) => el.querySelector('[aria-label]')?.getAttribute('aria-label') ?? el.textContent;
   const view = Beeson.plots.find((p) => p.el.dataset.plot === 'data');
   return {
     playing: view.playing,
     frame: view.frame,
     hidden: [...view.el.querySelectorAll('.plot-panel')].map((g) => g.classList.contains('plot-hidden')),
-    tab: view.el.querySelector('[aria-selected="true"]').textContent,
+    tab: textOf(view.el.querySelector('[aria-selected="true"]')),
     ghosts: view.el.querySelectorAll('.plot-ghost').length,
     traces: view.el.querySelectorAll('.plot-trace').length,
   };
@@ -328,7 +302,6 @@ test('a plot is played while its slide is shown, and its steps show a panel and 
   assert.equal(first.playing, true);
   assert.deepEqual(first.hidden, [false, true]);
   assert.equal(first.tab, 'one');
-  // the trace bare is drawn without its ghost
   assert.equal(first.traces, 2);
   assert.equal(first.ghosts, 1);
   await page.waitFor(`${state}.frame > ${first.frame}`);
@@ -426,11 +399,17 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
       head: view.el.querySelector('.plot-dot')?.style.color };
   })()`;
 
-  await page.evaluate('Reveal.next()');
-  // the sample is kept in the same call as its test, between frames 2 and 3, where the newest
-  // segment is within half a frame of the head, i.e. 0.2 s of a fade of 0.6 s
-  await page.waitFor(`(() => { const s = ${probe}; window.sample = s; return s.playing && s.frame >= 2 && s.frame < 3; })()`, 5000);
-  const run = await page.evaluate('window.sample');
+  await page.evaluate(`(() => {
+    window.samples = [];
+    const record = () => { const s = ${probe}; window.samples.push(s); if (s.playing || window.samples.length < 3) requestAnimationFrame(record); };
+    Reveal.next();
+    requestAnimationFrame(record);
+  })()`);
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await page.waitFor(`!${probe}.playing`, 5000);
+  const samples = await page.evaluate('window.samples');
+  const run = samples.find((s) => s.playing && s.frame >= 2 && s.frame < 3);
+  assert.ok(run, JSON.stringify(samples.map((s) => [s.playing, s.frame])));
   assert.ok(run.opacity.at(-1) > 0.35, JSON.stringify(run));
   assert.ok(run.opacity.every((o, i) => i === 0 || o >= run.opacity[i - 1]), JSON.stringify(run));
 
@@ -448,7 +427,6 @@ test('a long trace with tones and a fade writes only its newest and its fading s
   const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test/pages/plot-fade-long.html'));
   await page.waitFor(deckSettled);
-  // the changes of the attributes of the segments, per frame, from the step until the trace is held
   await page.evaluate(`(() => {
     window.writes = 0; window.frames = 0;
     new MutationObserver((list) => { window.writes += list.length; }).observe(Beeson.plots[0].el, { attributes: true, subtree: true, attributeFilter: ['x1', 'y1', 'x2', 'y2', 'style'] });
@@ -458,7 +436,6 @@ test('a long trace with tones and a fade writes only its newest and its fading s
   })()`);
   await page.waitFor('!Beeson.plots[0].playing', 10000);
   const { writes, frames, lines } = await page.evaluate(`({ writes: window.writes, frames: window.frames, lines: Beeson.plots[0].el.querySelectorAll('line.plot-trace').length })`);
-  // the trace has 1999 segments, each written once in full and then while it fades for 0.6 s
   assert.equal(lines, 1999);
   assert.ok(writes / frames < 400, `${writes} writes in ${frames} frames`);
   assert.deepEqual(page.errors, []);
@@ -472,7 +449,7 @@ test('a plot is printed at its last frame, with the panels and the tab of each s
 
   const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page [data-plot="data"]')].map((el) => ({
     hidden: [...el.querySelectorAll('.plot-panel')].map((g) => g.classList.contains('plot-hidden')),
-    tab: el.querySelector('[aria-selected="true"]').textContent,
+    tab: el.querySelector('[aria-selected="true"] [aria-label]').getAttribute('aria-label'),
     value: el.querySelector('.plot-value').textContent,
   }))`);
   assert.deepEqual(pages, [
@@ -484,17 +461,18 @@ test('a plot is printed at its last frame, with the panels and the tab of each s
 });
 
 const reveals = (id) => `(() => {
+  const textOf = (el) => el.querySelector('[aria-label]')?.getAttribute('aria-label') ?? el.textContent;
   const view = Beeson.plots.find((p) => p.el.id === '${id}');
   const buttons = [...view.el.querySelectorAll('.plot-tabs button')];
   const panels = [...view.el.querySelectorAll('.plot-panel')];
-  const label = (text) => [...view.el.querySelectorAll('.plot-label')].find((l) => l.textContent === text);
+  const label = (text) => [...view.el.querySelectorAll('.plot-label')].find((l) => textOf(l) === text);
   return {
     playing: view.playing,
     frame: view.frame,
     panels: panels.length,
-    tabs: buttons.map((b) => [b.textContent, b.disabled, b.classList.contains('plot-hidden')]),
-    tab: buttons.find((b) => b.getAttribute('aria-selected') === 'true')?.textContent ?? null,
-    title: [...view.el.querySelectorAll('.plot-title')].map((t) => t.textContent),
+    tabs: buttons.map((b) => [textOf(b), b.disabled, b.classList.contains('plot-hidden')]),
+    tab: buttons.find((b) => b.getAttribute('aria-selected') === 'true')?.querySelector('[aria-label]')?.getAttribute('aria-label') ?? null,
+    title: [...view.el.querySelectorAll('.plot-title')].map((t) => t.querySelector('[data-latex]')?.getAttribute('data-latex') ?? t.textContent),
     ticks: [...view.el.querySelectorAll('.plot-tick-mark')].map((t) => t.style.background),
     dimmed: ['a', 'b'].map((t) => label(t)?.classList.contains('plot-off') ?? null),
     dot: Number(view.el.querySelector('.plot-dot')?.getAttribute('cx')),
@@ -514,11 +492,9 @@ test('a plot is held until its cue, offers the tabs of its element and of the st
   assert.equal(held.frame, 0);
   assert.equal(held.panels, 1);
   assert.deepEqual(held.tabs, []);
-  // the dot at 10 on an axis from -100 to 100 in asinh is drawn between the ticks at asinh(10)
   const [lo, zero, hi] = held.at;
   assert.ok(Math.abs(zero - (lo + hi) / 2) < 1);
   assert.ok(Math.abs(held.dot - (zero + ((hi - zero) * Math.asinh(10)) / Math.asinh(100))) < 1);
-  // a, active on the tab one, is emphasized, and b, active on the tab two only, is dimmed
   assert.deepEqual(held.dimmed, [false, true]);
 
   await page.evaluate('Reveal.next()');

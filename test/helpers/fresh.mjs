@@ -1,6 +1,3 @@
-// a page of a session compared with a fresh page opened on the same text, see
-// test/editor-apply-fresh.test.mjs
-
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,9 +5,6 @@ import { join, resolve } from 'node:path';
 import { editorPage } from './editor.mjs';
 import { front } from './apply.mjs';
 
-// a copy of the repository in a temporary folder, with the deck at text. the folders are linked.
-// tex.js and its sources are copied, since the fresh page of a Windows runner did not get a linked
-// tex.js
 export function freshDeck(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-fresh-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -24,23 +18,6 @@ export function freshDeck(t, text) {
   return file;
 }
 
-// a function of the page that describes the slides and their backgrounds as lines: each element
-// with its attributes, its classes, its style, and its offset in the file, each text node, each
-// formula by its TeX and the size of its markup, the counts and the indexes of reveal.js, and what
-// each backdrop, surface, and plot of the theme read from its element. the lines leave out what
-// tells which slides were shown or near the slide shown: data-fragment, data-previous-indexv, and
-// data-loaded, which reveal.js sets on a slide and a stack that were shown or near, data-complete, data-held,
-// data-shown, and the classes hl-*, which the theme sets on a slide when it is shown or mounted,
-// the size of the canvases and
-// the places of the labels of a drawing, which are set when it is drawn, and the classes past,
-// present, and future, hidden, and aria-hidden of the slides of a stack that is not shown. they
-// also leave out the view of a backdrop fitted to its drawing, which the editor sets when it syncs
-// its backdrops, the number of a TikZ figure in its ids, which counts the figures of a page in the
-// order in which their outputs were loaded, the data-latex of a formula, which MathJax writes with
-// another spacing the first time it loads a package, the text nodes of white space, an empty class,
-// the way a style is
-// written, and the selection, the caret, and the focus, which are not part of the page that a text
-// opens
 export const PICTURE = `(() => {
   const slides = document.querySelector('.reveal .slides');
   const items = window.MathJax?.startup?.document?.getMathItemsWithin([slides]) ?? [];
@@ -92,7 +69,6 @@ export const PICTURE = `(() => {
   return [...out, ...lines.sort()];
 })()`;
 
-// the first lines where got and want differ, with the lines before them
 function difference(got, want) {
   let i = 0;
   while (i < got.length && i < want.length && got[i] === want[i]) i++;
@@ -101,10 +77,6 @@ function difference(got, want) {
   return `after\n${got.slice(Math.max(0, i - 3), i).join('\n')}\nthe page has\n${got.slice(i, got.length - j).slice(0, 12).join('\n')}\nwhere a fresh page has\n${want.slice(i, want.length - j).slice(0, 12).join('\n')}`;
 }
 
-/**
- * Asserts that page b looks as a fresh page opened on text in browser, both at the slide that b
- * shows.
- */
 export async function looksFresh(t, browser, b, text, label = '') {
   const c = await editorPage(browser, { deck: freshDeck(t, text), text });
   try {

@@ -1,10 +1,10 @@
-// check of the backdrops of the demo deck, in Chrome: a drawing may run off the slide, but it is not
-// cut at an edge of its box inside the slide
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
+import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
+import { serve } from '../scripts/webdriver.mjs';
 import { builtIn } from '../src/backdrops.ts';
+import { systemOf } from '../src/poincare.ts';
+import { ALPHAS, planeOf, shownTori, toriSpec } from '../src/tori.ts';
 
 const boxes = `[...document.querySelectorAll('.backdrop[data-backdrop]')].map((b) => {
   const cs = getComputedStyle(b), px = (name) => parseFloat(cs[name]);
@@ -15,8 +15,6 @@ const boxes = `[...document.querySelectorAll('.backdrop[data-backdrop]')].map((b
   };
 })`;
 
-// the sides of the box crossed by the trajectories, in the projection of Orbits. the function is also
-// run in the page, hence it does not use anything outside its body
 function cuts(box, trajectories) {
   const slide = { width: 1920, height: 1080 };
   const scale = box.height / 2 / box.half,
@@ -34,8 +32,6 @@ function cuts(box, trajectories) {
   return [...found].join(' ');
 }
 
-// a backdrop of a file is fitted when its slide is shown, hence each slide is shown before its
-// window is read
 const filed = `(async () => {
   const out = [];
   for (const b of Beeson.backdrops.filter((b) => b.el.dataset.trajectories !== undefined)) {
@@ -71,8 +67,6 @@ test('no backdrop is cut at an edge of its box inside the slide', { timeout: 600
   );
 });
 
-// the number of painted pixels of the head canvas of the backdrop of the current slide, read during
-// its trace
 const headPixels = `(() => {
   const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
   const { width, height } = b.head;
@@ -88,7 +82,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
   const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test-deck.html'));
   await page.waitFor(deckSettled);
-  // the title slide draws brand/transfer.js, whose spiral carries a head of its own from the start
   await new Promise((done) => setTimeout(done, 800));
   const [titleRunning, titlePixels] = await page.evaluate(headPixels);
   assert.ok(titleRunning, 'the backdrop of the title slide is traced');
@@ -98,7 +91,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
     const { h, v } = Reveal.getIndices(document.querySelector('${selector}').closest('section'));
     Reveal.slide(h, v);
   })()`;
-  // the wide ribbon has neither a spacecraft nor data-heads, hence no head
   await page.evaluate(slideTo('.backdrop[data-backdrop="wideRibbon"]'));
   await new Promise((done) => setTimeout(done, 800));
   const [ribbonRunning, ribbonPixels] = await page.evaluate(headPixels);
@@ -106,8 +98,6 @@ test('a head is drawn on the path of a spacecraft alone', { timeout: 60000 }, as
   assert.equal(ribbonPixels, 0);
 });
 
-// the alpha of the pixels of rows from to to of the backdrop of the current slide, with its head
-// canvas over its base canvas, read in one task, i.e. without a frame drawn between the two reads
 const alphas = (from, to) => `(() => {
   const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
   const c = document.createElement('canvas');
@@ -119,21 +109,14 @@ const alphas = (from, to) => `(() => {
   const { data } = ctx.getImageData(0, ${from}, c.width, ${to - from});
   return Array.from({ length: ${to - from} }, (_, r) => Array.from({ length: c.width }, (_, x) => data[4 * (r * c.width + x) + 3]));
 })()`;
-// the pixels of values more than 3 off their most common value. a trajectory stroked in pieces is beaded
-// at every joint, i.e. at dozens of pixels of a row, while the software rasterizer of Chrome, on the
-// Linux and Windows runners, may leave a pixel of a long line lighter by up to about 25
 const outliers = (values) => {
   const counts = new Map();
   for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
   const mode = [...counts].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
   return values.filter((v) => Math.abs(v - mode) > 3).length;
 };
-// the row of rows with the most ink, i.e. the center of a horizontal trajectory
 const center = (rows) => rows.reduce((best, row, r) => (row.reduce((a, b) => a + b) > rows[best].reduce((a, b) => a + b) ? r : best), 0);
 
-// the page traces two straight trajectories at an opacity of 0.6 in 2 s, the second with a glow, from
-// x = 96 px to 1824 px on the rows y = 324 px and 756 px. a trajectory stroked in pieces, one per frame,
-// is beaded at the joints of the pieces, and the glow of the pieces adds up
 test('a trajectory is traced in one stroke, hence without beads, and its trace ends on its still', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -154,13 +137,11 @@ test('a trajectory is traced in one stroke, hence without beads, and its trace e
   const still = plainStill[center(plainStill)];
   assert.ok(outliers(still.slice(150, 1770)) <= 2, `the alpha along the still is off at ${outliers(still.slice(150, 1770))} pixels`);
 
-  // a row of the glow 4 px off the trajectory, behind the head
   const r = center(glowing) + 4;
   const off = glowing[r].slice(150, glowing[center(glowing)].findLastIndex((a) => a > 0) - 40).map((a, x) => Math.abs(a - glowingStill[r][150 + x]));
   assert.ok(glowing[r][300] > 0, 'the glow is drawn 4 px off the trajectory');
   assert.ok(Math.max(...off) <= 3, `the glow during the trace is off its still by up to ${Math.max(...off)}`);
 
-  // the drawing left by the trace is the still drawn after it
   const changed = await page.evaluate(`(() => {
     const b = Beeson.backdrops[0], ctx = b.base.getContext('2d');
     const before = ctx.getImageData(0, 0, b.base.width, b.base.height).data;
@@ -173,10 +154,6 @@ test('a trajectory is traced in one stroke, hence without beads, and its trace e
   assert.equal(changed, 0);
 });
 
-// the third slide of the page traces three crossing trajectories in 2 s, which are finished in the
-// reverse of the order of their file. the frames are drawn by frame() at 60 per second on a clock
-// of the test, up to 4 ms before the end of the trace, when the violet trajectory is 3.5 px short of
-// its end, and then once after the end, when the still is drawn
 test('the last frame of a trace is its still, with the trajectories overlapped in the order of the file', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -187,8 +164,6 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
   await page.waitFor('Beeson.backdrops.some((o) => Reveal.getCurrentSlide().contains(o.el) && o.trajectories.length === 3 && o.W > 0)');
   const out = await page.evaluate(`(() => {
     const b = Beeson.backdrops.find((o) => Reveal.getCurrentSlide().contains(o.el));
-    // the base canvas is read through a copy, since Chrome may move a canvas read with
-    // getImageData from the GPU to the CPU, where its glows are blurred differently by one level
     const read = () => {
       const c = document.createElement('canvas');
       c.width = b.W;
@@ -204,10 +179,6 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
     const traced = b.finished, last = read();
     b.frame(2001);
     const still = read();
-    // the head of the violet trajectory is at x = 1820.5 px, at the scale of 1080 px per unit. the
-    // pixels are compared premultiplied, within 8 of 255. the software rasterizer of Chrome, on the
-    // Linux and Windows runners, draws a line and its glow differently by up to 6 when its length
-    // changes, while the two orders of two trajectories at their crossing differ by up to about 55
     const premultiplied = (d, i, c) => (c === 3 ? d[i + 3] : (d[i + c] * d[i + 3]) / 255);
     let changed = 0, near = 0;
     for (let i = 0; i < last.length; i += 4) {
@@ -224,6 +195,162 @@ test('the last frame of a trace is its still, with the trajectories overlapped i
   assert.ok(out.near > 0, 'the end of the violet trajectory is drawn in the still');
 });
 
+test('a glowing backdrop is traced without shadowBlur, caches finished trajectories above the trail, and releases its offscreen canvases', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test-deck.html'));
+  await page.waitFor(deckSettled);
+  const out = await page.evaluate(`(() => {
+    const desc = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
+    let maxBlur = 0;
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+      configurable: true,
+      get() { return desc.get.call(this); },
+      set(v) { if (v > maxBlur) maxBlur = v; desc.set.call(this, v); },
+    });
+    const holder = document.createElement('div');
+    document.body.append(holder);
+    try {
+      const b = Beeson.backdrops.find((o) => o.el.closest('section.title'));
+      const diff = (a, c, tol = 8) => {
+        const read = (src) => {
+          const buf = document.createElement('canvas');
+          buf.width = b.W;
+          buf.height = b.H;
+          const g = buf.getContext('2d', { willReadFrequently: true });
+          g.drawImage(src, 0, 0);
+          return g.getImageData(0, 0, b.W, b.H).data;
+        };
+        const p = read(a), q = read(c);
+        const premultiplied = (d, i, k) => (k === 3 ? d[i + 3] : (d[i + k] * d[i + 3]) / 255);
+        let n = 0;
+        for (let i = 0; i < p.length; i += 4) {
+          if ([0, 1, 2, 3].some((k) => Math.abs(premultiplied(p, i, k) - premultiplied(q, i, k)) > tol)) n++;
+        }
+        return n;
+      };
+      const direct = (at, col, inks, trail) => {
+        const buf = document.createElement('canvas');
+        buf.width = b.W;
+        buf.height = b.H;
+        b.draw(buf.getContext('2d'), col, at, inks, trail, null);
+        return buf;
+      };
+      const cpu = () => {
+        const buf = document.createElement('canvas');
+        buf.width = b.W;
+        buf.height = b.H;
+        buf.getContext('2d', { willReadFrequently: true });
+        return buf;
+      };
+      b.reset();
+      b.t0 = 0;
+      const mid = b.duration * 600, late = b.duration * 850, end = b.duration * 1000 + 100;
+      for (let ms = 0; ms <= mid; ms += 250) b.frame(ms);
+      const cached = b.cached, midDoneAbove = b.doneAbove, firstAbove = b.above, firstTrail = b.trail;
+      const midDiff = diff(b.base, direct(mid, b.colors(), b.inks, b.trail));
+      const cpuAbove = cpu(), cpuCached = cpu(), cpuDirect = cpu();
+      b.paintAbove(cpuAbove, b.colors(), b.inks, b.cached, b.doneAbove);
+      b.draw(cpuCached.getContext('2d'), b.colors(), mid, b.inks, null, cpuAbove);
+      b.draw(cpuDirect.getContext('2d'), b.colors(), mid, b.inks, null, null);
+      const cpuDiff = diff(cpuCached, cpuDirect, 4);
+      b.redraw();
+      const rebuiltAbove = b.above, rebuiltTrail = b.trail;
+      const firstDropped = firstAbove.width === 0 && firstAbove.height === 0 && firstTrail.width === 0 && firstTrail.height === 0;
+      b.ghost(holder, { left: 0, top: 0 });
+      const ghost = b.ghosted;
+      for (let ms = mid + 250; ms <= late; ms += 250) b.frame(ms);
+      const lateDoneAbove = b.doneAbove, ghostAbove = ghost.above;
+      const ghostDiff = diff(ghost.base, direct(late, ghost.c, ghost.inks, ghost.trail));
+      b.unghost();
+      const ghostDropped = ghostAbove.width === 0 && ghostAbove.height === 0;
+      b.frame(end);
+      const endDropped = rebuiltAbove.width === 0 && rebuiltAbove.height === 0 && rebuiltTrail.width === 0 && rebuiltTrail.height === 0;
+      return {
+        maxBlur,
+        cached,
+        total: b.trajectories.length,
+        pixels: b.W * b.H,
+        midDoneAbove,
+        lateDoneAbove,
+        cpuDiff,
+        midDiff,
+        ghostDiff,
+        firstDropped,
+        ghostDropped,
+        endDropped,
+        finished: b.finished,
+        trailLeft: b.trail !== null,
+        aboveLeft: b.above !== null,
+      };
+    } finally {
+      Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', desc);
+      holder.remove();
+    }
+  })()`);
+  assert.equal(out.maxBlur, 0, `shadowBlur reached ${out.maxBlur}`);
+  assert.ok(out.midDoneAbove > out.cached && out.midDoneAbove < out.total, `doneAbove at 60% was ${out.midDoneAbove} of ${out.cached}..${out.total}`);
+  assert.ok(out.lateDoneAbove > out.midDoneAbove && out.lateDoneAbove < out.total, `doneAbove at 85% was ${out.lateDoneAbove} of ${out.cached}..${out.total}`);
+  assert.equal(out.cpuDiff, 0, `${out.cpuDiff} pixels differ between the cached above canvas and direct drawing on CPU`);
+  assert.ok(out.midDiff / out.pixels < 1e-3, `${out.midDiff} of ${out.pixels} pixels differ between the cached above canvas and direct drawing`);
+  assert.ok(out.ghostDiff / out.pixels < 1e-3, `${out.ghostDiff} of ${out.pixels} pixels of the ghost differ from direct drawing`);
+  assert.equal(out.firstDropped, true, 'redraw did not release its replaced offscreen canvases');
+  assert.equal(out.ghostDropped, true, 'unghost did not release its offscreen above canvas');
+  assert.equal(out.finished, true);
+  assert.equal(out.endDropped, true, 'finishing the trace did not release its offscreen canvases');
+  assert.equal(out.trailLeft, false);
+  assert.equal(out.aboveLeft, false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a frame of a trace of the manifolds strokes the new pieces of their trajectories, and not the whole of them again', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test-deck.html'));
+  await page.waitFor(deckSettled);
+  const out = {};
+  for (const name of ['wideRibbon', 'tubes']) {
+    const find = `Beeson.backdrops.find((o) => o.el.dataset.backdrop === '${name}')`;
+    await page.evaluate(`(() => { const { h, v } = Reveal.getIndices(${find}.el.closest('section')); Reveal.slide(h, v); return true; })()`);
+    await page.waitFor(`${find}.W > 0`);
+    out[name] = await page.evaluate(`(() => {
+      const b = ${find};
+      const base = b.base.getContext('2d'), proto = CanvasRenderingContext2D.prototype, kept = {};
+      let pieces = 0;
+      for (const key of ['lineTo', 'bezierCurveTo']) {
+        kept[key] = proto[key];
+        proto[key] = function (...args) {
+          if (this === base) pieces++;
+          return kept[key].apply(this, args);
+        };
+      }
+      try {
+        b.reset();
+        b.t0 = 0;
+        const frames = [];
+        for (let ms = 0; ms < b.duration * 1000; ms += 1000 / 60) {
+          pieces = 0;
+          b.frame(ms);
+          frames.push(pieces);
+        }
+        b.complete();
+        pieces = 0;
+        b.redraw();
+        frames.sort((a, c) => a - c);
+        return { p90: frames[Math.floor(0.9 * frames.length)], whole: pieces };
+      } finally {
+        Object.assign(proto, kept);
+      }
+    })()`);
+  }
+  for (const [name, { p90, whole }] of Object.entries(out)) {
+    assert.ok(p90 < whole / 10, `a frame of ${name} strokes ${p90} pieces at the 90th percentile, and its still ${whole}`);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
 test('the trajectories of a backdrop with data-stagger are started one after another', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -236,20 +363,15 @@ test('the trajectories of a backdrop with data-stagger are started one after ano
     Reveal.slide(h, v);
     return +el.dataset.stagger;
   })()`);
-  // the clock is taken from the start of the first trajectory, which a slow runner may delay
   const staggered = `Beeson.backdrops.find((b) => b.el.hasAttribute('data-stagger'))`;
   await page.waitFor(`${staggered}.idx[0] > 0`);
   await new Promise((done) => setTimeout(done, 1300));
   const started = await page.evaluate(`${staggered}.idx.map((j) => j > 0)`);
   const count = started.filter(Boolean).length;
-  // the trajectories are started in the order of the file, hence the started ones come first
   assert.deepEqual(started, started.map((_, i) => i < count));
   assert.ok(count >= 2 && count <= Math.ceil(1.6 / stagger) + 1, `${count} of ${started.length} trajectories started`);
 });
 
-// the fourth slide of the page has a straight trajectory of three points, 864 px apart. the tint at the
-// pointer is the disc of the trajectories within its radius, hence it reaches the radius on both sides of
-// the pointer and does not run past it, with the pointer on a point of the trajectory and between points
 test('the tint at the pointer is a disc of its radius', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -287,8 +409,6 @@ test('the tint at the pointer is a disc of its radius', { timeout: 60000 }, asyn
   }
 });
 
-// a backdrop that is a step of its slide is hidden and left untraced until its step is shown, and it
-// is reset when the step is hidden again
 test('a backdrop that is a step is traced from its step on', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -312,9 +432,6 @@ test('a backdrop that is a step is traced from its step on', { timeout: 60000 },
   assert.deepEqual(await page.evaluate(state), { tracing: false, done: false, opacity: '0' });
 });
 
-// the hooks of the editor: Beeson.remount draws a backdrop again from its attributes in place of
-// its drawing, Beeson.preview draws a div outside the slides without taking it into
-// Beeson.backdrops, and Beeson.fitWindow gives the window of a drawing fitted to the box
 test('Beeson.remount, Beeson.preview, and Beeson.fitWindow draw a backdrop for the editor', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -354,8 +471,6 @@ test('Beeson.remount, Beeson.preview, and Beeson.fitWindow draw a backdrop for t
   assert.ok(out.fitted && out.fitted.half > 0 && Number.isFinite(out.fitted.cx), JSON.stringify(out.fitted));
 });
 
-// a thumbnail of the editor may be drawn again before the file of its backdrop is loaded, and its drawing is then
-// out of the page at the load
 test('a drawing of a file that is taken out of the page before the load is redrawn without an error', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -380,4 +495,473 @@ test('a drawing of a file that is taken out of the page before the load is redra
   assert.ok(out.trajectories > 0, 'the file of the drawing is not loaded');
   assert.equal(out.error, null);
   assert.deepEqual(page.errors, []);
+});
+
+const DOTS = 'test/pages/backdrops-dots.html';
+const dotted = `(async () => {
+  const out = [];
+  for (const b of Beeson.backdrops) {
+    const { h, v } = Reveal.getIndices(b.el.closest('section'));
+    Reveal.slide(h, v);
+    await b.ready;
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    b.complete();
+    const inked = (c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0, edge = 0, sum = 0, blue = 0;
+      for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          const i = 4 * (y * c.width + x);
+          if (!d[i + 3]) continue;
+          n++;
+          sum += d[i] + d[i + 1] + d[i + 2];
+          if (d[i + 2] >= d[i] && d[i + 2] >= d[i + 1]) blue++;
+          if (x < 2 || y < 2 || x >= c.width - 2 || y >= c.height - 2) edge++;
+        }
+      }
+      return { n, edge, tint: n ? Math.round(sum / n) : 0, blue: n ? blue / n : 0 };
+    };
+    const g = document.createElement('canvas').getContext('2d');
+    const mark = () => {
+      const tone = b.el.dataset.system?.startsWith('bicircular') ? '--data-5' : '--data-7';
+      g.fillStyle = getComputedStyle(b.el).getPropertyValue(tone).trim();
+      return [1, 3, 5].map((k) => parseInt(String(g.fillStyle).slice(k, k + 2), 16));
+    };
+    const center = (c) => {
+      const sharp = c.width / b.el.offsetWidth, scale = b.el.offsetHeight / 2 / b.view.half;
+      const { unit, center: rows, halos } = b.state.data;
+      const read = ([px, py], dx, dy) => {
+        const x = b.el.offsetWidth / 2 + (px * unit - b.view.cx) * scale, y = b.el.offsetHeight / 2 - (py * unit - b.view.cy) * scale;
+        return [...c.getContext('2d').getImageData(Math.round((x + dx) * sharp), Math.round((y + dy) * sharp), 1, 1).data.slice(0, 3)];
+      };
+      const near = (rgb) => mark().every((v, i) => Math.abs(v - rgb[i]) < 40);
+      const mid = rows[rows.length - 1], halo = halos[halos.length - 1];
+      return { diagonal: near(read(mid, 2, 2)), side: near(read(mid, 3, 0)), halos: [0, 2].map((i) => near(read([halo[i], halo[i + 1]], 0, 0))) };
+    };
+    const c = b.canvases[0];
+    const dark = inked(c);
+    const mid = b.el.dataset.backdrop === 'poincare' && b.fittedToDrawing ? center(c) : null;
+    document.documentElement.dataset.theme = 'light';
+    b.redraw();
+    const light = inked(c);
+    const midLight = mid && center(c);
+    document.documentElement.dataset.theme = 'dark';
+    b.redraw();
+    out.push({ name: b.el.closest('section').querySelector('h2').textContent, view: b.view, fitted: b.fittedToDrawing, extent: b.extent, span: b.span, period: b.period, done: b.done, canvases: b.el.querySelectorAll(':scope > canvas').length, dark, light, mid, midLight });
+  }
+  return out;
+})()`;
+
+test('the tori of data-tori, the system of data-system, and the plane of data-plane are read with their defaults', () => {
+  const alphas = ALPHAS.map(Number);
+  assert.deepEqual(ALPHAS, ['0.02', '0.04', '0.06', '0.08', '0.10', '0.12', '0.14', '0.16', '0.18', '0.20']);
+  assert.deepEqual(shownTori(undefined, alphas), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(shownTori(' ', alphas), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(shownTori('0.10  0.02', alphas), [0, 4]);
+  assert.deepEqual(shownTori('0.1 0.5', alphas), [4]);
+  assert.deepEqual(shownTori('none', alphas), []);
+  assert.equal(toriSpec(alphas.map(() => true)), null);
+  assert.equal(toriSpec(alphas.map(() => false)), 'none');
+  assert.equal(toriSpec(alphas.map((_, n) => n === 0 || n === 4)), '0.02 0.10');
+  for (const shown of [[true, false, true], [false, false, false, false, false, false, false, false, false, true]]) {
+    const all = alphas.map((_, n) => !!shown[n]);
+    assert.deepEqual(shownTori(toriSpec(all), alphas), all.flatMap((on, n) => (on ? [n] : [])));
+  }
+  assert.equal(systemOf(undefined), 'earth-moon-l2');
+  assert.equal(systemOf('sun-earth-l1'), 'sun-earth-l1');
+  assert.equal(systemOf('bicircular-l1-horizontal'), 'bicircular-l1-horizontal');
+  assert.equal(systemOf('bicircular-l1-vertical'), 'bicircular-l1-vertical');
+  assert.equal(systemOf('toString'), 'earth-moon-l2');
+  assert.equal(planeOf(undefined), 'xy');
+  assert.equal(planeOf('xz'), 'xz');
+  assert.equal(planeOf('yz'), 'xy');
+});
+
+test('the file of a Poincaré section or of the tori is loaded once, and only by a deck that draws it', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const files = `[...document.querySelectorAll('script[src*="/backdrops/"]')].map((s) => s.src.split('/').pop()).sort()`;
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test-deck.html', 'still'));
+  await page.waitFor(deckSettled);
+  assert.deepEqual(await page.evaluate(files), []);
+  await page.goto(deckUrl(DOTS, 'still'));
+  await page.waitFor(deckSettled);
+  assert.equal(await page.evaluate('Beeson.backdrops.length'), 7);
+  assert.deepEqual(await page.evaluate(files), ['poincare-bicircular-l1-vertical.js', 'poincare-earth-moon-l2.js', 'poincare-sun-earth-l1.js', 'tori.js']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a Poincaré section and the tori are drawn inside their boxes in both modes', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(DOTS, 'still'));
+  await page.waitFor(deckSettled);
+  const out = await page.evaluate(dotted);
+  const [moon, sun, bicircular, all, one, two, none] = out;
+  for (const b of out) {
+    assert.equal(b.done, true, b.name);
+    assert.equal(b.canvases, 1, b.name);
+    assert.equal(b.period, 0, b.name);
+    assert.ok(b.dark.n > 0 && b.light.n > 0, `${b.name}: ${b.dark.n} and ${b.light.n} pixels are drawn`);
+    assert.notEqual(b.light.tint, b.dark.tint, `${b.name} is drawn in the same colors in both modes`);
+  }
+  for (const b of [moon, bicircular, all, one, two, none]) {
+    assert.equal(b.fitted, true, b.name);
+    assert.equal(b.dark.edge, 0, `${b.name} is cut at an edge of its box`);
+    const scale = 540 / b.view.half;
+    const slack = Math.min(720 - scale * (b.extent.x1 - b.extent.x0), 1080 - scale * (b.extent.y1 - b.extent.y0));
+    assert.ok(slack > 27 && slack < 33, `${b.name}: the drawing is ${slack} px short of its box in the tighter direction`);
+  }
+  assert.deepEqual(sun.view, { cx: 0.1, cy: 0, half: 2 });
+  assert.equal(sun.fitted, false);
+  assert.ok(moon.dark.n > 5000, `${moon.dark.n} pixels of the section`);
+  assert.ok(bicircular.dark.n > 5000, `${bicircular.dark.n} pixels of the bicircular section`);
+  for (const mode of ['dark', 'light']) {
+    assert.ok(bicircular[mode].blue > 0.95, `${bicircular[mode].blue} of the bicircular section is blue in the ${mode} mode`);
+    assert.ok(moon[mode].blue < 0.8, `${moon[mode].blue} of the section in plasma is blue in the ${mode} mode`);
+  }
+  for (const mid of ['mid', 'midLight']) {
+    assert.deepEqual(moon[mid], { diagonal: true, side: true, halos: [true, true] }, `${mid}: the elliptic center is not a disk, or the marks are not in --data-7`);
+    assert.deepEqual(bicircular[mid], { diagonal: true, side: false, halos: [true, true] }, `${mid}: the hyperbolic center is not a cross, or the marks are not in --data-5`);
+  }
+  assert.ok(all.dark.n > two.dark.n && two.dark.n > 3 * none.dark.n, `${all.dark.n} pixels of ten tori, ${two.dark.n} of one, ${none.dark.n} of none`);
+  assert.ok(Math.abs(moon.span - 0.5) < 1e-9 && Math.abs(sun.span - 13) < 1e-9, `${moon.span} ${sun.span}`);
+  assert.ok(Math.abs(all.span - 23.1) < 1e-9, `${all.span}`);
+  assert.ok(Math.abs(one.span - 14.4) < 1e-9 && Math.abs(none.span - 13.2) < 1e-9, `${one.span} ${none.span}`);
+  assert.ok(one.extent.x1 - one.extent.x0 > 3 * (two.extent.x1 - two.extent.x0), 'the plane x, z is not drawn wider than the plane x, y');
+  const warnings = await page.evaluate('window.warnings');
+  assert.deepEqual(warnings.filter((w) => /data-tori/.test(w)), ['beeson: data-tori="0.5 0.04" is not none or a list of 0.02 to 0.20 in steps of 0.02']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a Poincaré section is built up once to its still, and the tori run without end', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(DOTS));
+  await page.waitFor(deckSettled);
+  const ink = `((b) => { const c = b.canvases[0]; return c.toDataURL(); })`;
+  await page.waitFor('Beeson.backdrops[0].done && !Beeson.backdrops[0].tracing', 30000);
+  const built = await page.evaluate(`(() => { const b = Beeson.backdrops[0], traced = ${ink}(b); b.complete(); return traced === ${ink}(b); })()`);
+  assert.equal(built, true, 'the last frame of the section is not its still');
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('Beeson.backdrops[1].done');
+  assert.equal(await page.evaluate('Beeson.backdrops[1].tracing'), false, 'a section without data-live is traced');
+  await page.evaluate(`(() => {
+    Reveal.slide(3);
+    const b = Beeson.backdrops[3];
+    window.frames = new Set();
+    const read = () => { if (b.tracing) window.frames.add(${ink}(b)); if (window.frames.size < 4) requestAnimationFrame(read); };
+    requestAnimationFrame(read);
+  })()`);
+  await page.waitFor('window.frames.size >= 4', 30000);
+  assert.deepEqual(await page.evaluate('(({ tracing, done }) => ({ tracing, done }))(Beeson.backdrops[3])'), { tracing: true, done: false });
+  await page.evaluate('Reveal.slide(4)');
+  await page.waitFor('!Beeson.backdrops[3].tracing');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the saddle is drawn from its file of theme/backdrops, loaded once, on the clock of the file in seconds and fitted to its box', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/backdrops-saddle.html', 'still'));
+  await page.waitFor(deckSettled);
+  await page.waitFor('Beeson.backdrops.length === 2 && Beeson.backdrops.every((b) => b.trajectories.length > 0)');
+  const out = await page.evaluate(`(async () => {
+    const out = [];
+    for (const b of Beeson.backdrops) {
+      const { h, v } = Reveal.getIndices(b.el.closest('section'));
+      Reveal.slide(h, v);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      b.complete();
+      const c = b.canvases[0], d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i]) n++;
+      out.push({ trajectories: b.trajectories.length, duration: b.duration, fitted: b.fittedToDrawing, fitsItself: b.fitsItself, done: b.done, n });
+    }
+    return out;
+  })()`);
+  const files = await page.evaluate(`[...document.querySelectorAll('script[src*="/backdrops/"]')].map((s) => s.src.split('/').pop())`);
+  assert.deepEqual(files, ['saddle.js']);
+  for (const b of out) {
+    assert.equal(b.trajectories, 488);
+    assert.deepEqual([b.fitted, b.fitsItself, b.done], [true, true, true]);
+    assert.ok(b.n > 5000, `${b.n} pixels of the saddle`);
+  }
+  assert.ok(Math.abs(out[0].duration - 10.124) < 1e-3, `${out[0].duration}`);
+  assert.equal(out[1].duration, 5);
+  assert.deepEqual(page.errors, []);
+});
+
+const PLAY = 'test/pages/backdrop-play.html';
+const playState = `(() => { const b = Beeson.backdrops[0]; return { tracing: b.tracing, done: b.done, drawn: b.idx.some((j) => j > 0) }; })()`;
+const HELD = { tracing: false, done: false, drawn: false };
+
+test('a backdrop with a step of data-backdrop-play is kept at the start of its trace until this step, and traced from it on', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(PLAY));
+  await page.waitFor(deckSettled);
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('Reveal.getIndices().h === 1');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is not kept still before its step');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), false);
+  await page.evaluate('Reveal.next()');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is started at the step before its own');
+  await page.evaluate('Reveal.next()');
+  await page.waitFor('Beeson.backdrops[0].tracing && Beeson.backdrops[0].idx.some((j) => j > 0)');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), true);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('!Beeson.backdrops[0].tracing');
+  assert.deepEqual(await page.evaluate(playState), HELD, 'the backdrop is not set back when its step is undone');
+  await page.evaluate('Reveal.slide(2)');
+  await page.waitFor('Reveal.getIndices().h === 2');
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('Reveal.getIndices().h === 1 && Beeson.backdrops[0].tracing');
+  assert.equal(await page.evaluate(`document.querySelector('[data-backdrop-play]').classList.contains('visible')`), true);
+  assert.deepEqual(page.errors, []);
+});
+
+test('under reduced motion and in the print view, a backdrop is at the start of its trace before its step of data-backdrop-play and complete from it on', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await page.goto(deckUrl(PLAY));
+  await page.waitFor(deckSettled);
+  assert.equal(await page.evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`), true);
+  await page.evaluate('Reveal.slide(1)');
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)))');
+  assert.deepEqual(await page.evaluate(playState), HELD);
+  await page.evaluate('Reveal.next()');
+  await page.evaluate('Reveal.next()');
+  await page.waitFor('Beeson.backdrops[0].done');
+  assert.equal(await page.evaluate('Beeson.backdrops[0].tracing'), false);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor('!Beeson.backdrops[0].done');
+  assert.deepEqual(await page.evaluate(playState), HELD);
+  await printView(page, deckUrl(PLAY, 'print-pdf&still'));
+  const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].flatMap((p) => {
+    const el = p.querySelector('.backdrop');
+    const o = el && Beeson.backdrops.find((b) => b.el === el);
+    return o ? [{ done: o.done, animated: Beeson.animated(o), drawn: o.idx.some((j) => j > 0) || o.done }] : [];
+  })`);
+  assert.deepEqual(pages, [
+    { done: false, animated: false, drawn: false },
+    { done: false, animated: false, drawn: false },
+    { done: true, animated: true, drawn: true },
+    { done: true, animated: true, drawn: true },
+  ]);
+  assert.deepEqual(page.errors, []);
+});
+
+const NORMAL_FORM = 'test/pages/backdrops-normal-form.html';
+const NORMAL_STATES = ['none', 'field', 'stable', 'unstable', 'directions', 'flow', 'linear', 'resonant'];
+const toned = `((b) => {
+  const css = getComputedStyle(b.el), probe = document.createElement('canvas').getContext('2d');
+  const rgb = (name) => { probe.fillStyle = css.getPropertyValue(name).trim(); probe.fillRect(0, 0, 1, 1); return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)]; };
+  const tones = { violet: rgb('--violet'), accent: rgb('--accent'), green: rgb('--trajectory-4'), lime: rgb('--trajectory-6'), muted: rgb('--muted') };
+  const c = b.canvases[0], d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const out = { n: 0 };
+  for (const k of Object.keys(tones)) out[k] = { n: 0, top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity };
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 250) continue;
+    out.n++;
+    for (const [k, t] of Object.entries(tones)) {
+      if (Math.abs(d[i] - t[0]) + Math.abs(d[i + 1] - t[1]) + Math.abs(d[i + 2] - t[2]) > 24) continue;
+      const o = out[k], x = (i / 4) % c.width, y = Math.floor(i / 4 / c.width);
+      o.n++; o.top = Math.min(o.top, y); o.bottom = Math.max(o.bottom, y); o.left = Math.min(o.left, x); o.right = Math.max(o.right, x);
+    }
+  }
+  out.green.n += out.lime.n;
+  return out;
+})`;
+
+test('the normal form is drawn in the state of the last step shown, without a file, and in both modes', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(NORMAL_FORM, 'still'));
+  await page.waitFor(deckSettled);
+  const steps = await page.evaluate(`(async () => {
+    const b = Beeson.backdrops[0], out = [];
+    for (let f = -1; f < 7; f++) {
+      Reveal.slide(0, 0, f);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      out.push({ shown: b.el.dataset.shown, done: b.done, tracing: b.tracing, ...${toned}(b) });
+    }
+    document.documentElement.dataset.theme = 'light';
+    document.dispatchEvent(new Event('beeson:theme'));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    out.push(${toned}(b));
+    return out;
+  })()`);
+  const light = steps.pop();
+  assert.deepEqual(steps.map((s) => s.shown), NORMAL_STATES);
+  for (const s of steps) assert.deepEqual([s.done, s.tracing], [true, false], s.shown);
+  const [none, field, stable, unstable, directions, flow, linear, resonant] = steps;
+  assert.ok(none.n > 100 && none.n < 2000, `${none.n} pixels of the origin alone`);
+  assert.ok(field.muted.n > 1000 && field.violet.n === 0 && field.accent.n === 0, JSON.stringify(field));
+  assert.ok(stable.violet.n > 1000 && stable.accent.n === 0, JSON.stringify(stable));
+  assert.ok(unstable.accent.n > 1000 && unstable.green.n === 0, JSON.stringify(unstable));
+  assert.ok(directions.violet.n > unstable.violet.n && directions.accent.n > unstable.accent.n, 'the directions are not drawn on the manifolds');
+  assert.ok(flow.green.n > 3000 && flow.lime.n > 0 && flow.green.n > flow.lime.n, `${flow.green.n} pixels of the flow in the ramp, ${flow.lime.n} at its green end`);
+  assert.ok(flow.accent.bottom - flow.accent.top > 200, `the unstable manifold of the saddle spans ${flow.accent.bottom - flow.accent.top} px`);
+  assert.ok(linear.accent.bottom - linear.accent.top < 40, `the unstable manifold of the normal form spans ${linear.accent.bottom - linear.accent.top} px`);
+  assert.ok(resonant.violet.n === 0 && resonant.accent.right - resonant.accent.left < 40 && resonant.green.n > 1000, JSON.stringify(resonant));
+  assert.ok(light.green.n > 3000 && light.violet.n === 0, `the resonant normal form in the light mode: ${JSON.stringify(light)}`);
+  const others = await page.evaluate(`(async () => {
+    const out = [];
+    for (const b of Beeson.backdrops.slice(1)) {
+      Reveal.slide(Reveal.getIndices(b.el.closest('section')).h);
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      out.push({ shown: b.el.dataset.shown, fitted: b.fittedToDrawing, n: ${toned}(b).green.n });
+    }
+    return out;
+  })()`);
+  assert.deepEqual(others.map((o) => [o.shown, o.fitted]), [['flow', true], ['flow', true]]);
+  for (const o of others) assert.ok(o.n > 3000, `${o.n} pixels of the flow`);
+  assert.deepEqual(await page.evaluate(`document.querySelectorAll('script[src*="/backdrops/"]').length`), 0);
+  assert.deepEqual(await page.evaluate('window.warnings'), ['beeson: the backdrop state "saddle" of normalForm is not one of none, field, stable, unstable, directions, flow, linear, resonant']);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the normal form is moved to the state of each step as it is shown, and its flow is traced without end', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(NORMAL_FORM));
+  await page.waitFor(deckSettled);
+  await page.waitFor('Beeson.backdrops[0].tracing');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[0])'), true, 'a backdrop with states is not traced');
+  assert.equal(await page.evaluate('Beeson.animated(Beeson.backdrops[1])'), false);
+  for (let f = 0; f < 6; f++) await page.evaluate('Reveal.next()');
+  await page.waitFor(`Beeson.backdrops[0].el.dataset.shown === 'linear'`);
+  const span = `(${toned}(Beeson.backdrops[0]).accent)`;
+  await page.waitFor(`(({ top, bottom }) => bottom - top < 40)(${span})`, 30000);
+  const frames = await page.evaluate(`new Promise((done) => {
+    const b = Beeson.backdrops[0], seen = new Set();
+    const read = () => { seen.add(b.canvases[0].toDataURL()); if (seen.size < 4) requestAnimationFrame(read); else done(seen.size); };
+    requestAnimationFrame(read);
+  })`);
+  assert.equal(frames, 4);
+  await page.evaluate('Reveal.prev()');
+  await page.waitFor(`Beeson.backdrops[0].el.dataset.shown === 'flow'`);
+  await page.waitFor(`(({ top, bottom }) => bottom - top > 200)(${span})`, 30000);
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor('!Beeson.backdrops[0].tracing && Beeson.backdrops[1].done');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a fragment with a backdrop state does not trace a backdrop that has no states', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(DOTS));
+  await page.waitFor(deckSettled);
+  const animated = await page.evaluate(`(() => {
+    const o = Beeson.backdrops.find((b) => b.el.dataset.system === 'sun-earth-l1');
+    const f = document.createElement('p');
+    f.className = 'fragment';
+    f.dataset.backdropState = 'linear';
+    o.el.closest('section').append(f);
+    return Beeson.animated(o);
+  })()`);
+  assert.equal(animated, false);
+});
+
+test('each page of the print view draws the normal form in the state of its step', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await printView(page, deckUrl(NORMAL_FORM, 'print-pdf'));
+  const pages = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => {
+    const el = p.querySelector('.backdrop');
+    const b = Beeson.backdrops.find((o) => o.el === el);
+    return [el.dataset.shown, b.done, ${toned}(b).n > 100];
+  })`);
+  assert.deepEqual(pages, [...NORMAL_STATES, 'resonant', 'flow', 'flow'].map((s) => [s, true, true]));
+  assert.deepEqual(page.errors, []);
+});
+
+const ORDER = 'test/pages/backdrop-order.html';
+const layers = `((slide) => {
+  if (!document.getElementById('order-probe')) {
+    const style = document.createElement('style');
+    style.id = 'order-probe';
+    style.textContent = '.backdrop canvas { pointer-events: auto !important; }';
+    document.head.append(style);
+  }
+  const textRect = (el) => {
+    if (el.matches('.qr')) return [el.getBoundingClientRect()];
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return [...range.getClientRects()];
+  };
+  {
+    slide.closest('.pdf-page')?.scrollIntoView({ block: 'start' });
+    const backdrop = slide.querySelector('.backdrop');
+    const box = backdrop.getBoundingClientRect();
+    const out = {};
+    for (const el of slide.querySelectorAll('h1, h2, p, .qr')) {
+      const r = textRect(el).find((r) => r.width && r.left < box.right && box.left < r.right && r.top < box.bottom && box.top < r.bottom);
+      if (!r) continue;
+      const x = (Math.max(r.left, box.left) + Math.min(r.right, box.right)) / 2, y = (Math.max(r.top, box.top) + Math.min(r.bottom, box.bottom)) / 2;
+      const hits = document.elementsFromPoint(x, y);
+      const own = hits.findIndex((h) => el.contains(h)), drawn = hits.findIndex((h) => h.localName === 'canvas' && backdrop.contains(h));
+      out[el.matches('.qr') ? 'qr' : el.localName + (el.className ? '.' + el.className : '')] = own < 0 || drawn < 0 ? 'missing' : own < drawn ? 'over' : 'under';
+    }
+    return out;
+  }
+})`;
+const ORDERED = [
+  { h1: 'over', 'p.sub': 'over' },
+  { h2: 'over' },
+  { h2: 'over', p: 'over' },
+  { h1: 'over', 'p.sub': 'over', qr: 'under' },
+];
+
+test('headings and text are drawn over the backdrop on every kind of slide, in both modes and in the print view, and a QR code under it', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl(ORDER, 'still'));
+  await page.waitFor(deckSettled);
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`);
+    const seen = [];
+    for (let h = 0; h < ORDERED.length; h++) {
+      await page.evaluate(`Reveal.slide(${h})`);
+      await page.waitFor(`Reveal.getIndices().h === ${h} && getComputedStyle(Reveal.getCurrentSlide()).opacity === '1'`);
+      seen.push(await page.evaluate(`${layers}(Reveal.getCurrentSlide())`));
+    }
+    assert.deepEqual(seen, ORDERED, `the order in the ${theme} mode`);
+  }
+  await printView(page, deckUrl(ORDER, 'print-pdf&still'));
+  const printed = [];
+  for (let n = 0; n < ORDERED.length; n++) printed.push(await page.evaluate(`${layers}(document.querySelectorAll('.pdf-page section')[${n}])`));
+  assert.deepEqual(printed, ORDERED, 'the order in the print view');
+  assert.deepEqual(page.errors, []);
+  const server = await serve('.');
+  t.after(() => server.close());
+  const served = await launch({ offline: false });
+  t.after(() => served.close());
+  const editor = await served.newPage({ width: 1600, height: 1000 });
+  await editor.goto(`${server.origin}/${ORDER}?edit&still`);
+  await editor.waitFor(deckSettled);
+  await editor.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  const edited = [];
+  for (let h = 0; h < ORDERED.length; h++) {
+    await editor.evaluate(`Reveal.slide(${h})`);
+    await editor.waitFor(`Reveal.getIndices().h === ${h} && getComputedStyle(Reveal.getCurrentSlide()).opacity === '1'`);
+    edited.push(await editor.evaluate(`${layers}(Reveal.getCurrentSlide())`));
+  }
+  assert.deepEqual(edited, ORDERED, 'the order in the editor');
+  assert.deepEqual(editor.errors, []);
 });

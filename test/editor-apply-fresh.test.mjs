@@ -1,8 +1,3 @@
-// the apply of the synchronous editor against a fresh page, see src/editor/session/apply.ts. after
-// an apply that does not ask for a reload, the page must look as a fresh page opened on the text:
-// the same elements, attributes, classes, formulas, steps, and drawings, and what reveal.js and
-// the theme set at the start. a change that cannot be made so asks for a reload
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -23,9 +18,6 @@ const once = (text, from, to) => {
 const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
 const slideWith = (text, heading) => sectionsOf(text).find((s) => s.includes(`<h2>${heading}`) || s.includes(`<h1>${heading}`));
 
-// each text applied in turn on a session page, with the reload that each apply must ask for, after
-// which the port reads as before, and the page compared with a fresh page after each apply that does
-// not
 async function steps(t, changes) {
   const b = await sessionPage(browser);
   t.after(() => b.close());
@@ -63,7 +55,6 @@ test('the outlines and the running heads follow a removed section slide and a ch
   ]);
 });
 
-// the text of the outlines and of the running heads of page
 const CHROME = `[...document.querySelectorAll('.reveal ul.outline, .reveal .run[data-generated]')].map((e) => e.textContent)`;
 
 test('the outlines and the running heads follow the typing of the person in a section heading', async (t) => {
@@ -91,6 +82,22 @@ test('a slide that becomes a vertical stack, and back, looks as on a fresh page'
   ]);
 });
 
+test('the code box of a slide made a stack on a page in the background is numbered before the page draws a frame', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const other = await editorPage(browser);
+  t.after(() => other.close());
+  await front(other);
+  const slide = slideWith(b.source, 'Code boxes');
+  assert.ok(slide?.includes('data-line-numbers'), 'the slide of the code box is found');
+  const text = once(b.source, slide, `<section>\n${slide}\n<section>\n  <h2>Below</h2>\n  <p>A slide below.</p>\n</section>\n</section>`);
+  const got = await b.evaluate(`${E}.loadSession().then(() => ${E}.apply(${JSON.stringify(text)})).then((r) => {
+    const pre = [...document.querySelectorAll('.reveal pre')].find((p) => p.querySelector(':scope > code[data-line-numbers]'));
+    return { reload: r.reload, visibility: document.visibilityState, lines: pre?.getAttribute('data-beeson-lines'), digits: pre?.getAttribute('data-beeson-digits') };
+  })`);
+  assert.deepEqual(got, { reload: false, visibility: 'hidden', lines: '1\n2\n3\n4\n5\n6\n7\n8\n9', digits: '1' });
+});
+
 test('a changed parameter or a new label of a surface asks for a reload, and a changed camera does not', async (t) => {
   await steps(t, [['a mass ratio', (s) => once(s, 'data-function="effective-potential" data-mu="0.05">', 'data-function="effective-potential" data-mu="0.3">'), true]]);
   await steps(t, [['a label', (s) => once(s, '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n  </div>\n  <aside class="notes">The mass ratio', '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n    <span class="label" data-at="L1">Extra</span>\n  </div>\n  <aside class="notes">The mass ratio'), true]]);
@@ -104,7 +111,6 @@ test('a changed step index and a step taken group the steps as on a fresh page',
   ]);
 });
 
-// reveal.js marks a step at an open before the editor marks a figure as movable
 test('a figure made a step has the classes of reveal.js before those of the editor, as on a fresh page', async (t) => {
   const box = '<div class="figure-box">\n    <video class="for-dark" src="demo/clip-dark.mp4"';
   const step = '<div class="figure-box fragment">\n    <video class="for-dark" src="demo/clip-dark.mp4"';
@@ -115,7 +121,6 @@ test('a figure made a step has the classes of reveal.js before those of the edit
   ]);
 });
 
-// the theme numbers the viewers in the order of the deck at an open, see markViewers() in src/print.ts
 test('a viewer moved before another, or after another taken off, is numbered as on a fresh page', async (t) => {
   const scenes = (s) => slideWith(s, 'Embedding TyCHO scenes');
   const more = (s) => slideWith(s, 'More TyCHO scenes');
@@ -126,8 +131,6 @@ test('a viewer moved before another, or after another taken off, is numbered as 
   ]);
 });
 
-// a slide put before a slide that starts as it does is read as a change inside the heading of this
-// slide, whose new bytes close the slide around it
 test('a text element whose tags do not balance asks for a reload, and a slide put before a slide with the same start does not', async (t) => {
   await steps(t, [
     ['a slide put before', (s) => once(s, slideWith(s, 'Embedding TyCHO'), `<section>\n  <h2>A new slide</h2>\n  <p>Its only paragraph.</p>\n</section>\n${slideWith(s, 'Embedding TyCHO')}`), false],
@@ -135,7 +138,6 @@ test('a text element whose tags do not balance asks for a reload, and a slide pu
   ]);
 });
 
-// an edit of the editor on page a, by a command on two selected text elements, applied on page b
 async function commanded(t, heading, first, second, run) {
   const a = await sessionPage(browser);
   const b = await sessionPage(browser);
@@ -165,18 +167,14 @@ test('a start tag of a text element that a structural apply keeps is set on the 
   await steps(t, [['a class of a heading and a new paragraph', (s) => once(s, '<h2>Show your steps one at a time</h2>\n', '<h2 class="center">Show your steps one at a time</h2>\n  <p>New</p>\n'), false]]);
 });
 
-// the theme draws a backdrop into its div once, hence a div that becomes a backdrop or stops being
-// one is not reused for the other
 test('a backdrop that becomes another div asks for a reload, and is placed anew by a structural apply', async (t) => {
   const backdrop = '<div class="backdrop" data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5">';
   await steps(t, [['a backdrop made a shape', (s) => once(s, backdrop, '<div class="shape" style="width: 200px; height: 100px">'), true]]);
   await steps(t, [['the class of a backdrop taken', (s) => once(s, backdrop, '<div data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5">'), true]]);
   const shapes = '<section>\n  <h2>Shapes</h2>\n  <div class="shape rounded" style="width: 241px; height: 148px; translate: 279px 463px"><p>Goal</p></div>\n</section>\n\n';
-  await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<!-- content, the default layout', `${shapes}<!-- content, the default layout`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
+  await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<section>\n  <h2>Show your steps one at a time', `${shapes}<section>\n  <h2>Show your steps one at a time`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
 });
 
-// the parser of the whole file ignores the slash of a self-closing tag of HTML that is not void, and
-// the element left open is carried over the elements after it, where SVG closes it
 test('a self-closing tag of a formatting element in a text element asks for a reload, and one of SVG does not', async (t) => {
   await steps(t, [['an em', (s) => once(s, 'Direct the viewer', 'Direct <em/>the viewer'), true]]);
   await steps(t, [['a b', (s) => once(s, 'Direct the viewer', 'Direct <b/>the viewer'), true]]);
@@ -184,7 +182,6 @@ test('a self-closing tag of a formatting element in a text element asks for a re
   await steps(t, [['a rect of SVG', (s) => once(s, 'Direct the viewer', 'Direct <svg viewBox="0 0 1 1" width="20" height="20"><rect width="1" height="1"/></svg>the viewer'), false]]);
 });
 
-// the theme sets a TyCHO viewer to the mode of the deck at an open, see syncViewers() in src/main.ts
 test('the theme of a TyCHO viewer follows the mode of the deck, unless the viewer keeps its theme', async (t) => {
   await steps(t, [
     ['a light theme', (s) => once(s, '<tycho-viewer theme="dark" kiosk', '<tycho-viewer theme="light" kiosk'), false],
@@ -206,7 +203,6 @@ test('two changes in two text nodes of a paragraph with a formula keep both text
   assert.deepEqual(await b.evaluate(`(() => { const p = ${p}; return [p.firstChild === window.__first, p.lastChild === window.__last, p.firstChild.data, p.lastChild.data]; })()`), [true, true, 'where X', 'Y is the effective potential.']);
 });
 
-// a generator of numbers in [0, 1) from seed, by mulberry32
 function random(seed) {
   let a = seed >>> 0;
   return () => {
@@ -218,8 +214,6 @@ function random(seed) {
   };
 }
 
-// the paragraphs, items, and headings of the slides written on one line, outside code and scripts
-// and without math, each with its line and its tag
 function oneLine(lines) {
   const out = [];
   let slides = false;
@@ -236,8 +230,6 @@ function oneLine(lines) {
   return out;
 }
 
-// the ranges of the lines of the horizontal slides, from the line of the start tag to that of the
-// end tag. the slides of a stack are written indented, hence a stack is one range
 function slideRanges(lines) {
   const out = [];
   for (const [i, l] of lines.entries()) {
@@ -251,8 +243,6 @@ const isStack = (lines, r) => lines[r[0] + 1].startsWith('  <section');
 const cut = (lines, r) => lines.slice(r[0], r[1] + 1);
 const WORDS = ['orbit', 'halo', 'family', 'Moon', 'step', 'slide'];
 
-// each change of the text, by its label, its function of the lines and of a pick from a list, and
-// the reload that its apply asks for
 const MUTATIONS = [
   ['a word', (lines, pick) => {
     const { i } = pick(oneLine(lines));

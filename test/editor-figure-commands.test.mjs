@@ -1,0 +1,631 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { after, before, describe, test } from 'node:test';
+import { deckSettled, launch } from '../scripts/chrome.mjs';
+import { serve } from '../scripts/webdriver.mjs';
+import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
+import { byteExact, click, drag, press, type } from './helpers/editor.mjs';
+
+describe('commands on a figure or its picture', () => {
+  const PLATFORMS = ['mac', 'other'];
+  const MODES = ['dark', 'light'];
+  const DECK = 'test/pages/editor-r8-5.html';
+  const FIGURE_BOX_PAIR = 0, FIGURE_BOX_ONE = 1, PLATE_PAIR = 2, PLATE_ONE = 3, EMPTY = 4, STEPPED = 5;
+  const NAMES = ['a pair in a zone', 'one image in a zone', 'a pair in a plate', 'one image in a plate', 'a slide without a figure', 'a stepped pair'];
+  const IMG = '.reveal section.present img';
+  const CAPTION = '.reveal section.present .caption';
+  const PANEL = '#beeson-edit-panel-format';
+  const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
+  const SOURCE = readFileSync(DECK, 'utf8');
+
+  let browser;
+  let server;
+  before(async () => {
+    browser = await launch({ offline: false });
+    server = await serve('.');
+  });
+  after(async () => {
+    await browser?.close();
+    server?.close();
+  });
+
+  const js = (v) => JSON.stringify(v);
+  const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})).then(() => true)`);
+  const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`);
+  const render = (page) => page.evaluate('window.BeesonEditor.render()');
+  const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
+  const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
+  const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+  const near = (a, b, by = 2) => Math.abs(a - b) <= by;
+
+  const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => [el.localName, ...[...el.classList].filter((c) => /^(figure-box|plate|caption|for-dark|for-light)$/.test(c))].join('.'))`);
+  const rectOf = (page, selector) => page.evaluate(`(() => {
+  const r = [...document.querySelectorAll(${js(selector)})].map((e) => e.getBoundingClientRect()).find((r) => r.width);
+  return r ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+})()`);
+
+  const pictureOf = (page) => page.evaluate(`(() => {
+  const img = [...document.querySelectorAll(${js(IMG)})].find((e) => e.getBoundingClientRect().width);
+  const slides = document.querySelector('.reveal .slides');
+  const k = slides.getBoundingClientRect().width / slides.offsetWidth;
+  const r = img.getBoundingClientRect();
+  const s = getComputedStyle(img);
+  const deg = (el) => parseFloat(getComputedStyle(el).rotate) || 0;
+  const angle = deg(img) + deg(img.parentElement);
+  let w = img.offsetWidth, h = img.offsetHeight, dx = 0, dy = 0;
+  if (s.objectFit === 'contain') {
+    const f = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+    const pw = img.naturalWidth * f, ph = img.naturalHeight * f;
+    const [px, py] = s.objectPosition.split(' ').map((v) => parseFloat(v) / 100);
+    dx = px * (w - pw) + pw / 2 - w / 2;
+    dy = py * (h - ph) + ph / 2 - h / 2;
+    w = pw;
+    h = ph;
+  }
+  const a = (angle * Math.PI) / 180;
+  const flip = parseFloat(s.scale) < 0 ? -1 : 1;
+  const x = r.left + r.width / 2 + (flip * dx * Math.cos(a) - dy * Math.sin(a)) * k;
+  const y = r.top + r.height / 2 + (flip * dx * Math.sin(a) + dy * Math.cos(a)) * k;
+  return { x, y, width: w * k, height: h * k, left: x - (w * k) / 2, top: y - (h * k) / 2, angle, own: deg(img), figure: deg(img.parentElement), k };
+})()`);
+
+  function slideOf(text, n) {
+    const at = [...text.matchAll(/<section[ >]/g)][n].index;
+    return text.slice(at, text.indexOf('</section>', at));
+  }
+
+  const tagsOf = (text, n, names) => [...slideOf(text, n).matchAll(/<([a-z0-9-]+)\b[^>]*>/g)].filter((m) => names.includes(m[1])).map((m) => m[0]);
+
+  const showTab = async (page, name) => {
+    await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-tabs button')].find((b) => b.textContent === ${js(name)})?.click()`);
+    await frames(page);
+  };
+
+  let last = null;
+  async function load(t, platform, mode, n) {
+    await last?.close().catch(() => {});
+    const page = await browser.newPage({ width: 1600, height: 1000 });
+    last = page;
+    t.after(() => page.close().catch(() => {}));
+    const url = `${server.origin}/${DECK}?edit&still&edit-platform=${platform}`;
+    await page.goto(url);
+    await page.evaluate('localStorage.clear()');
+    await page.goto(url);
+    await page.waitFor(deckSettled);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    if ((await page.evaluate('Beeson.theme.get()')) !== mode) await page.evaluate('Beeson.theme.toggle()');
+    page.source = SOURCE;
+    const s = await page.evaluate(`window.BeesonEditor.open(${js(page.source)})`);
+    assert.deepEqual(s.problems, []);
+    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+    await page.evaluate(`Reveal.slide(${n})`);
+    await frames(page);
+    const pair = n === FIGURE_BOX_PAIR || n === PLATE_PAIR || n === STEPPED;
+    page.parts = { figure: n === PLATE_PAIR || n === PLATE_ONE ? 'div.plate' : 'figure.figure-box', pic: pair ? `img.for-${mode}` : 'img', images: pair ? 2 : 1 };
+    return page;
+  }
+
+  const NO_MAC_CHROME_MENU_AT_CTRL_PRESS = `window.addEventListener('contextmenu', (ev) => { if (ev.ctrlKey && ev.button === 0) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true)`;
+
+  async function deselect(page) {
+    await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
+    for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
+    assert.deepEqual(await selected(page), []);
+  }
+
+  async function pick(page, from) {
+    await deselect(page);
+    for (let i = 0; i < (from === 'picture' ? 2 : 1); i++) {
+      await click(page, IMG);
+      await frames(page);
+    }
+    assert.deepEqual(await selected(page), [from === 'figure' ? page.parts.figure : page.parts.pic], `the ${from} is not selected by its clicks`);
+  }
+
+  function inScope(edited, source) {
+    const now = textProblems(edited, THEME);
+    for (const p of textProblems(source, THEME)) {
+      const i = now.indexOf(p);
+      if (i >= 0) now.splice(i, 1);
+    }
+    assert.deepEqual(now, [], 'the edit writes outside the scope rule');
+  }
+
+  async function roundTrip(page, edited) {
+    assert.notEqual(edited, page.source, 'the command does not change the file');
+    inScope(edited, page.source);
+    await undo(page);
+    await frames(page);
+    await byteExact(page);
+    await redo(page);
+    await frames(page);
+    assert.equal(await render(page), edited, 'a redo does not write the edit again');
+    await undo(page);
+    await frames(page);
+    await byteExact(page);
+  }
+
+  async function typeField(page, id, value) {
+    await showTab(page, 'Arrange');
+    const input = `#beeson-edit-num-${id}`;
+    assert.equal(await page.evaluate(`!!document.querySelector('${input}') && !document.querySelector('${input}').disabled`), true, `the field ${id} is not enabled`);
+    await page.evaluate(`(() => { const i = document.querySelector('${input}'); i.focus(); i.select(); })()`);
+    await type(page, String(value));
+    await press(page, 'Enter');
+    await frames(page);
+  }
+  async function fieldValue(page, id) {
+    await showTab(page, 'Arrange');
+    return Number(await page.evaluate(`document.querySelector('#beeson-edit-num-${id}')?.value`));
+  }
+
+  const anglesOf = (text, n) => [...slideOf(text, n).matchAll(/<([a-z0-9-]+)\b[^>]*\brotate: (\d+)deg/g)].map((m) => `${m[1]} ${m[2]}`);
+
+  async function turns(t, platform, mode, n, what, act) {
+    for (const from of ['figure', 'picture']) {
+      const page = await load(t, platform, mode, n);
+      await pick(page, from);
+      const was = await selected(page);
+      const caption = await rectOf(page, CAPTION);
+      const pic = await pictureOf(page);
+      const whole = from === 'figure' && page.parts.figure === 'figure.figure-box';
+      const left = Math.min(pic.left, caption.left), top = Math.min(pic.top, caption.top);
+      const c = { x: (left + Math.max(pic.left + pic.width, caption.right)) / 2, y: (top + Math.max(pic.top + pic.height, caption.bottom)) / 2 };
+      const asked = await act(page);
+      await frames(page);
+      const edited = await render(page);
+      const angles = anglesOf(edited, n);
+      const where = `${what} of ${NAMES[n]} from the ${from}`;
+      const tag = whole ? 'figure' : 'img';
+      assert.equal(angles.length, whole ? 1 : page.parts.images, `${where} writes the angle on ${angles.join(', ') || 'no tag'}`);
+      assert.ok(angles.every((a) => a.startsWith(`${tag} `) && a === angles[0]), `${where} writes the angle on ${angles.join(', ')}`);
+      if (asked !== null) assert.equal(angles[0], `${tag} ${asked}`);
+      const now = await rectOf(page, CAPTION);
+      const turned = await pictureOf(page);
+      const a = (turned.angle * Math.PI) / 180;
+      const at = (o) => (whole ? { x: c.x + (o.x - c.x) * Math.cos(a) - (o.y - c.y) * Math.sin(a), y: c.y + (o.x - c.x) * Math.sin(a) + (o.y - c.y) * Math.cos(a) } : o);
+      const q = at(caption);
+      if (whole) assert.ok(near(now.x, q.x) && near(now.y, q.y), `${where} does not carry the caption with the picture`);
+      else assert.ok(near(now.left, caption.left, 1) && near(now.top, caption.top, 1) && near(now.width, caption.width, 1) && near(now.height, caption.height, 1), `${where} moves or turns the caption`);
+      assert.equal(whole ? turned.own : turned.figure, 0, `${where} turns the ${whole ? 'picture in' : ''} figure`);
+      assert.ok(turned.angle > 0, `${where} does not turn the picture`);
+      const p = at(pic);
+      assert.ok(near(turned.x, p.x) && near(turned.y, p.y), `${where} moves the center of the picture from ${Math.round(p.x)}, ${Math.round(p.y)} to ${Math.round(turned.x)}, ${Math.round(turned.y)}`);
+      assert.deepEqual(await selected(page), was, `${where} changes the selection`);
+      assert.equal(await fieldValue(page, 'angle'), turned.angle, `the Angle field after ${where}`);
+      await page.evaluate('Beeson.theme.toggle()');
+      await frames(page);
+      const other = await pictureOf(page);
+      assert.ok(other.own === turned.own && other.figure === turned.figure && near(other.x, p.x) && near(other.y, p.y), `${where} is not kept in the other mode`);
+      await page.evaluate('Beeson.theme.toggle()');
+      await frames(page);
+      assert.equal((await state(page, 'arrange.resetRotation')).enabled, true, `Reset Rotation is dimmed after ${where}`);
+      await exec(page, 'arrange.resetRotation');
+      await frames(page);
+      await byteExact(page);
+      await undo(page);
+      await frames(page);
+      assert.equal(await render(page), edited);
+      await roundTrip(page, edited);
+      assert.deepEqual(page.errors, []);
+    }
+  }
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`the rotate handle turns the picture of a figure and leaves its caption, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, FIGURE_BOX_ONE, PLATE_PAIR]) {
+          await turns(t, platform, mode, n, 'a turn by the rotate handle', async (page) => {
+            assert.equal(await page.evaluate(`!document.querySelector('.beeson-rotor').hidden`), true, 'the rotate handle is not drawn');
+            await drag(page, '.beeson-rotor', { dx: 80, dy: 60 });
+            return null;
+          });
+        }
+      });
+
+      test(`the Angle field turns the picture of a figure and leaves its caption, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, FIGURE_BOX_ONE, PLATE_PAIR]) {
+          await turns(t, platform, mode, n, 'a turn by the Angle field', async (page) => {
+            await typeField(page, 'angle', 30);
+            return 30;
+          });
+        }
+      });
+    }
+  }
+
+  async function addHeading(page) {
+    const r = await rectOf(page, '.reveal section.present > h2');
+    await click(page, { x: r.left + 20, y: r.y }, { modifiers: 'Shift' });
+    await frames(page);
+  }
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a group turned by its rotate handle turns the picture of its figure and leaves the caption upright, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, PLATE_PAIR]) {
+          const page = await load(t, platform, mode, n);
+          await pick(page, 'figure');
+          await addHeading(page);
+          await exec(page, 'arrange.group');
+          await frames(page);
+          page.source = await render(page);
+          const pic = await pictureOf(page);
+          await drag(page, '.beeson-rotor', { dx: 60, dy: 40 });
+          await frames(page);
+          const edited = await render(page);
+          const angles = anglesOf(edited, n);
+          const where = `a turn of a group with ${NAMES[n]}`;
+          const whole = n === FIGURE_BOX_PAIR;
+          assert.deepEqual(angles.map((a) => a.split(' ')[0]).sort(), whole ? ['figure', 'h2'] : ['h2', 'img', 'img'], `${where} writes the angle on ${angles.join(', ')}`);
+          assert.equal(new Set(angles.map((a) => a.split(' ')[1])).size, 1, `${where} writes the angles ${angles.join(', ')}`);
+          const turned = await pictureOf(page);
+          assert.equal(whole ? turned.own : turned.figure, 0, `${where} turns the ${whole ? 'picture in its' : ''} figure`);
+          assert.equal(await page.evaluate(`getComputedStyle(document.querySelector(${js(CAPTION)}).parentElement).rotate`), whole ? `${turned.angle}deg` : 'none', `${where} turns the caption`);
+          assert.ok(!near(turned.x, pic.x, 4) || !near(turned.y, pic.y, 4), `${where} leaves the picture in place`);
+          assert.equal(await fieldValue(page, 'angle'), turned.angle, `the Angle field after ${where}`);
+          await roundTrip(page, edited);
+          assert.deepEqual(page.errors, []);
+        }
+      });
+    }
+  }
+
+  async function dropFile(page, at, path) {
+    const data = { items: [], files: [resolve(path)], dragOperationsMask: 1 };
+    for (const type of ['dragEnter', 'dragOver']) await page.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
+    const outline = await page.evaluate(`(() => { const b = document.querySelector('.beeson-drop'); return b && !b.hidden ? b.textContent : null; })()`);
+    await page.send('Input.dispatchDragEvent', { type: 'drop', x: at.x, y: at.y, data });
+    return outline;
+  }
+  const waitText = (page, text) => page.waitFor(`window.BeesonEditor.render().includes(${js(text)})`, 30000);
+
+  function figureOf(text, n) {
+    const slide = slideOf(text, n);
+    const at = slide.search(/<(figure|div) class="(figure-box|plate)/);
+    const end = slide.indexOf(slide[at + 1] === 'f' ? '</figure>' : '</div>', at);
+    return slide.slice(at, end);
+  }
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a file dropped onto the picture of a locked figure does not replace it, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, PLATE_PAIR]) {
+          const page = await load(t, platform, mode, n);
+          await pick(page, 'figure');
+          await exec(page, 'arrange.lock');
+          await frames(page);
+          page.source = await render(page);
+          const locked = figureOf(page.source, n);
+          assert.match(locked, /^<(figure|div) class="(figure-box|plate)" data-locked>/);
+          const pic = await pictureOf(page);
+          const outline = await dropFile(page, pic, 'demo/clip-dark.png');
+          assert.equal(outline, 'Add Image', `the outline over the picture of a locked figure of ${NAMES[n]}`);
+          await waitText(page, 'media/clip-dark.png');
+          await page.waitFor(`/Insert/.test(window.BeesonEditor.state('edit.undo').label)`, 30000);
+          await frames(page);
+          const edited = await render(page);
+          assert.equal(figureOf(edited, n), locked, `a file dropped onto the locked picture of ${NAMES[n]} changes its figure`);
+          assert.match(slideOf(edited, n), /<figure class="figure-box"(?: style="[^"]*")?>\s*<img src="media\/clip-dark\.png"(?: style="[^"]*")?>/, 'the file is not added in a zone of its own');
+          await roundTrip(page, edited);
+          assert.deepEqual(page.errors, []);
+        }
+      });
+
+      test(`Replace with a video keeps the mode, the step, the id, and the place of an image, on ${platform} in ${mode} mode`, async (t) => {
+        for (const from of ['figure', 'picture']) {
+          const page = await load(t, platform, mode, STEPPED);
+          await pick(page, from);
+          const pic = await pictureOf(page);
+          assert.equal(await dropFile(page, pic, 'demo/clip-dark.mp4'), 'Replace Image');
+          await waitText(page, 'media/clip-dark.mp4');
+          await frames(page);
+          const edited = await render(page);
+          const videos = tagsOf(edited, STEPPED, ['video']);
+          assert.equal(videos.length, 1, 'the image of the mode is not replaced with one video');
+          for (const part of [`class="for-${mode} fragment"`, 'data-fragment-index="1"', 'data-id="curves"', 'style="translate: 12px 8px; width: 500px"', 'src="media/clip-dark.mp4"', 'poster="media/clip-dark.png"']) {
+            assert.ok(videos[0].includes(part), `the video ${videos[0]} of a Replace from the ${from} is written without ${part}`);
+          }
+          assert.ok(!videos[0].includes('alt='), `the video ${videos[0]} keeps the alt text of the image`);
+          assert.equal(tagsOf(edited, STEPPED, ['img']).length, 1);
+          assert.deepEqual(await selected(page), [from === 'figure' ? 'figure.figure-box' : `video.for-${mode}`], `the selection after a Replace from the ${from}`);
+          await roundTrip(page, edited);
+          assert.deepEqual(page.errors, []);
+        }
+      });
+    }
+  }
+
+  const widthsOf = (text, n) => tagsOf(text, n, ['img']).map((tag) => /\bwidth: (\d+)px/.exec(tag)?.[1] ?? null);
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a width typed in the W field and Reset Size keep the upper left corner of the picture of a figure, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, FIGURE_BOX_ONE, PLATE_PAIR, PLATE_ONE]) {
+          for (const from of ['figure', 'picture']) {
+            const page = await load(t, platform, mode, n);
+            await pick(page, from);
+            const pic = await pictureOf(page);
+            const caption = await rectOf(page, CAPTION);
+            await typeField(page, 'width', 400);
+            const edited = await render(page);
+            const where = `a width typed for ${NAMES[n]} from the ${from}`;
+            const written = widthsOf(edited, n);
+            assert.ok(written.length === page.parts.images && written.every((w) => w && w === written[0]), `${where} is not written on every image`);
+            const sized = await pictureOf(page);
+            assert.ok(near(sized.left, pic.left) && near(sized.top, pic.top), `${where} moves the corner of the picture from ${Math.round(pic.left)}, ${Math.round(pic.top)} to ${Math.round(sized.left)}, ${Math.round(sized.top)}`);
+            const under = await rectOf(page, CAPTION);
+            if (n === FIGURE_BOX_PAIR || n === FIGURE_BOX_ONE) assert.ok(near(under.top - (await rectOf(page, IMG)).bottom, 16 * sized.k), `${where} leaves the caption away from the box of its picture`);
+            else assert.ok(near(under.top, caption.top) && near(under.left, caption.left), `${where} moves the caption of the layout`);
+            assert.equal(await fieldValue(page, 'width'), 400);
+            assert.equal((await state(page, 'arrange.resetSize')).enabled, true);
+            await exec(page, 'arrange.resetSize');
+            await frames(page);
+            const reset = await pictureOf(page);
+            assert.ok(near(reset.left, pic.left) && near(reset.top, pic.top) && near(reset.width, pic.width), `Reset Size after ${where} moves the corner of the picture to ${Math.round(reset.left)}, ${Math.round(reset.top)}`);
+            await byteExact(page);
+            await undo(page);
+            await frames(page);
+            assert.equal(await render(page), edited);
+            await roundTrip(page, edited);
+            assert.deepEqual(page.errors, []);
+          }
+        }
+      });
+    }
+  }
+
+  const count = (text, part) => text.split(part).length - 1;
+  const ID = 'data-id="curves"';
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a copy of a figure does not repeat a data-id of its slide, on ${platform} in ${mode} mode`, async (t) => {
+        assert.equal(count(SOURCE, ID), 2);
+        for (const from of ['figure', 'picture']) {
+          const page = await load(t, platform, mode, STEPPED);
+          await pick(page, from);
+          await press(page, 'Mod+D');
+          await frames(page);
+          let edited = await render(page);
+          assert.equal(count(slideOf(edited, STEPPED), '<img class="for-'), 4, `Duplicate from the ${from} does not copy both images`);
+          assert.equal(count(edited, ID), 2, `Duplicate from the ${from} repeats the data-id`);
+          assert.equal(count(slideOf(edited, STEPPED), 'data-fragment-index="1"'), 4, 'the copy does not keep the step of its images');
+          await roundTrip(page, edited);
+          if (platform !== 'mac') await page.evaluate(NO_MAC_CHROME_MENU_AT_CTRL_PRESS);
+          await pick(page, from);
+          await drag(page, IMG, { dx: 80, dy: 30, modifiers: platform === 'mac' ? 'Alt' : 'Ctrl' });
+          await page.waitFor(`window.BeesonEditor.render().split('<figure').length === ${count(SOURCE, '<figure') + 2}`);
+          edited = await render(page);
+          assert.equal(count(edited, ID), 2, `a copy by a drag from the ${from} repeats the data-id`);
+          await roundTrip(page, edited);
+          await pick(page, from);
+          await exec(page, 'edit.copy');
+          await exec(page, 'edit.paste');
+          await frames(page);
+          edited = await render(page);
+          assert.equal(count(slideOf(edited, STEPPED), '<img class="for-'), 4);
+          assert.equal(count(edited, ID), 2, `Paste on the slide of the figure from the ${from} repeats the data-id`);
+          await roundTrip(page, edited);
+          await pick(page, from);
+          await exec(page, 'edit.copy');
+          await page.evaluate(`Reveal.slide(${EMPTY})`);
+          await frames(page);
+          await exec(page, 'edit.paste');
+          await frames(page);
+          edited = await render(page);
+          assert.equal(count(slideOf(edited, EMPTY), ID), 2, 'the first copy on another slide does not keep the data-id');
+          assert.deepEqual(await selected(page), ['figure.figure-box'], 'the pasted figure is not selected');
+          await exec(page, 'edit.paste');
+          await frames(page);
+          const twice = await render(page);
+          assert.equal(count(slideOf(twice, EMPTY), '<img class="for-'), 4);
+          assert.equal(count(slideOf(twice, EMPTY), ID), 2, 'a second copy on another slide repeats the data-id');
+          inScope(twice, SOURCE);
+          await undo(page);
+          await frames(page);
+          assert.equal(await render(page), edited);
+          await undo(page);
+          await frames(page);
+          await byteExact(page);
+          assert.deepEqual(page.errors, []);
+        }
+      });
+    }
+  }
+
+  const copySelected = (page) => page.evaluate(`(() => { const s = window.BeesonEditor.selection(); const all = document.querySelectorAll('.reveal section.present figure.figure-box'); return s.length === 1 && all.length === 2 && s[0] === all[1]; })()`);
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`an undo of Delete, Cut, Duplicate, and Paste of a figure selects what was selected, and a redo the copy, on ${platform} in ${mode} mode`, async (t) => {
+        for (const from of ['figure', 'picture']) {
+          const page = await load(t, platform, mode, FIGURE_BOX_PAIR);
+          const removals = { Delete: () => press(page, platform === 'mac' ? 'Backspace' : 'Delete'), Cut: () => exec(page, 'edit.cut') };
+          for (const [name, act] of Object.entries(removals)) {
+            await pick(page, from);
+            const was = await selected(page);
+            await act();
+            await frames(page);
+            assert.equal(count(await render(page), '<figure'), count(SOURCE, '<figure') - 1, `${name} from the ${from} does not remove the figure`);
+            assert.deepEqual(await selected(page), []);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+            assert.deepEqual(await selected(page), was, `an undo of ${name} from the ${from} does not select it again`);
+            await redo(page);
+            await frames(page);
+            assert.deepEqual(await selected(page), [], `a redo of ${name} from the ${from} leaves a selection`);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+          }
+          const copies = { Duplicate: () => press(page, 'Mod+D'), Paste: async () => { await exec(page, 'edit.copy'); await exec(page, 'edit.paste'); } };
+          for (const [name, act] of Object.entries(copies)) {
+            await pick(page, from);
+            const was = await selected(page);
+            await act();
+            await frames(page);
+            assert.equal(await copySelected(page), true, `${name} from the ${from} does not select the copy`);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+            assert.deepEqual(await selected(page), was, `an undo of ${name} from the ${from} does not select its source again`);
+            await redo(page);
+            await frames(page);
+            assert.equal(await copySelected(page), true, `a redo of ${name} from the ${from} does not select the copy`);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+          }
+          assert.deepEqual(page.errors, []);
+        }
+      });
+    }
+  }
+
+  const flipsOf = (text, n) => tagsOf(text, n, ['img']).map((tag) => /\bscale: (-?\d+ -?\d+)/.exec(tag)?.[1] ?? null);
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a flip mirrors the picture of a figure in place, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, PLATE_PAIR, PLATE_ONE]) {
+          for (const from of ['figure', 'picture']) {
+            const page = await load(t, platform, mode, n);
+            for (const [id, scale] of [['arrange.flipHorizontal', '-1 1'], ['arrange.flipVertical', '1 -1']]) {
+              await pick(page, from);
+              const pic = await pictureOf(page);
+              const caption = await rectOf(page, CAPTION);
+              assert.equal((await state(page, id)).enabled, true);
+              await exec(page, id);
+              await frames(page);
+              const edited = await render(page);
+              const where = `${id} of ${NAMES[n]} from the ${from}`;
+              assert.deepEqual(flipsOf(edited, n), new Array(page.parts.images).fill(scale), `${where} is not written on every image`);
+              const flipped = await pictureOf(page);
+              assert.ok(near(flipped.left, pic.left) && near(flipped.top, pic.top), `${where} moves the picture from ${Math.round(pic.left)}, ${Math.round(pic.top)} to ${Math.round(flipped.left)}, ${Math.round(flipped.top)}`);
+              const now = await rectOf(page, CAPTION);
+              assert.ok(near(now.left, caption.left, 1) && near(now.top, caption.top, 1), `${where} moves the caption`);
+              const frame = await rectOf(page, '.beeson-frame.selected:not([hidden])');
+              const inset = from === 'figure' && n === FIGURE_BOX_PAIR ? 8 : 0;
+              assert.ok(near(frame.left, flipped.left - inset) && near(frame.top, flipped.top - inset), `the frame after ${where} is at ${Math.round(frame.left)}, ${Math.round(frame.top)}`);
+              await roundTrip(page, edited);
+            }
+            assert.deepEqual(page.errors, []);
+          }
+        }
+      });
+    }
+  }
+
+  const frameInSlide = (page) => page.evaluate(`(() => {
+  const f = [...document.querySelectorAll('.beeson-frame.selected')].find((e) => !e.hidden)?.getBoundingClientRect();
+  const s = document.querySelector('.reveal .slides').getBoundingClientRect();
+  return !!f && f.width > 20 && f.left >= s.left - 2 && f.top >= s.top - 2 && f.right <= s.right + 2 && f.bottom <= s.bottom + 2;
+})()`);
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`a copy of the plate of a figure slide is drawn on its slide, as a zone where the layout does not have a plate, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [PLATE_PAIR, PLATE_ONE]) {
+          for (const from of ['figure', 'picture']) {
+            const page = await load(t, platform, mode, n);
+            const images = n === PLATE_PAIR ? 2 : 1;
+            await pick(page, from);
+            await press(page, 'Mod+D');
+            await frames(page);
+            let edited = await render(page);
+            let where = `Duplicate of ${NAMES[n]} from the ${from}`;
+            assert.equal(count(slideOf(edited, n), '<div class="plate">'), 1, `${where} writes a second plate`);
+            assert.equal(count(slideOf(edited, n), '<div class="figure-box">'), 1, `${where} does not write the copy as a zone`);
+            assert.equal(count(slideOf(edited, n), '<img'), 2 * images, `${where} does not copy every image`);
+            assert.deepEqual(await selected(page), ['div.figure-box'], `${where} does not select the copy`);
+            assert.equal(await frameInSlide(page), true, `the copy of ${where} is not drawn on the slide`);
+            await roundTrip(page, edited);
+            await pick(page, from);
+            await exec(page, 'edit.copy');
+            await page.evaluate(`Reveal.slide(${EMPTY})`);
+            await frames(page);
+            await exec(page, 'edit.paste');
+            await frames(page);
+            edited = await render(page);
+            where = `Paste of ${NAMES[n]} onto a content slide from the ${from}`;
+            assert.equal(count(slideOf(edited, EMPTY), '<div class="figure-box">'), 1, `${where} does not write a zone`);
+            assert.equal(count(slideOf(edited, EMPTY), '<img'), images);
+            assert.deepEqual(await selected(page), ['div.figure-box']);
+            assert.equal(await frameInSlide(page), true, `the copy of ${where} is not drawn on the slide`);
+            inScope(edited, SOURCE);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+            await page.evaluate(`Reveal.slide(${n})`);
+            await frames(page);
+            await pick(page, from);
+            await exec(page, 'edit.cut');
+            await frames(page);
+            await exec(page, 'edit.paste');
+            await frames(page);
+            edited = await render(page);
+            assert.equal(count(slideOf(edited, n), '<div class="plate">'), 1, 'a plate pasted onto its figure slide after a cut is not a plate');
+            assert.equal(await frameInSlide(page), true);
+            await undo(page);
+            await undo(page);
+            await frames(page);
+            await byteExact(page);
+            assert.deepEqual(page.errors, []);
+          }
+        }
+      });
+    }
+  }
+
+  const menuItems = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].filter((i) => i.getClientRects().length).map((i) => ({ text: i.textContent.trim().replace(/\\s+/g, ' '), off: i.classList.contains('disabled') || i.getAttribute('aria-disabled') === 'true' }))`);
+
+  async function chooseItem(page, name) {
+    const at = await page.evaluate(`(() => {
+    const i = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.textContent.trim().startsWith(${js(name)}));
+    if (!i) return null;
+    const r = i.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+    assert.ok(at, `the context menu does not have an item ${name}`);
+    await click(page, at);
+    await frames(page);
+  }
+
+  for (const platform of PLATFORMS) {
+    for (const mode of MODES) {
+      test(`Lock and Unlock of the context menu of a figure and of its picture are written on the figure, on ${platform} in ${mode} mode`, async (t) => {
+        for (const n of [FIGURE_BOX_PAIR, PLATE_PAIR]) {
+          for (const from of ['figure', 'picture']) {
+            const page = await load(t, platform, mode, n);
+            await pick(page, from);
+            await click(page, IMG, { button: 'right' });
+            await frames(page);
+            assert.deepEqual(await selected(page), [from === 'figure' ? page.parts.figure : page.parts.pic], 'a right click changes the selection');
+            await chooseItem(page, 'Lock');
+            const edited = await render(page);
+            const tag = n === FIGURE_BOX_PAIR ? '<figure class="figure-box" data-locked>' : '<div class="plate" data-locked>';
+            assert.equal(edited, SOURCE.replace(tag.replace(' data-locked', ''), tag), `Lock of the context menu of ${NAMES[n]} from the ${from} is not written on the figure alone`);
+            await click(page, IMG, { button: 'right' });
+            await frames(page);
+            const items = await menuItems(page);
+            const unlock = items.find((i) => i.text.startsWith('Unlock'));
+            assert.ok(unlock && !unlock.off, 'Unlock is missing or dimmed in the menu of a locked figure');
+            assert.equal(unlock.text, platform === 'mac' ? 'Unlock⌥⌘L' : 'UnlockCtrl+Shift+L');
+            for (const name of ['Cut', 'Delete', 'Bring to Front', 'Flip Horizontal']) assert.ok(items.find((i) => i.text.startsWith(name))?.off, `${name} is live in the menu of a locked figure`);
+            for (const name of ['Copy', 'Duplicate']) assert.equal(items.find((i) => i.text.startsWith(name))?.off, false, `${name} is dimmed in the menu of a locked figure`);
+            await chooseItem(page, 'Unlock');
+            await byteExact(page);
+            await undo(page);
+            await frames(page);
+            assert.equal(await render(page), edited);
+            await roundTrip(page, edited);
+            assert.deepEqual(page.errors, []);
+          }
+        }
+      });
+    }
+  }
+});

@@ -1,25 +1,12 @@
-// Records the tycho scenes of a deck for scripts/export-pptx.mjs. A recording is an MP4 of H.264,
-// encoded by exportVideo of the tycho runtime in a page of the live deck, since in the print view
-// each viewer is replaced by its still, see src/print.ts. Each frame is the picture of a kiosk
-// viewer of the size of the box of the viewer in the print view, drawn at twice this size in px,
-// and a recording holds one loop of its scene at 60 frames per second, with its first frame as its
-// one key frame. The labels are set in the face of --tycho-font in theme/beeson.css.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { deckSettled, deckUrl } from './chrome.mjs';
+import { FULL_RANGE } from './record.mjs';
 
 const FPS = 60;
-// a recording of a long scene is tens of MB, hence it is read out of the page in parts
 const PART = 4 * 1024 * 1024;
 
-// the time in ms within which the next frame of a recording is finished, or the recording fails.
-// a frame of the scene of the demo deck is finished in under 20 ms on a Mac
 const STALL = 120000;
 
-// runs in the page, and starts the export without awaiting it, since an export of minutes would
-// outlast the time limit of a DevTools call in launch() of scripts/chrome.mjs. The frames done and
-// in total, then the result, are kept in window.beesonRecording, and the bytes as well for read.
-// The software encoder is asked for first, since it gave a smaller file than the encoder of the
-// GPU, and the same kind of file on every machine
 function record(viewer, size, fps) {
   const state = { done: 0, total: 0, result: null };
   window.beesonRecording = state;
@@ -31,13 +18,10 @@ function record(viewer, size, fps) {
     kiosk: true,
     keyFrameInterval: Infinity,
     hardwareAcceleration,
-    // the length of an export is bounded in the controls of a viewer, and a scene of a deck is
-    // recorded whole
     limits: { frames: Infinity, seconds: Infinity },
     onFrame: (canvas, k) => {
       if (k === 0) poster = canvas.toDataURL('image/png');
     },
-    // called by tycho once each frame is drawn and queued in the encoder
     onProgress: (done, total) => {
       frames = total;
       Object.assign(state, { done, total });
@@ -64,13 +48,11 @@ function record(viewer, size, fps) {
       bytes: blob.size,
       poster: poster.slice(poster.indexOf(',') + 1),
       duration: (frames / fps) * 1000,
-      // a clock that ends with a stop holds its last frame, and is not looped
       loop: viewer.scene?.clock?.end !== 'stop',
     };
   })();
 }
 
-// waits for the recording started by record, and fails once a frame is not finished within STALL
 async function finished(page, name) {
   let last = -1;
   let since = Date.now();
@@ -87,11 +69,6 @@ async function finished(page, name) {
   }
 }
 
-/**
- * Shows the first frame of each recording in the print view on page in place of the still of its
- * viewer, which is the canvas alone, without the labels that the viewer sets in HTML. A frame
- * fills the box of its viewer, as a recording does in PowerPoint.
- */
 export async function showFirstFrames(page, recordings) {
   const frames = [...recordings].map(([id, { poster }]) => [id, `data:image/png;base64,${poster.toString('base64')}`]);
   await page.evaluate(`Promise.all(${JSON.stringify(frames)}.flatMap(([id, src]) =>
@@ -102,13 +79,6 @@ export async function showFirstFrames(page, recordings) {
     })))`);
 }
 
-/**
- * Records each scene of a deck once, in a new page of browser. boxes is a map of the number of a
- * viewer, its data-still, to { width, height, name }, the box of the viewer in px of the slide and
- * the name of its slide. Returns a map of the same numbers to { data, poster, duration, loop }, the
- * MP4 and a PNG of its first frame as Buffers, its duration in ms, and whether it is looped.
- * Throws with the reason when a scene is not recorded, e.g. in a browser without an H.264 encoder.
- */
 export async function recordScenes(browser, deck, boxes) {
   const recordings = new Map();
   if (!boxes.size) return recordings;
@@ -116,9 +86,9 @@ export async function recordScenes(browser, deck, boxes) {
   try {
     await page.goto(deckUrl(deck));
     await page.waitFor(deckSettled);
+    await page.evaluate(FULL_RANGE);
     for (const [id, { width, height, name }] of boxes) {
       const viewer = `document.querySelector('tycho-viewer[data-still="${id}"]')`;
-      // a viewer of a slide that is not shown is not laid out, and its export would be empty
       await page.evaluate(`(() => {
         const { h, v } = Reveal.getIndices(${viewer}.closest('.slides section'));
         Reveal.slide(h, v);

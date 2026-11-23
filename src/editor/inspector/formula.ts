@@ -1,11 +1,3 @@
-// the Formula pane of the Format tab, for a selected display, a display with the caret, or the
-// inline formula focused last in a text: the TeX in a field with its live preview and the
-// completion of the macros of the deck, Hold Through the Next Step for a display, and the color of
-// a symbol at a step. a symbol is a part of the TeX selected in the field, which Color Symbol marks
-// with \class and colors in the chosen tone at the chosen step. the colored symbols of the formula
-// are listed under it, each with its tone and step and a button that takes its color off. the
-// formula is read again at each sync, since a formula is replaced when its text element is typeset again
-
 import type { App } from '../app.ts';
 import { TONES, coloredOf, colorSteps, displayOf, formulaOf, type ColorStep, type Tone } from '../commands/math.ts';
 import { balanced, mathLookup } from '../math.ts';
@@ -14,7 +6,6 @@ import { injectStyle, make } from '../ui/dom.ts';
 import { openMenu, type MenuItem } from '../ui/menu.ts';
 import { GLYPHS, checkbox, glyph, keepFocus, note, row, section, type Control, type Run } from './controls.ts';
 
-// the cross of the button that takes the color off a symbol, on the grid of the icons of controls.ts
 GLYPHS.remove ??= ['M6.5 6.5l7 7', 'M13.5 6.5l-7 7'];
 
 const CSS = `
@@ -25,8 +16,6 @@ const CSS = `
 .beeson-edit-inspector .ed-tex .preview svg { max-width: 100%; height: auto; }
 `;
 
-// the rules of the tones, the pop-up of the steps, and the list of colors at a step, which the
-// Text pane shares
 export const COLOR_CSS = `
 .beeson-edit-inspector .ed-tones { display: flex; gap: 10px; }
 .beeson-edit-inspector .ed-tones button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px var(--ed-edge); cursor: default; }
@@ -44,7 +33,6 @@ export const COLOR_CSS = `
 .beeson-edit-inspector .ed-colored button:hover { background: var(--ed-pressed); color: var(--ed-text); }
 `;
 
-// the color of a tone on the current slide, in its mode
 const swatchOf = (app: App, tone: Tone): string => {
   const slide = app.current() ?? document.querySelector('.reveal');
   return (slide ? getComputedStyle(slide).getPropertyValue(`--${tone}`).trim() : '') || 'transparent';
@@ -52,7 +40,6 @@ const swatchOf = (app: App, tone: Tone): string => {
 
 export const toneName = (tone: Tone): string => TONES.find(([t]) => t === tone)?.[1] ?? tone;
 
-// the formula and the selection or caret in its TeX field, shared by the parts of the pane
 type Shared = { formula: () => Element | null; field: HTMLTextAreaElement | null; changed: (() => void)[] };
 
 function texPart(app: App, run: Run, shared: Shared): Control {
@@ -99,7 +86,6 @@ function texPart(app: App, run: Run, shared: Shared): Control {
   return { el, sync, flush: () => void commit() };
 }
 
-// the step chosen for a color, kept between the panes of one session, by the label of its step
 let chosenTone: Tone = 'accent';
 let chosenStep: string | null = null;
 
@@ -162,7 +148,7 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
       b.disabled = !f;
     }
     const o = current();
-    stepText.textContent = o ? o.label : 'No later step';
+    stepText.textContent = o ? o.label : 'The slide does not have a later step';
     step.disabled = !options.length;
     const sel = selected();
     apply.disabled = !f || !sel || !o;
@@ -188,12 +174,11 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
   return { el, sync };
 }
 
-// the pop-up button of the step of a color, which open opens
-export function stepButton(open: (keyboard: boolean) => void): { el: HTMLButtonElement; text: HTMLElement } {
+export function stepButton(open: (keyboard: boolean) => void, label = 'Step of the color'): { el: HTMLButtonElement; text: HTMLElement } {
   const el = make('button', 'ed-step');
   el.type = 'button';
   el.setAttribute('aria-haspopup', 'menu');
-  el.setAttribute('aria-label', 'Step of the color');
+  el.setAttribute('aria-label', label);
   const text = make('span');
   el.append(text, glyph('chevron-down', 14));
   keepFocus(el);
@@ -204,8 +189,6 @@ export function stepButton(open: (keyboard: boolean) => void): { el: HTMLButtonE
   return { el, text };
 }
 
-// the menu of the later steps of options and of the elements that can be made a new step, under
-// owner. with start, From the Start is offered first, and chosen as null
 export function openSteps(app: App, owner: HTMLElement, keyboard: boolean, options: ColorStep[], current: ColorStep | null, choose: (o: ColorStep | null) => void, start = false): void {
   const items: MenuItem[] = start ? [{ label: 'From the Start', checked: !current, run: () => choose(null) }] : [];
   for (const group of [options.filter((o) => o.step !== null), options.filter((o) => o.step === null)]) {
@@ -215,8 +198,6 @@ export function openSteps(app: App, owner: HTMLElement, keyboard: boolean, optio
   openMenu(app, items, { anchor: owner.getBoundingClientRect(), placement: 'below', owner, keyboard, label: 'Step of the color', className: 'select' });
 }
 
-// a row of the list of colors at a step: the dot of its tone, its symbol or words, its tone and
-// step in at, and a button that runs remove, which runs command
 export function coloredItem(app: App, c: { name: string; body: string; tone: Tone | null }, at: string, remove: () => void, command: string): HTMLLIElement {
   const li = make('li');
   const dot = make('span', 'dot');
@@ -239,7 +220,6 @@ export function formulaPane(app: App, run: Run): Control[] {
   const shared: Shared = { formula: () => formulaOf(app), field: null, changed: [] };
   const tex = texPart(app, run, shared);
   const display = !!displayOf(shared.formula());
-  // the TeX of a formula is typed in one field, that of its popover while the popover is open
   const texSection = section('TeX', [tex]);
   const syncTex = texSection.sync;
   texSection.sync = () => {
@@ -252,13 +232,10 @@ export function formulaPane(app: App, run: Run): Control[] {
     texSection,
     ...(display ? [section(null, [checkbox(app, run, 'math.hold', 'Hold through the next step'), note(() => 'The display is held at full opacity while the sentence after it is shown, and while a symbol of it is colored.')])] : []),
     colorPart(app, run, shared),
-    section(null, [row([note(() => (app.platform === 'mac' ? '⌥⌘E puts an inline formula at the caret of a text.' : 'Alt+= puts an inline formula at the caret of a text.'))])]),
+    section(null, [row([note(() => (app.platform === 'mac' ? 'Press ⌥⌘E to put an inline formula at the caret of a text.' : 'Press Alt+= to put an inline formula at the caret of a text.'))])]),
   ];
 }
 
-// the panes of a formula: Formula and Arrange for a display, and Formula, Text, and Arrange for an
-// inline formula, whose text element is a text. the items are the text elements, so that the pane is not built
-// again when its formula is typeset again
 export function formulaView(app: App): { tabs: ('formula' | 'text' | 'arrange')[]; items: Element[] } | null {
   const f = formulaOf(app);
   if (!f) return null;

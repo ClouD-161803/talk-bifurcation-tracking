@@ -1,8 +1,3 @@
-// the Surface pane on both platforms: a drag that turns a surface, its azimuth and elevation shown
-// at the pointer, Use Current View, a drag from the edge of a surface that moves it, and a camera
-// written to the surfaces that share it. each edit is checked byte for byte, after an undo and a
-// redo, against the scope rule, and after a save and an open of the saved text
-
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
@@ -34,12 +29,9 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 let last = null;
 
-// the editor on a slide of a deck served over HTTP, where a save is written into the origin private
-// file system, with the Format tab of the inspector shown
 async function deckPage(platform, slide, deck = LAYOUTS) {
   await last?.close().catch(() => {});
   const page = await browser.newPage();
@@ -66,7 +58,6 @@ async function inScope(page) {
   assert.deepEqual(now, []);
 }
 
-// the text rendered once it is the source with edits, e.g. after a command run by a key
 async function until(page, edits) {
   let expected = page.source;
   for (const [a, b] of edits) expected = expected.replace(a, () => b);
@@ -74,8 +65,6 @@ async function until(page, edits) {
   await byteExact(page, edits);
 }
 
-// the edit checked byte for byte, then after an undo, which gives the file with the edits before,
-// and again after a redo
 async function roundTrip(page, edits, label, before = []) {
   await until(page, edits);
   await inScope(page);
@@ -106,7 +95,6 @@ for (const platform of PLATFORMS) {
     assert.ok(turned.elevation > 32);
     await byteExact(page);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-panes').dataset.pane`), 'surface');
-    // the field shows the azimuth of the drag, which is not written until Use Current View
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').value`), String(Math.round(turned.azimuth)));
     await click(page, `${PANEL} button[data-command="surface.useView"]`);
     const az = Math.round(turned.azimuth), el = Math.round(turned.elevation);
@@ -115,12 +103,10 @@ for (const platform of PLATFORMS) {
     await roundTrip(page, [edit], 'Use Current View');
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').value`), String(az));
     assert.equal(Math.round((await camera()).azimuth), az);
-    // an undo puts the camera of the deck back
     await undo(page);
     await frames(page);
     assert.equal(Math.round((await camera()).azimuth), -60);
     await redo(page);
-    // a field writes its attribute at Return, and Turn and Z Scale are written as numbers
     await click(page, `${PANEL} input[name="azimuth"]`);
     await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').select()`);
     await type(page, '200');
@@ -131,13 +117,12 @@ for (const platform of PLATFORMS) {
     const scaled = [tag, tag.replace('>', ` data-azimuth="-160" data-elevation="${el}" data-zscale="0.5">`)];
     await roundTrip(page, [scaled], 'Surface Z Scale', [field]);
     assert.equal((await camera()).written.zscale, 0.5);
-    // a right-click on the surface opens the menu of an element, with Use Current View
     const at = await center(page, '.reveal section.present .surface');
     await click(page, at, { button: 'right' });
     assert.ok(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu [role="menuitem"]')].some((i) => i.textContent.includes('Use Current View'))`));
     await press(page, 'Escape');
     await saved(page, [scaled]);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag from the edge of a surface moves it (${platform})`, async () => {
@@ -152,7 +137,7 @@ for (const platform of PLATFORMS) {
     assert.ok(moved && Number(moved[1]) > 20, 'the surface is not moved to the left');
     await roundTrip(page, [[tag, moved[0]]], 'Move');
     assert.equal(await page.evaluate(`Beeson.surfaces.find((s) => document.querySelector('.reveal section.present').contains(s.el)).view().azimuth`), before);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`Use Current View writes the camera to the surface of the next slide that shares it (${platform})`, async () => {
@@ -170,13 +155,12 @@ for (const platform of PLATFORMS) {
     const two = '<div class="surface" data-function="effective-potential" data-mu="0.05" data-surface-state="effective">';
     const edits = [[one, one.replace('>', ` data-azimuth="${az}" data-elevation="${el}">`)], [two, two.replace('>', ` data-azimuth="${az}" data-elevation="${el}">`)]];
     await roundTrip(page, edits, 'Use Current View');
-    // the surface of the next slide is shown under the camera written
     await page.evaluate(`Reveal.slide(${first + 1})`);
     await frames(page);
     const next = await page.evaluate(`Beeson.surfaces.find((s) => document.querySelector('.reveal section.present').contains(s.el)).view()`);
     assert.deepEqual([Math.round(next.azimuth), Math.round(next.elevation)], [az, el]);
     await saved(page, edits);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 
   test(`a drag on a surface shows its azimuth and elevation at the pointer, and the fields follow it (${platform})`, async () => {
@@ -196,7 +180,6 @@ for (const platform of PLATFORMS) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x + 80, y: at.y + 30, button: 'left', clickCount: 1 });
     await frames(page);
     assert.equal(await readout(), null);
-    // the fields keep the view of the drag, marked as not written, until Use Current View writes it
     assert.deepEqual(await fields(), [m[1], m[2]]);
     assert.ok(await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').closest('.ed-num').classList.contains('turned')`));
     await byteExact(page);
@@ -204,6 +187,6 @@ for (const platform of PLATFORMS) {
     const tag = '<div class="surface" data-function="effective-potential" data-mu="0.05">';
     await roundTrip(page, [[tag, tag.replace('>', ` data-azimuth="${m[1]}" data-elevation="${m[2]}">`)]], 'Use Current View');
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} input[name="azimuth"]').closest('.ed-num').classList.contains('turned')`), false);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }

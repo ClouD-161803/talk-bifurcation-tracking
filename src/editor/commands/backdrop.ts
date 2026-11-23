@@ -1,82 +1,96 @@
-// a backdrop as an element of the canvas: its commands, the pan of its window by a drag and by the
-// arrow keys, the resize of its box by a grip with the drawing kept in place, the red marks of the
-// edges at which its drawing is cut, its menu, and the gallery of Media > Backdrop…. a backdrop is
-// drawn by the theme, hence a change of its drawing or of its labels is drawn again by
-// Beeson.remount, and a tile of the gallery by Beeson.preview, so that the orbit engine is not
-// copied into the editor
-
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { frameOf } from '../canvas/hit.ts';
 import type { Handle } from '../canvas/snap.ts';
 import { setPreview, view as frameView } from '../canvas/frames.ts';
-import { begin, editing, extentOf, markCuts, orbitOf, setView, syncBackdrops, windowAttrs } from '../canvas/mask.ts';
+import { begin, editing, markCuts, orbitOf, syncBackdrops, windowAttrs } from '../canvas/mask.ts';
 import { injectStyle, make } from '../ui/dom.ts';
+import { selectIn } from '../text/elements.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
+import { SYSTEMS, systemOf } from '../../poincare.ts';
+import { ALPHAS, PLANES, planeOf, shownTori, toriSpec } from '../../tori.ts';
+import { modelOf } from '../steps.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
-export type Live = { el: HTMLElement; view: View; done: boolean; tracing: boolean; ready: Promise<void>; fileTrajectories?: TrajectoryData[] | null; fit(): void; reset(): void; start(): void; complete(): void; destroy(): void };
+export type Live = { el: HTMLElement; view: View; extent: { x0: number; x1: number; y0: number; y1: number } | null; setWindow(view: View | null): void; done: boolean; tracing: boolean; ready: Promise<void>; fileTrajectories?: TrajectoryData[] | null; fit(): void; reset(): void; start(): void; complete(): void; destroy(): void };
 type Hooks = { backdrops?: Live[]; remount?(el: HTMLElement): Live; preview?(el: HTMLElement): Live; fitWindow?(el: HTMLElement, box?: Box): Promise<View | null> };
 const hooks = (): Hooks => (window as unknown as { Beeson?: Hooks }).Beeson ?? {};
 
-// the attributes that say what is drawn, which a change of drawing replaces, apart from the window
-// and the motion
-export const DRAWING = ['data-backdrop', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads'];
-// the names of the drawings in the list of Media > Backdrop… and wherever a drawing is named, for the
-// owner to confirm. a drawing of a file is named by its file, and a drawing of demo/broucke-sample.js
-// by its pick of the Family, Frame, and Branch popups of the entry Broucke Families
+export const DRAWING = ['data-backdrop', 'data-system', 'data-plane', 'data-tori', 'data-trajectories', 'data-trajectories-select', 'data-trajectories-color', 'data-trajectories-ramp', 'data-trajectories-colormap', 'data-trajectories-shade', 'data-heads', 'data-backdrop-state'];
 export const NAMES = {
   tubes: 'Cislunar Manifolds',
   wideRibbon: 'Earth Manifolds',
+  poincare: 'Poincaré Sections',
+  tori: 'Invariant Tori',
+  saddle: 'Saddle Manifolds',
+  normalForm: 'Normal Form',
   logo: 'Beeson Logo',
   logoPart: 'Part of the Beeson Logo',
   broucke: 'Broucke Families',
   custom: 'Custom',
 };
-export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon };
-// the files of the template that the list draws from
+export const BUILT_IN: Record<string, string> = { tubes: NAMES.tubes, wideRibbon: NAMES.wideRibbon, poincare: NAMES.poincare, tori: NAMES.tori, saddle: NAMES.saddle, normalForm: NAMES.normalForm };
+const DOTTED = ['poincare', 'tori', 'normalForm'];
+const LABELED = ['tubes', 'wideRibbon'];
+export const labeledDrawing = (el: Element | null): boolean => !!el && !el.hasAttribute('data-trajectories') && LABELED.includes(el.getAttribute('data-backdrop') ?? '');
+export const dottedDrawing = (el: Element | null): string | null => {
+  const name = el && !el.hasAttribute('data-trajectories') ? el.getAttribute('data-backdrop') : null;
+  return name !== null && DOTTED.includes(name) ? name : null;
+};
+export const SYSTEM_NAMES: Record<string, string> = {
+  'earth-moon-l2': 'Earth–Moon L2',
+  'sun-earth-l1': 'Sun–Earth L1',
+  'bicircular-l1-horizontal': 'Bicircular L1 (Horizontal)',
+  'bicircular-l1-vertical': 'Bicircular L1 (Vertical)',
+};
+export const PLANE_NAMES: Record<string, string> = { xy: 'x, y', xz: 'x, z' };
+export { ALPHAS, PLANES, SYSTEMS };
+export const systemPick = (el: Element | null): string => systemOf(el?.getAttribute('data-system'));
+export const planePick = (el: Element | null): string => planeOf(el?.getAttribute('data-plane'));
+export const toriPick = (el: Element | null): boolean[] => {
+  const shown = shownTori(el?.getAttribute('data-tori'), ALPHAS.map(Number));
+  return ALPHAS.map((_, n) => shown.includes(n));
+};
 const LOGO_FILE = 'brand/transfer.js';
 const BROUCKE_FILE = 'demo/broucke-sample.js';
-// the attributes of the motion of a drawing in the demo deck, which an entry of the list writes
 const MOTION = ['data-duration', 'data-stagger'];
-// the labels of a built-in backdrop, with the text and the offsets of the demo deck
 export const LABELS = [
   { at: 'L1', name: 'L1', text: '\\(\\mathcal{L}_{1}\\)', dy: '-34' },
   { at: 'L2', name: 'L2', text: '\\(\\mathcal{L}_{2}\\)', dy: '-34' },
   { at: 'moon', name: 'Moon', text: 'Moon', dy: '36' },
   { at: 'earth', name: 'Earth', text: 'Earth', dy: '36' },
 ];
-export const COLORMAPS = ['viridis', 'plasma', 'Blues_r'];
-const COLORMAP_NAMES: Record<string, string> = { viridis: 'Viridis', plasma: 'Plasma', Blues_r: 'Blues (Reversed)' };
-// the name of a value of data-trajectories-colormap, or Palette for none. a value that is not a name of
-// COLORMAPS alone is shown as it is written
+export const COLORMAPS = ['viridis', 'plasma', 'magma', 'Blues_r'];
+const COLORMAP_NAMES: Record<string, string> = { viridis: 'Viridis', plasma: 'Plasma', magma: 'Magma', Blues_r: 'Blues (Reversed)' };
 export const colormapName = (value: string | null): string => (value === null ? 'Palette' : COLORMAP_NAMES[value] ?? value);
-// the factor of a zoom of the window
 const ZOOM = 1.25;
-// the least size of a box resized by a grip, in slide px
 const LEAST = 40;
-// the screen px that a press moves before it is a drag
 const CLICK = 3;
 
 const locked = (el: Element) => el.hasAttribute('data-locked');
 const open = (app: App, el: Element) => !!app.pairing?.elements.get(el)?.open;
 
-// the selected backdrop
 export function selectedBackdrop(app: App): HTMLElement | null {
   const el = app.selection.only();
   return el?.matches('.backdrop') && el.isConnected && open(app, el) ? (el as HTMLElement) : null;
 }
 
-// the backdrop of the current slide in the file, the first one if there are more
 export function slideBackdrop(app: App): HTMLElement | null {
   return [...(app.current()?.querySelectorAll<HTMLElement>(':scope > .backdrop') ?? [])].find((el) => open(app, el)) ?? null;
 }
 
-// the backdrop of the current slide under target, outside its labels
 export function backdropAt(app: App, target: Element): HTMLElement | null {
   const el = target.closest<HTMLElement>('.backdrop');
   return el && !target.closest('.label') && app.current()?.contains(el) && open(app, el) ? el : null;
+}
+
+export function labelAt(el: HTMLElement, view: View, clientX?: number, clientY?: number): [number, number] {
+  const r = el.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+  const s = w ? r.width / w : 1, k = h / 2 / view.half;
+  const px = clientX === undefined ? w / 2 : (clientX - r.left) / s, py = clientY === undefined ? h / 2 : (clientY - r.top) / s;
+  const digits = Math.max(0, Math.ceil(Math.log10(k)));
+  return [view.cx + (px - w / 2) / k, view.cy - (py - h / 2) / k].map((v) => Number(v.toFixed(digits)) || 0) as [number, number];
 }
 
 export const liveOf = (el: Element | null): Live | null => (el ? ((orbitOf(el) as unknown as Live | null) ?? null) : null);
@@ -85,20 +99,15 @@ const given = (arg: unknown): HTMLElement | null => {
   const el = (arg as { el?: unknown } | undefined)?.el;
   return el instanceof HTMLElement && el.isConnected ? el : null;
 };
-// the backdrop that a command acts on: the one given, the one selected, or the one of the slide
 const targetOf = (app: App, arg: unknown) => given(arg) ?? selectedBackdrop(app) ?? slideBackdrop(app);
 const valueOf = (arg: unknown) => (arg as { value?: unknown } | undefined)?.value;
 
 const isFile = (path: string, file: string) => path === file || path.endsWith(`/${file}`);
 
-// a pick of the Family, Frame, and Branch popups of a Broucke drawing. branch is set for family 7 alone
 export type Pick = { family: string; frame: string; branch?: string };
 export const FAMILIES = ['7', '11', '7/11'];
 export const FRAMES = ['Rotating', 'Inertial'];
 export const BRANCHES = ['Periapsis', 'Apoapsis'];
-// the selection written by each pick. Rotating is the rotating-pulsating frame, apart from 7A, which is
-// drawn in the plain rotating frame, and Inertial is centered on m2 for family 7 and on the barycenter
-// for the others
 const SPECS: Record<string, string> = {
   '7 Rotating Periapsis': 'family=7,branch=periapsis,frame=pulsating',
   '7 Rotating Apoapsis': 'family=7,branch=apoapsis,frame=rotating',
@@ -111,16 +120,12 @@ const SPECS: Record<string, string> = {
 };
 const keyOf = (p: Pick) => [p.family, p.frame, p.branch].filter(Boolean).join(' ');
 
-// a term of data-trajectories-select, as the theme reads it in src/trajectories.ts
 const TERM = /^\s*([^=<>\s]+)\s*(<=|>=|=|<|>)\s*(.*?)\s*$/;
-// spec with its groups, the terms of each group, and the values of each term sorted
 const normal = (spec: string | null): string => (spec ?? '').split(';').map((g) => g.split(',').map((t) => {
   const m = TERM.exec(t);
   return m ? `${m[1]}${m[2]}${m[2] === '=' ? [...new Set(m[3].split('|').map((v) => v.trim()))].sort().join('|') : m[3]}` : t.trim();
 }).filter(Boolean).sort().join(',')).filter(Boolean).sort().join(';');
 
-// the trajectories of the file of the Broucke drawing el as the theme read them, or null before the file
-// is loaded or when it is missing. they are kept by the URL of the file for a backdrop drawn again
 const fileTrajectoriesByFile = new Map<string, TrajectoryData[]>();
 function fileTrajectoriesOf(el: Element | null | undefined): TrajectoryData[] | null {
   if (!el || !isBroucke(el)) return null;
@@ -130,7 +135,6 @@ function fileTrajectoriesOf(el: Element | null | undefined): TrajectoryData[] | 
   return fileTrajectoriesByFile.get(url) ?? null;
 }
 
-// the trajectories of fileTrajectories that spec draws, none for a value that the theme does not draw
 function drawn(fileTrajectories: TrajectoryData[], spec: string | null): Set<TrajectoryData> {
   try {
     return new Set(select(fileTrajectories, spec ?? undefined));
@@ -140,9 +144,6 @@ function drawn(fileTrajectories: TrajectoryData[], spec: string | null): Set<Tra
 }
 const sameSet = <T>(a: Set<T>, b: Set<T>) => a.size === b.size && [...a].every((x) => b.has(x));
 
-// true when the values a and b of data-trajectories-select draw the same trajectories of the file of el, or
-// without its trajectories, when they have the same terms. two values that draw nothing are the same only
-// when they have the same terms
 function sameSelection(a: string | null, b: string | null, el?: Element | null): boolean {
   const fileTrajectories = fileTrajectoriesOf(el);
   if (!fileTrajectories) return normal(a) === normal(b);
@@ -150,8 +151,6 @@ function sameSelection(a: string | null, b: string | null, el?: Element | null):
   return sameSet(x, drawn(fileTrajectories, b)) && (x.size > 0 || normal(a) === normal(b));
 }
 
-// the pick of spec, a value of data-trajectories-select of the Broucke drawing el, or null for a selection
-// that draws other trajectories than every pick, which is shown as Custom
 function pickOf(spec: string | null, el?: Element | null): Pick | null {
   const key = Object.keys(SPECS).find((k) => sameSelection(SPECS[k], spec, el));
   if (!key) return null;
@@ -159,11 +158,8 @@ function pickOf(spec: string | null, el?: Element | null): Pick | null {
   return { family, frame, branch };
 }
 
-// the pick of the Broucke drawing el, or null for Custom or another drawing
 export const brouckePick = (el: Element | null): Pick | null => (el && isBroucke(el) ? pickOf(el.getAttribute('data-trajectories-select'), el) : null);
 
-// the name of a drawing of the attributes attrs: the name of its built-in backdrop, of the logo, or of the
-// pick of a Broucke drawing, e.g. Broucke 7 (Rotating, Apoapsis), or else the name of its file
 function nameOf(attrs: Record<string, string | undefined>, el?: Element): string {
   const builtIn = attrs['data-backdrop'];
   if (builtIn !== undefined) return BUILT_IN[builtIn] ?? builtIn;
@@ -177,21 +173,33 @@ function nameOf(attrs: Record<string, string | undefined>, el?: Element): string
   return file.split('/').pop()?.replace(/\.(js|json)$/, '') || 'Backdrop';
 }
 
-// true when el draws demo/broucke-sample.js, i.e. is a backdrop of the entry Broucke Families
 export const isBroucke = (el: Element | null): boolean => !!el && isFile(el.getAttribute('data-trajectories') ?? '', BROUCKE_FILE);
 
-// the name of the drawing of el
 export function drawingName(el: Element): string {
   return nameOf(Object.fromEntries([...el.attributes].map((a) => [a.name, a.value])), el);
 }
 
-// the name of the entry of el in the Drawing popup, which is Broucke Families for any family
 export const entryName = (el: Element): string => (isBroucke(el) ? NAMES.broucke : drawingName(el));
+
+export type StartStep = { step: number; label: string; els: Element[] };
+
+export function startSteps(app: App, el: Element | null): StartStep[] {
+  const m = el ? modelOf(app, el.closest('section')) : null;
+  if (!el || !m) return [];
+  const out: StartStep[] = [];
+  m.plan.groups.forEach((g, k) => {
+    const els = g.filter((i) => !m.locked[i] && !m.els[i].contains(el) && !el.contains(m.els[i])).map((i) => m.els[i]);
+    if (!els.length) return;
+    out.push({ step: k, label: `Step ${k + 1}`, els });
+  });
+  return out;
+}
+
+export const startStep = (app: App, el: Element | null): StartStep | null => startSteps(app, el).find((o) => o.els.some((e) => e.hasAttribute('data-backdrop-play'))) ?? null;
+export const WITH_THE_SLIDE = 'With the Slide';
 
 const round = (v: number) => Number(v.toFixed(8));
 
-// the window of el written as attributes, with the ones not given read from its drawing, so that a
-// fitted backdrop of a file gets all three. only the changed attributes are written
 function writeWindow(app: App, el: HTMLElement, view: Partial<View>, label = 'window'): void {
   const now = app.doc.tagState(el).attrs;
   const v = { ...(liveOf(el)?.view ?? { cx: +(now['data-cx'] ?? 0), cy: +(now['data-cy'] ?? 0), half: +(now['data-half'] ?? 0.5) }), ...view };
@@ -205,15 +213,10 @@ function writeWindow(app: App, el: HTMLElement, view: Partial<View>, label = 'wi
   syncBackdrops();
 }
 
-// the window fitted to the box of el by the theme, or null
 const fitted = async (el: HTMLElement, box?: Box): Promise<View | null> => (await hooks().fitWindow?.(el, box)) ?? null;
 
-// the seconds in which the drawing of the theme traces its last trajectory, after its stagger
 export const spanOf = (o: Live): number => (o as Live & { span?: number }).span ?? 20;
 
-// the preview that is traced, which an edit or a change of slide completes. the selection is not
-// drawn while it is traced, as during a preview of the toolbar, and unhide draws it again: at the
-// end of the trace, after the same seconds for a loop, at Esc, and at a press outside the panes
 let previewed: Live | null = null;
 let unhide: (() => void) | null = null;
 function endPreview(): void {
@@ -235,25 +238,20 @@ function hideSelection(app: App, o: Live): void {
   app.invalidate();
 }
 
-// the attributes of a drawing of a library entry, with every other drawing attribute taken off
 const drawingEdit = (attrs: Record<string, string>): Record<string, string | null> => Object.fromEntries(DRAWING.map((n) => [n, attrs[n] ?? null]));
 
-// an entry of the gallery: the drawing attributes, the motion, the window and the size of the box
-// it was written for, or a null window for a drawing fitted to its box, and a name. missing is true
-// for a drawing of the deck whose file is not found
 type Entry = { key: string; name: string; attrs: Record<string, string>; motion: Record<string, string>; view: View | null; size: [number, number] | null; missing?: boolean };
 
-// the drawings of the demo deck, with their windows and the size of their boxes, and the entry
-// Broucke Families, which draws family 7 on its periapsis branch in the pulsating frame with the colors
-// and the motion of the Broucke backdrops of the demo deck, fitted to its box as it is. its file is the
-// one of the first Broucke drawing of the deck whose file is found, if any, so that a deck in another
-// folder finds it
 function builtIn(app: App): Entry[] {
   const file = brouckeFiles(app).find((f) => found.get(urlOf(f)) !== false) ?? BROUCKE_FILE;
   return [
     { key: 'logo', name: NAMES.logo, attrs: { 'data-trajectories': LOGO_FILE }, motion: { 'data-duration': '20' }, view: { cx: -0.84, cy: 0, half: 1.128 }, size: [1920, 1080] },
     { key: 'tubes', name: NAMES.tubes, attrs: { 'data-backdrop': 'tubes' }, motion: {}, view: { cx: 0.42, cy: 0, half: 0.6 }, size: [1920, 1080] },
     { key: 'wideRibbon', name: NAMES.wideRibbon, attrs: { 'data-backdrop': 'wideRibbon' }, motion: {}, view: { cx: 0.2, cy: 0, half: 1.3 }, size: [1920, 1080] },
+    { key: 'poincare', name: NAMES.poincare, attrs: { 'data-backdrop': 'poincare' }, motion: {}, view: null, size: null },
+    { key: 'tori', name: NAMES.tori, attrs: { 'data-backdrop': 'tori' }, motion: {}, view: null, size: null },
+    { key: 'saddle', name: NAMES.saddle, attrs: { 'data-backdrop': 'saddle' }, motion: {}, view: null, size: null },
+    { key: 'normalForm', name: NAMES.normalForm, attrs: { 'data-backdrop': 'normalForm' }, motion: {}, view: null, size: null },
     {
       key: 'broucke', name: NAMES.broucke, view: null, size: null, motion: { 'data-duration': '3', 'data-stagger': '0.6' },
       attrs: { 'data-trajectories': file, 'data-trajectories-select': SPECS['7 Rotating Periapsis'], 'data-trajectories-color': 'family', 'data-trajectories-ramp': 'e', 'data-trajectories-colormap': 'viridis' },
@@ -261,12 +259,9 @@ function builtIn(app: App): Entry[] {
   ];
 }
 
-// true when the backdrop el is drawn by entry, which for Broucke Families is any Broucke drawing
 export const drawnBy = (entry: Entry, el: Element): boolean =>
   entry.key === 'broucke' ? isBroucke(el) : Object.entries(entry.attrs).every(([k, v]) => el.getAttribute(k) === v);
 
-// the files of the Broucke drawings of the deck, in the order of the deck, then each file of one that
-// an earlier call saw, so that the entry Broucke Families keeps its file once no drawing has it
 const seenBroucke: string[] = [];
 function brouckeFiles(app: App): string[] {
   const now = [...app.slides().querySelectorAll<HTMLElement>('.backdrop')].filter((el) => open(app, el) && isBroucke(el)).map((el) => el.getAttribute('data-trajectories') ?? '');
@@ -274,13 +269,10 @@ function brouckeFiles(app: App): string[] {
   return [...new Set([...now, ...seenBroucke])];
 }
 
-// whether the file of trajectories at an absolute URL is found and has trajectories, as the theme read it
 const found = new Map<string, boolean>();
 const urlOf = (path: string) => new URL(path, document.baseURI).href;
 const fileOf = (e: Entry) => e.attrs['data-trajectories'];
 
-// true when the file of trajectories at path is found next to the deck. the file is read by the theme as
-// it reads the file of a backdrop, i.e. by a script element, and nothing is fetched by the editor
 async function probe(path: string): Promise<boolean> {
   const url = urlOf(path);
   const known = found.get(url);
@@ -297,22 +289,18 @@ async function probe(path: string): Promise<boolean> {
   return ok;
 }
 
-// the files of the entries of the library read, so that library() knows which are found
 export async function probeLibrary(app: App): Promise<void> {
-  // the file of Broucke Families is the first of these that is found
   await Promise.all(brouckeFiles(app).map(probe));
   const files = new Set([...builtIn(app), ...deckEntries(app)].map(fileOf).filter((f): f is string => !!f));
   await Promise.all([...files].map(probe));
 }
 
-// each drawing of the deck that is not an entry of builtIn, keyed by its drawing attributes. a
-// drawing of the Broucke families is one of the entry Broucke Families
 function deckEntries(app: App): Entry[] {
   const out: Entry[] = [];
   const built = builtIn(app);
   const keys = new Set(built.map((e) => JSON.stringify(e.attrs)));
   for (const el of app.slides().querySelectorAll<HTMLElement>('.backdrop')) {
-    if (!open(app, el) || isBroucke(el)) continue;
+    if (!open(app, el) || isBroucke(el) || dottedDrawing(el)) continue;
     const now = app.doc.tagState(el).attrs;
     const attrs = Object.fromEntries(DRAWING.filter((n) => now[n] !== undefined).map((n) => [n, now[n]]));
     const key = JSON.stringify(attrs);
@@ -325,9 +313,6 @@ function deckEntries(app: App): Entry[] {
   return out;
 }
 
-// the entries of builtIn, then each other drawing of the deck, each marked missing when its file is
-// not found next to the deck. a file not read yet counts as found. a missing entry of builtIn is left
-// out when a drawing of the deck of the same name is found, e.g. Beeson Logo drawn from ../brand/
 export function library(app: App): Entry[] {
   const mark = (e: Entry) => ({ ...e, missing: (fileOf(e) ? found.get(urlOf(fileOf(e))) : true) === false });
   const deck = deckEntries(app).map(mark);
@@ -335,16 +320,11 @@ export function library(app: App): Entry[] {
   return [...builtIn(app).map(mark).filter((e) => !e.missing || !offered.has(e.name)), ...deck];
 }
 
-// the window of an entry kept on the box of el when the box has the size of the box of the entry,
-// and else fitted to the box of el
 async function windowFor(entry: Entry, el: HTMLElement): Promise<View | null> {
   if (entry.view && entry.size && Math.abs(entry.size[0] - el.offsetWidth) < 1 && Math.abs(entry.size[1] - el.offsetHeight) < 1) return entry.view;
   return fitted(el);
 }
 
-// the drawing, the motion, and the window of entry put on the backdrop el, with the labels of a built-in
-// backdrop taken off for a drawing of a file. an entry without a window leaves the drawing fitted to its
-// box by the theme
 async function replaceDrawing(app: App, el: HTMLElement, entry: Entry): Promise<void> {
   const motion = Object.fromEntries(MOTION.map((n) => [n, entry.motion[n] ?? null]));
   const unset: Record<string, null> = entry.view ? {} : { 'data-cx': null, 'data-cy': null, 'data-half': null };
@@ -355,9 +335,6 @@ async function replaceDrawing(app: App, el: HTMLElement, entry: Entry): Promise<
   syncBackdrops();
 }
 
-// the drawing of entry put on the current slide: in place of the drawing and the motion of the
-// backdrop of the slide, or as a new backdrop at the ground of the slide, as one entry of the
-// history. an entry without a window leaves the drawing fitted to its box by the theme
 export async function applyEntry(app: App, entry: Entry): Promise<void> {
   const slide = app.current();
   if (!slide || entry.missing) return;
@@ -382,17 +359,12 @@ export async function applyEntry(app: App, entry: Entry): Promise<void> {
   });
 }
 
-// the labels of the points of a built-in backdrop taken off el when entry is drawn from a file, since the
-// theme would draw them at the points of the Earth and the Moon over the drawing of the file
 async function dropLabels(app: App, el: HTMLElement, entry: Entry): Promise<void> {
-  if (entry.attrs['data-backdrop'] !== undefined) return;
+  if (LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return;
   for (const lab of [...el.querySelectorAll(':scope > .label')].filter((l) => open(app, l))) await app.doc.remove(lab, 'label');
 }
 
-// the gallery of Media > Backdrop…, a popover of a tile per entry of the library, drawn by the
-// theme. a click on a tile applies its entry, and Escape or a press outside closes it
 let gallery: { el: HTMLElement; tiles: Live[]; close(): void } | null = null;
-// the last gallery asked for, which is opened once the files of the library are read
 let asked = 0;
 
 const CSS = `
@@ -407,7 +379,7 @@ const CSS = `
 .beeson-backdrop-gallery .tile canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .beeson-backdrop-gallery .name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .beeson-backdrop-gallery .reason { margin-top: -4px; font-size: 11px; }
-.beeson-backdrop-cuts { position: fixed; inset: 0; z-index: 51; pointer-events: none; }
+.beeson-backdrop-cuts { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
 html.beeson-masking .beeson-backdrop-cuts { display: none; }
 `;
 
@@ -419,7 +391,7 @@ export async function openGallery(app: App, anchor?: Element | null): Promise<vo
   const el = make('div', 'beeson-backdrop-gallery');
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Backdrops');
-  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the drawing of the backdrop' : 'Add a backdrop'));
+  el.append(make('h5', '', slideBackdrop(app) ? 'Replace the backdrop' : 'Add a backdrop'));
   const tiles: Live[] = [];
   const close = () => {
     if (gallery?.el !== el) return;
@@ -461,7 +433,6 @@ export async function openGallery(app: App, anchor?: Element | null): Promise<vo
   const left = r && r.width ? Math.min(r.left, innerWidth - w - 16) : (innerWidth - w) / 2;
   const top = r && r.height ? Math.min(r.bottom + 6, innerHeight - h - 16) : (innerHeight - h) / 2;
   Object.assign(el.style, { left: `${Math.max(16, left)}px`, top: `${Math.max(16, top)}px` });
-  // the tiles are drawn once the popover is laid out, in the mode of the deck
   for (const tile of el.querySelectorAll<HTMLElement>('.tile')) {
     const o = hooks().preview?.(tile);
     if (o) tiles.push(o);
@@ -472,14 +443,10 @@ export async function openGallery(app: App, anchor?: Element | null): Promise<vo
   el.querySelector<HTMLButtonElement>('button:enabled')?.focus({ preventScroll: true });
 }
 
-// the pans of a run of arrow keys on one backdrop, each within PAUSE ms of the one before, are one
-// entry of the history, as a run of nudges of commands/arrange.ts is
 const PAUSE = 1000;
 let run: { el: HTMLElement; at: number; entry: App['history']['last'] } | null = null;
 let queue: Promise<void> = Promise.resolve();
 
-// the window of the selected backdrop panned by dx, dy slide px, i.e. its drawing moved by them,
-// and true, or false when a backdrop is not selected
 export function nudgeBackdrop(app: App, dx: number, dy: number): boolean {
   const el = selectedBackdrop(app);
   if (!el || !liveOf(el)) return false;
@@ -498,8 +465,6 @@ export function nudgeBackdrop(app: App, dx: number, dy: number): boolean {
   return true;
 }
 
-// the window to written as a pan, i.e. data-cx and data-cy, with the half height of a fitted
-// backdrop of a file
 function writePan(app: App, el: HTMLElement, to: View): void {
   const now = app.doc.tagState(el).attrs;
   const text = windowAttrs(to);
@@ -515,9 +480,6 @@ const translateOf = (v: string | undefined): { x: number; y: number } => {
   return { x: x ?? 0, y: y ?? 0 };
 };
 
-// a press on the selected backdrop el, which pans its window, or on its grip handle, which resizes
-// its box with the drawing kept at its place and its scale on the slide. the release writes the
-// change as one entry
 export function pressBackdrop(app: App, ev: PointerEvent, el: HTMLElement, handle: Handle | null): void {
   const o = liveOf(el);
   if (!o || locked(el)) return;
@@ -540,7 +502,7 @@ export function pressBackdrop(app: App, ev: PointerEvent, el: HTMLElement, handl
     const dx = (e.clientX - sx) / f.scale, dy = (e.clientY - sy) / f.scale;
     if (!handle) {
       next = { view: { ...v0, cx: v0.cx - dx / per, cy: v0.cy + dy / per }, box: null };
-      setView(o as never, next.view);
+      o.setWindow(next.view);
     } else {
       let L = b0.left, R = b0.left + b0.width, T = b0.top, B = b0.top + b0.height;
       if (handle.includes('w')) L = Math.min(R - LEAST, L + dx);
@@ -552,7 +514,7 @@ export function pressBackdrop(app: App, ev: PointerEvent, el: HTMLElement, handl
       const view = { half: box.height / 2 / per, cx: v0.cx + (L + R - 2 * b0.left - b0.width) / 2 / per, cy: v0.cy - (T + B - 2 * b0.top - b0.height) / 2 / per };
       next = { view, box };
       Object.assign(el.style, { translate: `${t0.x + L - b0.left}px ${t0.y + T - b0.top}px`, width: `${box.width}px`, height: `${box.height}px` });
-      setView(o as never, view);
+      o.setWindow(view);
       frameView.readout = { text: `w: ${box.width} px  h: ${box.height} px`, x: e.clientX + 14, y: e.clientY + 18, at: 'pointer' };
     }
     app.invalidate('layout');
@@ -587,7 +549,6 @@ const has = (app: App) => !!targetOf(app, undefined) && !editing();
 
 export function commands(): Command[] {
   const field = (id: string, label: string, key: keyof View): Command => ({
-    // arg { value, el }, from a field of the pane Backdrop
     id: `backdrop.${id}`,
     label: `Backdrop ${label}`,
     undoable: true,
@@ -614,9 +575,6 @@ export function commands(): Command[] {
       writeWindow(app, el, { half: Number((o.view.half * by).toPrecision(4)) });
     },
   });
-  // arg { value, el }: a value of the Family, Frame, or Branch popup of a Broucke drawing, which replaces
-  // its whole selection. a family is picked in the frame of the drawing, and family 7 on its periapsis
-  // branch. Frame and Branch are not picked on a Custom selection
   const pick = (id: 'family' | 'frame' | 'branch', label: string): Command => ({
     id: `backdrop.${id}`,
     label: `Backdrop ${label}`,
@@ -634,6 +592,22 @@ export function commands(): Command[] {
       if (!spec) return;
       endPreview();
       app.doc.setTag(el, { attrs: { 'data-trajectories-select': spec } }, 'drawing');
+    },
+  });
+  const choice = (id: string, label: string, drawing: string, attr: string, values: string[]): Command => ({
+    id: `backdrop.${id}`,
+    label: `Backdrop ${label}`,
+    undoable: true,
+    undo: label,
+    enabled: (app) => dottedDrawing(targetOf(app, undefined)) === drawing,
+    run: (app, arg) => {
+      const el = targetOf(app, arg);
+      const v = String(valueOf(arg));
+      if (!el || dottedDrawing(el) !== drawing || !values.includes(v)) return;
+      const text = v === values[0] ? null : v;
+      if (el.getAttribute(attr) === text) return;
+      endPreview();
+      app.doc.setTag(el, { attrs: { [attr]: text } }, 'drawing');
     },
   });
   return [
@@ -654,8 +628,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // the window that fits the drawing to the box, as a backdrop of a file without data-half is
-      // fitted
       id: 'backdrop.fitWindow',
       label: 'Fit Window',
       menu: backdropMenu(2),
@@ -675,7 +647,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // traces the backdrop once, as the show traces it, and leaves it complete
       id: 'backdrop.preview',
       label: 'Preview',
       menu: backdropMenu(3),
@@ -692,35 +663,61 @@ export function commands(): Command[] {
       },
     },
     {
-      // arg { value, el }: a built-in backdrop, or the key of an entry of the library. between two built-in
-      // backdrops, which are drawn in one frame, the window, the labels, and the motion are kept. a
-      // drawing of a file is drawn in a frame of its own, hence where the old or the new drawing is
-      // drawn from a file, the window and the motion of the entry are written as its tile in the
-      // gallery writes them. Broucke Families on a Broucke drawing keeps its selection
       id: 'backdrop.builtIn',
-      label: 'Backdrop Drawing',
+      label: 'Built-In Backdrop',
       undoable: true,
-      undo: 'Change Drawing',
+      undo: 'Change Backdrop',
       enabled: (app) => !!targetOf(app, undefined),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
         const v = String(valueOf(arg) ?? '');
         const entry = library(app).find((e) => e.key === v);
-        if (!el || !entry || entry.missing || (entry.key === 'broucke' && isBroucke(el))) return;
+        if (!el || !entry || entry.missing || (entry.key === 'broucke' && isBroucke(el)) || dottedDrawing(el) === entry.key) return;
         endPreview();
         const attrs = drawingEdit(entry.attrs);
         const now = app.doc.tagState(el).attrs;
         const changed = Object.entries(attrs).filter(([k, x]) => (now[k] ?? null) !== x);
         if (!changed.length) return;
-        if (now['data-backdrop'] === undefined || entry.attrs['data-backdrop'] === undefined) return replaceDrawing(app, el, entry);
+        if (!labeledDrawing(el) || !LABELED.includes(entry.attrs['data-backdrop'] ?? '')) return replaceDrawing(app, el, entry);
         app.doc.setTag(el, { attrs: Object.fromEntries(changed) }, 'drawing');
       },
     },
     pick('family', 'Family'),
     pick('frame', 'Frame'),
     pick('branch', 'Branch'),
+    choice('system', 'System', 'poincare', 'data-system', SYSTEMS),
+    choice('plane', 'Plane', 'tori', 'data-plane', PLANES),
     {
-      // arg { value, el }: a colormap of the trajectories of a file, or null for the palette
+      id: 'backdrop.torus',
+      label: 'Backdrop Torus',
+      undoable: true,
+      undo: 'Torus',
+      enabled: (app) => dottedDrawing(targetOf(app, undefined)) === 'tori',
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        const at = ALPHAS.indexOf(String(valueOf(arg)));
+        if (!el || dottedDrawing(el) !== 'tori' || at < 0) return;
+        const shown = toriPick(el);
+        shown[at] = !shown[at];
+        endPreview();
+        app.doc.setTag(el, { attrs: { 'data-tori': toriSpec(shown) } }, 'drawing');
+      },
+    },
+    {
+      id: 'backdrop.tori',
+      label: 'Backdrop All Tori',
+      undoable: true,
+      undo: 'All Tori',
+      enabled: (app) => dottedDrawing(targetOf(app, undefined)) === 'tori',
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        if (!el || dottedDrawing(el) !== 'tori') return;
+        const all = toriPick(el).every(Boolean);
+        endPreview();
+        app.doc.setTag(el, { attrs: { 'data-tori': toriSpec(ALPHAS.map(() => !all)) } }, 'drawing');
+      },
+    },
+    {
       id: 'backdrop.colormap',
       label: 'Backdrop Colormap',
       undoable: true,
@@ -734,12 +731,11 @@ export function commands(): Command[] {
       },
     },
     {
-      // arg { at, el }: a label of a point of a built-in backdrop put on the backdrop, or taken off
       id: 'backdrop.label',
       label: 'Backdrop Label',
       undoable: true,
       undo: 'Label',
-      enabled: (app) => !!targetOf(app, undefined)?.hasAttribute('data-backdrop'),
+      enabled: (app) => labeledDrawing(targetOf(app, undefined)),
       run: async (app, arg) => {
         const el = targetOf(app, arg);
         const at = (arg as { at?: string } | undefined)?.at;
@@ -749,11 +745,28 @@ export function commands(): Command[] {
         const lab = [...el.querySelectorAll(':scope > .label')].find((l) => l.getAttribute('data-at') === at && open(app, l));
         if (lab) await app.doc.remove(lab, 'label');
         else {
-          // the labels are kept in the order of LABELS
           const after = LABELS.slice(LABELS.indexOf(label) + 1).map((l) => l.at);
           const before = [...el.querySelectorAll(':scope > .label')].find((l) => after.includes(l.getAttribute('data-at') ?? '')) ?? null;
           await app.doc.insert(`<span class="label" data-at="${label.at}" data-dy="${label.dy}">${label.text}</span>`, el, before, 'label');
         }
+      },
+    },
+    {
+      id: 'backdrop.addLabel',
+      label: 'Add Label',
+      undoable: true,
+      undo: 'Add Label',
+      enabled: (app) => !!liveOf(targetOf(app, undefined)) && !dottedDrawing(targetOf(app, undefined)) && !locked(targetOf(app, undefined)!),
+      run: async (app, arg) => {
+        const el = targetOf(app, arg);
+        const o = liveOf(el);
+        if (!el || !o || dottedDrawing(el)) return;
+        endPreview();
+        const point = (arg as { x?: number; y?: number } | undefined) ?? {};
+        const [x, y] = labelAt(el, o.view, point.x, point.y);
+        const [lab] = await app.doc.insert(`<span class="label" data-at="${x} ${y}">Label</span>`, el, null, 'label');
+        app.selection.set('text', [lab]);
+        selectIn(lab, 0, 'Label'.length);
       },
     },
     {
@@ -768,7 +781,28 @@ export function commands(): Command[] {
       },
     },
     {
-      // arg { value, el }: the seconds of the trace, or 0 for the default of the theme
+      id: 'backdrop.start',
+      label: 'Backdrop Start',
+      undoable: true,
+      undo: 'Start',
+      enabled: (app) => {
+        const el = targetOf(app, undefined);
+        return !!el && !locked(el) && startSteps(app, el).length > 0;
+      },
+      run: (app, arg) => {
+        const el = targetOf(app, arg);
+        const slide = el?.closest('section');
+        if (!el || !slide) return;
+        const v = valueOf(arg);
+        const to = v === null || v === undefined ? null : startSteps(app, el).find((o) => o.step === Number(v));
+        if (to === undefined) return;
+        endPreview();
+        const target = to ? (to.els.find((e) => e.hasAttribute('data-backdrop-play')) ?? to.els[0]) : null;
+        for (const c of slide.querySelectorAll('[data-backdrop-play]')) if (c !== target && open(app, c)) app.doc.setTag(c, { attrs: { 'data-backdrop-play': null } }, 'motion');
+        if (target && !target.hasAttribute('data-backdrop-play')) app.doc.setTag(target, { attrs: { 'data-backdrop-play': '' } }, 'motion');
+      },
+    },
+    {
       id: 'backdrop.duration',
       label: 'Backdrop Duration',
       undoable: true,
@@ -784,7 +818,7 @@ export function commands(): Command[] {
     },
     {
       id: 'backdrop.choose',
-      label: 'Choose Backdrop…',
+      label: 'Replace Backdrop…',
       enabled: (app) => !!app.current() && !editing(),
       run: (app, arg) => openGallery(app, arg instanceof Element ? arg : null),
     },
@@ -800,8 +834,6 @@ export function commands(): Command[] {
   ];
 }
 
-// the drawing of a backdrop made again by the theme after a change of its drawing attributes or of
-// its labels, and fitted to its box after a change of its style, e.g. by Reset Slide, also at an undo
 function watch(app: App): void {
   const pending = new Set<HTMLElement>();
   const boxed = new Set<HTMLElement>();
@@ -810,7 +842,6 @@ function watch(app: App): void {
   let moved = false;
   const flush = () => {
     queued = false;
-    // a box alone, e.g. during a drag of a grip, keeps the window that is drawn
     for (const el of boxed) if (!pending.has(el)) liveOf(el)?.fit();
     boxed.clear();
     if (!pending.size && !moved) return;
@@ -825,7 +856,6 @@ function watch(app: App): void {
       const t = r.target;
       if (!(t instanceof HTMLElement) || !t.matches('.backdrop')) continue;
       const labs = [...r.addedNodes, ...r.removedNodes].some((n) => n instanceof Element && n.matches('.label'));
-      // a window alone, e.g. of an undo or of a file opened again, is set without a new drawing
       if (r.type === 'attributes' && WINDOW.includes(r.attributeName ?? '')) moved = true;
       else if (r.attributeName === 'style') boxed.add(t);
       else if (r.type === 'attributes' || labs) pending.add(t);
@@ -837,22 +867,28 @@ function watch(app: App): void {
   }).observe(app.slides(), { subtree: true, childList: true, attributes: true, attributeFilter: [...DRAWING, ...WINDOW, 'data-dx', 'data-dy', 'style'] });
 }
 
-// the red marks of the edges at which the drawing of the selected backdrop is cut
 function cuts(app: App): void {
   const layer = make('div', 'beeson-backdrop-cuts');
   document.body.append(layer);
   let marks: HTMLElement[] = [];
+  const HANDLE: Record<string, string> = { left: 'w', right: 'e', top: 'n', bottom: 's' };
+  const grips = () => {
+    const cut = new Set(marks.map((m) => HANDLE[m.dataset.edge ?? '']));
+    for (const g of document.querySelectorAll<HTMLElement>('.beeson-overlay .beeson-grip')) g.classList.toggle('cut', cut.has(g.dataset.handle ?? ''));
+  };
   const draw = () => {
     const el = selectedBackdrop(app);
     const o = liveOf(el);
     if (!el || !o || editing()) {
       for (const m of marks) m.remove();
       marks = [];
+      grips();
       return;
     }
     const v = app.stage?.viewport;
     if (v) layer.style.clipPath = `inset(${v.top}px ${innerWidth - v.right}px ${innerHeight - v.bottom}px ${v.left}px)`;
-    marks = markCuts(app, el, o.view, extentOf(o as never), layer, marks);
+    marks = markCuts(app, el, o.view, o.extent, layer, marks);
+    grips();
   };
   app.selection.listen(draw);
   app.onRefresh(['layout', 'slide', 'content'], draw);
@@ -865,7 +901,6 @@ export function install(app: App): void {
   for (const c of commands()) app.commands.define(c);
   watch(app);
   cuts(app);
-  // a preview ends at an edit, at a change of slide, and at a change of the selection
   app.listen('history', endPreview);
   app.selection.listen(() => {
     if (previewed && !app.selection.has(previewed.el)) endPreview();
@@ -874,8 +909,6 @@ export function install(app: App): void {
     endPreview();
     gallery?.close();
   });
-  // Esc ends a preview whose selection is hidden, alone, as it stops a preview of the toolbar, and
-  // a press on the slide draws the selection again under the trace
   window.addEventListener('keydown', (ev) => {
     if (!unhide || ev.key !== 'Escape') return;
     ev.preventDefault();

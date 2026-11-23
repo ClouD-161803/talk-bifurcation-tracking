@@ -1,12 +1,3 @@
-// the files of slides or elements pasted from another deck, kept as new media of this deck. each
-// relative src or poster of an img, a video, or a source, and each data-trajectories, is read from
-// the address of the first deck, and the pasted text names its new path under media/. a file that
-// this deck has at the same path, or under media/, with the same bytes is named and not copied
-// again, and a file of this deck that the page can read is never replaced. where the browser
-// refuses the read, e.g. from file:// or from another port, a dialog asks for the folder of the
-// first deck, which is kept for its address while the page lives once a file is found in it. the
-// address of a copy made in a session does not name a folder, and its files are asked for at once
-
 import type { App } from '../app.ts';
 import { deckAddress, type Arrival } from '../commands/origin.ts';
 import { tokenize } from '../tokens.ts';
@@ -16,18 +7,15 @@ import { taken } from './actions.ts';
 import { FOLDER, media, safeName } from './store.ts';
 
 type Ref = { start: number; end: number; name: string; path: string };
-// a file of the first deck, or why it was not read: refused by the browser, or not found. a file
-// of this deck of another length than the carried file is 'other'
 type Read = Blob | 'refused' | 'missing' | 'other';
 
-// the attributes of text that name a file of the deck by a relative path
 function refsIn(text: string): Ref[] {
   const out: Ref[] = [];
   for (const t of tokenize(text)) {
     if (t.type !== 'start') continue;
     const isMedia = /^(img|video|source)$/.test(t.name);
     for (const a of t.attrs) {
-      if (a.value === null || !(a.name === 'data-trajectories' || (isMedia && (a.name === 'src' || a.name === 'poster')))) continue;
+      if (a.value === null || !(a.name === 'data-trajectories' || (isMedia && (a.name === 'src' || a.name === 'poster')) || (t.name === 'img' && a.name === 'data-pdf'))) continue;
       const path = a.value.trim().replace(/&amp;/g, '&');
       if (path && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(path)) out.push({ start: a.start, end: a.end, name: a.name, path });
     }
@@ -35,10 +23,6 @@ function refsIn(text: string): Ref[] {
   return out;
 }
 
-// a fetch that a browser refuses, e.g. from file:// or from another port, rejects. a file that
-// the server does not have is answered with an error status, or with a page of HTML by a server
-// that falls back to index.html. with size, a body of another length by Content-Length is not
-// read
 async function fetched(url: string, size = -1): Promise<Read> {
   try {
     const r = await fetch(url, { signal: stop.signal });
@@ -54,8 +38,6 @@ async function fetched(url: string, size = -1): Promise<Read> {
   }
 }
 
-// the bytes of this deck at path, 'other' for a file of another length than size, or null where
-// the page cannot read them
 async function here(path: string, size: number): Promise<Blob | 'other' | null> {
   const own = media.get(path);
   if (own) return own.blob;
@@ -69,9 +51,6 @@ async function same(a: Blob, b: Blob | 'other' | null): Promise<boolean> {
   return x.every((v, i) => v === y[i]);
 }
 
-// the first path under media/ for name that holds the bytes of blob in this deck, with fresh
-// false, or else that the deck does not name, the store does not hold, and the page cannot read.
-// past 100 names, a name made from the time is taken
 async function pathFor(blob: Blob, name: string, isTaken: (path: string) => boolean): Promise<{ path: string; fresh: boolean }> {
   const clean = safeName(name, 'file');
   const dot = clean.lastIndexOf('.');
@@ -85,18 +64,13 @@ async function pathFor(blob: Blob, name: string, isTaken: (path: string) => bool
   }
 }
 
-// a file of a chosen folder by its path relative to the deck, or null
 type Folder = (path: string) => Promise<Blob | null>;
 type DirectoryPicker = (o: { id: string; mode: 'read' }) => Promise<FileSystemDirectoryHandle>;
 const picker = (): DirectoryPicker | undefined => (window as unknown as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker;
-// an input with webkitdirectory opens a file chooser in place of a folder on a phone
 const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElement.prototype && !touchOnly());
 
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;
-// the dialog over the page while the files are read, hence an edit does not join the entry of the
-// history of the paste. it is drawn only DELAY ms after its first frame, so that a fast read does
-// not flash it. its Stop aborts the reads with stop, and is not taken before the dialog is drawn
 let busy: Dialog | null = null;
 let stop = new AbortController();
 let opened = Infinity;
@@ -108,10 +82,8 @@ function showBusy(): void {
   void busy?.open();
   requestAnimationFrame((at) => (opened = at));
 }
-// the folder picked in the click on the button of the open dialog
 let picked: Promise<Folder | null> = Promise.resolve(null);
 
-// a malformed escape, e.g. in 100%.png, is kept as it is written
 const decoded = (s: string): string => {
   try {
     return decodeURIComponent(s);
@@ -132,8 +104,6 @@ async function inHandle(dir: FileSystemDirectoryHandle, path: string): Promise<B
   }
 }
 
-// the folder chosen with showDirectoryPicker, or else with an input with webkitdirectory, whose
-// files are named by their paths under the chosen folder. null when the person cancels
 function pick(): Promise<Folder | null> {
   const show = picker();
   if (show) return show({ id: 'beeson-paste', mode: 'read' }).then((dir) => (path: string) => inHandle(dir, path), () => null);
@@ -154,8 +124,6 @@ function pick(): Promise<Folder | null> {
   });
 }
 
-// the folder of the deck at address, named by where, asked for until one with a file of the deck is
-// chosen. the picker is opened in the click on the button, which grants it in every browser
 async function folderOf(address: string, where: string): Promise<Folder | null> {
   const kept = folders.get(address);
   if (kept) return kept;
@@ -172,24 +140,20 @@ async function folderOf(address: string, where: string): Promise<Folder | null> 
       if (v === 'choose') picked = pick();
     },
   });
-  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. The browser lets this page read them only once you choose this folder.`;
-  // the dialog of the reads gives way to this one, and comes back at its answer
+  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. You have to choose this folder before they can be read.`;
   busy?.close(null);
   const v = await dialog.open('choose');
   showBusy();
   if (v !== 'choose') return null;
-  // a picker may not answer, e.g. while the browser lists a large folder, hence Stop ends the wait
   const stopped = new Promise<null>((done) => stop.signal.addEventListener('abort', () => done(null)));
   return Promise.race([picked, stopped]);
 }
 
 export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
 
-// the step of a paste from another deck that carries its files, in commands/origin.ts
 export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const refs = arrival.texts.map(refsIn);
   const paths = [...new Set(refs.flat().map((r) => r.path))];
-  // each path of a copy made in a session in this same folder is the file that it names here
   if (!paths.length || (arrival.origin.session && new URL('.', arrival.origin.deck).href === new URL('.', deckAddress()).href)) return;
   stop = new AbortController();
   injectStyle('paste-busy', BUSY);
@@ -202,12 +166,9 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   }
 }
 
-// the files of paths read and kept, and arrival rewritten. a file not kept when Stop is pressed is
-// not copied
 async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[]): Promise<void> {
   const read = new Map<string, Read>();
   const session = !!arrival.origin.session;
-  // the files of one deck are all refused once one is
   for (const p of paths) read.set(p, session || [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
   const name = session ? '' : decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
   const from = session ? 'the talk folder of the session that you copied from' : name ? `the folder ${name}` : arrival.origin.deck;
@@ -232,7 +193,6 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
       lost.push(p);
       continue;
     }
-    // e.g. a file over the limit of a session, or of a type that it does not take
     const why = fresh ? media.refuse?.(new File([blob], path.slice(FOLDER.length + 1), { type: blob.type })) : null;
     if (why) {
       arrival.notes.push(`${p} was not copied: ${why}${why.endsWith('.') ? '' : '.'}`);
@@ -245,9 +205,8 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     for (const r of [...refs[i]].reverse()) if (to.has(r.path)) out = `${out.slice(0, r.start)}${r.name}="${to.get(r.path)}"${out.slice(r.end)}`;
     return out;
   });
-  const why = refused.length && !canPick() ? ', since this browser cannot open a folder' : '';
+  const why = refused.length && !canPick() ? ', since your browser cannot open folders' : '';
   if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${from}${why}.`);
-  // the theme reads a trajectory file from the disk only, and once per page
   const drawn = [...new Set(refs.flat().filter((r) => r.name === 'data-trajectories' && to.has(r.path)).map((r) => to.get(r.path)!))];
   if (drawn.length) arrival.notes.push(`The ${drawn.length > 1 ? 'backdrops' : 'backdrop'} of ${listed(drawn)} ${drawn.length > 1 ? 'are' : 'is'} drawn once the deck is saved and opened again.`);
 }

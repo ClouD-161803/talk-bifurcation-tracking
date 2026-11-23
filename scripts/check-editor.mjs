@@ -1,12 +1,3 @@
-// Drives the in-place editor in Firefox or Safari over WebDriver, with trusted keys and pointer
-// actions, and prints one line per check with pass, fail, or skip and what it measured.
-//
-//   node scripts/check-editor.mjs --browser firefox|safari [--only <part of a check name>]
-//
-// The deck is served from a local port, since Safari refuses a page from file:// under automation.
-// The checks cover Present and the show in place, the speaker view, and a smoke pass of the main
-// gestures. After each change and its undo, the text written by the editor must be the file. The
-// script exits nonzero when a check fails.
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { deckSettled } from './chrome.mjs';
@@ -18,7 +9,6 @@ const SOURCE = readFileSync(DECK, 'utf8');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const js = (v) => JSON.stringify(v);
 
-// the code points of WebDriver for the named keys and the modifiers
 const KEYS = {
   Enter: '', Escape: '', Tab: '', Backspace: '', Delete: '', Space: ' ',
   ArrowLeft: '', ArrowUp: '', ArrowRight: '', ArrowDown: '',
@@ -29,7 +19,6 @@ const browser = await launch(options.browser);
 const server = await serve('.');
 const session = browser.session;
 const page = browser.newPage();
-// the value of edit-platform, which sets whether Mod is the Command key or Ctrl
 let platform = 'mac';
 const results = [];
 
@@ -44,7 +33,6 @@ async function perform(actions) {
   await session('DELETE', '/actions');
 }
 
-/** A trusted press of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', 'Escape', or 'e'. */
 async function press(keys) {
   const names = keys.split('+');
   const name = names.pop();
@@ -62,7 +50,6 @@ async function press(keys) {
   }]);
 }
 
-/** Trusted typing of text, one key per character. */
 async function type(text) {
   await perform([{ type: 'key', id: 'keys', actions: [...text].flatMap((value) => [{ type: 'keyDown', value }, { type: 'keyUp', value }]) }]);
 }
@@ -78,7 +65,6 @@ async function centerOf(selector) {
 
 const move = (x, y, duration = 0) => ({ type: 'pointerMove', x: Math.round(x), y: Math.round(y), origin: 'viewport', duration });
 
-// the pointer actions of a gesture, with the modifiers held down by a key source over the same ticks
 async function pointer(steps, mods = []) {
   const keys = modifiers(mods);
   const pause = { type: 'pause', duration: 0 };
@@ -88,14 +74,12 @@ async function pointer(steps, mods = []) {
   ]);
 }
 
-/** A trusted click at a point or at the center of a selector, with a button and a click count. */
 async function click(at, { button = 0, count = 1, mods = [] } = {}) {
   const { x, y } = typeof at === 'string' ? await centerOf(at) : at;
   const clicks = Array.from({ length: count }, () => [{ type: 'pointerDown', button }, { type: 'pointerUp', button }]).flat();
   await pointer([move(x, y), ...clicks], mods);
 }
 
-/** A trusted drag from a point or a selector by dx and dy in CSS px, in steps moves. */
 async function drag(from, { dx = 0, dy = 0, steps = 10, mods = [] } = {}) {
   const { x, y } = typeof from === 'string' ? await centerOf(from) : from;
   const moves = Array.from({ length: steps }, (_, i) => move(x + (dx * (i + 1)) / steps, y + (dy * (i + 1)) / steps, 16));
@@ -104,7 +88,6 @@ async function drag(from, { dx = 0, dy = 0, steps = 10, mods = [] } = {}) {
 
 const handles = () => session('GET', '/window/handles');
 
-// load opens the editor on slide n of the deck, with the storage of the browser cleared
 async function load(n = 0, { query = 'edit&still&theme=light' } = {}) {
   const url = `${server.origin}/${DECK}?${query}&edit-platform=${platform}`;
   await page.goto(`${server.origin}/${DECK}?still`);
@@ -113,7 +96,7 @@ async function load(n = 0, { query = 'edit&still&theme=light' } = {}) {
   await waitFor(deckSettled, 30000);
   await waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 30000);
   const s = await evaluate(`window.BeesonEditor.open(${js(SOURCE)})`);
-  if (s.problems.length) throw new Error(`blocks not paired: ${js(s.problems)}`);
+  if (s.problems.length) throw new Error(`elements not paired: ${js(s.problems)}`);
   if (n) await evaluate(`(Reveal.slide(${n}), true)`);
   await frames();
 }
@@ -124,13 +107,11 @@ async function byteExact(what) {
   if (text !== SOURCE) throw new Error(`${what}: the text differs from the file at character ${[...text].findIndex((c, i) => c !== SOURCE[i])}`);
 }
 
-// SHOW is the window of the show in place, i.e. of the frame in .beeson-edit-show
 const SHOW = `document.querySelector('.beeson-edit-show iframe')?.contentWindow`;
 const showReady = `(() => { try { const w = ${SHOW}; if (!w?.Reveal?.isReady()) return false; return !w.MathJax || (w.MathJax.startup?.promise?.then(() => true) ?? false); } catch { return false; } })()`;
 const stageGone = `!document.querySelector('.beeson-edit-show')`;
 const showHeading = () => evaluate(`${SHOW}.Reveal.getCurrentSlide().querySelector('h1, h2').textContent.trim()`);
 const editorHeading = () => evaluate(`Reveal.getCurrentSlide().querySelector('h1, h2').textContent.trim()`);
-// stageLook reads whether the show is full screen, fills the window, or neither
 const stageLook = `(() => {
   const el = document.querySelector('.beeson-edit-show');
   const full = document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
@@ -147,7 +128,6 @@ async function check(name, fn) {
     line = measured?.skip ? ['skip', measured.skip] : ['pass', measured ?? ''];
   } catch (error) {
     line = ['fail', String(error.message ?? error).split('\n')[0]];
-    // the next check starts from a single window
     for (const h of (await handles().catch(() => [])).slice(1)) {
       await session('POST', '/window', { handle: h }).then(() => session('DELETE', '/window')).catch(() => {});
     }
@@ -162,8 +142,6 @@ function expect(ok, message) {
   if (!ok) throw new Error(message);
 }
 
-// present starts the show by Mod+Enter or by the Present button, asserts that a window is not
-// opened, and returns how the stage is shown
 async function present(how) {
   const before = (await handles()).length;
   if (how === 'button') await click('.beeson-edit-top [data-command="file.present"]');
@@ -255,7 +233,7 @@ try {
 
   for (const p of ['mac', 'other']) {
     platform = p;
-    await check(`present: after the show, the arrow keys nudge a selected block and Mod+Z undoes, without a click (${p})`, async () => {
+    await check(`present: after the show, the arrow keys nudge a selected element and Mod+Z undoes, without a click (${p})`, async () => {
       await load(2);
       await click('.reveal section.present > p');
       await press('Escape');
@@ -268,7 +246,7 @@ try {
       await press('ArrowRight');
       await frames();
       const style = await evaluate(`document.querySelector('.reveal section.present > p').getAttribute('style')`);
-      expect(/translate/.test(style ?? ''), `ArrowRight does not nudge the block (style ${style}, focus on ${await evaluate('document.activeElement?.localName')})`);
+      expect(/translate/.test(style ?? ''), `ArrowRight does not nudge the element (style ${style}, focus on ${await evaluate('document.activeElement?.localName')})`);
       await press('Mod+Z');
       await frames();
       await byteExact('after Mod+Z');
@@ -277,8 +255,6 @@ try {
   }
   platform = 'mac';
 
-  // speakerOpen presses s in the show, and returns the window handles once the speaker view is
-  // opened, or null when the browser does not open it
   const speakerOpen = async () => {
     await sleep(500);
     await press('s');
@@ -342,9 +318,7 @@ try {
 
   const FRAME = '.beeson-overlay > .beeson-frame.selected';
   const IMG = '.reveal section.present img';
-  // the picture of the mode shown, since the picture of the other mode has a width of 0
   const shownImg = `[...document.querySelectorAll(${js(IMG)})].find((i) => i.getBoundingClientRect().width)`;
-  // the box of the picture drawn in the image of the mode shown, inside its box with object-fit
   const drawn = `((img) => {
     const b = img.getBoundingClientRect();
     if (getComputedStyle(img).objectFit !== 'contain') return b;
@@ -354,7 +328,7 @@ try {
     const left = b.left + (b.width - w) * px, top = b.top + (b.height - h) * py;
     return { left, top, right: left + w, bottom: top + h, width: w, height: h };
   })(${shownImg})`;
-  await check('smoke: a click on the picture of slide 5 selects its figure with its caption, in one frame', async () => {
+  await check('smoke: a click on the image of slide 5 selects its figure with its caption, in one frame', async () => {
     await load(4);
     await click(IMG);
     await frames();
@@ -366,10 +340,10 @@ try {
       const inside = (r) => r.left >= f.left - 1 && r.right <= f.right + 1 && r.top >= f.top - 1 && r.bottom <= f.bottom + 1;
       const cap = fig.querySelector('.caption, figcaption');
       const box = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round).join(',');
-      return inside(${drawn}) && (!cap || inside(cap.getBoundingClientRect())) ? true : 'frame ' + box(f) + ', picture ' + box(${drawn}) + ', caption ' + (cap ? box(cap.getBoundingClientRect()) : 'none');
+      return inside(${drawn}) && (!cap || inside(cap.getBoundingClientRect())) ? true : 'frame ' + box(f) + ', image ' + box(${drawn}) + ', caption ' + (cap ? box(cap.getBoundingClientRect()) : 'none');
     })()`);
-    expect(sel.length === 1 && n === 1 && holds === true, `selection ${js(sel)}, ${n} frames, picture and caption in the frame: ${holds}`);
-    return `selected ${sel[0]}, one frame around picture and caption`;
+    expect(sel.length === 1 && n === 1 && holds === true, `selection ${js(sel)}, ${n} frames, image and caption in the frame: ${holds}`);
+    return `selected ${sel[0]}, one frame around image and caption`;
   });
 
   await check('smoke: a drag moves the figure, and Mod+Z takes the move back', async () => {
@@ -381,7 +355,7 @@ try {
     await frames();
     const after = await centerOf(IMG);
     const moved = [after.x - before.x, after.y - before.y].map(Math.round);
-    expect(Math.abs(moved[0] + 80) <= 12 && Math.abs(moved[1] - 40) <= 12, `the picture moved by ${moved}`);
+    expect(Math.abs(moved[0] + 80) <= 12 && Math.abs(moved[1] - 40) <= 12, `the image moved by ${moved}`);
     const text = await render();
     expect(/translate/.test(text) && text !== SOURCE, 'the move is not written');
     await press('Mod+Z');
@@ -401,13 +375,10 @@ try {
     const from = grips[corner];
     const dx = corner.endsWith('e') ? -60 : 60;
     const dy = corner.startsWith('s') ? -34 : 34;
-    // the Command key on the Mac, as Alt elsewhere, turns the snap off, as in test/editor-r9-1.test.mjs
     await drag(from, { dx, dy, mods: [platform === 'mac' ? 'Meta' : 'Alt'] });
     await frames();
     const w1 = await evaluate(`${drawn}.width`);
     const grip = await evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-grip')].find((g) => g.dataset.handle === ${js(corner)}); const q = g.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
-    // a corner keeps the aspect a of the picture, hence the grip is at the pointer when the offset
-    // between them is at a right angle to the diagonal of a box of aspect a
     const a = await evaluate(`${drawn}.width / ${drawn}.height`);
     const [sx, sy] = [corner.endsWith('e') ? 1 : -1, corner.startsWith('s') ? 1 : -1];
     const u = [sx, sy / a];
@@ -428,7 +399,6 @@ try {
     await frames();
     const caret = await evaluate(`(() => { const s = getSelection(); return !!s.rangeCount && document.querySelector(${js(PARA)}).contains(s.anchorNode) && document.activeElement?.isContentEditable; })()`);
     expect(caret, `the caret is not in the paragraph (focus on ${await evaluate('document.activeElement?.localName')})`);
-    // ArrowRight collapses a selected word, hence the text is typed after it
     await press('ArrowRight');
     await type(' qzx');
     await frames();
@@ -496,7 +466,6 @@ try {
     await openBar('Insert');
     await choose('Table…');
     expect(await within(`!!document.querySelector('.beeson-table-picker .grid')`, 3000), 'the grid of Insert Table is not opened');
-    // the cell in the third column of the second row of the grid
     const at = await evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-table-picker .grid > div')]; const top = g[0].getBoundingClientRect().top; const cols = g.filter((d) => d.getBoundingClientRect().top === top).length; const r = g[cols + 2].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await click({ x: at.x - 2, y: at.y - 2 });
     await click(at);
@@ -525,7 +494,7 @@ try {
     return `table ${shape[1]} by ${shape[0]}, Tab from ${js(c0)} to ${js(c1)}, Esc selects the table, undone`;
   });
 
-  await check('smoke: View > Object List lists the objects of the slide', async () => {
+  await check('smoke: View > Object List lists the elements of the slide', async () => {
     await load(4);
     await openBar('View');
     await choose('Object List');

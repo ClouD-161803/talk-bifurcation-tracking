@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="../../../../theme/vendor/fonts/stix-two-text.css">
   <link rel="stylesheet" href="../../../../theme/beeson.css">
   <script>
-    // the macros of deck A, of which the slide with the files uses orb, which uses half, and dash
     window.beesonTex = { macros: { orb: ['\\mathcal{O}_{\\half #1}', 1], half: '\\tfrac{1}{2}', dash: '\\text{a--b}', unused: '\\mathrm{u}' } };
   </script>
   <script src="../../../../theme/mathjax-config.js"></script>
@@ -37,6 +36,13 @@
     <section>
       <h2>A slide with the backdrop of deck A</h2>
       <div class="backdrop" data-trajectories="data/path.js" data-duration="4" data-cx="0" data-cy="0" data-half="1"></div>
+    </section>
+    <section>
+      <h2>A slide with a PDF figure of deck A</h2>
+      <figure class="figure-box" style="width: 400px">
+        <img class="for-dark" src="figs/plot-dark.png" data-pdf="figs/plot.pdf" alt="A plot of deck A">
+        <img class="for-light" src="figs/plot-light.png" data-pdf="figs/plot.pdf" alt="A plot of deck A">
+      </figure>
     </section>
   </div></div>
   <script src="../../../../theme/vendor/reveal/reveal.js"></script>

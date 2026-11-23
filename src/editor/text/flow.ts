@@ -1,11 +1,3 @@
-// a text of several text elements, as one text box of Keynote and PowerPoint: the items of a list and the
-// paragraphs of a text column are text elements of the file with an editing host each, and the arrows move
-// the caret over the border of two of them. a selection over several text elements is a span. the window
-// holds its part in the text element of its focus, from the edge of the text element to the focus, and the parts
-// in the other text elements are drawn with the highlight beeson-span of the CSS Custom Highlight API. the
-// formats of inline.ts, Tab, Shift+Tab, Backspace, Delete, Return, Cut, Copy, and typing act on the
-// whole span. a place is a text element and a visible offset of text/elements.ts in it
-
 import type { App } from '../app.ts';
 import { besideTextElement, canIndent, canOutdent, canSplit, endOf, indent, offsetIn, outdent, pointAt, rangeOf, rangeTex, rangeWords, selectIn, split, textTarget, type Target } from './elements.ts';
 import { injectStyle } from '../ui/dom.ts';
@@ -13,13 +5,10 @@ import { injectStyle } from '../ui/dom.ts';
 export type Place = [Element, number];
 type Way = 'left' | 'right' | 'up' | 'down';
 
-const STYLE = '::highlight(beeson-span) { background-color: color-mix(in srgb, Highlight 60%, transparent); }';
+const STYLE = '.reveal ::highlight(beeson-span) { background-color: #1b334d; } html[data-theme="light"] .reveal ::highlight(beeson-span) { background-color: #d3dced; }';
 
 let span: { anchor: Place; focus: Place } | null = null;
-// a drag of the browser, which holds the window in the text element where it started
 let drag: { from: Element; anchor: Place | null } | null = null;
-// the column that ArrowUp and ArrowDown keep, as the left x of the caret in client px, while the
-// focus is at the place where the last of these arrows put it
 let column: { x: number; at: Place } | null = null;
 
 const elementOf = (n: Node): Element | null => (n instanceof Element ? n : n.parentElement);
@@ -28,7 +17,6 @@ const ahead = (way: Way): boolean => way === 'right' || way === 'down';
 
 export const active = (): boolean => span !== null;
 
-// the text elements of the text of host, in order
 export function runOf(app: App, host: Element): Element[] {
   const out = [host];
   for (let b = besideTextElement(app, host, false); b; b = besideTextElement(app, b, false)) out.unshift(b);
@@ -36,8 +24,6 @@ export function runOf(app: App, host: Element): Element[] {
   return out;
 }
 
-// the focus of the span read from the window, whose part in the text element of the focus runs from the
-// edge of the text element. with off, a window elsewhere ends the span
 function sync(off = false): void {
   if (!span || drag) return;
   const s = getSelection();
@@ -48,7 +34,6 @@ function sync(off = false): void {
   } else if (off) clear();
 }
 
-// the start and the end of the span, in the order of the text
 function ends(): [Place, Place] | null {
   sync();
   if (!span) return null;
@@ -57,7 +42,6 @@ function ends(): [Place, Place] | null {
   return forward ? [a, f] : [f, a];
 }
 
-// the range of the span in each of its text elements, from the first to the last
 export function spanTargets(app: App): Target[] {
   const e = ends();
   if (!e || !e[0][0].isConnected || !e[1][0].isConnected) return [];
@@ -82,8 +66,6 @@ export function clear(): void {
   highlight([]);
 }
 
-// the span drawn with its part in the text element apart in the window, which is the text element of the focus
-// unless a drag of the browser holds the window in the text element where it started
 function paint(app: App, apart = span!.focus[0]): void {
   const [host, at] = span!.focus;
   if (apart === host) {
@@ -96,7 +78,6 @@ function paint(app: App, apart = span!.focus[0]): void {
 
 export const repaint = (app: App): void => void (span && paint(app));
 
-// the text from anchor to focus, as a span over several text elements or as the window in one
 export function select(app: App, anchor: Place, focus: Place): void {
   if (anchor[0] !== focus[0]) {
     span = { anchor, focus };
@@ -108,10 +89,8 @@ export function select(app: App, anchor: Place, focus: Place): void {
   getSelection()?.setBaseAndExtent(...pointAt(host, anchor[1]), ...pointAt(host, focus[1]));
 }
 
-// the anchor and the focus of the span, else of the window in one text element
 export const places = (app: App): [Place, Place] | null => (span ? [span.anchor, span.focus] : windowPlaces(app));
 
-// the anchor and the focus of the window as places, in one text element
 function windowPlaces(app: App): [Place, Place] | null {
   const s = getSelection();
   if (!s?.anchorNode || !s.focusNode) return null;
@@ -120,8 +99,6 @@ function windowPlaces(app: App): [Place, Place] | null {
   return [[host, offsetIn(host, s.anchorNode, s.anchorOffset)], [host, offsetIn(host, s.focusNode, s.focusOffset)]];
 }
 
-// the box of the caret at the offset at of host, measured on a character beside it where the
-// caret alone does not have a box
 function caretBox(host: Element, at: number): DOMRect | null {
   const [node, offset] = pointAt(host, at);
   const r = document.createRange();
@@ -133,8 +110,6 @@ function caretBox(host: Element, at: number): DOMRect | null {
   return r.getClientRects()[0] ?? null;
 }
 
-// true when the focus at of host is at the edge of its text toward way: at its start or end, or on
-// its first or last line
 function atEdge(host: Element, at: number, way: Way): boolean {
   if (way === 'left' || way === 'right') {
     const part = rangeOf(host, way === 'left' ? null : pointAt(host, at), way === 'left' ? pointAt(host, at) : null);
@@ -147,7 +122,6 @@ function atEdge(host: Element, at: number, way: Way): boolean {
   return way === 'up' ? caret.top - box.top < caret.height / 2 : box.bottom - caret.bottom < caret.height / 2;
 }
 
-// the caret position of the browser at a point of the window
 export function fromPoint(x: number, y: number): [Node, number] | null {
   const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null };
   if (d.caretPositionFromPoint) {
@@ -158,8 +132,6 @@ export function fromPoint(x: number, y: number): [Node, number] | null {
   return r ? [r.startContainer, r.startOffset] : null;
 }
 
-// the place in the text element to that the focus reaches toward way from the left x of the caret: the end
-// or the start of its text, or the nearest place on its first or last line
 function placeIn(to: Element, way: Way, x: number): number {
   const fallback = way === 'left' || way === 'up' ? endOf(to) : 0;
   if (way === 'left' || way === 'right') return fallback;
@@ -170,7 +142,6 @@ function placeIn(to: Element, way: Way, x: number): number {
   return p && to.contains(p[0]) ? offsetIn(to, ...p) : fallback;
 }
 
-// the focus of the window as a place, which a range has only with Shift
 function focusOf(app: App, extend: boolean): Place | null {
   const s = getSelection();
   if (!s?.focusNode || (!extend && !s.isCollapsed)) return null;
@@ -178,14 +149,11 @@ function focusOf(app: App, extend: boolean): Place | null {
   return host ? [host, offsetIn(host, s.focusNode, s.focusOffset)] : null;
 }
 
-// the x that the focus at of host keeps toward way: the column while it holds, else the caret
 function xOf(host: Element, at: number, way: Way): number {
   const kept = (way === 'up' || way === 'down') && column && column.at[0] === host && column.at[1] === at;
   return kept ? column!.x : (caretBox(host, at)?.left ?? 0);
 }
 
-// the place that the focus of the window goes to toward way when it is at the edge of its text element and
-// a text element of the same text is beside it, or null
 function step(app: App, way: Way, extend: boolean): Place | null {
   const f = focusOf(app, extend);
   const to = f ? besideTextElement(app, f[0], ahead(way)) : null;
@@ -193,9 +161,6 @@ function step(app: App, way: Way, extend: boolean): Place | null {
   return [to, placeIn(to, way, xOf(f[0], f[1], way))];
 }
 
-// the place on the line above or below the focus in its own text element at the column, while the column
-// holds. the browser keeps a column only over its own moves, and an arrow that leaves a short line
-// of another text element thus goes back to the column
 function within(app: App, way: Way, extend: boolean): Place | null {
   const f = focusOf(app, extend);
   if (!f || !column || column.at[0] !== f[0] || column.at[1] !== f[1] || (way !== 'up' && way !== 'down') || atEdge(f[0], f[1], way)) return null;
@@ -205,8 +170,6 @@ function within(app: App, way: Way, extend: boolean): Place | null {
   return p && f[0].contains(p[0]) ? [f[0], offsetIn(f[0], ...p)] : null;
 }
 
-// an arrow collapses a span to its start or its end, or moves the caret into the text element beside it.
-// Shift with an arrow moves the focus into the text element beside it
 function move(app: App, way: Way, extend: boolean): void {
   if (!extend && span) {
     const [first, last] = ends()!;
@@ -223,8 +186,6 @@ function move(app: App, way: Way, extend: boolean): void {
   column = way === 'up' || way === 'down' ? { x, at: to } : null;
 }
 
-// ⌘A in a text element of a text of several text elements selects the whole text, and returns false once it is
-// selected
 export function selectRun(app: App, host: Element): boolean {
   const run = runOf(app, host);
   if (run.length < 2) return false;
@@ -235,9 +196,6 @@ export function selectRun(app: App, host: Element): boolean {
   return true;
 }
 
-// the text of the span replaced by text: the first text element keeps its text before the span and is
-// given text and the text of the last text element after the span, and the text elements after the first are
-// removed. a line of text is a br
 async function removeSpan(app: App, text = ''): Promise<void> {
   const t = spanTargets(app);
   clear();
@@ -252,8 +210,6 @@ async function removeSpan(app: App, text = ''): Promise<void> {
   selectIn(first.host, at + text.replace(/\r?\n/g, ' ').length);
 }
 
-// the items that the selection touches, as indices into the items of the outermost list with the
-// offsets of the start and the end in their items, where the selection reaches over one item
 function touched(app: App): { list: Element; from: number; to: number; start: number; stop: number } | null {
   const t = spanTargets(app);
   const s = getSelection();
@@ -269,8 +225,6 @@ function touched(app: App): { list: Element; from: number; to: number; start: nu
 
 export const canLevel = (app: App): boolean => touched(app) !== null;
 
-// Tab and Shift+Tab on each item that the selection touches, in order, which keeps the order of
-// the items of the list. the same text is selected after it
 export async function level(app: App, deeper: boolean): Promise<void> {
   const t = touched(app);
   if (!t) return deeper ? indent(app) : outdent(app);
@@ -312,9 +266,6 @@ export function install(app: App): void {
 
   document.addEventListener('selectionchange', () => sync(true));
 
-  // a drag of the browser is held in the text element where it started, hence the text elements of the same text
-  // under the pointer are added to it as a span, and the window is moved into the text element of the focus
-  // once the button is released
   document.addEventListener('pointerdown', (ev) => {
     const host = ev.button === 0 && !ev.shiftKey ? app.hostOf(ev.target) : null;
     drag = host && runOf(app, host).length > 1 ? { from: host, anchor: null } : null;
@@ -331,9 +282,6 @@ export function install(app: App): void {
     span = { anchor: drag.anchor, focus: [over, offsetIn(over, ...p)] };
     paint(app, drag.from);
   }, true);
-  // a Shift+click in another text element of the same text selects from the anchor of the selection to the
-  // click, over the text elements between, before the canvas takes the click as one more selected object.
-  // the press is cancelled, so that the browser does not move the caret into the clicked text element
   let shifted = false;
   window.addEventListener('pointerdown', (ev) => {
     shifted = false;
@@ -354,8 +302,6 @@ export function install(app: App): void {
     ev.stopImmediatePropagation();
   }, true);
 
-  // the drag is held until the window is moved, since a change of the window that the browser
-  // reports after the release, while the window is still in the first text element, would end the span
   document.addEventListener('pointerup', () => {
     const held = drag;
     if (!held) return;
@@ -366,11 +312,11 @@ export function install(app: App): void {
     }, 0);
   }, true);
 
-  // typing replaces the span, as one entry of the history
   document.addEventListener('beforeinput', (ev) => {
     if (!span || !/^(insert|delete)/.test(ev.inputType)) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
+    if (app.commands.refused('text.flow.delete')) return;
     const text = ev.inputType.startsWith('insert') ? (ev.data ?? ev.dataTransfer?.getData('text/plain') ?? '') : '';
     void app.history.transact(ev.inputType === 'insertFromPaste' ? 'Paste' : 'typing', () => removeSpan(app, text)).catch((e) => app.fail(e));
   }, true);
@@ -379,25 +325,25 @@ export function install(app: App): void {
       if (!span) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
+      if (kind === 'cut' && app.commands.refused('text.flow.delete')) return;
       ev.clipboardData?.setData('text/plain', spanTargets(app).map((t) => rangeWords(t.host, t.range).trim()).join('\n'));
       if (kind === 'cut') void app.history.transact('Cut', () => removeSpan(app)).catch((e) => app.fail(e));
     }, true);
-    // words of a theorem, with a citation, or with a formula are copied as the file has them, since
-    // the browser would copy the head of the theorem, the numbers of the citations that the theme
-    // writes, and a formula without its TeX
     document.addEventListener(kind, (ev) => {
       const t = span ? null : textTarget(app);
       if (!t || t.range.collapsed || !(t.host.matches('p.theorem') || t.range.cloneContents().querySelector('cite, mjx-container'))) return;
       ev.preventDefault();
       ev.clipboardData?.setData('text/plain', rangeWords(t.host, t.range));
       ev.clipboardData?.setData('text/html', rangeTex(t.host, t.range));
-      if (kind === 'cut') document.execCommand('delete');
+      if (kind !== 'cut') return;
+      app.history.beforeTyping(t.host, 'Cut');
+      document.execCommand('delete');
+      app.history.afterTyping(t.host);
+      app.history.break();
     }, true);
   }
 }
 
-// the text nodes of slide that hold more than white space, each with its text element, i.e. without the
-// indent between the text elements and items that a list style writes
 function inked(slide: Element): { text: Text; textEl: Element | null }[] {
   const out: { text: Text; textEl: Element | null }[] = [];
   const walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT);
@@ -409,9 +355,6 @@ function inked(slide: Element): { text: Text; textEl: Element | null }[] {
   return out;
 }
 
-// the place of the point (node, offset) counted over the inked text of slide, with one more at the
-// border of two text elements, which a change of the text elements around the text keeps, e.g. Dashes on a
-// paragraph or Paragraphs on a list
 function countTo(slide: Element, node: Node, offset: number): number {
   const point = document.createRange();
   point.setStart(node, offset);
@@ -440,8 +383,6 @@ function pointOf(slide: Element, n: number): [Node, number] | null {
   return null;
 }
 
-// the text selection of the current slide as a function that selects it again, after the text elements
-// that hold it were made again, e.g. by an undo of a list style. null where it is not in the slide
 export function mark(app: App): (() => void) | null {
   const p = places(app);
   const slide = app.current();
@@ -455,8 +396,6 @@ export function mark(app: App): (() => void) | null {
     });
     if (!at[0] || !at[1]) return;
     select(app, at[0], at[1]);
-    // the start of a nested item is the end of the white space before it as well, where the list
-    // commands do not act, hence the window is given the points in the texts
     if (at[0][0] === at[1][0]) getSelection()?.setBaseAndExtent(...ends[0]!, ...ends[1]!);
   };
 }

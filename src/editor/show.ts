@@ -1,13 +1,3 @@
-// the show in place, as the slide show of Keynote and PowerPoint: Present plays the saved deck over
-// the whole screen. the deck is loaded without edit into a frame over the window of the editor, and
-// full screen is asked for on the stage of the frame while the key or click of Present still
-// counts, as the Fullscreen API asks. where the browser refuses it, the show fills the window.
-// reveal.js in the frame posts its events to the editor, also on file:, where the frame is of
-// another origin, and the deck posts Esc, E, F, and S (from-editor in src/main.ts).
-// the show ends at Esc and E, at a load of another page in the frame, and when it leaves full
-// screen otherwise than at F or S, e.g. at an Esc that the browser keeps from the page. the editor
-// is then at the slide shown last
-
 import type { App } from './app.ts';
 import { injectStyle, make } from './ui/dom.ts';
 
@@ -23,8 +13,6 @@ type Requestable = HTMLElement & { webkitRequestFullscreen?: () => void };
 const hidden = (s: Element | null) => s?.getAttribute('data-visibility') === 'hidden';
 const sections = (parent: Element) => [...parent.children].filter((s) => s.localName === 'section' && !hidden(s));
 
-// the indices of slide in the show, where reveal.js removes the hidden slides that the editor
-// keeps. a hidden slide is shown from the next shown slide, or from the last one
 export function showIndices(app: App, slide: Element | null): At {
   const leaves = [...app.slides().querySelectorAll<Element>('section')].filter((s) => !s.querySelector('section'));
   const shown = leaves.filter((s) => !hidden(s) && !hidden(s.parentElement));
@@ -35,7 +23,6 @@ export function showIndices(app: App, slide: Element | null): At {
   return { h: Math.max(0, sections(app.slides()).indexOf(top)), v: top === to ? 0 : Math.max(0, sections(top).indexOf(to)) };
 }
 
-// the slide of the editor at the indices of the show
 export function slideAt(app: App, { h, v }: At): Element | null {
   const top = sections(app.slides())[h];
   if (!top) return null;
@@ -47,11 +34,6 @@ const fullscreen = () => (document as Prefixed).fullscreenElement ?? (document a
 
 export type Stage = { load(url: string, text?: string | null): Window | null; end(): void };
 
-// text written into win as the page at url, i.e. a deck played from its saved text where the file
-// at url is not this text, e.g. after a save that was a download. the address is set before the
-// text is parsed, so that the deck reads its parameters and hash as at url. Firefox keeps the
-// address of the editor as the base after document.open, hence url is written as the base too, so
-// that theme/ and the figures are found and a hash written by reveal.js keeps the parameters of url
 export function writeDeck(win: Window, url: string, text: string): void {
   const doc = win.document;
   doc.open();
@@ -61,8 +43,6 @@ export function writeDeck(win: Window, url: string, text: string): void {
   doc.close();
 }
 
-// startShow puts the stage over the window and asks for full screen on it at once. the deck is
-// loaded into it by load, and end takes it away and then calls ended
 export function startShow(app: App, ended?: () => void): Stage {
   injectStyle('show', CSS);
   const el = make('div', 'beeson-edit-show') as Requestable;
@@ -74,10 +54,7 @@ export function startShow(app: App, ended?: () => void): Stage {
   let at: At | null = null;
   let loads = 0;
   let full = false;
-  // the time until which the show goes on out of full screen, set at F
   let keep = 0;
-  // set at S, since the browser leaves full screen for the speaker view, on a slow machine seconds
-  // later, and the exit may also reach the editor before S. the show goes on at the next exit
   let speaker = false;
 
   const ours = () => !!fullscreen() && el.contains(fullscreen());
@@ -85,9 +62,7 @@ export function startShow(app: App, ended?: () => void): Stage {
     try {
       if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
       else el.webkitRequestFullscreen?.();
-    } catch {
-      // the show fills the window
-    }
+    } catch {}
   };
   const leave = () => {
     const d = document as Prefixed;
@@ -119,15 +94,12 @@ export function startShow(app: App, ended?: () => void): Stage {
     if (m.namespace !== 'beeson') return;
     if (m.eventName === 'edit') end();
     else if (m.eventName === 'speaker') speaker = true;
-    // the key in the frame lets the editor ask for full screen, in Chrome and Firefox
     else if (m.eventName === 'fullscreen' && !ours()) enter();
     else if (m.eventName === 'fullscreen') {
       keep = performance.now() + 1000;
       leave();
     }
   };
-  // a show that leaves full screen while the window keeps the focus ends, unless F or S was pressed.
-  // the frame posts them before the change, which is waited for a moment
   const onChange = () => {
     if (ours()) full = true;
     else if (full) setTimeout(() => {
@@ -136,14 +108,11 @@ export function startShow(app: App, ended?: () => void): Stage {
       else if (performance.now() > keep && document.hasFocus()) end();
     }, 100);
   };
-  // a key that reaches the editor while the show is up, e.g. after a click outside the frame
   const onKey = (ev: KeyboardEvent) => {
     if (ev.key === 'Escape') end();
     ev.preventDefault();
     ev.stopPropagation();
   };
-  // the first load is that of the deck, and a load of another page, or of the address of a written
-  // deck, ends the show
   let loading = false;
   frame.addEventListener('load', () => {
     if (!loading) return;

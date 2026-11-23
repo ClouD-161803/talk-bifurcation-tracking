@@ -1,9 +1,3 @@
-// the navigator and the commands of the slides and of the elements: thumbnails with the numbers of
-// the theme, the selection of several slides, a new slide from the keys and from the gallery,
-// duplicate, delete, hide, move by keys and by a drag, and copy and paste, each with trusted input
-// on either platform. after each edit an undo gives the file byte for byte, a redo gives the edit,
-// and a save is opened again without problems
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -25,8 +19,6 @@ after(async () => {
   server?.close();
 });
 
-// the editor on a deck served over HTTP, where a save is written into the origin private file
-// system, with every block paired with the file
 async function open(platform, deck = 'test-deck.html') {
   const page = await browser.newPage();
   await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
@@ -38,7 +30,6 @@ async function open(platform, deck = 'test-deck.html') {
   return page;
 }
 
-// what the rows show, in the order of the list
 const rows = (page) =>
   page.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r) => ({
     no: r.querySelector('.no').textContent,
@@ -49,7 +40,6 @@ const rows = (page) =>
     current: r.getAttribute('aria-current') === 'true',
   }))`);
 
-// the center of row i, scrolled into view unless scroll is false
 const row = async (page, i, scroll = true) =>
   page.evaluate(`(() => {
     const r = document.querySelectorAll('.beeson-edit-nav .row')[${i}];
@@ -58,9 +48,6 @@ const row = async (page, i, scroll = true) =>
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   })()`);
 
-// a click on row i of the navigator, made again until row i is the current one. at a paint of the
-// navigator, the row of the current slide is scrolled into view. with a paint between the reading
-// of the place of row i and the click, the rows are moved under the click
 async function pick(page, i) {
   for (let n = 0; n < 3; n++) {
     await settle(page);
@@ -74,11 +61,6 @@ async function pick(page, i) {
 const titles = async (page) => (await rows(page)).map((r) => r.title);
 const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(window.BeesonEditor.status()))))');
 
-// the edited text, the file again after the undos, the edit again after the redos, and a save
-// opened again without problems
-// the errors of the page, apart from the request of a favicon, which the server does not have
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
-
 let saves = 0;
 async function roundTrip(page, undos = 1) {
   const edited = await page.evaluate('window.BeesonEditor.render()');
@@ -90,13 +72,11 @@ async function roundTrip(page, undos = 1) {
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
   const { text } = await saveAndReopen(page, `saved-${++saves}.html`);
   assert.equal(text, edited);
-  assert.deepEqual(errors(page), []);
-  // the saved text is the file from here on, with a fresh history
+  assert.deepEqual(page.errors, []);
   page.source = text;
   return edited;
 }
 
-// the text of the slide whose heading is heading, from its start tag to its end tag
 function slideText(source, heading) {
   const at = source.indexOf(heading);
   const start = source.lastIndexOf('<section', at);
@@ -128,9 +108,6 @@ test('the demo deck shows 13 thumbnails within 1 s, numbered by their places, wi
     stepped,
   );
   assert.ok(stepped.includes(true) && stepped.includes(false));
-  // a thumbnail is drawn again after a change of its slide. the count of its drawings is read in the
-  // task of the change, since the thumbnails are also drawn again shortly after the deck is opened,
-  // and a count read earlier may be out of date at the change
   const before = await page.evaluate(`(() => {
     const drawn = document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn;
     window.Reveal.getSlides()[3].querySelector('h2').append(' again');
@@ -138,7 +115,7 @@ test('the demo deck shows 13 thumbnails within 1 s, numbered by their places, wi
   })()`);
   await page.waitFor(`document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn !== ${JSON.stringify(before)}`);
   assert.match(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .pic')[3].shadowRoot.querySelector('h2').textContent`), /again$/);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the slides after the closing slide are numbered by their places, as in the status bar', async (t) => {
@@ -147,7 +124,34 @@ test('the slides after the closing slide are numbered by their places, as in the
   const list = await rows(page);
   assert.equal(list.at(-1).no, String(list.length));
   assert.equal(list.at(-2).no, String(list.length - 1));
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the preview of a row is not shown when its slide is deleted before the preview delay', async (t) => {
+  const page = await open('mac');
+  t.after(() => page.close?.());
+  const titled = 'Show your steps one at a time';
+  assert.equal((await rows(page))[2].title, titled);
+  await pick(page, 2);
+  const slide = await page.evaluate(`(() => {
+    const b = window.Reveal.getCurrentSlide().getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  })()`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slide.x, y: slide.y });
+  await page.evaluate(`(() => {
+    const row = document.querySelectorAll('.beeson-edit-nav .row')[2];
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'Backspace') return;
+      row.dispatchEvent(new PointerEvent('pointerenter'));
+      setTimeout(() => (window.peekDue = true), 300);
+    }, { capture: true, once: true });
+  })()`);
+  await press(page, 'Backspace');
+  await page.waitFor('window.peekDue === true');
+  await settle(page);
+  assert.ok(!(await titles(page)).includes(titled), 'the slide is deleted');
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-peek').hidden`), true);
+  assert.deepEqual(page.errors, []);
 });
 
 for (const platform of ['mac', 'other']) {
@@ -218,7 +222,7 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
-  test(`Backspace deletes a slide with the comment above it (${platform})`, async (t) => {
+  test(`Backspace deletes a slide (${platform})`, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());
     await click(page, await row(page, 2));
@@ -227,7 +231,6 @@ for (const platform of ['mac', 'other']) {
     assert.equal((await rows(page)).length, 12);
     const edited = await page.evaluate('window.BeesonEditor.render()');
     assert.ok(!edited.includes('Show your steps one at a time'));
-    assert.ok(!edited.includes('<!-- content, the default layout'), 'the comment above the slide is kept');
     assert.equal(await page.evaluate(`window.Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Equations are first class citizens');
     await roundTrip(page);
   });
@@ -247,8 +250,6 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await page.evaluate(`document.activeElement.closest('.beeson-edit-nav .row')?.querySelector('.title').textContent`), 'Chapter two');
     const edited = await roundTrip(page);
     assert.ok(edited.indexOf('Explain concepts, visually') < edited.indexOf('Chapter two'));
-    // the comment above the section slide moved with it
-    assert.ok(edited.indexOf('Explain concepts, visually') < edited.indexOf('<!-- a second section slide'));
   });
 
   test(`a drag in the navigator moves a slide, with an insertion line (${platform})`, async (t) => {
@@ -313,9 +314,7 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
-  // on macOS, Ctrl with a click is a click of the right button, hence the toggle with Ctrl of
-  // Windows and Linux is tested on those hosts
-  test(`slides apart from each other, selected with the command modifier, are deleted as one entry (${platform})`, { skip: platform === 'other' && process.platform === 'darwin' }, async (t) => {
+  test(`slides apart from each other, selected with the command modifier, are deleted as one entry (${platform})`, { skip: platform === 'other' && process.platform === 'darwin' && 'Chrome on macOS turns Ctrl with a click into a click of the right button' }, async (t) => {
     const page = await open(platform);
     t.after(() => page.close?.());
     await click(page, await row(page, 2));

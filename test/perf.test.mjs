@@ -1,15 +1,7 @@
-// the cost of the frames of the trace of the title slide, in headless Chrome at a pixel ratio of 2.
-// a frame at 120 Hz lasts 8.3 ms, of which the drawing is given 4 ms on a slow laptop, i.e. in
-// Chrome with its CPU throttled four times, and 1 ms without the throttle. the cost of a frame is
-// the time spent in the callbacks of requestAnimationFrame, and the budget holds at the 99th
-// percentile of the frames of the 20 s trace. the timing of a shared runner of GitHub does not
-// stand for a laptop, hence the test is skipped on CI
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 
-// the cost of each frame of one trace of the title backdrop, in ms
 const costs = `(async () => {
   const b = Beeson.backdrops.find((o) => o.el.closest('section.title'));
   const out = [], raf = window.requestAnimationFrame;
@@ -50,3 +42,37 @@ for (const [rate, budget] of [
     },
   );
 }
+
+const normalCosts = `(async () => {
+  const b = Beeson.backdrops[0];
+  Reveal.slide(0, 0, 6);
+  const out = [], raf = window.requestAnimationFrame;
+  window.requestAnimationFrame = (callback) => raf((now) => {
+    const t = performance.now();
+    callback(now);
+    out.push(performance.now() - t);
+  });
+  await new Promise((done) => setTimeout(done, 4000));
+  window.requestAnimationFrame = raf;
+  return { tracing: b.tracing, frames: out };
+})()`;
+
+test(
+  'a frame of the normal form in its resonant flow costs at most 4 ms with the CPU throttled 4 times',
+  { skip: process.env.CI ? 'the timing of a shared runner does not stand for a laptop' : false, timeout: 120000 },
+  async (t) => {
+    const browser = await launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ motion: true, scale: 2 });
+    await page.goto(deckUrl('test/pages/backdrops-normal-form.html'));
+    await page.waitFor(deckSettled);
+    await page.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    const { tracing, frames } = await page.evaluate(normalCosts);
+    frames.sort((a, b) => a - b);
+    const p99 = frames[Math.ceil(0.99 * frames.length) - 1];
+    t.diagnostic(`${p99.toFixed(2)} ms at the 99th percentile of ${frames.length} frames, ${frames.at(-1).toFixed(2)} ms at most`);
+    assert.equal(tracing, true);
+    assert.ok(frames.length > 100, `${frames.length} frames`);
+    assert.ok(p99 <= 4, `a frame of the normal form costs ${p99.toFixed(2)} ms at the 99th percentile`);
+  },
+);

@@ -1,6 +1,3 @@
-// the start tag of an element with its step or its translation changed: only the attribute that
-// changes is written, and the other bytes of the tag are kept
-
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderTag, stepIn, translateIn } from '../src/editor/tags.ts';
@@ -45,8 +42,6 @@ test('a step and a translation in one edit are written in one tag', () => {
   assert.equal(render('<p>a</p>', { fragment: true, index: 1, translate: { x: 5, y: 5 } }), '<p class="fragment" data-fragment-index="1" style="translate: 5px 5px">a</p>');
 });
 
-// defect 6 of the save model: a value was decoded only for &quot; and &amp;, hence another
-// reference in a rewritten attribute was escaped a second time
 test('a character reference in a rewritten class or style is kept', () => {
   assert.equal(
     render('<p style="font-family: &#39;A&#39;; translate: 1px 2px">a</p>', { translate: { x: 3, y: 4 } }),
@@ -73,7 +68,6 @@ test('a class is added and removed by name, and a whole class value replaces the
   assert.equal(render('<p class="a">x</p>', { classes: { a: true, b: false } }), null);
   assert.equal(render('<p class="a">x</p>', { classes: { a: false } }), '<p>x</p>');
   assert.equal(render('<p class="a">x</p>', { attrs: { class: 'b c' } }), '<p class="b c">x</p>');
-  // the field fragment is laid over the map
   assert.equal(render('<p>x</p>', { classes: { fragment: false }, fragment: true }), '<p class="fragment">x</p>');
 });
 
@@ -83,7 +77,6 @@ test('a declaration is set in place, added last, and removed, with the others ke
   assert.equal(render('<img style="width: 50%; rotate: 15deg">', { style: { width: null } }), '<img style="rotate: 15deg">');
   assert.equal(render('<img style="width:  50%">', { style: { width: '50%' } }), null);
   assert.equal(render('<img style="width: 5px">', { style: { width: null } }), '<img>');
-  // the field translate is laid over the map, and put last as before
   assert.equal(render('<img style="translate: 1px 1px; width: 5px">', { style: { translate: '9px 9px' }, translate: { x: 2, y: 3 } }), '<img style="width: 5px; translate: 2px 3px">');
 });
 

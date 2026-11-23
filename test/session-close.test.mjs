@@ -1,9 +1,3 @@
-// the client of a session in Chrome when its page goes away right after an edit: a page closed
-// without the question, as Safari on an iPhone and Chrome on Android close a tab, and a page hidden
-// and frozen, as a phone suspends it in the app switcher. a proxy in front of the edit command holds
-// the operations until Chrome has cancelled the requests of a closed page, which it does not do to
-// a request sent with keepalive
-
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
@@ -18,16 +12,6 @@ import { copied, el, released, ROWS, rows, tab } from './helpers/offline.mjs';
 import { post, raw, until } from './helpers/session.mjs';
 import { Transport } from '../src/session/client/transport.ts';
 
-/**
- * A proxy on 127.0.0.1 in front of the edit command edit, whose url serves the deck of the session.
- * While hold() is on, each operation, or each request that its match takes, waits until release(),
- * and is sent on only when the browser still waits for its answer. The answers of the polls wait
- * as well, since an answer would make the page read its keys. A request whose path ends in
- * /canary or /filler waits until the browser cancels it, and parked.canary and parked.filler are
- * their records, with gone set once the browser cancelled it. held holds the requests that wait,
- * with answered set once the edit command has answered them, and sent the bodies of the
- * operations sent on.
- */
 async function proxy(t, edit) {
   const net = { parked: {}, held: [], answers: [], sent: [], holding: null, url: '' };
   const server = createServer((req, res) => {
@@ -73,20 +57,16 @@ async function proxy(t, edit) {
   return net;
 }
 
-// a request of the page that the proxy holds until Chrome cancels it, i.e. until the page is torn down
 async function canary(page, net) {
   await page.evaluate(`void fetch('canary').catch(() => {}), true`);
   await until(() => net.parked.canary, 'the proxy to hold the canary');
 }
 
-// the page draws no frame and runs no timer from now on, as in the last frame before a phone
-// suspends it, hence a key is read only when the page is hidden or closed
 async function still(page) {
   await page.evaluate('(window.requestAnimationFrame = () => 0), true');
   await page.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
 }
 
-// the requests of the closed page are cancelled, and the operations that Chrome still sends go on
 async function closed(page, net) {
   await page.close();
   await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
@@ -126,15 +106,12 @@ test('a word typed right before the page is hidden and frozen reaches index.html
   await still(page);
   await type(page, ' hidden');
   assert.equal(net.held.length, 0, 'the word is sent at the hide');
-  // Chrome hides the page before it freezes it
   await page.send('Page.setWebLifecycleState', { state: 'frozen' });
   await until(() => net.held.some((r) => r.body.includes('hidden')), 'the frozen page to have sent the word');
   await closed(page, net);
   await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide hidden</p>'), 'the word to reach index.html');
 });
 
-// a script for open() that records in window.__kept whether each operation was sent with keepalive,
-// and the size of its body in bytes
 const KEPT = `{
   const fetched = window.fetch;
   window.__kept = [];
@@ -150,8 +127,6 @@ test('an operation is sent with keepalive only under 60,000 bytes in UTF-8, and 
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { script: KEPT });
   await converge(server, [page]);
-  // operations of a token that the edit command does not know, which it answers without a change.
-  // an é is one character and two bytes
   const sent = await page.evaluate(`(async () => {
     window.__kept = [];
     for (const n of [59999, 60000]) {
@@ -184,8 +159,6 @@ test('an operation that the browser refuses with keepalive is sent again without
   await converge(server, [page]);
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
-  // a body with keepalive in flight that leaves less than the 64 KiB that Chrome allows for an
-  // operation just under 20,000 characters of three bytes each in UTF-8
   await page.evaluate(`void fetch('filler', { method: 'POST', body: 'x'.repeat(8000), keepalive: true }).catch(() => {}), true`);
   await until(() => net.parked.filler, 'the proxy to hold the filler');
   const before = await ops(page);
@@ -198,8 +171,6 @@ test('an operation that the browser refuses with keepalive is sent again without
   clean(page);
 });
 
-// the transport alone, with a fetch whose first call fails and whose later calls are answered.
-// sent gets whether each request had keepalive
 function failOnce() {
   const sent = [];
   globalThis.fetch = async (url, init) => {
@@ -210,13 +181,10 @@ function failOnce() {
   return sent;
 }
 const opPost = (text) => ({ token: 't', seq: 1, base: '0', patches: [{ start: 0, end: 0, text }] });
-// the send() of the client sends one post again until it is answered
 const answered = async (transport, post) => {
   for (;;) if (await transport.op(post).then(() => true, () => false)) return;
 };
 
-// an operation whose body has chars characters and bytes bytes in UTF-8. an é is one character and
-// two bytes
 function postOf(chars, bytes = chars) {
   const post = opPost('');
   post.patches[0].text = 'a'.repeat(chars - (bytes - chars) - JSON.stringify(post).length) + 'é'.repeat(bytes - chars);
@@ -294,7 +262,6 @@ test('a page that is hidden without a key that it has not read does not read the
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' read');
   await converge(server, [page]);
-  // a read renders the whole deck after an edit, which is slow on a slow machine
   await page.evaluate(`(() => {
     const port = ${C}.port;
     const text = port.text.bind(port);
@@ -329,7 +296,6 @@ test('a page hidden right after a key reads the deck once for this key', { timeo
   const other = await browser.newPage({ width: 1280, height: 800 });
   await front(other);
   await page.waitFor('document.hidden');
-  // the timer of the frame of the key runs, and a later one shows that it ran
   await page.evaluate('setTimeout(() => (window.__later = true), 2000), true');
   await page.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget: 10_000 });
   await page.waitFor('window.__later === true');
@@ -337,9 +303,7 @@ test('a page hidden right after a key reads the deck once for this key', { timeo
 });
 
 const count = (text, word) => text.split(word).length - 1;
-// the text of the edit command, which it serves before the debounced write of index.html
 const served = async (server) => (await raw(server.edit.port, 'GET', `${server.edit.base}index.html`)).text;
-// a page of the origin of url without the editor, which reads IndexedDB and the Web Locks
 const probeOf = async (browser, url) => {
   const probe = await browser.newPage({ width: 640, height: 480 });
   await probe.goto(url.replace(/\?.*/, ''));
@@ -379,7 +343,7 @@ for (const late of [true, false]) {
   });
 }
 
-test('a word of a closed page without a copy reaches index.html when its operation arrives after the next page has joined', { timeout: 300_000 }, async (t) => {
+test('a word of a closed page whose operation is in flight reaches index.html once, also when the operation arrives after the next page has joined', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -399,7 +363,7 @@ test('a word of a closed page without a copy reaches index.html when its operati
   net.holding = null;
   const next = await tab(browser, net.url);
   await converge(server, [next]);
-  assert.deepEqual(await rows(next), [], 'the closed page did not leave a copy');
+  await next.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
   net.release();
   const want = TALK.replace('<p>First slide</p>', '<p>First slide alone</p>');
   await until(() => server.read() === want, 'the word to reach index.html');
@@ -407,7 +371,6 @@ test('a word of a closed page without a copy reaches index.html when its operati
   clean(next);
 });
 
-// a crash does not fire pagehide, hence the record is the one written at the take-over
 for (const how of ['is closed', 'crashes']) {
   test(`a word in the copy of a closed page reaches index.html once when the page that takes over the copy ${how} before its hello is answered`, { timeout: 420_000 }, async (t) => {
     const browser = await launch({ offline: false });
@@ -428,12 +391,10 @@ for (const how of ['is closed', 'crashes']) {
     await first.close();
     await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
     await released(probe, id);
-    // the second page takes over the copy and ends while its hello waits
     net.hold((r) => r.url.includes('/.session/hello'));
     const second = await tab(browser, net.url, { wait: false });
     await until(() => net.held.some((r) => r.url.includes('/.session/hello')), 'the hello of the second page to be held');
     const kept = await until(async () => (await rows(probe)).find((r) => r.id !== id && r.mine.includes(' both'))?.id, 'the second page to keep the copy under its own record');
-    // Page.crash is never answered
     if (how === 'crashes') void second.send('Page.crash').catch(() => {});
     else await second.close();
     await released(probe, kept);
@@ -441,7 +402,6 @@ for (const how of ['is closed', 'crashes']) {
     const third = await tab(browser, net.url);
     await converge(server, [third]);
     net.release();
-    // the crash may cancel the keepalive request of the first page in a shared renderer, hence it is sent by hand
     if (op.gone) await post(server.edit.port, `${server.edit.base}.session/op`, op.body);
     else await until(() => op.answered, 'the answer of the operation of the first page');
     assert.equal(count(await served(server), ' both'), 1);
@@ -450,7 +410,6 @@ for (const how of ['is closed', 'crashes']) {
   });
 }
 
-// a page closed with the word ' both' in its copy, whose operation op the proxy holds until release()
 async function closedWithWord(browser, server, net) {
   const first = await tab(browser, net.url);
   const probe = await probeOf(browser, net.url);
@@ -470,7 +429,6 @@ async function closedWithWord(browser, server, net) {
   return { probe, op, id };
 }
 
-// a write of the probe that lasts until window.__done is set, hence every transaction of the pages waits
 const HOLD = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
   r.onsuccess = () => {
@@ -480,7 +438,6 @@ const HOLD = `new Promise((done) => {
     done(true);
   };
 })`;
-// a script for tab() that counts in window.__reads the reads of all the records of the store
 const READS = `{
   const getAll = IDBObjectStore.prototype.getAll;
   window.__reads = 0;
@@ -498,7 +455,6 @@ test('two pages that load at the same moment take over the copy of a closed page
   const { probe, op } = await closedWithWord(browser, server, net);
   await probe.evaluate(HOLD);
   const pages = await Promise.all([0, 1].map(() => tab(browser, net.url, { script: READS, wait: false })));
-  // both pages ask for the records before either is answered
   for (const page of pages) await page.waitFor('window.__reads > 0');
   await probe.evaluate('(window.__done = true)');
   await converge(server, pages);
@@ -508,7 +464,6 @@ test('two pages that load at the same moment take over the copy of a closed page
   for (const page of pages) clean(page);
 });
 
-// a script for tab() that holds the answer of the first navigator.locks.query() until window.__go()
 const QUERY = `{
   const query = LockManager.prototype.query;
   let go;
@@ -529,6 +484,7 @@ test('a page that loads does not take over the copy of a page that opened after 
   const net = await proxy(t, server.edit);
   const late = await tab(browser, net.url, { script: QUERY, wait: false });
   await late.waitFor('window.__queried === true');
+  await late.waitFor(ONLINE);
   const page = await tab(browser, net.url);
   await converge(server, [page]);
   await show(page, 'One');
@@ -554,7 +510,6 @@ test('a page takes over the copies of closed pages only while it names at most 1
   const server = await talk(t);
   const net = await proxy(t, server.edit);
   const { probe, op, id } = await closedWithWord(browser, server, net);
-  // 16 copies without edits of other closed pages, older and with ids before the id of the first page
   await probe.evaluate(`new Promise((done, fail) => {
     const r = indexedDB.open('beeson-session', 1);
     r.onsuccess = () => {
@@ -584,12 +539,10 @@ test('a word in the copy of a closed page reaches index.html once when the page 
   const net = await proxy(t, server.edit);
   const { probe, op } = await closedWithWord(browser, server, net);
   net.hold();
-  // the second page runs no interval, hence it does not write its copy again within the test
   const second = await tab(browser, net.url, { script: 'window.setInterval = () => 0;' });
   const token = await second.evaluate(`${C}.token`);
   await until(() => net.held.some((r) => r.body.includes(token) && r.body.includes('both')), 'the operation of the second page to be held');
   const opB = net.held.find((r) => r.body.includes(token));
-  // a transaction that commits after every write that the second page started before it
   await second.evaluate(`new Promise((done) => {
     const r = indexedDB.open('beeson-session', 1);
     r.onsuccess = () => {
@@ -600,7 +553,6 @@ test('a word in the copy of a closed page reaches index.html once when the page 
   })`);
   delete net.parked.canary;
   await canary(second, net);
-  // Page.crash is never answered, and a crash does not fire pagehide
   void second.send('Page.crash').catch(() => {});
   await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the second page');
   await released(probe, (await rows(probe)).find((r) => r.mine.includes(' both')).id);
@@ -608,7 +560,6 @@ test('a word in the copy of a closed page reaches index.html once when the page 
   const third = await tab(browser, net.url);
   await converge(server, [third]);
   net.release();
-  // the crash may cancel the keepalive request in a shared renderer, hence it is sent by hand
   if (opB.gone) await post(server.edit.port, `${server.edit.base}.session/op`, opB.body);
   else await until(() => opB.answered, 'the answer of the operation of the second page');
   await until(() => op.answered, 'the answer of the operation of the first page');
@@ -617,16 +568,6 @@ test('a word in the copy of a closed page reaches index.html once when the page 
   clean(third);
 });
 
-/**
- * A proxy on the TCP level in front of the edit command edit. Once token is set, the first
- * operation that carries it is never sent on, as on a connection that a mobile network dropped
- * without a reset, and every later request goes through. lost is set once this operation is
- * swallowed, resent once Chrome has sent it again on another connection, and answered once the
- * edit command has answered it. copies holds the bodies of the other operations with ' both'.
- * Chrome sends the lost operation again once its connection is closed, which cut() does. The edit
- * command closes its side of this idle connection after 5 s, and this close is not passed on, since
- * a crowded runner takes longer than 5 s to the join of the next page.
- */
 async function deadConnection(t, edit) {
   const net = { token: null, lost: false, resent: false, answered: false, copies: [], url: '', cut: () => {} };
   const server = createTcpServer((client) => {
@@ -685,8 +626,6 @@ for (const how of ['closed', 'loaded again']) {
     if (how === 'closed') {
       const probe = await probeOf(browser, net.url);
       await page.close();
-      // restore() of copy.ts takes over only the copy of a page whose Web Lock is released, and
-      // Chrome may release it well after Target.closeTarget has returned
       await released(probe, id);
       page = await tab(browser, net.url);
     } else {
@@ -696,7 +635,6 @@ for (const how of ['closed', 'loaded again']) {
     }
     await converge(server, [page]);
     assert.equal(net.copies.length, 1, 'the next page sent the copy');
-    // the connection of the lost operation is closed, and Chrome then sends the operation again
     net.cut();
     await until(() => net.answered, 'Chrome to send the operation again and the edit command to answer it', 60_000);
     assert.equal(count(await served(server), ' both'), 1);
@@ -717,18 +655,20 @@ test('a page whose token is retired while it is open joins again and sends its e
   await type(page, ' alive');
   assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide alive</p>'));
   assert.notEqual(await page.evaluate(`${C}.token`), token, 'the page joined again under another token');
-  // the presence and the poll under the retired token are answered 404, and the page joins again
   clean(page, [/status of 404 .*\/\.session\/(presence|events)/]);
 });
 
-// a script for open() that records in window.__puts, for each record that the copy writes, whether
-// it holds the word hidden. IndexedDB does not answer a read while the virtual time is paused
 const PUTS = `{
   const put = IDBObjectStore.prototype.put;
   window.__puts = [];
   IDBObjectStore.prototype.put = function (value, key) {
     window.__puts.push(value.mine.includes(' hidden'));
     return put.call(this, value, key);
+  };
+  const set = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (key, value) {
+    if (String(key).startsWith('beeson-session-stash:')) window.__puts.push(value.includes(' hidden'));
+    return set.call(this, key, value);
   };
 }`;
 

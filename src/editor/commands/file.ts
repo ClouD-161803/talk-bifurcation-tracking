@@ -1,9 +1,3 @@
-// the commands of the File menu, in the groups of the File menu of Keynote: Open… and Open Recent,
-// then Save, Save As…, Autosave, and Revert to Saved, then Export To, and Print… last. Save and
-// Save As take their keys everywhere, so that the save page dialog of the browser is never opened.
-// Present and Present from Start have the keys of PowerPoint, since F5 reloads the page in a
-// browser
-
 import type { App } from '../app.ts';
 import { EVERYWHERE, OUTSIDE_DIALOGS, type Command } from '../commands.ts';
 import { canPick, canWrite, fileActions } from '../file/files.ts';
@@ -11,19 +5,13 @@ import { clearRecents, MAX_RECENT, recentLabel, recents } from '../file/recent.t
 import { playTimings, usingTimings } from '../present.ts';
 import { showIndices } from '../show.ts';
 
-// the saved deck from a slide, played in place or, with tab, in a new tab, with the window of the
-// show, or null when it is not played. with Use Rehearsed Timings on, the show is moved on after
-// the timings of its slides
 export async function presentAt(app: App, fromStart: boolean, tab = false): Promise<{ win: Window | null } | null> {
   const { h, v } = fromStart ? { h: 0, v: 0 } : showIndices(app, app.current());
-  // the first slide is opened without a hash
   const shown = await app.files.present(v ? `#/${h}/${v}` : h ? `#/${h}` : '', tab);
   if (shown?.win && usingTimings()) void playTimings(shown.win);
   return shown;
 }
 
-// Open, Open Recent, and Revert to Saved would replace the deck of everyone in a session, and a
-// session does not autosave
 const away = (a: App): string | null => (a.session ? 'Not available in a session' : null);
 
 export function install(app: App): void {
@@ -74,9 +62,6 @@ export function install(app: App): void {
     run: () => fileActions().revert(),
   });
 
-  // Open Recent lists the decks of file/recent.ts, which the menus read at each open, hence the
-  // place of each item is a getter. without a deck, or in a browser without the open picker, i.e.
-  // in Firefox and Safari, Open Recent is a dimmed item
   const listed = () => (canPick() && !app.session ? recents() : []);
   const recent = (order: number, group = 'open'): Command['menu'] => ({ bar: 'File', group, order, submenu: 'Open Recent' });
   c.define({
@@ -115,9 +100,6 @@ export function install(app: App): void {
     run: () => clearRecents(),
   });
 
-  // Export To of Keynote. PDF… prints the saved file in its print view, and HTML… writes a copy of
-  // the deck with its edits. a page cannot write a PowerPoint file, since scripts/export-pptx.mjs
-  // builds each step from a screenshot of headless Chrome, hence PowerPoint… shows its command
   const exportTo = (order: number): Command['menu'] => ({ bar: 'File', group: 'export', order, submenu: 'Export To' });
   c.define({
     id: 'file.export.pdf',
@@ -128,7 +110,7 @@ export function install(app: App): void {
   });
   c.define({
     id: 'file.export.html',
-    label: 'HTML…',
+    label: 'Editable HTML…',
     menu: exportTo(41),
     enabled: (a) => a.state === 'loaded' && !!a.pairing,
     run: () => fileActions().exportHtml(),
@@ -140,8 +122,6 @@ export function install(app: App): void {
     enabled: (a) => a.state === 'loaded',
     run: () => fileActions().exportPptx(),
   });
-  // Print… of the File menu of Keynote, last in the menu, prints the print view of PDF…. the key is
-  // taken everywhere, since the print of the browser would print the editor
   c.define({
     id: 'file.print',
     label: 'Print…',

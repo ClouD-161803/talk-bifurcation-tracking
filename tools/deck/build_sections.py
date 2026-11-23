@@ -162,7 +162,7 @@ def families(talk: Path) -> str:
             "  </div>"
         )
     return (
-        '<section class="figure">\n'
+        '<section class="figure" data-allow="notes copy">\n'
         '  <h2 style="width: auto">ER3BP periodic orbits and stability diagrams</h2>\n' + "\n".join(groups) + "\n" + NOTES + "\n</section>"
     )
 

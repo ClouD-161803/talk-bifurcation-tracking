@@ -1,17 +1,10 @@
-// the work and the time of an apply of a change of one character, see src/editor/session/apply.ts.
-// the apply writes only the text element of the character and parses no file, and it renders the
-// deck only when the person typed a key into a heading before it, once, to keep the key. the work
-// is counted, since the tests run on shared machines, and a time is bounded only with a margin of
-// five over the times measured: on test-deck.html, with 13 slides, an apply costs at most ten times
-// the same apply on a deck of three slides, and at most two opens of the same text, each of which
-// parses the file and pairs it with the page. each time is the median of 21 applies, with the CPU
-// of Chrome at full speed and throttled six times
-
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { E, front } from './helpers/apply.mjs';
+import { E, front, showSlide } from './helpers/apply.mjs';
 import { editorPage } from './helpers/editor.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 
 let browser;
 before(async () => {
@@ -19,14 +12,15 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// the medians in ms of an apply that changes the first character of word, each after a key typed
-// at the end of the heading that starts with typed when typed is given, and of an open
-const measure = (page, word, typed) => page.evaluate(`(async () => {
+const headingOf = (typed) => `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))`;
+
+const measure = (page, word, host) => page.evaluate(`(async () => {
+  await ${E}.loadSession();
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const median = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
-  const host = ${typed ? `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))` : 'null'};
-  if (${!!typed} && !host) return null;
+  const host = ${host ?? 'null'};
+  if (${!!host} && !host) return null;
   const apply = [];
   for (let i = 0; i < 21; i++) {
     if (host) {
@@ -34,7 +28,6 @@ const measure = (page, word, typed) => page.evaluate(`(async () => {
       getSelection().selectAllChildren(host);
       getSelection().collapseToEnd();
       document.execCommand('insertText', false, 'x');
-      // the page draws the key before the apply is timed, as between two keys of the person
       await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     }
     const text = base.slice(0, at) + 'abcdefghijk'[i % 11] + base.slice(at + 1);
@@ -54,11 +47,8 @@ const measure = (page, word, typed) => page.evaluate(`(async () => {
   return { apply: median(apply), open: median(open) };
 })()`);
 
-// the work of 21 applies as measure makes them: the parses of a text as long as half the file, the
-// changes written outside the text element of word, the attributes read of the elements of other
-// slides, and those read by one render of the deck, which reads the attributes of every element in
-// a text element. a section is left out, since the slide strip reads the attributes of each slide
 const work = (page, word, typed) => page.evaluate(`(async () => {
+  await ${E}.loadSession();
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const deck = document.querySelector('.reveal .slides');
@@ -78,7 +68,6 @@ const work = (page, word, typed) => page.evaluate(`(async () => {
     if (on && this.localName !== 'section' && deck.contains(this) && !slide.contains(this)) count.reads++;
     return get.call(this, name);
   };
-  // a class list sets its attribute again also when it does not change
   const observer = new MutationObserver((records) => {
     for (const r of records) {
       if (!on || target.contains(r.target) || (r.type === 'attributes' && r.oldValue === get.call(r.target, r.attributeName))) continue;
@@ -139,7 +128,6 @@ for (const typed of [false, true]) {
   for (const rate of [1, 6]) {
     const typing = typed ? ', after a key typed by the person' : '';
     test(`an apply of one character costs less than two opens, and grows little with the deck${typing}, with the CPU throttled ${rate} times`, { timeout: 300000 }, async (t) => {
-      // the pages are opened one after the other, since a page behind does not draw frames
       const pages = [];
       t.after(() => Promise.all(pages.map((p) => p.close())));
       for (const [, deck] of DECKS) pages.push(await editorPage(browser, deck ? { deck } : {}));
@@ -150,7 +138,7 @@ for (const typed of [false, true]) {
           await front(page);
           await page.send('Emulation.setCPUThrottlingRate', { rate });
           try {
-            times.push(await measure(page, DECKS[i][2], typed && DECKS[i][3]));
+            times.push(await measure(page, DECKS[i][2], typed ? headingOf(DECKS[i][3]) : null));
           } finally {
             await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
           }
@@ -165,3 +153,64 @@ for (const typed of [false, true]) {
     });
   }
 }
+
+const FORMULA = `[...document.querySelectorAll('.reveal p')].find((p) => p.textContent.includes('is the effective potential.'))`;
+const SMALL = readFileSync('test/pages/editor-hidden.html', 'utf8')
+  .replaceAll('../../theme/', 'theme/')
+  .replace('</head>', '<script src="theme/mathjax-config.js"></script>\n<script src="theme/vendor/mathjax/tex-svg.js"></script>\n</head>')
+  .replace('<p>The first slide.</p>', '<p>The first slide.</p>\n      <p>where \\(\\tilde U\\) is the effective potential.</p>');
+
+for (const rate of [1, 6]) {
+  test(`an apply of one character into the text element with a formula in which the person types costs less than two opens, and grows little with the deck, with the CPU throttled ${rate} times`, { timeout: 300000 }, async (t) => {
+    const pages = [];
+    t.after(() => Promise.all(pages.map((p) => p.close())));
+    pages.push(await editorPage(browser));
+    pages.push(await editorPage(browser, { deck: freshDeck(t, SMALL), text: SMALL }));
+    const decks = [['test-deck.html', 'Equations are first class'], ['a deck of three slides', 'Shown']];
+    let found = '';
+    for (let round = 1; round <= 3; round++) {
+      const times = [];
+      for (const [i, page] of pages.entries()) {
+        await front(page);
+        await showSlide(page, decks[i][1]);
+        await page.send('Emulation.setCPUThrottlingRate', { rate });
+        try {
+          times.push(await measure(page, 'effective potential.', FORMULA));
+        } finally {
+          await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        }
+        assert.ok(times[i], `${decks[i][0]}: the apply did not need a reload, and kept the keys typed`);
+      }
+      const [deck, small] = times;
+      found = `${deck.apply.toFixed(1)} ms on test-deck.html against ${small.apply.toFixed(1)} ms on a deck of three slides, and an open of test-deck.html in ${deck.open.toFixed(1)} ms`;
+      t.diagnostic(`round ${round}: an apply in ${found}`);
+      if (deck.apply <= 10 * Math.max(small.apply, 0.1) && deck.apply <= 2 * deck.open) return;
+    }
+    assert.fail(`an apply in ${found}, in each of three rounds`);
+  });
+}
+
+test('a composition on a page whose session did not start reads no attribute of the deck', { timeout: 120_000 }, async () => {
+  const page = await editorPage(browser);
+  const reads = await page.evaluate(`(async () => {
+    await ${E}.loadSession();
+    const host = [...document.querySelectorAll('.reveal .slides p')].find((p) => p.textContent.trim().length > 10);
+    host.focus();
+    getSelection().selectAllChildren(host);
+    getSelection().collapseToEnd();
+    document.execCommand('insertText', false, 'x');
+    await ${E}.history?.settle?.();
+    let reads = 0;
+    const get = Element.prototype.getAttribute;
+    Element.prototype.getAttribute = function (...a) { reads++; return get.apply(this, a); };
+    try {
+      host.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+    } finally {
+      Element.prototype.getAttribute = get;
+    }
+    host.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }));
+    return reads;
+  })()`);
+  assert.equal(reads, 0);
+  await page.close();
+});

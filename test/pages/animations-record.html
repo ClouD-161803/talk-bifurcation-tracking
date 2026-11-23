@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Surfaces and plots to record</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>A surface</h2>
+      <p class="fragment" data-surface-state="gravitational">The wells.</p>
+      <p class="fragment">The same wells.</p>
+      <div class="surface" data-function="effective-potential" data-mu="0.05" data-turn="2"></div>
+    </section>
+    <section>
+      <h2>A plot</h2>
+      <div class="plot figure-box" data-plot="data"></div>
+      <span class="fragment" data-plot-show="right"></span>
+      <script type="application/json" id="data">{
+        "parameter": { "label": "$t$", "digits": 2 },
+        "duration": 1,
+        "hold": 0.5,
+        "panels": [
+          { "id": "left", "x": { "range": [0, 1], "ticks": [0, 1] }, "y": { "range": [0, 1], "ticks": [0, 1] } },
+          { "id": "right", "x": { "range": [0, 1] }, "y": { "range": [-1, 1] } }
+        ],
+        "marks": [
+          { "id": "dot", "panel": "left", "kind": "points" },
+          { "id": "path", "panel": "right", "kind": "trace" }
+        ],
+        "tabs": [
+          { "name": "one", "values": [0, 0.5, 1], "data": { "dot": [[0, 0], [0.5, 0.5], [1, 1]], "path": [[0, 0], [0.5, 1], [1, 0]] } }
+        ]
+      }</script>
+    </section>
+    <section>
+      <h2>A surface that does not turn</h2>
+      <div class="surface" data-function="effective-potential" data-mu="0.05" data-turn="0"></div>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/vendor/three/three.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

@@ -1,10 +1,3 @@
-// the comments of the edit command: a thread anchored on the text that a page read, its replies,
-// edits, deletes, resolve, and reopen within their limits, the changes told to the pages but not a
-// shift of an anchor, the file .session/comments.json written before a change of a thread is
-// answered, and else at most once in a given time and at a stop, read again at a start with its
-// anchors moved by the patches that the history found, or set aside when it cannot be read, and
-// the requests of a session
-
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import fs, { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -20,7 +13,6 @@ import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpe
 const ANN = 'AnnAnnAnnAnnAnnAnnAnn1';
 const BO = 'BoBoBoBoBoBoBoBoBoBoBo';
 
-// a .session folder, removed with the test after its comments are stopped
 const opened = new Map();
 function sessionDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'slides comments-'));
@@ -43,7 +35,6 @@ function open(dir, text, options = {}, found = null) {
 }
 
 const replace = (authority, from, to) => authority.enter(diff(authority.text, authority.text.replace(from, to)), ANN);
-// the range of the start tag that begins with open, and of the start tag of the slide that holds inside
 const tagRange = (text, open) => {
   const t = startTagAt(text, text.indexOf(open));
   return { start: t.start, end: t.end };
@@ -69,16 +60,15 @@ test('a thread is anchored on the text that the page read, and moved to the curr
   const base = authority.version;
   const read = authority.text;
   replace(authority, '<h2>One</h2>', '<h2>One</h2>\n  <p>New</p>');
-  const thread = comments.add(ANN, { base, anchor: tagRange(read, '<p>Second'), slide: slideRange(read, 'Second'), text: 'Look', mentions: [BO, BO] });
+  const thread = comments.add(ANN, { base, anchor: tagRange(read, '<p>Second'), slide: slideRange(read, 'Second'), text: `Look @{${BO}} @{${BO}}` });
   reads(authority.text, thread.anchor, '<p>Second slide</p>');
   reads(authority.text, thread.slide, '<section>\n  <h2>Two');
   assert.equal(thread.anchor.tag, 'p');
-  assert.deepEqual([thread.author, thread.text, thread.replies, thread.mentions], [ANN, 'Look', [], [BO]]);
+  assert.deepEqual([thread.author, thread.text, thread.replies, thread.mentions], [ANN, `Look @{${BO}} @{${BO}}`, [], [BO]]);
   const onSlide = comments.add(BO, { base, anchor: null, slide: slideRange(read, 'Second'), text: 'Slide' });
   assert.deepEqual([onSlide.anchor, onSlide.slide], [thread.slide, thread.slide]);
   const deck = comments.add(BO, onDeck(authority, 'Deck'));
   assert.deepEqual([deck.anchor, deck.slide], [null, null]);
-  // an anchor sent without its slide is given the slide that holds it
   const bare = comments.add(BO, { base: authority.version, anchor: tagRange(authority.text, '<p>New'), slide: null, text: 'x' });
   reads(authority.text, bare.slide, '<section>\n  <h2>One');
   assert.deepEqual(comments.list(ANN).comments.map((c) => c.id), [thread.id, onSlide.id, deck.id, bare.id]);
@@ -102,14 +92,11 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   assert.equal(status({ ...ok, text: null }), 400);
   assert.equal(status({ ...ok, text: 'é'.repeat(4001) }), 413);
   assert.equal(status({ ...ok, text: 'é'.repeat(4000) }), 200);
-  // the limit counts characters, of which an emoji is one and two units of UTF-16
   assert.equal(status({ ...ok, text: '😀'.repeat(4001) }), 413);
-  assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200);
-  assert.equal(status({ ...ok, mentions: ['short'] }), 400);
-  assert.equal(status({ ...ok, mentions: 'x' }), 400);
-  const people = Array.from({ length: 51 }, (_, i) => `${i}`.padStart(22, 'P'));
-  assert.deepEqual(comments.add(ANN, { ...ok, mentions: people }), { status: 413, error: 'the comment has more than 50 mentions' });
-  assert.equal(status({ ...ok, mentions: people.slice(1) }), 200);
+  assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200, 'an emoji counts as one character, not as its two UTF-16 code units');
+  const people = Array.from({ length: 51 }, (_, i) => `@{${`${i}`.padStart(22, 'P')}}`);
+  assert.deepEqual(comments.add(ANN, { ...ok, text: people.join(' ') }), { status: 413, error: 'the comment has more than 50 mentions' });
+  assert.equal(status({ ...ok, text: people.slice(1).join(' ') }), 200);
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
   assert.equal(status(ok), 409, 'the base is older than the log');
 });
@@ -117,9 +104,9 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
 test('a thread takes replies, edits, deletes, a resolve, and a reopen, within its limits', (t) => {
   const { authority, comments } = open(sessionDir(t), DECK, { maxBytes: 60_000 });
   const thread = comments.add(ANN, onDeck(authority, 'Question'));
-  const replied = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] });
+  const replied = comments.reply(thread.id, BO, { text: `Answer @{${ANN}}` });
   const reply = replied.replies[0];
-  assert.deepEqual([reply.author, reply.text, replied.mentions], [BO, 'Answer', [ANN]]);
+  assert.deepEqual([reply.author, reply.text, replied.mentions], [BO, `Answer @{${ANN}}`, [ANN]]);
   assert.equal(comments.edit(thread.id, BO, { text: 'Not mine' }).status, 403);
   assert.equal(comments.edit(thread.id, ANN, { text: 'Question, edited' }).text, 'Question, edited');
   assert.equal(typeof comments.list(ANN).comments[0].edited, 'number');
@@ -133,7 +120,6 @@ test('a thread takes replies, edits, deletes, a resolve, and a reopen, within it
   assert.equal(comments.reply('nope', BO, { text: 'x' }).status, 404);
   for (let i = 0; i < 200; i++) assert.equal(comments.reply(thread.id, BO, { text: `r${i}` }).replies.length, i + 1);
   assert.equal(comments.reply(thread.id, BO, { text: 'one too many' }).status, 409);
-  // the bytes of every thread as the comments are sent, together
   let added = 0;
   while (comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id) added++;
   const size = Buffer.byteLength(JSON.stringify(comments.list(ANN).comments));
@@ -143,6 +129,17 @@ test('a thread takes replies, edits, deletes, a resolve, and a reopen, within it
   assert.equal(comments.remove(thread.id, ANN, {}), null);
   assert.equal(comments.list(ANN).comments.length, added);
   assert.ok(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id, 'a delete gives the bytes back');
+});
+
+test('the mentions of a thread are read from the texts of its comments, and an edit or a delete that takes out an @name takes out its mention', (t) => {
+  const { authority, comments } = open(sessionDir(t), DECK);
+  const CY = 'CyCyCyCyCyCyCyCyCyCyCy';
+  const thread = comments.add(ANN, { ...onDeck(authority, `For @{${BO}}`), mentions: [CY] });
+  assert.deepEqual(thread.mentions, [BO]);
+  const reply = comments.reply(thread.id, CY, { text: `cc @{${ANN}} and @\u2060{${CY}}`, mentions: [CY] }).replies[0];
+  assert.deepEqual(comments.list(ANN).comments[0].mentions, [BO, ANN], 'a brace typed after an @ by hand is not a mention');
+  assert.deepEqual(comments.edit(thread.id, ANN, { text: 'For nobody' }).mentions, [ANN]);
+  assert.deepEqual(comments.remove(thread.id, CY, { reply: reply.id }).mentions, []);
 });
 
 test('a deck holds at most 2000 threads', (t) => {
@@ -167,7 +164,6 @@ test('the changes of the threads are told, and a shift of an anchor is not', (t)
   assert.equal(comments.v, v1);
   assert.deepEqual(comments.since(v1), { v: v1, changed: [], removed: [] });
   reads(authority.text, comments.list(ANN).comments[0].anchor, '<p>Second slide</p>');
-  // the element of the thread removed
   replace(authority, '  <p>Second slide</p>\n', '');
   const fell = comments.since(v1);
   assert.equal(fell.changed.length, 1);
@@ -193,7 +189,6 @@ test('a thread of a removed slide is attached again by an undo, also after a res
   const gone = (comments) => comments.list(ANN).comments.forEach((c) => assert.deepEqual([c.anchor, c.slide, !!c.removed], [null, null, true], c.text));
   gone(first.comments);
   first.comments.stopSync();
-  // the undo, at a start that read the file
   const again = open(dir, first.authority.text);
   gone(again.comments);
   again.authority.enter(diff(again.authority.text, deck), ANN);
@@ -203,7 +198,6 @@ test('a thread of a removed slide is attached again by an undo, also after a res
   assert.equal(heading.removed, undefined);
   reads(deck, onSlide.anchor, '<section>\n  <h2></h2>\n  <p>Notes');
   assert.equal(onSlide.removed, undefined);
-  // removed again, and then a slide of a layout added and an empty heading added on another slide
   replace(again.authority, notes, '');
   replace(again.authority, 'First slide', 'First slide, longer');
   replace(again.authority, '</body>', '<section>\n  <h2></h2>\n  <p></p>\n</section>\n</body>');
@@ -223,7 +217,6 @@ test('a thread of a removed element longer than 4 kB keeps its check in the file
   const data = readJson(join(dir, 'comments.json'));
   const [saved] = data.comments;
   assert.deepEqual(saved.removed, { text: { tag: '<pre>', sum: checksum(long) } });
-  // a thread whose check is not one is not read
   const other = sessionDir(t);
   writeFileSync(join(other, 'comments.json'), JSON.stringify({ ...data, comments: [{ ...saved, removed: { text: { tag: '<pre>', sum: 'x' } } }] }));
   const refused = open(other, first.authority.text);
@@ -239,8 +232,6 @@ test('a thread of a removed element longer than 4 kB keeps its check in the file
 });
 
 test('the new threads since a version are listed in the order in which they were made, as the list gives them', (t) => {
-  // two threads made in one millisecond have the same time, and a page then shows them in the order
-  // in which it got them
   const { authority, comments } = open(sessionDir(t), DECK, { now: () => 1000 });
   const v0 = comments.v;
   const x = comments.add(ANN, onDeck(authority, 'x'));
@@ -253,7 +244,6 @@ test('a read time is written after the given time since the last write, and at a
   const dir = sessionDir(t);
   const file = join(dir, 'comments.json');
   const { authority, comments } = open(dir, DECK, { every: 600_000 });
-  // the same changes in a store without an interval, which bounds the time that the first one waits
   const quick = sessionDir(t);
   const fast = open(quick, DECK, { every: 0 }).comments;
   let writes = 0;
@@ -313,13 +303,12 @@ test('a change of a thread that cannot be written is taken back and refused', (t
   const file = join(dir, 'comments.json');
   const { authority, comments, logged } = open(dir, DECK);
   const thread = comments.add(ANN, onDeck(authority, 'Question'));
-  const reply = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] }).replies[0];
+  const reply = comments.reply(thread.id, BO, { text: `Answer @{${ANN}}` }).replies[0];
   const before = structuredClone(comments.list(ANN));
   const bytes = comments.bytes;
   let told = 0;
   comments.onChange(() => told++);
   fs.chmodSync(dir, 0o555);
-  // the folder is made writable again before the hook of sessionDir removes it
   try {
     try {
       writeFileSync(join(dir, 'probe'), '');
@@ -327,8 +316,8 @@ test('a change of a thread that cannot be written is taken back and refused', (t
     } catch {}
     const refused = (x, error) => assert.deepEqual(x, { status: 503, error });
     refused(comments.add(ANN, onDeck(authority, 'Lost')), 'The host could not save the comment');
-    refused(comments.reply(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
-    refused(comments.edit(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
+    refused(comments.reply(thread.id, ANN, { text: `Lost @{${BO}}` }), 'The host could not save the comment');
+    refused(comments.edit(thread.id, ANN, { text: `Lost @{${BO}}` }), 'The host could not save the comment');
     refused(comments.edit(thread.id, BO, { reply: reply.id, text: 'Lost, and a longer text' }), 'The host could not save the comment');
     refused(comments.remove(thread.id, BO, { reply: reply.id }), 'The host could not delete the comment');
     refused(comments.remove(thread.id, ANN, {}), 'The host could not delete the comment');
@@ -350,8 +339,6 @@ test('a change of a thread that cannot be written is taken back and refused', (t
 test('a stop or a change of a thread while a write waits for its temporary file keeps its text', { timeout: 60_000 }, async (t) => {
   const dir = sessionDir(t);
   const { authority, comments } = open(dir, DECK, { every: 0 });
-  // begun resolves in the turn in which the timer of comments calls write, hence before any file
-  // call of this write can end. a second timer may run in a later turn, after the write is over
   const write = comments.write;
   const begun = new Promise((done) => {
     comments.write = function () {
@@ -362,10 +349,8 @@ test('a stop or a change of a thread while a write waits for its temporary file 
   });
   comments.add(ANN, onDeck(authority, 'first'));
   const read = comments.seen(BO, Date.now() - 5);
-  // the timer of comments does not keep the process alive, and Node 22 ends a test that waits
-  // while the event loop is empty
-  const alive = setInterval(() => {}, 1000);
-  await begun.finally(() => clearInterval(alive));
+  const keepNodeWaiting = setInterval(() => {}, 1000);
+  await begun.finally(() => clearInterval(keepNodeWaiting));
   assert.ok(comments.writing, 'a write is in progress');
   comments.add(ANN, onDeck(authority, 'second'));
   await comments.idle();
@@ -387,7 +372,6 @@ test('at a start, the anchors are moved by the patches that the history found, o
   first.comments.add(ANN, { base, anchor: tagRange(DECK, '<p>Second'), slide: slideRange(DECK, 'Second'), text: 'p' });
   first.comments.add(ANN, { base, anchor: tagRange(DECK, '<h2>One'), slide: slideRange(DECK, 'One'), text: 'h' });
   first.comments.stopSync();
-  // index.html changed while the edit command was not running
   const changed = DECK.replace('<section>', '<section>\n  <h2>Zero</h2>\n</section>\n<section>').replace('<h2>One</h2>', '<h2>One</h2>\n  <p>Added</p>');
   const moved = open(dir, changed, {}, { before: DECK, patches: diff(DECK, changed) });
   const [p, h] = moved.comments.list(ANN).comments;
@@ -397,7 +381,6 @@ test('at a start, the anchors are moved by the patches that the history found, o
   reads(changed, h.slide, '<section>\n  <h2>One');
   assert.equal(p.removed, undefined);
   moved.comments.stopSync();
-  // without the patches, an anchor is read by the check of its element
   const file = join(dir, 'comments.json');
   const saved = readJson(file);
   const edited = changed.replace('<h2>Two</h2>', '<h2>Two!</h2>');
@@ -409,7 +392,6 @@ test('at a start, the anchors are moved by the patches that the history found, o
   reads(edited, h3.anchor, '<h2>One</h2>');
   assert.equal(h3.removed, undefined);
   third.comments.stopSync();
-  // and in a file without the checks, an anchor that is not a start tag of its name falls back to its slide
   for (const c of saved.comments) delete c.check;
   writeFileSync(file, JSON.stringify(saved));
   const fourth = open(dir, edited);
@@ -440,6 +422,16 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
 test('a thread sent with an old base is moved to the current text in less than half the time that the operations since took', (t) => {
   const slide = (k) => ['<section>', `  <h2>Slide ${k}</h2>`, ...Array.from({ length: 4 }, (_, i) => `  <p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the manifold.</p>`), '</section>'].join('\n');
   const deck = ['<!doctype html>', '<body>', ...Array.from({ length: 200 }, (_, k) => slide(k)), '</body>', ''].join('\n');
+  const { writeFileSync: write } = fs;
+  t.after(() => {
+    fs.writeFileSync = write;
+    syncBuiltinESMExports();
+  });
+  fs.writeFileSync = (file, ...rest) => {
+    if (String(file).includes('.comments.json.')) for (const end = performance.now() + 40; performance.now() < end; );
+    return write(file, ...rest);
+  };
+  syncBuiltinESMExports();
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 1000 } });
   const read = authority.text;
   const base = authority.version;
@@ -454,19 +446,24 @@ test('a thread sent with an old base is moved to the current text in less than h
   const t0 = process.hrtime.bigint();
   for (const patches of drags) assert.equal(authority.enter(patches, ANN).answer.ok, true);
   const entered = Number(process.hrtime.bigint() - t0);
-  // the best of three, since another process may take the processor for a while
-  let added = Infinity;
-  for (let attempt = 0; attempt < 3 && 2 * added >= entered; attempt++) {
+  const tag = '<p style="left: 2px">Paragraph 2 of slide 9,';
+  const timed = (body) => {
     const t1 = process.hrtime.bigint();
-    const thread = comments.add(BO, { base, anchor: tagRange(read, '<p style="left: 2px">Paragraph 2 of slide 9,'), slide: null, text: 'old base' });
-    added = Math.min(added, Number(process.hrtime.bigint() - t1));
-    reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
+    const thread = comments.add(BO, { ...body, slide: null });
+    const time = Number(process.hrtime.bigint() - t1);
+    reads(authority.text, thread.anchor, tag);
+    return time;
+  };
+  let old = Infinity;
+  let current = Infinity;
+  for (let attempt = 0; attempt < 5 && !(2 * (old - current) < entered); attempt++) {
+    old = Math.min(old, timed({ base, anchor: tagRange(read, tag), text: 'old base' }));
+    current = Math.min(current, timed({ base: authority.version, anchor: tagRange(authority.text, tag), text: 'current base' }));
   }
-  assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+  const ms = (ns) => (ns / 1e6).toFixed(1);
+  assert.ok(2 * (old - current) < entered, `the thread of the old base took ${ms(old)} ms, the thread of the current base ${ms(current)} ms, and the operations ${ms(entered)} ms`);
 });
 
-// a deck where a paragraph inserted above the first of two paragraphs moves the second by the
-// distance between them
 const LIST = DECK.replace('<h2>Two</h2>', '<h2>Two</h2>\n  <p>One</p>\n  <p>Two</p>');
 
 test('at a start after a crash, a thread is placed by the check of its element, not by its offset alone', async (t) => {
@@ -516,7 +513,6 @@ test('a thread sent again after it was refused is checked at a start by its elem
     fs.renameSync = renameSync;
     syncBuiltinESMExports();
   });
-  // a rename onto comments.json fails while held, as while another program holds it on Windows
   let held = true;
   fs.renameSync = (from, to) => {
     if (held && String(to).endsWith('comments.json')) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
@@ -532,7 +528,6 @@ test('a thread sent again after it was refused is checked at a start by its elem
   held = false;
   assert.equal(send().id, id);
   comments.stopSync();
-  // index.html changed while the edit command did not run, and the history does not hold the change
   const later = authority.text.replace('First slide', 'First slide, typed');
   const [thread] = open(dir, later).comments.list(ANN).comments;
   reads(later, thread.anchor, '<p>Second slide, edited</p>');
@@ -545,7 +540,6 @@ test('after the edit command was killed, a start places a thread by the check of
   const first = open(dir, L0);
   first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(L0, '<li>Build'), slide: slideRange(L0, '<li>Build'), text: 'build' });
   replace(first.authority, '<li>Build</li>', '<li>Test</li>\n    <li>Build</li>');
-  // the file of the comments holds the text after this operation, and the history the text before
   first.comments.stopSync();
   const L2 = first.authority.text.replace('<li>Test</li>', '<li>Mock</li>\n    <li>Test</li>');
   const [thread] = open(dir, L2, {}, { before: L0, patches: diff(L0, L2) }).comments.list(ANN).comments;
@@ -655,45 +649,50 @@ test('a thread on an element of any tag name is read again at a start, and a thr
   });
 });
 
-test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
+function heapGrowthAfterCollections(act, bound) {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
+  const used = (collect = true) => {
+    if (collect) {
+      gc();
+      gc();
+    }
     return process.memoryUsage().heapUsed;
   };
+  const before = used();
+  act();
+  let grown = used(false) - before;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
+  return grown;
+}
+
+test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
   const n = 100;
   const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
   const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => `<p>Paragraph ${k} of the slide</p>`).join('\n  ')).replace('</body>', `${filler}</body>`);
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p>Paragraph ${k} `), slide: null, text: `p${k}` });
-  const before = used();
-  for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
-  const grown = used() - before;
+  const bound = (n * deck.length) / 10;
+  const grown = heapGrowthAfterCollections(() => {
+    for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
+  }, bound);
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('the checks of removed elements longer than 4 kB do not keep the earlier texts of the deck in memory', (t) => {
-  setFlagsFromString('--expose-gc');
-  const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
-    return process.memoryUsage().heapUsed;
-  };
   const n = 50;
   const long = (k) => `<p class="paragraph-${k}">${'y'.repeat(5000)}</p>`;
   const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
   const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => long(k)).join('\n  ')).replace('</body>', `${filler}</body>`);
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p class="paragraph-${k}">`), slide: null, text: `p${k}` });
-  const before = used();
-  for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
-  const grown = used() - before;
+  const bound = (n * deck.length) / 10;
+  const grown = heapGrowthAfterCollections(() => {
+    for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
+  }, bound);
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.tag?.startsWith('<p class="paragraph-')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('a shift of the anchors by typing is written to the file', async (t) => {
@@ -712,6 +711,29 @@ test('a shift of the anchors by typing is written to the file', async (t) => {
   reads(authority.text, saved.comments[0].slide, '<section>\n  <h2>Two');
 });
 
+test('typing that only shifts the anchors does not write the file until the stop', async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { authority, comments } = open(dir, DECK, { every: 0 });
+  const text = authority.text;
+  comments.add(ANN, { base: authority.version, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'x' });
+  await comments.idle();
+  let writes = 0;
+  const write = comments.write;
+  comments.write = function () {
+    writes++;
+    return write.call(this);
+  };
+  for (let k = 0; k < 20; k++) {
+    replace(authority, 'First slide', `First slide ${k}`);
+    await new Promise((done) => setTimeout(done, 5));
+    await comments.idle();
+  }
+  assert.equal(writes, 0, 'a shift of the anchors alone is not written while the session runs');
+  comments.stopSync();
+  assert.equal(readJson(file).sum, checksum(authority.text));
+});
+
 test('a time of reading in the future is taken as the time now', (t) => {
   const { comments } = open(sessionDir(t), DECK, { now: () => 1_000_000 });
   assert.equal(comments.seen(BO, 5_000_000), 1_000_000);
@@ -728,7 +750,6 @@ test('a file of comments that cannot be read is copied aside when it cannot be m
   const locked = (what) => () => {
     throw Object.assign(new Error(`${what} is locked`), { code: 'EBUSY' });
   };
-  // a rename onto an aside file fails, as when another program holds the file open on Windows
   fs.renameSync = (from, to) => (String(to).includes('unreadable') ? locked('rename')() : renameSync(from, to));
   syncBuiltinESMExports();
 
@@ -793,8 +814,6 @@ test('a comments.json that cannot be renamed over refuses a comment at once, let
   const { root, talk } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const file = join(talk, '.session', 'comments.json');
-  // the renames of node:fs for the edit command of this process. a rename onto comments.json fails
-  // with EPERM while held, or for the next busy tries, as while another program holds it on Windows
   const { renameSync } = fs;
   const onto = (to) => String(to).endsWith(join('.session', 'comments.json'));
   let held = false;
@@ -838,7 +857,6 @@ test('a comments.json that cannot be renamed over refuses a comment at once, let
   assert.equal(refused.status, 503);
   assert.equal(tries, 3);
 
-  // a read time is written by the delayed write, whose next try waits for its next turn
   tries = 0;
   let answeredAfter = null;
   onTry = () => {
@@ -854,7 +872,6 @@ test('a comments.json that cannot be renamed over refuses a comment at once, let
   assert.equal((await comment('second')).status, 200);
   assert.deepEqual(saved().comments.map((c) => c.text), ['second']);
 
-  // the last write at a stop is tried again, since nothing waits behind it
   busy = 5;
   assert.equal((await post(running.port, api('comments/seen'), { token: ann.token, time: 6 })).status, 200);
   await running.close();
@@ -895,8 +912,6 @@ test('a delayed write that keeps failing logs one line at the first failure and 
   assert.equal(logged.length, 4, logged.join('\n'));
 });
 
-// the comments of a session through its requests. the folder is removed after the edit command
-// stops, unless it is kept for a later session
 async function session(t, folder = talkFolder(t), keep = false) {
   const edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
   t.after(async () => {
@@ -922,13 +937,12 @@ test('the requests of the comments, and the events that tell the other pages of 
   const empty = await s.get(ann);
   assert.deepEqual(empty, { v: 0, at: ann.v, comments: [], seen: 0, read: {} });
   const { text, base } = await s.deck();
-  const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look', mentions: [bo.person] });
+  const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: `Look @{${bo.person}}` });
   assert.equal(created.status, 200);
   const thread = created.json();
   reads(text, thread.anchor, '<p>Second slide</p>');
   const told = await s.events(bo, base);
   assert.deepEqual(told.comments, { v: 1, changed: [thread], removed: [] });
-  // a shift of the anchor is not told
   const at = text.indexOf('First slide');
   const shifted = (await s.call('op', ann, { seq: 1, base, patches: [{ start: at, end: at, text: 'The ' }] })).json();
   assert.equal(shifted.ok, true);
@@ -951,7 +965,6 @@ test('the requests of the comments, and the events that tell the other pages of 
   assert.deepEqual((await s.call(`comments/${thread.id}/delete`, ann)).json(), {});
   const deleted = await s.events(bo, shifted.v);
   assert.deepEqual(deleted.comments, { v: (await s.get(bo)).v, changed: [], removed: [thread.id] });
-  // refusals
   assert.equal((await s.call('comments/nope/reply', bo, { text: 'x' })).status, 404);
   assert.equal((await s.call('comments/a.b/reply', bo, { text: 'x' })).status, 404);
   assert.equal((await s.call(`comments/${thread.id}/nope`, bo)).status, 404);
@@ -1006,14 +1019,12 @@ test('a stop that cannot write comments.json names the file and ends with code 1
   const ann = await s.hello('Ann');
   const { base } = await s.deck();
   assert.equal((await s.call('comments', ann, { base, anchor: null, slide: null, text: 'Written' })).status, 200);
-  // a folder in place of the file, over which no file is renamed
   const file = join(folder.talk, '.session', 'comments.json');
   rmSync(file);
   fs.mkdirSync(file);
   assert.equal((await s.call('comments/seen', ann, { time: Date.now() })).status, 200);
   s.edit.child.kill('SIGTERM');
   assert.equal(await s.edit.exited, 1);
-  // the edit command names the talk folder by its real path
   assert.ok(s.edit.stderr.includes(`could not write ${join(fs.realpathSync(folder.talk), '.session', 'comments.json')}: `), s.edit.stderr);
 });
 
@@ -1041,7 +1052,6 @@ test('a thread or a reply sent again with the id that its page made is made once
   assert.deepEqual((await s.call(`comments/${id}/reply`, bo, { id: reply, text: 'Seen' })).json(), replied);
   assert.equal((await s.call(`comments/${id}/reply`, ann, { id: reply, text: 'Seen' })).status, 409, 'the id of the reply of another person');
   assert.equal((await s.call(`comments/${id}/reply`, bo, { id: 'x', text: 'Seen' })).status, 400);
-  // a page that does not send an id is given one
   assert.match((await s.call('comments', ann, { ...body, id: undefined })).json().id, /^[A-Za-z0-9_-]+$/);
 });
 
@@ -1053,11 +1063,10 @@ test('the time up to which a person read a thread is kept, told to the other pag
   assert.equal(other.person, ann.person);
   const bo = await first.hello('Bo');
   const { base } = await first.deck();
-  // each thread is made in a later ms than the one before, so that the times of the threads differ
   let last = 0;
   const thread = async (text) => {
     await until(() => Date.now() > last, 'the clock to pass the time of the thread before');
-    const made = (await first.call('comments', bo, { base, anchor: null, slide: null, text, mentions: [ann.person] })).json();
+    const made = (await first.call('comments', bo, { base, anchor: null, slide: null, text: `${text} @{${ann.person}}` })).json();
     last = made.time;
     return made;
   };
@@ -1073,11 +1082,9 @@ test('the time up to which a person read a thread is kept, told to the other pag
   assert.deepEqual([reached.comments?.seen, reached.comments?.read], [0, { [y.id]: y.time }], 'the read reaches the other page of the person');
   assert.deepEqual((await first.get(other)).read, { [y.id]: y.time });
   assert.deepEqual((await first.get(bo)).read, {});
-  // an earlier time is kept, and a thread that is not there or a time that is not one is refused
   assert.deepEqual((await first.call('comments/seen', ann, { time: y.time - 1, thread: y.id })).json().read, { [y.id]: y.time });
   assert.equal((await first.call('comments/seen', ann, { time: 1, thread: 'nope' })).status, 404);
   assert.equal((await first.call('comments/seen', ann, { time: 'x', thread: y.id })).status, 400);
-  // a time of the whole person at or after the time of a thread replaces it
   await first.call('comments/seen', ann, { time: z.time, thread: z.id });
   assert.deepEqual((await first.call('comments/seen', ann, { time: x.time })).json(), { seen: x.time, read: { [y.id]: y.time, [z.id]: z.time } });
   assert.deepEqual((await first.call('comments/seen', ann, { time: y.time })).json(), { seen: y.time, read: { [z.id]: z.time } });

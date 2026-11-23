@@ -1,13 +1,6 @@
-// the commands of the View menu: the switches of the panes, the mode of the slide, and Next Pane
-// and Previous Pane. D flips only the slide, through the switch of the theme. F6 moves the focus
-// through the regions of the window, as in PowerPoint for Windows
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 
-// the keys of the panes. Keynote has ⇧⌘P for the notes and ⌥⌘I for the inspector, which Firefox
-// and the developer tools of the browsers take before the page, hence the panes of the inspector
-// and the notes are given ⌃⌘ with a digit on a Mac and Ctrl+Shift with it elsewhere
 export const PANE_KEYS = (n: number) => ({ keys: { mac: [`Ctrl+Mod+${n}`], other: [`Ctrl+Shift+${n}`] }, in: OUTSIDE_DIALOGS });
 
 type Theme = { get(): 'dark' | 'light'; toggle(): void };
@@ -17,14 +10,10 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 
 const shown = (el: Element | null): el is HTMLElement => el instanceof HTMLElement && el.getClientRects().length > 0;
 
-// a region of the window: its element, and how the focus is put into it. the canvas is the slide,
-// where the focus is on the page itself
 type Pane = { name: string; el(app: App): Element | null; enter(app: App, el: Element): void };
 
 const first = (_: App, el: Element) => [...el.querySelectorAll(FOCUSABLE)].find(shown)?.focus();
 
-// the panes in the order of section 1 of the plan, with the status bar last. a pane that is
-// missing or hidden is skipped
 const PANES: Pane[] = [
   { name: 'menubar', el: () => document.querySelector('.beeson-edit-menubar'), enter: first },
   { name: 'toolbar', el: () => document.querySelector('.beeson-edit-top'), enter: first },
@@ -33,7 +22,6 @@ const PANES: Pane[] = [
     el: () => document.querySelector('.beeson-edit-nav'),
     enter: (app, el) => (shown(el.querySelector('[aria-current="true"]')) ? (el.querySelector('[aria-current="true"]') as HTMLElement).focus() : first(app, el)),
   },
-  // the object list of navigator/objects.ts, under the thumbnails
   {
     name: 'objects',
     el: () => document.querySelector('.beeson-edit-objects:not([hidden])'),
@@ -48,8 +36,6 @@ const PANES: Pane[] = [
     },
   },
   { name: 'notes', el: (app) => (app.notes.shown() ? app.notes.ensure() : null), enter: (_, el) => (el as HTMLElement).focus() },
-  // the focus goes to the tab of the panel shown, from which Tab reaches its controls, since a
-  // first control that is a field would take the keys of the inspector
   {
     name: 'inspector',
     el: () => document.querySelector('.beeson-edit-inspector'),
@@ -63,7 +49,6 @@ const PANES: Pane[] = [
   { name: 'status', el: () => document.querySelector('.beeson-edit-bottom'), enter: first },
 ];
 
-// the pane of the focus. the notes are inside the slide, hence they are tested before the canvas
 function paneOf(app: App): number {
   const active = document.activeElement;
   const notes = PANES.findIndex((p) => p.name === 'notes');
@@ -86,8 +71,6 @@ export function cyclePane(app: App, step: 1 | -1): void {
 export function install(app: App): void {
   const c = app.commands;
   const pane = (order: number) => ({ bar: 'View', group: 'panes', order });
-  // Navigator is checked while the navigator is drawn, as Slide Only is checked while it is not. in a
-  // window too narrow for it beside the inspector, a run shows it in place of the inspector
   c.define({
     id: 'view.navigator',
     label: 'Navigator',
@@ -95,8 +78,6 @@ export function install(app: App): void {
     checked: (a) => a.nav.seen ?? a.nav.shown,
     run: (a) => {
       a.nav.toggle();
-      // a navigator turned on beside the inspector is hidden there, and a second toggle closes the
-      // inspector, as Slide Only does
       if (a.nav.shown && !a.nav.seen) a.nav.toggle();
     },
   });

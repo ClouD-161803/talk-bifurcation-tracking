@@ -1,12 +1,7 @@
-// checks of the code box of the demo deck, colored and stepped by the highlight plugin of reveal.js,
-// in the slide view and in the print view
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 
-// the lines lit in the copy of the code shown on top, i.e. the last one shown, and the opacity of
-// this copy, of its first lit line, and of its first dim line
 const view = (root) => `(() => {
   const codes = [...${root}.querySelectorAll('pre > code')];
   const top = codes.filter((c) => !c.classList.contains('fragment') || c.classList.contains('visible')).pop();
@@ -17,8 +12,6 @@ const view = (root) => `(() => {
   return { lit: lit.map((row) => rows.indexOf(row) + 1), opacity: [opacity(top), opacity(lit[0]), opacity(dim)] };
 })()`;
 
-// resolves once the transitions of the current slide have ended, i.e. the fades of 400 ms of a step.
-// On a busy runner a fade starts late, and it is not over after a fixed wait of 600 ms
 const still = `(async () => {
   const frame = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
   await frame();
@@ -59,7 +52,6 @@ test('the code box of the demo deck is colored, and each step lights the next gr
   assert.deepEqual(page.errors, []);
 });
 
-// the opacity of the code box and of the sentence of the current slide, and whether the slide is complete
 const state = `(() => {
   const slide = Reveal.getCurrentSlide();
   const opacity = (el) => getComputedStyle(el).opacity;

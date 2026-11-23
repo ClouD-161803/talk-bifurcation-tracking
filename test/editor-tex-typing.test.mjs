@@ -1,8 +1,3 @@
-// the substitution TeX Formulas of Edit > Substitutions: $tex$ or \(tex\) typed is made an inline
-// formula at its closing sign, and $$tex$$ or \[tex\] typed as a whole paragraph a display. one
-// undo gives back the signs as typed. a dollar before a space or a digit, TeX that MathJax cannot
-// typeset, code, and typing with the switch off are left as typed
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -24,7 +19,6 @@ const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const para = (i) => `document.querySelectorAll('.reveal section.present > p')[${i}]`;
 
-// the caret at the end of paragraph i, or in its inline code after two characters
 async function load(t, i = 0, inCode = false) {
   const page = await editorPage(browser, { deck: DECK, page: { width: 1600, height: 1000 } });
   t.after(() => page.close().catch(() => {}));
@@ -42,15 +36,12 @@ async function load(t, i = 0, inCode = false) {
   return page;
 }
 
-// each character typed as a trusted key, one after the other, as a person types
 async function typeKeys(page, text) {
-  for (const c of text) {
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: c, text: c, unmodifiedText: c });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: c });
-  }
+  const sent = [];
+  for (const c of text) sent.push(page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: c, text: c, unmodifiedText: c }), page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: c }));
+  await Promise.all(sent);
 }
 
-// the paragraph i of the deck saved once its count of formulas is n
 async function saved(page, i, n) {
   await page.waitFor(`${para(i)}.querySelectorAll('mjx-container').length === ${n}`);
   return (await render(page)).match(/<p style="width: 900px">.*<\/p>/g)[i];
@@ -61,13 +52,10 @@ test('the formula that a closing sign typed last closes is found, and a dollar o
   assert.deepEqual(texSpan(String.raw`a \(x^2\)`), { start: 2, tex: 'x^2' });
   assert.deepEqual(texSpan("$f'(x)$"), { start: 0, tex: "f'(x)" });
   assert.deepEqual(texSpan('a $x$ and $y$'), { start: 10, tex: 'y' });
-  // a dollar before a space or a digit, after a backslash or a dollar, a formula that ends in a
-  // space, and an empty formula are left as typed
   for (const text of ['$5 and $10$', 'a $ x$', 'a $x $', '$$x$', '$$x$$', String.raw`a \$x$`, String.raw`a \(\)`]) assert.equal(texSpan(text), null, text);
   assert.equal(texDisplay('$$E = mc^2$$'), 'E = mc^2');
   assert.equal(texDisplay(String.raw` \[x\] `), 'x');
   assert.equal(texDisplay('a $$x$$'), null);
-  // a dollar inside a formula that is still open belongs to its TeX
   for (const text of [String.raw`\(\text{$x$`, String.raw`\[\text{case $x$`]) assert.equal(texSpan(text), null, text);
 });
 
@@ -134,10 +122,10 @@ test('after the undo of a display, only a closing sign makes the paragraph a dis
   await page.evaluate('window.BeesonEditor.undo()');
   await page.waitFor(`!document.querySelector('.reveal section.present div.math')`);
   await page.evaluate(`(() => { const p = ${para(1)}; p.focus(); getSelection().selectAllChildren(p); getSelection().collapseToEnd(); return true; })()`);
+  await page.evaluate(`(() => { const mj = window.MathJax; const read = mj.tex2svgPromise.bind(mj); window.__texReads = 0; mj.tex2svgPromise = (...args) => (window.__texReads++, read(...args)); return true; })()`);
   await typeKeys(page, ' ');
   await page.waitFor(`/\\s$/.test(${para(1)}.textContent) || !!document.querySelector('.reveal section.present div.math')`);
-  // the TeX is read by MathJax before a display is written, hence the check waits for it
-  await page.evaluate('window.MathJax.tex2svgPromise("x").then(() => new Promise((done) => setTimeout(() => done(true), 50)))');
+  assert.equal(await page.evaluate('window.__texReads'), 0, 'a space typed after the undo was read as TeX');
   assert.equal(await page.evaluate(`!!document.querySelector('.reveal section.present div.math')`), false, 'a space typed after the undo made the paragraph a display again');
 });
 
@@ -149,7 +137,6 @@ test('with TeX Formulas off, a dollar does not open TeX, and a quote typed after
     await off.waitFor(`/it.s$/.test(${para(0)}.textContent)`);
     assert.equal(await saved(off, 0, 0), '<p style="width: 900px">The orbit $HOME, it’s</p>');
   } finally {
-    // the switch is kept in the storage of the origin, which the next test reads
     await off.evaluate(`(localStorage.removeItem('beeson-edit-smart-tex'), true)`);
   }
 });
@@ -157,7 +144,6 @@ test('with TeX Formulas off, a dollar does not open TeX, and a quote typed after
 test('money, TeX that MathJax cannot typeset, code, and typing with TeX Formulas off are left as typed', async (t) => {
   const page = await load(t);
   await typeKeys(page, ' $5 and $10 $x^$');
-  // the error of MathJax is read before the formula is written, hence the check waits for it
   await page.evaluate('window.MathJax.tex2svgPromise("x").then(() => true)');
   assert.equal(await saved(page, 0, 0), '<p style="width: 900px">The orbit $5 and $10 $x^$</p>');
   const code = await load(t, 2, true);

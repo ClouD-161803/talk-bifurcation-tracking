@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Plot math deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script>window.beesonTex = { macros: { vb: ['\\boldsymbol{#1}', 1], LL: ['\\mathcal{L}_{#1}', 1], sat: '\\ensuremath{\\mathcal{S}}\\xspace' } };</script>
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Before the plot</h2>
+    </section>
+    <section>
+      <h2>A plot with macros in its labels</h2>
+      <p style="width: 760px">The point \(\LL{1}\) has \(\alpha = -2.932\) and \(\alpha = \pm 2.334\,i\), and \(\delta x\) is in km.</p>
+      <div class="plot figure-box" data-plot="data"></div>
+      <script type="application/json" id="data">{
+        "parameter": { "label": "$\\vb{r}$", "digits": 2 },
+        "duration": 2,
+        "panels": [
+          { "id": "left", "title": "the $\\sat$ family", "x": { "range": [-1, 1], "ticks": [-1, 0, 1], "title": "$\\delta x$ in km" }, "y": { "range": [-1, 1], "ticks": [-1, 0, 1], "title": "$\\delta y$ in km" },
+            "labels": [
+              { "at": [0, 0], "text": "$\\LL{1}$", "tone": "text", "dy": 30 },
+              { "at": [0.9, 0.6], "text": "$\\alpha = -2.932$", "anchor": "end", "tone": "violet" },
+              { "at": [-0.9, 0.6], "text": "$\\alpha = 2.932$", "anchor": "start", "tone": "accent" },
+              { "at": [0, 0.85], "text": "$\\alpha = \\pm 2.334\\,i$", "tone": "blue" }
+            ] }
+        ],
+        "marks": [
+          { "id": "dot", "panel": "left", "kind": "points" },
+          { "id": "count", "panel": "left", "kind": "label", "tone": "subtle" }
+        ],
+        "tabs": [{ "name": "one", "values": [0, 1], "data": { "dot": [[-0.5, -0.5], [0.5, -0.5]], "count": { "at": [[-0.5, -0.75], [0.5, -0.75]], "text": ["$t = 0$", "$t = 1$"] } } }]
+      }</script>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

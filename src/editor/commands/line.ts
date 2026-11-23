@@ -1,12 +1,3 @@
-// a line or an arrow on a slide, as Insert > Line and Insert > Arrow of Keynote and PowerPoint. a
-// line is an inline svg as large as the box of its stroke, at the upper left of the slide and placed
-// by its translate, with one line element, or the path of a curve or an elbow of canvas/stroke.ts,
-// and the marker of its arrowheads. it is drawn by a drag from point to point, with Shift in steps
-// of 45 degrees, selected by a press near its stroke, moved as an element, and edited by its two
-// end handles and the grip of its bend. its tone, arrowheads, kind, weight, and dash are set with
-// the commands of Format > Line, which the Line pane of inspector/line.ts runs. the rules of its
-// look are in theme/beeson.css, so that a deck draws it without the editor
-
 import type { App } from '../app.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { setItemIcon } from '../ui/icons.ts';
@@ -23,7 +14,6 @@ export { distance } from '../canvas/stroke.ts';
 export type { Ends, Point };
 export type Heads = 'none' | 'start' | 'end' | 'both';
 
-// the tones of a line, with the token that each is drawn in
 export const LINE_TONES: [string, string, string][] = [
   ['text', 'Text', '--text'],
   ['muted', 'Muted', '--muted'],
@@ -34,24 +24,18 @@ export const LINE_TONES: [string, string, string][] = [
 ];
 export const HEADS: [Heads, string][] = [['none', 'No Arrowheads'], ['start', 'Arrowhead at Start'], ['end', 'Arrowhead at End'], ['both', 'Arrowheads at Both Ends']];
 export const KINDS: [Kind, string][] = [['straight', 'Straight'], ['curve', 'Curved'], ['elbow', 'Elbow']];
-// the weights in px, each the class weight-N on the svg apart from the 3 px of the theme
 export const WEIGHTS = [2, 3, 6, 8];
 
-// the arrowhead in units of the stroke width. its tip is one unit past the end of the line, where
-// the head is as wide as the stroke
 const HEAD = 'M-4-2.5 1 0-4 2.5z';
-// in screen px: the snap and a click. a press selects a line within 6 px of it, in lineAt of
-// canvas/hit.ts
 const SNAP = 8;
 const CLICK = 3;
-// the length of a line inserted with a click, in slide px
 const CLICKED = 320;
 
 const CSS = `
 .beeson-line-layer { position: fixed; inset: 0; z-index: 52; pointer-events: none; }
 .beeson-line-layer [hidden] { display: none !important; }
-.beeson-line-end { position: fixed; width: 11px; height: 11px; margin: -7px 0 0 -7px; border-radius: 50%; border: 1.5px solid var(--ed-select, #7048e8); background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; cursor: crosshair; }
-.beeson-line-end.bend { background: var(--ed-select, #7048e8); border-color: #fff; }
+.beeson-line-end { position: fixed; width: 11px; height: 11px; margin: -7px 0 0 -7px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; cursor: crosshair; }
+.beeson-line-end.bend { background: #444; border-color: #fff; }
 .beeson-line-end.locked { border-color: #8a8a8a; background: #d9d9d9; pointer-events: none; }
 .beeson-line-draft { position: fixed; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; color: var(--ed-select, #7048e8); }
 .beeson-line-draft > path { stroke: currentColor; stroke-width: 2; fill: none; }
@@ -64,7 +48,6 @@ html.beeson-drawing-line .reveal, html.beeson-drawing-line .reveal *, html.beeso
 
 const round = (v: number) => Math.round(v);
 
-// the box of the svg of a line in slide px, at least 1 px wide and high
 export function boxOf(e: Ends): Box {
   const [x1, y1, x2, y2] = [e.x1, e.y1, e.x2, e.y2].map(round);
   return { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.max(1, Math.abs(x2 - x1)), height: Math.max(1, Math.abs(y2 - y1)) };
@@ -77,16 +60,12 @@ const headAttrs = (heads: Heads, id: string): Record<'marker-start' | 'marker-en
 
 const strokeFrom = (e: Ends | Stroke): Stroke => ('kind' in e ? e : withKind(e, 'straight'));
 
-// the text of the stroke s with the arrowheads at the marker id, i.e. a line or a path element. the
-// end tag is written, since source.ts pairs an element with the end tag of its name
 function childText(s: Stroke, heads: Heads, id: string): string {
   const t = strokeText(s);
   const attrs = { ...t.attrs, ...headAttrs(heads, id) };
   return `<${t.tag}${Object.entries(attrs).map(([k, v]) => (v ? ` ${k}="${v}"` : '')).join('')}></${t.tag}>`;
 }
 
-// the text of a line between the ends in slide px, or of a curve or an elbow, with its marker
-// named id
 export function lineText(e: Ends | Stroke, o: { id: string; tone?: string; heads?: Heads }): string {
   const s = strokeFrom(e);
   const b = strokeText(s).box;
@@ -95,9 +74,6 @@ export function lineText(e: Ends | Stroke, o: { id: string; tone?: string; heads
   return `<svg class="${cls}" width="${b.width}" height="${b.height}"${style}><defs><marker id="${o.id}" orient="auto-start-reverse"><path d="${HEAD}"></path></marker></defs>${childText(s, o.heads ?? 'none', o.id)}</svg>`;
 }
 
-// the text with the arrowheads of each line pointed at the marker of its own svg. Doc.freshIds of
-// model/doc.ts, which the clipboard and slide commands call, renames the id of a copied marker, but
-// not the url() that names it
 export function fixHeads(text: string): string {
   return text.replace(/<svg\b[^>]*\bclass="(?:[^"]*\s)?line(?:\s[^"]*)?"[\s\S]*?<\/svg>/g, (svg) => {
     const id = /<marker\b[^>]*\sid="([^"]+)"/.exec(svg)?.[1];
@@ -105,8 +81,6 @@ export function fixHeads(text: string): string {
   });
 }
 
-// the end of a line from the point from toward to, at a multiple of 45 degrees and at the length of
-// the projection of to on that ray
 export function stepped(from: Point, to: Point): Point {
   const dx = to.x - from.x, dy = to.y - from.y;
   const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
@@ -116,10 +90,8 @@ export function stepped(from: Point, to: Point): Point {
 
 export const isLine = (el: Element): boolean => el.matches('.reveal .slides section svg.line');
 
-// the stroke of svg in slide px, or null for a path that the editor does not write
 export const strokeAt = (svg: Element): Stroke | null => parseStroke(strokeOf(svg), placeOf(svg).translate ?? { x: 0, y: 0 });
 
-// the ends of the stroke of svg in slide px
 export function endsOf(svg: Element): Ends {
   const s = strokeAt(svg);
   return s ? { x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 } : { x1: 0, y1: 0, x2: 0, y2: 0 };
@@ -139,7 +111,6 @@ export function toneOf(svg: Element): string {
   return LINE_TONES.find(([t]) => svg.classList.contains(`tone-${t}`))?.[0] ?? 'text';
 }
 
-// the selected lines that are paired with the file
 export function selectedLines(app: App): Element[] {
   return app.selection.elements().filter((el) => el.isConnected && isLine(el) && !!app.pairing?.elements.get(el)?.open);
 }
@@ -147,7 +118,6 @@ export function selectedLines(app: App): Element[] {
 const screenOf = (f: Frame, p: Point): Point => ({ x: f.left + p.x * f.scale, y: f.top + p.y * f.scale });
 const slideOf = (f: Frame, p: Point): Point => ({ x: (p.x - f.left) / f.scale, y: (p.y - f.top) / f.scale });
 
-// svg set to the stroke on the page only, while one of its ends or its bend is dragged
 function showStroke(svg: Element, s: Stroke): void {
   const t = strokeText(s);
   const b = t.box;
@@ -160,7 +130,6 @@ function showStroke(svg: Element, s: Stroke): void {
 
 type Drawing = { heads: Heads; kind: Kind };
 
-// attach is the attachment of a dragged end at its last move, and from and to that of the ends of a drawn line
 type Grab = { svg: Element; which: 1 | 2; from: Stroke; off: Point; x: number; y: number; moved: boolean; attachment?: Attachment | null };
 type Press =
   | ({ kind: 'end' } & Grab)
@@ -175,16 +144,13 @@ export function install(app: App): void {
   const c = app.commands;
   const frames = overlay();
   const mac = () => app.platform === 'mac';
-  // the modifiers of drag.ts: a move without the snap, and a press that adds to the selection
   const freeMove = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.altKey);
   const commandHeld = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.ctrlKey);
   const copyHeld = (ev: MouseEvent) => (mac() ? ev.altKey : ev.ctrlKey);
-  // the originals left in place while a move with the copy key is dragged, as drag.ts shows them
   const ghosts = standIns();
   const ready = (a: App) => !!a.pairing?.root && !!a.current() && a.region() !== 'dialog';
   const root = document.documentElement;
   installAttach(app);
-  // the attachment of an end at p, without the free key, with its element outlined
   const attachedTo = (ev: PointerEvent, p: Point, skip: Element[] = []) => {
     const g = freeMove(ev) ? null : attachmentAt(app, p, skip);
     showTarget(app, g?.attachment.els ?? null);
@@ -204,7 +170,6 @@ export function install(app: App): void {
   layer.append(draft);
 
   let press: Press | null = null;
-  // the arrowheads and the kind of the line that the next drag on the canvas draws, or null
   let drawing: Drawing | null = null;
 
   const targets = (skip: Element[]): Targets => {
@@ -218,9 +183,6 @@ export function install(app: App): void {
     };
   };
 
-  // the point of ev in slide px, snapped to the lines of the slide, or with Shift and a fixed end
-  // start in steps of 45 degrees from it
-  // off is the offset of the pointer from the point that it moves, in slide px
   const pointAt = (ev: PointerEvent, start: Point | null, skip: Element[], off: Point = { x: 0, y: 0 }): Point => {
     const f = frameOf(app);
     const at = slideOf(f, { x: ev.clientX, y: ev.clientY });
@@ -232,15 +194,12 @@ export function install(app: App): void {
     return { x: p.x + s.dx, y: p.y + s.dy };
   };
 
-  // the length and the angle of a line from its first end, counterclockwise as in Keynote
   const readout = (e: Ends, ev: PointerEvent) => {
     const len = Math.hypot(e.x2 - e.x1, e.y2 - e.y1);
     const deg = ((round((-Math.atan2(e.y2 - e.y1, e.x2 - e.x1) * 180) / Math.PI) % 360) + 360) % 360;
     view.readout = { text: `${round(len)} px  ${deg}°`, x: ev.clientX + 14, y: ev.clientY + 14, at: 'pointer' };
   };
 
-  // the end handles of the selected lines. the frames of drag.ts are hidden while only lines are
-  // selected, since the box of a line is not what a user moves or resizes
   const draw = () => {
     const lines = selectedLines(app);
     const only = lines.length > 0 && lines.length === app.selection.elements().length;
@@ -279,7 +238,6 @@ export function install(app: App): void {
     });
   };
 
-  // the stroke of the kind from a to b on the screen, whose text is in whole screen px
   const showDraft = (from: Point, to: Point, d: Drawing) => {
     const f = frameOf(app);
     const a = screenOf(f, from), b = screenOf(f, to);
@@ -302,8 +260,6 @@ export function install(app: App): void {
     draft.setAttribute('hidden', '');
   };
 
-  // a new line of the kind between the ends in slide px, on the current slide before its notes,
-  // selected
   const add = async (e: Ends, d: Drawing, attachment: Partial<Record<End, Attachment | null>> = {}): Promise<Element | null> => {
     const slide = app.current();
     if (!slide) return null;
@@ -321,8 +277,6 @@ export function install(app: App): void {
     return svg;
   };
 
-  // the stroke of a line as one entry of the history, written into the start tags of its svg and
-  // its line or path, with the attachment of a dragged end
   const setStroke = (svg: Element, s: Stroke, label: string, attachment?: { end: End; to: Attachment | null }) =>
     app.history.transact(label, () => {
       const t = strokeText(s);
@@ -333,8 +287,6 @@ export function install(app: App): void {
       app.invalidate('content');
     });
 
-  // a press is taken before the capture listener of drag.ts on document, which does not hit-test
-  // a line, since the svg of a line does not take the pointer
   const onDown = (ev: PointerEvent) => {
     if (ev.button !== 0 || press || app.state !== 'loaded') return;
     const target = ev.target instanceof Element ? ev.target : null;
@@ -355,8 +307,6 @@ export function install(app: App): void {
     if (grip?.line && from) {
       ev.preventDefault();
       ev.stopPropagation();
-      // the end or the bend keeps its offset from the pointer, which a grip past an arrowhead is
-      // drawn at
       const bend = grip.dataset.end === 'bend';
       const which = grip.dataset.end === '1' ? 1 : 2;
       const p = slideOf(frameOf(app), at);
@@ -415,8 +365,6 @@ export function install(app: App): void {
       readout({ x1: fixed.x, y1: fixed.y, x2: to.x, y2: to.y }, ev);
     } else if (p.kind === 'bend') {
       if (p.svg.isConnected && locked(p.svg)) return;
-      // with Shift the grip of a curve stays on the perpendicular bisector of its chord, which gives
-      // a symmetric arc. the middle segment of an elbow lands on the line of an end within SNAP
       const s = p.from;
       let to = pointAt(ev, null, [p.svg], p.off);
       if (ev.shiftKey && s.kind === 'curve') {
@@ -442,7 +390,6 @@ export function install(app: App): void {
       }
       view.guides = snap?.guides ?? [];
       view.spacing = snap?.spacing ?? [];
-      // the upper left corner of the line on the slide, as the readout of a move of drag.ts gives it
       ghosts.show({ els: p.els, from: p.places }, copyHeld(ev));
       const c = snapBoxOf(app, p.svg);
       view.readout = { text: `${ghosts.shown() ? 'Copy  ' : ''}${xy(c.left, c.top)}`, x: ev.clientX + 14, y: ev.clientY + 18, at: 'pointer' };
@@ -452,7 +399,6 @@ export function install(app: App): void {
     draw();
   };
 
-  // the end of a press: ev is null for a cancel, which puts everything back
   const finish = async (ev: PointerEvent | null) => {
     const p = press;
     if (!p) return;
@@ -482,10 +428,7 @@ export function install(app: App): void {
         const from = p.places.get(el) as Place;
         (el as HTMLElement).style.translate = from.translate ? `${from.translate.x}px ${from.translate.y}px` : '';
       }
-      // a cancel keeps the selection of the press
       if (!p.moved && ev) p.click?.();
-      // a copy of each element is written after it at the place where it was dropped, and the
-      // copies of a group are a new group
       else if (ev) await app.history.selecting('Duplicate', async () => {
         const copies: Element[] = [];
         for (const el of p.els) copies.push(await app.doc.duplicate(el));
@@ -513,7 +456,6 @@ export function install(app: App): void {
   window.addEventListener('pointermove', onMove, true);
   window.addEventListener('pointerup', (ev) => void finish(ev).catch((e) => app.fail(e)), true);
   window.addEventListener('pointercancel', () => void finish(null), true);
-  // Esc puts back a dragged end or bend in place of the commands of the key, as in drag.ts
   app.commands.veto((_, cmd) => !!press?.moved && Object.values(cmd.keys ?? {}).some((k) => k.includes('Escape')));
   window.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape' || (!drawing && !press)) return;
@@ -526,7 +468,6 @@ export function install(app: App): void {
   app.selection.listen(draw);
   app.onRefresh(['content', 'selection', 'slide', 'layout'], draw);
 
-  // with an arg { from, to } in slide px the line is inserted at once, e.g. by a test
   const startDrawing = (heads: Heads, kind: Kind = 'straight') => async (a: App, arg?: unknown) => {
     const at = arg as { from?: Point; to?: Point } | undefined;
     if (at?.from && at.to) {
@@ -541,7 +482,6 @@ export function install(app: App): void {
   const isDrawing = (heads: Heads, kind: Kind) => () => (drawing?.heads === heads && drawing.kind === kind ? true : null);
 
   const insertMenu = (order: number) => ({ bar: 'Insert', group: 'element', order });
-  // the Shape button of the toolbar, whose main part draws a line
   const shape = (order: number) => ({ group: 'insert', order, icon: 'shape', label: 'Shape', split: 'Shape' });
   c.define({ id: 'insert.line', label: 'Line', menu: insertMenu(30), toolbar: shape(23), enabled: ready, checked: isDrawing('none', 'straight'), run: startDrawing('none') });
   c.define({ id: 'insert.arrow', label: 'Arrow', menu: insertMenu(31), toolbar: shape(23.1), enabled: ready, checked: isDrawing('end', 'straight'), run: startDrawing('end') });
@@ -587,8 +527,6 @@ export function install(app: App): void {
       },
     });
   });
-  // a change of kind replaces the child of the svg, keeping its ends, its arrowheads, its marker,
-  // and every attribute of the svg, hence a line made a curve and back is written as before
   KINDS.forEach(([kind, label], i) => {
     c.define({
       id: `line.kind.${kind}`,
@@ -607,8 +545,6 @@ export function install(app: App): void {
             const text = childText(next, headsOf(svg), id);
             const node = await a.doc.rewrite(svg, (body) => body.replace(/(<\/defs>\s*)<(line|path)\b[^>]*>(?:\s*<\/\2>)?/, (_, lead: string) => lead + text), 'line kind');
             const b = strokeText(next).box, was = strokeText(s).box;
-            // the svg is turned about the center of its box, hence a turned line is moved by the turn of
-            // the step from the old center to the new one, which keeps its ends on the slide
             const r = (angleOf(svg) * Math.PI) / 180, dx = b.left + b.width / 2 - was.left - was.width / 2, dy = b.top + b.height / 2 - was.top - was.height / 2;
             const x = round(b.left + dx * (Math.cos(r) - 1) - dy * Math.sin(r)), y = round(b.top + dx * Math.sin(r) + dy * (Math.cos(r) - 1));
             a.doc.setTag(node, { attrs: { width: String(b.width), height: String(b.height) }, translate: x || y ? { x, y } : null }, 'line kind');
@@ -636,7 +572,6 @@ export function install(app: App): void {
       },
     });
   });
-  // the attachment of an end of the selected lines taken off, which the Line pane runs
   for (const [end, name] of [['from', 'start'], ['to', 'end']] as const) {
     c.define({
       id: `line.detach.${name}`,

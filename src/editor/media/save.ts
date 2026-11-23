@@ -1,9 +1,3 @@
-// the new media files written at a save, before the text of the deck that names them. in Chrome
-// and Edge they are written into media/ in the folder of the deck, which a page reaches only once
-// it is chosen with showDirectoryPicker, and elsewhere each file is downloaded with the copy of the
-// deck. a picker is shown only during a press of a key or a button, hence a save without one, e.g.
-// an autosave or a save right after the save picker, asks for the folder with a dialog first
-
 import type { App } from '../app.ts';
 import { addCompanion, plural } from '../file/files.ts';
 import { Dialog, host } from '../ui/dialog.ts';
@@ -35,12 +29,9 @@ function downloadBlob(name: string, blob: Blob): void {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-// the folder that holds deck, with leave to write into it, asked for once per page. what names
-// other files than the new media files, e.g. the sources of the preamble, for the dialog
 export let deckFolder: (deck: FileSystemFileHandle, what?: string) => Promise<FileSystemDirectoryHandle> = () => Promise.reject(new Error('the media files are not installed'));
 
 export function install(app: App): void {
-  // the folder of the deck, kept for the next saves of this page
   let folder: Folder | null = null;
 
   const ask = new Dialog({
@@ -57,15 +48,14 @@ export function install(app: App): void {
 
   async function pick(deck: FileSystemFileHandle, what: string): Promise<Folder> {
     const show = picker();
-    if (!show) throw new Error('this browser cannot write into a folder');
+    if (!show) throw new Error('your browser cannot write into folders');
     try {
       return await show({ id: 'beeson-deck', mode: 'readwrite', startIn: deck });
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw stopped(what);
-      // without a press of a key or a button, the picker is opened from the dialog
       if (!(error instanceof DOMException) || (error.name !== 'SecurityError' && error.name !== 'NotAllowedError')) throw error;
     }
-    ask.text.textContent = `${what ? `The files ${what} are read and written` : `The new images and videos are written into the folder ${FOLDER}`} next to ${deck.name}. A browser writes into a folder only after you choose it, hence choose the folder that holds ${deck.name}.`;
+    ask.text.textContent = `${what ? `The files ${what} are read and written` : `The new images and videos are written into the folder ${FOLDER}`} next to ${deck.name}. Folders can be written into only after you choose them, hence choose the folder of ${deck.name}.`;
     if ((await ask.open('choose')) !== 'choose') throw stopped(what);
     try {
       return await show({ id: 'beeson-deck', mode: 'readwrite', startIn: deck });
@@ -75,12 +65,11 @@ export function install(app: App): void {
     }
   }
 
-  // the folder that holds deck, with leave to write into it
   async function folderOf(deck: FileSystemFileHandle, what = ''): Promise<Folder> {
     const holds = async (f: Folder) => (await f.resolve(deck))?.length === 1;
     if (!folder || !(await holds(folder))) {
       const chosen = await pick(deck, what);
-      if (!(await holds(chosen))) throw new Error(`the folder ${chosen.name} does not hold ${deck.name}. Save again and choose the folder of the deck`);
+      if (!(await holds(chosen))) throw new Error(`${deck.name} is not in the folder ${chosen.name}. Save again and choose the folder of the deck`);
       folder = chosen;
     }
     if (folder.queryPermission && (await folder.queryPermission({ mode: 'readwrite' })) !== 'granted') {

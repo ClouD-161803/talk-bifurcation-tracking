@@ -1,9 +1,3 @@
-// the commands that move between the slides, in the View menu. Page Down and Page Up move on the
-// canvas and in the navigator, Home and End on the canvas, and the arrows on the canvas while no
-// element is selected, since the arrows then nudge the selection. in the navigator, the arrows,
-// Home, and End are taken by the list of nav.ts, which moves its focus with the slide. G opens a
-// field for the number of a slide, and on a Mac the key of Keynote does too
-
 import type { App } from '../app.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 
@@ -24,12 +18,10 @@ function go(app: App, to: (at: number, count: number) => number): void {
   if (all[i] && i !== at) app.showSlide(all[i]);
 }
 
-// the field of G. its input keeps the class of the field of reveal.js, which the tests find. Enter
-// goes to the slide of the number typed, and Esc gives the focus back
 function gotoField(app: App): () => void {
   injectStyle('goto', CSS);
   const box = make('div', 'beeson-edit-goto');
-  const input = make('input', 'jump-to-slide-input');
+  const input = make('input');
   input.type = 'text';
   input.inputMode = 'numeric';
   input.setAttribute('aria-label', 'Slide number');
@@ -68,7 +60,6 @@ export function install(app: App): void {
   const c = app.commands;
   const both = (...keys: string[]) => ({ mac: keys, other: keys });
   const view = (order: number) => ({ bar: 'View', group: 'go', order });
-  // the arrows change the slide only while no element is selected
   const free = (a: App) => a.selection.kind !== 'elements';
   c.define({ id: 'navigate.next', label: 'Next Slide', keys: both('PageDown'), menu: view(40), run: (a) => go(a, (at) => at + 1) });
   c.define({ id: 'navigate.previous', label: 'Previous Slide', keys: both('PageUp'), menu: view(41), run: (a) => go(a, (at) => at - 1) });

@@ -1,7 +1,3 @@
-// the theorems of test/pages/tex/index.html in the editor: a shape drawn behind a theorem and
-// grouped with it, Insert > Theorem with one item per kind and its key, and the section Theorem of
-// the Text pane, whose Kind and Name write data-kind and data-name
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -13,7 +9,6 @@ import { byteExact, click, clickText, drag, press, saveAndReopen, type } from '.
 const DECK = 'test/pages/tex/index.html';
 const SOURCE = readFileSync(DECK, 'utf8');
 const PANEL = '#beeson-edit-panel-format';
-// an attribute or an element written by the theme at run time
 const RUNTIME = /\sdata-(?:head|style|missing|n)(?=[\s=>])|class="refs"|--refs/;
 const NAMED = '<p class="theorem" data-kind="theorem" data-name="stable manifold">';
 const KEY = { mac: 'Ctrl+Mod+T', other: 'Alt+Shift+T' };
@@ -37,7 +32,6 @@ const exec = (page, id, arg) => page.evaluate(`window.BeesonEditor.exec(${js(id)
 const undo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.undo()).then(() => true)');
 const redo = (page) => page.evaluate('Promise.resolve(window.BeesonEditor.redo()).then(() => true)');
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
-const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
 async function open(platform = 'mac') {
   const page = await browser.newPage();
@@ -56,14 +50,12 @@ async function show(page, title) {
   await sleep(150);
 }
 
-// the box of the element of selector on the current slide in slide px
 const slideBox = (page, selector) => page.evaluate(`(() => {
   const sl = document.querySelector('.reveal .slides'), S = sl.getBoundingClientRect(), k = S.width / sl.offsetWidth;
   const q = document.querySelector('.reveal section.present ${selector}').getBoundingClientRect();
   return { left: Math.round((q.left - S.left) / k), top: Math.round((q.top - S.top) / k), width: Math.round(q.width / k), height: Math.round(q.height / k) };
 })()`);
 
-// the center of a row of the open menus whose label starts with text
 const rowAt = (page, text) => page.evaluate(`(() => {
   const i = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.trim().startsWith(${js(text)}));
   if (!i) return null;
@@ -85,12 +77,10 @@ function assertClean(text, what) {
   assert.equal(line, undefined, `${what} writes a run-time attribute into the file`);
 }
 
-// the section of the rendered text from the slide with the heading title to its end
 const sectionOf = (text, title) => {
   const at = text.indexOf(`<h2>${title}</h2>`);
   return text.slice(text.lastIndexOf('<section', at), text.indexOf('</section>', at));
 };
-// whether the words of the named theorem are drawn over every shape
 const onTop = (page) => page.evaluate(`(() => {
   const p = document.querySelector('.reveal section.present p.theorem[data-name]');
   const r = document.createRange();
@@ -112,11 +102,9 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
   await exec(page, 'arrange.order.back');
   await settle(page);
   const layered = await render(page);
-  // the shape, absolute after the theorems, is sent behind them with a z-index
   assert.match(sectionOf(layered, 'Theorems'), /<\/p>\n {6}<div class="shape" style="width: \d+px; height: \d+px; translate: \d+px \d+px; z-index: -1"><\/div>\n {4}$/);
   assert.equal(await onTop(page), true, 'the theorem is not drawn over the shape');
 
-  // the shape is selected by its margin, the theorem added with Shift, and the two grouped
   await press(page, 'Escape');
   await clickText(page, { ...(await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > .shape').getBoundingClientRect(); return { x: r.left + 6, y: r.top + r.height / 2 }; })()`)) });
   await click(page, '.reveal section.present p.theorem[data-name]', { modifiers: 'Shift' });
@@ -128,7 +116,6 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
   assert.equal(sectionOf(grouped, 'Theorems').split('data-group="g1"').length - 1, 2, 'the shape and the theorem are not one group');
   assert.match(grouped, /<p class="theorem" data-kind="theorem" data-name="stable manifold" data-group="g1">/);
 
-  // a drag of the shape moves the group
   const scale = await page.evaluate('Reveal.getScale()');
   const from = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > .shape').getBoundingClientRect(); return { x: r.left + 6, y: r.top + r.height / 2 }; })()`);
   await drag(page, from, { dx: 100 * scale, dy: 60 * scale });
@@ -141,7 +128,6 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
   assert.match(sectionOf(dragged, 'Theorems'), /<div class="shape" style="width: \d+px; height: \d+px; translate: \d+px \d+px; z-index: -1" data-group="g1"><\/div>\n {4}$/, 'the drag changes the layer of the shape');
   assert.equal(await onTop(page), true, 'the drag puts the shape over the theorem');
 
-  // each undo gives the state before its step, and the redos give the drag again
   for (const state of [grouped, layered, inserted, SOURCE]) {
     await undo(page);
     await settle(page);
@@ -157,7 +143,7 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
   await show(page, 'Theorems');
   assert.deepEqual(await heads(page, 'Theorems'), ['Definition 1.', 'Theorem 1 (stable manifold).', 'Proof.']);
   assert.equal(await onTop(page), true);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 test('the submenu Theorem of the Insert menu lists the kinds of the deck, read when it is opened', async (t) => {
@@ -168,13 +154,11 @@ test('the submenu Theorem of the Insert menu lists the kinds of the deck, read w
   const items = await page.evaluate(`window.BeesonEditorShell.menuItems('Insert', 'Theorem').map((i) => [i.command, i.arg, i.label])`);
   assert.deepEqual(items, kinds.map(([kind, k]) => ['insert.theorem', kind, k.title]));
   assert.ok((await page.evaluate(`window.BeesonEditorShell.menuItems('Insert').map((i) => i.label ?? i.command)`)).includes('Theorem'), 'Theorem is not a submenu of the Insert menu');
-  // a kind defined after the start of the deck is listed at the next opening
   await page.evaluate(`window.beesonTex.theorems.conjecture = { title: 'Conjecture', style: 'plain', counter: null }`);
   const later = await page.evaluate(`window.BeesonEditorShell.menuItems('Insert', 'Theorem').map((i) => i.label)`);
   assert.equal(later.at(-1), 'Conjecture');
   await page.evaluate('delete window.beesonTex.theorems.conjecture');
 
-  // the menu of the menu bar shows the same items
   await show(page, 'Theorems');
   await barMenu(page, 'Insert');
   await clickText(page, await rowAt(page, 'Theorem'));
@@ -183,7 +167,6 @@ test('the submenu Theorem of the Insert menu lists the kinds of the deck, read w
   await clickText(page, await rowAt(page, 'Lemma'));
   await sleep(300);
   await settle(page);
-  // a lemma with the caret is drawn after the proof with its head, and the file is not changed
   const fresh = await page.evaluate(`(() => {
     const s = document.querySelector('.reveal section.present');
     const p = s.querySelector('p.theorem[data-kind="lemma"]');
@@ -206,7 +189,7 @@ test('the submenu Theorem of the Insert menu lists the kinds of the deck, read w
   await settle(page);
   await byteExact(page);
   assert.deepEqual((await heads(page, 'More theorems')).slice(0, 2), ['Lemma 2.', 'Theorem 3.']);
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });
 
 for (const platform of ['mac', 'other']) {
@@ -230,7 +213,6 @@ for (const platform of ['mac', 'other']) {
     await undo(page);
     await undo(page);
     await byteExact(page);
-    // the key is listed at Theorem of the Insert menu
     const shown = platform === 'mac' ? '⌃⌘T' : 'Alt+Shift+T';
     await press(page, 'Escape');
     await exec(page, 'help.keys');
@@ -241,11 +223,10 @@ for (const platform of ['mac', 'other']) {
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes()'), []);
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.keyClashes(true)'), []);
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.sheetClashes()'), []);
-    assert.deepEqual(errors(page), []);
+    assert.deepEqual(page.errors, []);
   });
 }
 
-// the Text pane of the selected theorem shown
 async function pane(page, selector) {
   await clickText(page, `.reveal section.present ${selector}`);
   await press(page, 'Escape');
@@ -268,7 +249,6 @@ async function setName(page, value) {
   await press(page, 'Backspace');
   if (value) await type(page, value);
   await press(page, 'Enter');
-  // the field is left, as by a click on the slide
   await page.evaluate('document.activeElement.blur()');
   await sleep(150);
   await settle(page);
@@ -281,7 +261,6 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
   await pane(page, 'p.theorem[data-name]');
   assert.deepEqual(await theoremSection(page), { kind: 'Theorem', name: 'stable manifold', note: null });
 
-  // Kind lists the kinds of the deck and writes the one chosen
   const at = await page.evaluate(`(() => { const r = document.querySelector('${PANEL} .ed-theorem-kind').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await clickText(page, at);
   await sleep(100);
@@ -303,7 +282,6 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
   assert.equal(await render(page), lemma);
   await undo(page);
 
-  // Name writes data-name, and an empty Name takes it off
   await setName(page, 'unstable manifold');
   const renamed = await render(page);
   assert.equal(renamed, SOURCE.replace(NAMED, NAMED.replace('stable manifold', 'unstable manifold')));
@@ -313,7 +291,6 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
   const unnamed = await render(page);
   assert.equal(unnamed, SOURCE.replace(NAMED, '<p class="theorem" data-kind="theorem">'));
   assert.equal((await heads(page, 'Theorems'))[1], 'Theorem 1.');
-  // the field shows the name of each state of the history
   await undo(page);
   await settle(page);
   assert.equal(await render(page), renamed);
@@ -325,9 +302,8 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
   await setName(page, 'unstable manifold');
   await saveAndReopen(page, 'theorem-name.html');
 
-  // a theorem of a kind that is not defined is named in a note
   await show(page, 'More theorems');
   await pane(page, 'p.theorem[data-kind="conjecture"]');
   assert.deepEqual(await theoremSection(page), { kind: 'conjecture', name: '', note: 'The kind conjecture is not defined in the preamble.' });
-  assert.deepEqual(errors(page), []);
+  assert.deepEqual(page.errors, []);
 });

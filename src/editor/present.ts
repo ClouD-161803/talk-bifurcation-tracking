@@ -1,28 +1,12 @@
-// the presenter display of the editor, as the presenter display of Keynote and the presenter view
-// of PowerPoint: the current slide at its step, the next slide or step, the notes with A- and A+,
-// the clock, and the elapsed time with pause and reset. each part can be hidden in the popover of
-// Display Options, as in Keynote, and the choice is kept in the storage for the deck. while the
-// display is customized, from the button of the popover, each part is moved by a drag and resized
-// by its corner, and the layout is kept in the storage for the deck. with Presenter View, the
-// saved deck is played in another tab and kept at the slide and step of the display. with
-// Rehearse Timings, each slide is timed, and at the end the seconds spent on each slide shown are
-// written into its data-timing, as one entry of the history. the slides are drawn from the page of
-// the editor, hence a rehearsal needs no save
-
 import { addRestoreSteps, applySteps } from '../steps.ts';
 import type { App } from './app.ts';
 import { drawInto } from './navigator/thumbs.ts';
 import { injectStyle, make, store, stored } from './ui/dom.ts';
 import { icon } from './ui/icons.ts';
 
-// the kind of a fragment: shown from its step on, hidden from its step on (fade-out), shown only
-// at its step (current-visible), or shown from the start and dimmed from its step on (semi-fade-out)
 export type FragKind = 'in' | 'out' | 'current' | 'dim';
 export type Frag = { index: number | null; kind: FragKind; final: boolean };
 
-// the step of each fragment, from 0, in the order of reveal.js: the fragments with an index in the
-// order of their index, then each fragment without one in the order of the page, and a fragment
-// with data-final after every other step
 export function stepsOf(frags: Frag[]): number[] {
   const indexed = [...new Set(frags.filter((f) => !f.final && f.index !== null).map((f) => f.index as number))].sort((a, b) => a - b);
   let next = indexed.length;
@@ -33,7 +17,6 @@ export function stepsOf(frags: Frag[]): number[] {
 
 export const stepCount = (steps: number[]): number => (steps.length ? Math.max(...steps) + 1 : 0);
 
-// whether a fragment of kind at step s is seen once k steps are shown
 export function seenAt(kind: FragKind, s: number, k: number): boolean {
   if (kind === 'out') return s >= k;
   if (kind === 'dim') return true;
@@ -41,7 +24,6 @@ export function seenAt(kind: FragKind, s: number, k: number): boolean {
   return s < k;
 }
 
-// a time in ms as 0:42, 12:05, or 1:02:03, and with hours set always with the hours, e.g. 0:04:12
 export function duration(ms: number, hours = false): string {
   const t = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(t / 3600);
@@ -50,7 +32,6 @@ export function duration(ms: number, hours = false): string {
   return h || hours ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
-// the value of data-timing for a time in ms, in whole seconds and at least 1
 export const seconds = (ms: number): number => Math.max(1, Math.round(ms / 1000));
 
 const fragsOf = (slide: Element): Element[] => [...slide.querySelectorAll('.fragment')].filter((f) => !f.closest('aside.notes'));
@@ -62,10 +43,6 @@ function fragOf(el: Element): Frag {
   return { index, kind, final: el.hasAttribute('data-final') && index === null };
 }
 
-// the steps of a slide of the editor as the show plays them, counted on a copy of the slide with
-// what the show adds: a copy of a code box for each group of lines of its data-line-numbers after
-// the first, as the highlight plugin of reveal.js makes them, and the step that addRestoreSteps of
-// src/steps.ts adds. steps is the step of each fragment of the slide, from 0, and n the count
 export function showSteps(slide: Element): { steps: number[]; n: number } {
   const copy = slide.cloneNode(true) as Element;
   copy.querySelectorAll('aside.notes').forEach((n) => n.remove());
@@ -91,13 +68,6 @@ export function showSteps(slide: Element): { steps: number[]; n: number } {
 
 export const stepsOfSlide = (slide: Element): number => showSteps(slide).n;
 
-// the clone of slide drawn into host is shown at step k as the show draws it: each fragment not
-// seen at k is hidden, and until the slide is complete, the earlier steps are dimmed to the 0.45
-// of theme/beeson.css, apart from a backdrop, a video, a fragment inside a shown one, and a fragment
-// held with data-keep. a video of the style play is seen with its poster before its step. a step
-// set to Dim is drawn at the faint opacity from its step on, since the
-// rules of the thumbnails show every fragment at full opacity. the classes highlighted at k are
-// colored by applySteps of src/steps.ts
 export function showStep(host: HTMLElement, slide: Element, k: number): void {
   const clone = host.shadowRoot?.querySelector('.beeson-thumb .slides > section');
   if (!clone) return;
@@ -112,23 +82,23 @@ export function showStep(host: HTMLElement, slide: Element, k: number): void {
   applySteps(clone);
   (frags as HTMLElement[]).forEach((f, i) => {
     const seen = i >= steps.length || seenAt(kinds[i], steps[i], k) || f.classList.contains('play');
-    const dim = seen && k < n && steps[i] < k - 1 && kinds[i] !== 'dim' && !f.matches('.backdrop, [data-held], .faint, video, :has(video)') && !f.parentElement?.closest('.fragment.visible');
+    const dim = seen && k < n && steps[i] < k - 1 && kinds[i] !== 'dim' && !f.matches('.backdrop, [data-held], .faint, video, :has(video), .r-stack > *') && !f.parentElement?.closest('.fragment.visible');
     f.classList.toggle('beeson-off', !seen);
     const ghost = kinds[i] === 'dim' && steps[i] < k && !f.matches('[data-held]');
     f.style.setProperty('opacity', dim ? '0.45' : ghost ? '0.25' : '', dim || ghost ? 'important' : '');
   });
+  for (const child of clone.querySelectorAll('.r-stack > *')) {
+    const kin = [...child.parentElement!.children];
+    const hidden = kin.slice(kin.indexOf(child) + 1).some((c) => c.matches('.fragment.visible:not(.beeson-off)'));
+    if (hidden) child.classList.add('beeson-off');
+    else if (!child.classList.contains('fragment')) child.classList.remove('beeson-off');
+  }
 }
 
-// Use Rehearsed Timings of the Play menu, as the switch of PowerPoint, kept in the storage. a show
-// opened from the editor with the switch on is moved on by reveal.js after the data-timing of each
-// slide, spread evenly over the slide and its steps. data-autoslide is set in the page of the show
-// only, and never written into the file
 const TIMINGS_KEY = 'beeson-use-timings';
 export const usingTimings = (): boolean => stored(TIMINGS_KEY) === '1';
 export const useTimings = (on: boolean): void => store(TIMINGS_KEY, on ? '1' : '0');
 
-// the delay of each step of a slide with data-timing seconds and steps steps, in ms, or null
-// without a timing
 export function stepDelay(timing: string | null, steps: number): number | null {
   const s = Number(timing);
   if (timing === null || timing.trim() === '' || !Number.isFinite(s) || s <= 0) return null;
@@ -137,9 +107,6 @@ export function stepDelay(timing: string | null, steps: number): number | null {
 
 type ShowReveal = { isReady?(): boolean; sync?(): void };
 
-// plays the timings in the show of win once its reveal.js is ready, and resolves with the number
-// of slides timed, or 0 when the show is closed, cannot be reached, or is not ready in time ms. a
-// slide or step with its own data-autoslide keeps it
 export function playTimings(win: Window, time = 30000): Promise<number> {
   return new Promise((resolve) => {
     const started = performance.now();
@@ -163,13 +130,11 @@ export function playTimings(win: Window, time = 30000): Promise<number> {
       clearInterval(poll);
       let n = 0;
       for (const s of win.document.querySelectorAll('.reveal .slides section[data-timing]')) {
-        // the slides of the show have their added steps already
         const delay = stepDelay(s.getAttribute('data-timing'), stepCount(stepsOf(fragsOf(s).map(fragOf))));
         if (delay === null || s.hasAttribute('data-autoslide')) continue;
         s.setAttribute('data-autoslide', String(delay));
         n++;
       }
-      // a sync of reveal.js cues the delay of the step shown
       if (n) reveal.sync?.();
       resolve(n);
     }, 100);
@@ -177,11 +142,10 @@ export function playTimings(win: Window, time = 30000): Promise<number> {
 }
 
 const NOTES_KEY = 'beeson-presenter-notes';
-// the parts of the display that can be hidden, with the labels of Keynote
 const PARTS = [
   ['current', 'Current Slide'],
   ['next', 'Next Slide'],
-  ['notes', 'Presenter Notes'],
+  ['notes', 'Speaker Notes'],
   ['clock', 'Clock'],
   ['timer', 'Timer'],
 ] as const;
@@ -194,14 +158,10 @@ function hiddenParts(): string[] {
     return [];
   }
 }
-// the layout of Customize Presenter Display as fractions of the display: the left x and top y of
-// each part, the width w of a slide and of the notes, and the height h of the notes or, for the
-// clock and the timer, of their text. it is kept in the storage for the deck, never in the file
 type Spot = { x: number; y: number; w?: number; h?: number };
 type Layout = Record<string, Spot>;
 const layoutKey = () => `beeson-presenter-layout:${location.pathname}`;
 const TEXTS = ['clock', 'timer'];
-// the place of a part missing from a layout, e.g. one hidden while the layout was made
 const SPOTS: Layout = { current: { x: 0.02, y: 0.08, w: 0.56 }, next: { x: 0.61, y: 0.08, w: 0.37 }, notes: { x: 0.61, y: 0.5, w: 0.37, h: 0.4 }, clock: { x: 0.86, y: 0.015, h: 0.02 }, timer: { x: 0.42, y: 0.012, h: 0.026 } };
 const fraction = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= 1;
 function storedLayout(): Layout | null {
@@ -222,11 +182,8 @@ function storedLayout(): Layout | null {
 const seen = (el: Element): boolean => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
-// the sizes of the text of the notes, in CSS px
 const NOTE_SIZES = [14, 16, 18, 21, 24, 28, 32, 40];
 
-// the presenter display and the rehearsal are black in both appearances, as in Keynote and
-// PowerPoint, hence the dialog sets the tokens of the editor for a black stage
 const CSS = `
 dialog.beeson-edit-presenter { --ed-bg: #000; --ed-canvas: #000; --ed-panel: #161618; --ed-text: #f2f2f4; --ed-muted: #a1a1a6; --ed-faint: #6c6c71; --ed-line: #2c2c2e; --ed-guide: #f08050; --ed-select: #9d47d8; --ed-focus: #c94fe6; --ed-hover: rgba(255, 255, 255, 0.08); --ed-pressed: rgba(255, 255, 255, 0.14); --ed-edge: rgba(255, 255, 255, 0.14); --ed-menu-line: rgba(255, 255, 255, 0.12); color-scheme: dark; box-sizing: border-box; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--ed-canvas); color: var(--ed-text); font: 13px/1.35 var(--ed-font); outline: none; overflow: hidden; }
 dialog.beeson-edit-presenter[open] { display: grid; grid-template-rows: 48px minmax(0, 1fr) 44px; }
@@ -309,7 +266,6 @@ dialog.beeson-edit-presenter::backdrop { background: #000; }
 
 export type Mode = 'present' | 'rehearse';
 
-// a button that does not take the focus from the dialog, so that the keys of the show stay live
 function tool(text: string, title: string, iconName?: string): HTMLButtonElement {
   const b = make('button');
   b.type = 'button';
@@ -331,9 +287,7 @@ export class Presenter {
   private at = 0;
   private step = 0;
   private audience: Window | null = null;
-  // the slide and fragment last sent to the show, as h/f
   private sent: string | null = null;
-  // the time shown, and the time of each slide in a rehearsal, in ms of performance.now()
   private elapsed = 0;
   private since: number | null = null;
   private readonly times = new Map<Element, number>();
@@ -348,8 +302,6 @@ export class Presenter {
   private readonly options = tool('', 'Display Options', 'inspector');
   private readonly popover = make('div', 'parts');
   private readonly endMark = make('div', 'end-mark', 'End of the show');
-  // the element of each part, the overlay of its frames while the display is customized, and the
-  // drag of a frame or of its corner, with the layout that it changes
   private readonly regions: Record<string, HTMLElement> = {};
   private readonly layout = make('div', 'layout');
   private readonly frames: Record<string, HTMLElement> = {};
@@ -360,7 +312,7 @@ export class Presenter {
     this.app = app;
     injectStyle('presenter', CSS);
     const el = this.el;
-    el.setAttribute('aria-label', 'Presenter view');
+    el.setAttribute('aria-label', 'Presenter View');
     el.tabIndex = -1;
 
     const end = tool('End', 'End the show (Esc)', 'chevron-left');
@@ -406,10 +358,9 @@ export class Presenter {
       label.append(box, text);
       this.popover.append(label);
     }
-    const customize = tool('Customize Presenter Display', 'Move and resize the parts of the display');
+    const customize = tool('Customize Presenter View', 'Move and resize the parts of the presenter view');
     customize.addEventListener('click', () => this.customize(true));
     this.popover.append(customize);
-    // a click outside the popover closes it
     el.addEventListener('pointerdown', (ev) => {
       const at = ev.target as Node;
       if (!this.popover.hidden && !this.popover.contains(at) && !this.options.contains(at)) this.showParts(false);
@@ -417,7 +368,6 @@ export class Presenter {
 
     const shotCurrent = make('div', 'shot current');
     shotCurrent.append(this.current);
-    // a click on the current slide moves the show on, as in the presenter view of PowerPoint
     shotCurrent.addEventListener('click', (ev) => {
       if (ev.button === 0 && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey) this.go(1);
     });
@@ -506,8 +456,6 @@ export class Presenter {
       ev.preventDefault();
       this.finish();
     });
-    // the show in the tab posts edit at a click or a key forward past its last step (src/main.ts),
-    // with its state, which the display takes before it ends, since it polls the tab only at a tick
     window.addEventListener('message', (ev) => {
       if (!this.isOpen || !this.audience || ev.source !== this.audience || typeof ev.data !== 'string') return;
       try {
@@ -520,9 +468,7 @@ export class Presenter {
           this.step = (typeof f === 'number' ? f : -1) + 1;
         }
         this.finish();
-      } catch {
-        // a message that is not of the show
-      }
+      } catch {}
     });
     const resized = new ResizeObserver(() => this.draw());
     resized.observe(shotCurrent);
@@ -534,15 +480,10 @@ export class Presenter {
     return this.el.open;
   }
 
-  // the slides of the show, without the hidden ones
   private shown(): Element[] {
     return [...this.app.slides().querySelectorAll(':scope > section')].filter((s) => s.getAttribute('data-visibility') !== 'hidden');
   }
 
-  // opens the display at slide from, or at the first slide shown after it. the promise is resolved
-  // at the end of the show, with true when the timings of a rehearsal were kept, false when they
-  // were not, and null for a show without a rehearsal. with customize, the popover of the parts is
-  // open
   open(mode: Mode, from: Element | null, audience: Window | null = null, customize = false): Promise<boolean | null> {
     if (this.isOpen) this.close(null);
     this.mode = mode;
@@ -585,8 +526,6 @@ export class Presenter {
     return this.list[this.at];
   }
 
-  // the time since the last account is added to the slide shown and to the elapsed time, e.g.
-  // before the slide changes
   private account(): void {
     const now = performance.now();
     if (this.slideSince !== null && this.list[this.at]) {
@@ -600,8 +539,6 @@ export class Presenter {
     }
   }
 
-  // a click forward or back: the next step of the slide, else the next slide at its first step.
-  // forward from the last step of the last slide ends the show
   go(dir: 1 | -1): void {
     if (this.el.classList.contains('asking')) return;
     const n = stepsOfSlide(this.slide());
@@ -662,7 +599,6 @@ export class Presenter {
     this.parts.text.style.fontSize = `${this.noteSize}px`;
   }
 
-  // the parts hidden in the storage of the deck are hidden, and their checkboxes cleared
   private applyParts(): void {
     const hidden = hiddenParts();
     for (const [id] of PARTS) this.el.classList.toggle(`no-${id}`, hidden.includes(id));
@@ -674,8 +610,6 @@ export class Presenter {
     return !this.layout.hidden;
   }
 
-  // the customizing of Keynote: the popover is closed, each shown part is framed, and a drag of a
-  // frame or of its corner moves or resizes the part
   private customize(on: boolean): void {
     this.dropFrame();
     this.layout.hidden = !on;
@@ -683,8 +617,6 @@ export class Presenter {
     this.drawFrames();
   }
 
-  // each part at its place in layout, or in the grid of the display without one. the slides keep
-  // their aspect ratio, since their height follows their width
   private applyLayout(layout = storedLayout()): void {
     this.el.classList.toggle('free', !!layout);
     for (const [id] of PARTS) {
@@ -705,7 +637,6 @@ export class Presenter {
     return id === 'clock' ? this.parts.clock : this.parts.elapsed;
   }
 
-  // the layout of the parts as they are shown, i.e. the stored layout or the places of the grid
   private measured(): Layout {
     const kept = storedLayout();
     if (kept) return { ...SPOTS, ...kept };
@@ -736,8 +667,6 @@ export class Presenter {
     }
   }
 
-  // a press on a frame moves its part, and a press on its corner resizes it. a layout of the grid
-  // is taken as it is shown, so that the other parts stay where they are
   private pressFrame(ev: PointerEvent): void {
     const target = ev.target as Element;
     const frame = target.closest<HTMLElement>('.frame');
@@ -752,8 +681,6 @@ export class Presenter {
     this.layout.setPointerCapture(ev.pointerId);
   }
 
-  // a part is kept inside the display. the corner of a slide scales it by the side moved the most,
-  // that of the notes sets both sides, and that of the clock or the timer the size of the text
   private dragFrame(ev: PointerEvent): void {
     const p = this.press;
     if (!p) return;
@@ -808,8 +735,6 @@ export class Presenter {
     this.follow();
   }
 
-  // the show in the other tab is kept at the slide and step of the display, and a change made in
-  // the show, e.g. a click on its slide, is taken over by the display
   private follow(): void {
     const w = this.audience;
     if (!w) return;
@@ -829,7 +754,7 @@ export class Presenter {
       this.parts.audience.textContent = 'Opening the show…';
       return;
     }
-    this.parts.audience.textContent = 'The show is in its own tab';
+    this.parts.audience.textContent = 'The show is open in a separate tab';
     const { h, f } = reveal.getIndices();
     const there = `${h}/${f ?? -1}`;
     if (this.sent !== null && there !== this.sent && h < this.list.length) {
@@ -899,12 +824,10 @@ export class Presenter {
   }
 
   private onKey(ev: KeyboardEvent): void {
-    // a typed slide number is dropped at another key, as in the show played by Present
     if (!/^[0-9]$/.test(ev.key) && ev.key !== 'Enter') this.typed = '';
     const inPopover = this.popover.contains(ev.target as Node);
     if (this.customizing && ev.key === 'Escape') this.customize(false);
     else if (!this.popover.hidden && ev.key === 'Escape') this.showParts(false);
-    // a checkbox of the popover takes Space and Return
     else if (inPopover && (ev.key === ' ' || ev.key === 'Enter')) return;
     else if (this.el.classList.contains('asking')) {
       if (ev.key === 'Enter') this.answer(true);
@@ -913,7 +836,6 @@ export class Presenter {
     } else if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     else if (/^[0-9]$/.test(ev.key)) this.typed = (this.typed + ev.key).slice(-4);
     else if (ev.key === 'Enter' && this.typed) {
-      // a number out of range goes to the first or the last slide, as reveal.js does in the show
       this.goTo(Math.min(Math.max(Number(this.typed) - 1, 0), this.list.length - 1));
       this.typed = '';
     } else if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'].includes(ev.key)) this.go(1);
@@ -926,7 +848,6 @@ export class Presenter {
     ev.stopPropagation();
   }
 
-  // the end of the show. a rehearsal asks first whether its timings are kept
   finish(): void {
     if (!this.isOpen) return;
     if (this.mode !== 'rehearse') return this.close(null);
@@ -944,7 +865,6 @@ export class Presenter {
     void this.write(keep).catch((e) => this.app.fail(e));
   }
 
-  // the seconds of each slide shown in the rehearsal
   timings(): Map<Element, number> {
     return new Map([...this.times].map(([s, ms]) => [s, seconds(ms)]));
   }
@@ -968,12 +888,9 @@ export class Presenter {
     this.el.classList.remove('asking');
     this.customize(false);
     this.showParts(false);
-    // the show tab is ended with the display, as End Show of PowerPoint ends both
     try {
       this.audience?.close();
-    } catch {
-      // a tab of another origin is left to its viewer
-    }
+    } catch {}
     this.audience = null;
     if (last?.isConnected) this.app.showSlide(last);
     if (resolve) this.resolve(result);

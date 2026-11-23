@@ -1,10 +1,3 @@
-// the commands of the Code pane of the Format tab, and the colors of a code box in the editor. the
-// language of a box is the class language-* of its code, and its line steps are the groups of
-// lines of data-line-numbers, separated by bars, e.g. 1-2|3|4-5. the first group is lit with the
-// slide and each next group at a step. the highlight plugin of reveal.js is not run in the editor,
-// since it replaces the code by a table of lines, hence the editor colors the tokens of
-// highlight.js with the CSS Custom Highlight API, which leaves the DOM as the file has it
-
 import type { App } from '../app.ts';
 import { insertPlain } from '../text/typing.ts';
 import { injectStyle } from '../ui/dom.ts';
@@ -16,7 +9,6 @@ type Hljs = {
   getLanguage(name: string): { name?: string } | undefined;
 };
 
-// highlight.js of the highlight plugin, which a deck loads from theme/vendor/reveal/highlight.js
 let lib: Hljs | null | undefined;
 export function hljsOf(): Hljs | null {
   if (lib !== undefined) return lib;
@@ -28,8 +20,6 @@ export function hljsOf(): Hljs | null {
   return lib;
 }
 
-// the names of the languages most used in a talk of the group, and their names for a deck that
-// does not load highlight.js
 export const COMMON: [string, string][] = [
   ['python', 'Python'], ['julia', 'Julia'], ['matlab', 'MATLAB'], ['cpp', 'C++'], ['c', 'C'], ['fortran', 'Fortran'],
   ['rust', 'Rust'], ['javascript', 'JavaScript'], ['typescript', 'TypeScript'], ['bash', 'Bash'], ['json', 'JSON'],
@@ -37,7 +27,6 @@ export const COMMON: [string, string][] = [
 ];
 export const PLAIN = 'plaintext';
 
-// the languages that a box can be given, by name, each with its name in the menu
 export function languages(): [string, string][] {
   const hljs = hljsOf();
   if (!hljs) return COMMON;
@@ -50,15 +39,12 @@ export const nameOf = (language: string | null): string => {
   return COMMON.find(([n]) => n === language)?.[1] ?? hljsOf()?.getLanguage(language)?.name ?? language;
 };
 
-// the code of the code box of the argument or of the selection: a selected box, or a box with the
-// caret, whose code has a tag in the file
 export function codeAt(app: App, arg?: unknown): Element | null {
   const given = (arg as { el?: unknown } | undefined)?.el;
   const sel = app.selection;
   const el = given instanceof Element ? given : sel.only() ?? (sel.kind === 'text' ? sel.items[0] ?? null : null);
   const pre = el?.closest('pre');
   const code = pre?.querySelector(':scope > code') ?? null;
-  // the code is inside the text element of its pre, hence it is paired among the elements inside text elements
   const src = code ? app.pairing?.elements.get(code) ?? app.pairing?.inner.get(code) : null;
   return code && src?.open && code.closest('section') ? code : null;
 }
@@ -71,15 +57,11 @@ export function languageOf(app: App, code: Element): string | null {
 }
 
 const LINES = 'data-line-numbers';
-// why Number the Lines is dimmed, since reveal.js steps through the lines of a numbered box only
-const NUMBERS_WHY = 'The line steps need the line numbers.';
-// the size of the code of a small box
+const NUMBERS_WHY = 'Line steps are shown only with line numbers.';
 const SMALL = '18px';
 
-// whether the pre of code is set small in the file
 export const isSmall = (app: App, code: Element): boolean => app.doc.tagState(code.closest('pre') as Element).style['font-size']?.trim() === SMALL;
 
-// the line steps of a box: whether its lines are numbered, and its groups
 export function stepsOf(app: App, code: Element): { numbers: boolean; groups: string[] } {
   const raw = app.doc.tagState(code).attrs[LINES];
   if (raw === undefined) return { numbers: false, groups: [] };
@@ -87,7 +69,6 @@ export function stepsOf(app: App, code: Element): { numbers: boolean; groups: st
   return { numbers: true, groups: value ? value.split('|') : [] };
 }
 
-// a group of lines, e.g. 3, 1-2, or 1,3-5, checked and written without spaces
 export function checkGroup(group: string): string {
   const g = group.replace(/\s+/g, '').replace(/–/g, '-');
   if (!/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(g)) throw new Error(`the lines ${group || '(none)'} are not a group of lines, e.g. 3, 1-2, or 1,3-5`);
@@ -104,8 +85,6 @@ function writeSteps(app: App, code: Element, numbers: boolean, groups: string[])
   if (value !== now) app.doc.setTag(code, { attrs: { [LINES]: value } }, 'line steps');
 }
 
-// the lines of the box from the first to the last line of the selected text in it, counted from 1.
-// a selection that ends at the start of a line does not take that line
 export function selectedLines(code: Element): [number, number] | null {
   const s = document.getSelection();
   if (!s || !s.rangeCount) return null;
@@ -124,9 +103,6 @@ export function selectedLines(code: Element): [number, number] | null {
   return [a, Math.max(a, b)];
 }
 
-// the groups of a box after its text before was changed to after, as a code editor moves its marks
-// of lines: a group after the lines that changed is moved by the lines added or deleted, and a
-// group on a deleted line is put on the line before it, so that the box keeps its steps
 export function shiftGroups(groups: string[], before: string, after: string): string[] {
   const a = before.replace(/\n$/, '').split('\n');
   const b = after.replace(/\n$/, '').split('\n');
@@ -152,8 +128,6 @@ export function shiftGroups(groups: string[], before: string, after: string): st
   });
 }
 
-// the indent of a new line typed at the caret in code, i.e. the spaces and tabs at the start of
-// the line of the caret that are before the caret
 function indentAt(code: Element): string {
   const s = document.getSelection();
   if (!s?.rangeCount || !code.contains(s.getRangeAt(0).startContainer)) return '';
@@ -163,8 +137,6 @@ function indentAt(code: Element): string {
   return /^[ \t]*/.exec(r.toString().split('\n').pop() ?? '')?.[0] ?? '';
 }
 
-// whether an input may add or delete a line of a box, i.e. a new line, a paste, a drop, or a
-// delete of a text with a newline
 function addsOrDeletesLines(ev: InputEvent): boolean {
   const type = ev.inputType;
   if (type === 'insertParagraph' || type === 'insertLineBreak' || type.startsWith('insertFrom') || type === 'insertReplacementText' || ev.data?.includes('\n')) return true;
@@ -179,7 +151,6 @@ function addsOrDeletesLines(ev: InputEvent): boolean {
   return type.startsWith('delete') && ev.getTargetRanges().some((r) => text(r).includes('\n'));
 }
 
-// the numbers of the lines of a group, e.g. 1,3-4 is 1, 3, and 4
 export function linesOf(group: string): Set<number> {
   const out = new Set<number>();
   for (const part of group.split(',')) {
@@ -189,20 +160,15 @@ export function linesOf(group: string): Set<number> {
   return out;
 }
 
-// the scopes of highlight.js that the theme colors in beeson.css, with the property of the color
 const TOKENS: [string, string][] = [
   ['keyword', 'violet'], ['literal', 'violet'], ['meta', 'violet'], ['built_in', 'trajectory-3'], ['title', 'accent'],
   ['params', 'trajectory-6'], ['string', 'trajectory-4'], ['number', 'trajectory-5'], ['comment', 'muted'], ['operator', 'subtle'],
 ];
 const NAME = (token: string) => `beeson-code-${token.replace(/_/g, '-')}`;
 const DIM = 'beeson-code-dim';
-// the numbers of the lines of a box with data-line-numbers, drawn while the deck is edited at
-// the left of its code, as the table of the highlight plugin draws them in the deck
 const NUMBERS = `
-html.beeson-editor .reveal pre[data-beeson-lines] { position: relative; }
-html.beeson-editor .reveal pre[data-beeson-lines]::before { content: attr(data-beeson-lines); position: absolute; top: 24px; left: 32px; white-space: pre; text-align: right; color: var(--muted); pointer-events: none; user-select: none; }
-${[1, 2, 3].map((d) => `html.beeson-editor .reveal pre[data-beeson-digits="${d}"]::before { width: ${d}ch; }
-html.beeson-editor .reveal pre[data-beeson-digits="${d}"] > code { padding-left: calc(${d}ch + 1em); }`).join('\n')}
+html.beeson-editor .reveal pre[data-beeson-lines]::before { content: attr(data-beeson-lines); float: left; margin-right: 1em; white-space: pre; text-align: right; color: var(--muted); pointer-events: none; user-select: none; }
+${[1, 2, 3].map((d) => `html.beeson-editor .reveal pre[data-beeson-digits="${d}"]::before { width: ${d}ch; }`).join('\n')}
 `;
 
 const STYLE = [
@@ -211,8 +177,6 @@ const STYLE = [
   NUMBERS,
 ].join('\n');
 
-// the numbers of the lines of each box of the slide whose lines are numbered in the file, as an
-// attribute of the page only, which the save does not write
 function numberLines(app: App): void {
   for (const pre of app.slides().querySelectorAll('pre')) {
     const code = pre.querySelector(':scope > code');
@@ -232,8 +196,6 @@ function numberLines(app: App): void {
 type Token = [number, number, string];
 const cache = new Map<string, Token[]>();
 
-// the tokens of text in language, null for highlightAuto, as offsets into text with the scope of
-// each. a text node of the result takes the scope of its innermost span with a colored scope
 function tokensOf(hljs: Hljs, text: string, language: string | null): Token[] {
   const key = `${language ?? ''}\u0000${text}`;
   const hit = cache.get(key);
@@ -263,7 +225,6 @@ function tokensOf(hljs: Hljs, text: string, language: string | null): Token[] {
   return out;
 }
 
-// the point at offset in the text of code, over its text nodes
 function pointAt(nodes: Text[], starts: number[], offset: number): [Text, number] | null {
   for (let k = nodes.length - 1; k >= 0; k--) if (starts[k] <= offset) return [nodes[k], Math.min(offset - starts[k], nodes[k].length)];
   return null;
@@ -296,9 +257,6 @@ type Highlights = { set(name: string, h: unknown): void; delete(name: string): v
 const registry = (): Highlights | null => (typeof CSS !== 'undefined' && 'highlights' in CSS ? (CSS as unknown as { highlights: Highlights }).highlights : null);
 const HighlightOf = (): (new (...r: Range[]) => { priority: number }) | null => (window as unknown as { Highlight?: new (...r: Range[]) => { priority: number } }).Highlight ?? null;
 
-// the code boxes of the current slide colored by the tokens of their language. a box of Plain
-// Text is not colored, and a box without a language is colored by the language that highlight.js
-// guesses, as the highlight plugin does
 export function paint(app: App): void {
   const reg = registry();
   const H = HighlightOf();
@@ -319,8 +277,6 @@ export function paint(app: App): void {
   for (const [t] of TOKENS) reg.set(NAME(t), new H(...(ranges.get(t) ?? [])));
 }
 
-// the box of the first character of line n of code, counted from 1, or null for a line that code
-// does not have or that is not drawn
 export function lineRect(code: Element, n: number): DOMRect | null {
   const { nodes, starts, text } = textNodes(code);
   let at = 0;
@@ -332,8 +288,6 @@ export function lineRect(code: Element, n: number): DOMRect | null {
   return box && box.height ? box : null;
 }
 
-// the lines of code outside group drawn dim, e.g. while its group is pointed at in the Code pane,
-// or none for null
 export function dimLines(code: Element | null, group: string | null): void {
   const reg = registry();
   const H = HighlightOf();
@@ -366,8 +320,6 @@ export function install(app: App): void {
     if (!code) throw new Error('select a code box, i.e. a pre with a code, first');
     return code;
   };
-  // the language of a box, null for Automatic, or plaintext for Plain Text. the class is the one
-  // of the highlight plugin, and the other classes of the code are kept
   c.define({
     id: 'code.language',
     label: 'Set Language of Code',
@@ -402,8 +354,6 @@ export function install(app: App): void {
       writeSteps(a, code, !s.numbers, s.groups);
     },
   });
-  // Small sets the code at 18 px, the one size of a box that the scope rule allows besides the
-  // 22 px of the theme, written as font-size on the pre. off takes the declaration out again
   c.define({
     id: 'code.small',
     label: 'Small Code',
@@ -421,7 +371,6 @@ export function install(app: App): void {
       a.doc.setTag(code.closest('pre') as Element, { style: { 'font-size': on ? SMALL : null } }, on ? 'Smaller' : 'Bigger');
     },
   });
-  // the groups typed into the field of the pane, e.g. 1-2|3|4-5, or none
   c.define({
     id: 'code.lines',
     label: 'Set Line Steps',
@@ -472,10 +421,10 @@ export function install(app: App): void {
       paint(app);
     });
   };
-  // Return in a box starts a line with the indent of the line of the caret. an input that adds or
-  // deletes lines of a box with line steps is one entry of the history with the shift of its
-  // groups, which ends at the input event after it. the listeners are on the window, before and
-  // after those of text/typing.ts on the document
+  const refresh = () => {
+    numberLines(app);
+    later();
+  };
   let pending: { code: Element; before: string; finish: () => void } | null = null;
   const settle = () => {
     const p = pending;
@@ -509,7 +458,7 @@ export function install(app: App): void {
     }
   }, true);
   window.addEventListener('input', settle);
-  app.onRefresh(['content', 'slide', 'structure'], later);
+  app.onRefresh(['content', 'slide', 'structure'], refresh);
   app.listen('slide', later);
   document.addEventListener('input', later, true);
   later();

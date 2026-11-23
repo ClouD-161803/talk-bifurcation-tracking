@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Deck with moves</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<style>
+  .reveal .slides .until-step:not(.visible) { display: none; }
+</style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Moved</h2>
+      <p class="fragment until-step" data-fragment-index="1">A line that takes room at its step.</p>
+      <p>A line pushed down.</p>
+    </section>
+    <section>
+      <h2>Kept in place</h2>
+      <p class="fragment" data-fragment-index="1">A line that keeps its room.</p>
+      <p>A line that stays.</p>
+      <p class="fragment grow" data-fragment-index="2" style="width: 800px">A line grown at its step.</p>
+      <p class="fragment" data-fragment-index="3">A last line.</p>
+    </section>
+    <section data-allow="move">
+      <h2>Moved on purpose</h2>
+      <p class="fragment until-step" data-fragment-index="1">A line that takes room at its step.</p>
+      <p>A line pushed down on purpose.</p>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

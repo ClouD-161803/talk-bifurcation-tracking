@@ -1,9 +1,3 @@
-// a paste of a text whose origin was written by another page, which any page can put on the
-// clipboard. a macro whose name, arguments, body, or default would write more than its definition
-// into a preamble is not listed. an origin whose deck is not a string with an address of http,
-// https, or file is pasted as a text without origin. an entry of the macros that is not a macro is
-// skipped
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -38,7 +32,6 @@ test('a crafted name, number of arguments, body, or default is not listed', asyn
       { name: 'last', body: 'x\\', args: 0 },
       { name: 'opt', body: '#1', args: 1, default: 'a]{}\\input{secret}[' },
       { name: 'open', body: '#1', args: 1, default: '{' },
-      // ^^7d is a closing brace for TeX, and ^^7b an opening one
       { name: 'hat', body: 'x^^7d\\input{secret}^^7b', args: 0 },
       { name: 'pct', body: '10\\%', args: 0 },
       { name: 'set', body: '\\{#1\\}', args: 1, default: '{[a]}' },

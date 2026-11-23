@@ -1,7 +1,3 @@
-// checks of the steps of src/steps.ts, i.e. the fragments held at full opacity with data-keep or by
-// a highlight, and the classes colored with data-highlight. the same steps are then checked in a
-// test deck in Chrome, in the slide view and in the print view
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -57,8 +53,6 @@ test('a class named in data-unhighlight is not colored once its step is shown, u
   assert.deepEqual([...resolve(steps, 3).lit], [['b', 'blue'], ['a', 'red']]);
 });
 
-// the opacity of the display, of the sentence after it, and the color of each class, in the
-// display of MathJax and in a span of the text
 const view = (root) => `(() => {
   const root = ${root}, color = (el) => el && getComputedStyle(el).color;
   const [display, sentence] = root.querySelectorAll('.fragment');
@@ -74,7 +68,6 @@ const TEXT = 'rgb(242, 242, 239)';
 const ACCENT = 'rgb(240, 128, 80)';
 const VIOLET = 'rgb(201, 79, 230)';
 
-// at the start, after each of the six steps, and after the step added to restore the dimmed ones
 const EXPECTED = [
   { display: ['0', false], sentence: '0', first: [TEXT, TEXT], second: TEXT },
   { display: ['1', false], sentence: '0', first: [TEXT, TEXT], second: TEXT },
@@ -96,7 +89,6 @@ test('a display is held and its symbols are colored step by step', { timeout: 60
   const seen = [];
   for (let i = 0; i < EXPECTED.length; i++) {
     if (i) await page.evaluate('Reveal.next()');
-    // after the transitions of opacity and color, of 400 ms
     await new Promise((done) => setTimeout(done, 600));
     seen.push(await page.evaluate(view('Reveal.getCurrentSlide()')));
   }
@@ -119,13 +111,11 @@ test('the print view shows the held display and the colors of each step', { time
 const BLUE = 'rgb(79, 157, 245)';
 const RED = 'rgb(255, 77, 77)';
 
-// the color of each term in the display of MathJax and in its span of the text, in the deck of tones
 const tones = (root) => `(() => {
   const root = ${root}, color = (el) => el && getComputedStyle(el).color;
   return ['first', 'second'].map((name) => [color(root.querySelector('mjx-container .' + name)), color(root.querySelector('span.' + name))]);
 })()`;
 
-// at the start, after each of the five steps, and after the step added to restore the dimmed ones
 const TONES = [
   [[TEXT, TEXT], [TEXT, TEXT]],
   [[TEXT, TEXT], [TEXT, TEXT]],
@@ -159,7 +149,6 @@ test('a class is colored in blue or red with data-tone, and its color is taken o
   assert.deepEqual(pages, TONES);
 });
 
-// the opacity of each fragment with content of the current slide, and whether the slide is complete
 const opacities = `(() => {
   const slide = Reveal.getCurrentSlide();
   const shown = [...slide.querySelectorAll('.fragment')].filter((f) => f.textContent.trim());
@@ -173,7 +162,6 @@ test('the last step of a slide is shown alone, and a step is added to restore th
   await page.goto(deckUrl('test-deck.html', 'still'));
   await page.waitFor(deckSettled);
 
-  // a slide whose fragments are empty spans, e.g. the steps of a plot, is not dimmed and is left as it is
   const restored = await page.evaluate(`[...document.querySelectorAll('.slides > section')]
     .filter((section) => section.querySelector('.fragment[data-restore]'))
     .map((section) => section.querySelector('h1, h2').textContent)`);
@@ -221,10 +209,6 @@ test('a fragment with data-final is shown last with every fragment restored, in 
   assert.deepEqual(page.errors, []);
 });
 
-// the style of a fragment is read once it is visible and before it is current, hence a fragment in a
-// shown fragment, which is not dimmed, would start its fade at once without a delay set while it is
-// visible. the milliseconds from the step to the first frame at which the late fragment is drawn are
-// recorded in the page
 test('a fragment of the class late is shown after its delay, also in a shown fragment', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
@@ -241,15 +225,12 @@ test('a fragment of the class late is shown after its delay, also in a shown fra
   const shown = (late) => `getComputedStyle(document.querySelectorAll('.late')[${late}]).opacity === '1'`;
   for (const [late, steps] of [[0, 1], [1, 2]]) {
     const ms = await start(late, steps);
-    // the delay of --delay is 1 s
     assert.ok(ms >= 950, `the late fragment ${late} is drawn ${ms} ms after its step`);
     await page.waitFor(shown(late), 10000);
   }
   assert.deepEqual(page.errors, []);
 });
 
-// the opacity at which each fragment of the slide is drawn, its own times those of its ancestors up to
-// the slide, rounded to two places
 const drawn = (root) => `(() => {
   const slide = ${root};
   return [...slide.querySelectorAll('.fragment')].filter((f) => f.textContent.trim()).map((f) => {
@@ -259,8 +240,6 @@ const drawn = (root) => `(() => {
   });
 })()`;
 
-// the step before the list, the item, the step nested in the item, and the last item, at the start,
-// after each of the four steps, and after the step added to restore the dimmed ones
 const NESTED = [
   ['0.00', '0.00', '0.00', '0.00'],
   ['1.00', '0.00', '0.00', '0.00'],
@@ -290,5 +269,85 @@ test('a step nested in an earlier step is drawn at full opacity while it is the 
   const pages = [];
   for (let i = 0; i < NESTED.length; i++) pages.push(await print.evaluate(drawn(`document.querySelectorAll('.pdf-page section')[${i}]`)));
   assert.deepEqual(pages, NESTED);
+  assert.deepEqual(print.errors, []);
+});
+
+const CLOSING_RULE = (section) => `(() => {
+  const table = ${section}.querySelector('table');
+  const rows = [...table.rows];
+  const ruled = rows.findIndex((tr) => [...tr.cells].every((c) => getComputedStyle(c).backgroundImage.startsWith('linear-gradient')));
+  return {
+    shown: rows.filter((tr) => getComputedStyle(tr).visibility === 'visible').length,
+    rule: getComputedStyle(table).borderBottomColor === 'rgba(0, 0, 0, 0)' ? ruled : 'table',
+    tops: rows.map((tr) => Math.round(tr.getBoundingClientRect().top - table.getBoundingClientRect().top)),
+  };
+})()`;
+
+test('the closing rule of a table whose rows are steps is drawn under the last row shown, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const expected = [{ shown: 1, rule: 0 }, { shown: 2, rule: 1 }, { shown: 3, rule: 2 }, { shown: 4, rule: 'table' }];
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/table-steps.html', 'still'));
+  await page.waitFor(deckSettled);
+  const seen = [];
+  for (let i = 0; i < expected.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await page.waitFor(`${CLOSING_RULE('Reveal.getCurrentSlide()')}.shown === ${i + 1}`);
+    seen.push(await page.evaluate(CLOSING_RULE('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen.map(({ shown, rule }) => ({ shown, rule })), expected);
+  for (const s of seen) assert.deepEqual(s.tops, seen[0].tops);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/table-steps.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < expected.length; i++) pages.push(await print.evaluate(CLOSING_RULE(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages.map(({ shown, rule }) => ({ shown, rule })), expected);
+  assert.deepEqual(print.errors, []);
+});
+
+const RULE_SPAN = (section) => `(() => {
+  const table = ${section}.querySelector('table');
+  const box = table.getBoundingClientRect();
+  const shown = [...table.rows].filter((tr) => getComputedStyle(tr).visibility === 'visible');
+  if (getComputedStyle(table).borderBottomColor !== 'rgba(0, 0, 0, 0)') return { shown: shown.length, left: 0, right: 0 };
+  const line = Math.max(...shown.map((tr) => tr.getBoundingClientRect().bottom));
+  const spans = [...table.querySelectorAll('th, td')]
+    .filter((c) => getComputedStyle(c).backgroundImage.startsWith('linear-gradient') && Math.abs(c.getBoundingClientRect().bottom - line) < 1)
+    .map((c) => c.getBoundingClientRect())
+    .sort((a, b) => a.left - b.left);
+  let reach = box.left;
+  for (const r of spans) if (r.left <= reach + 1) reach = Math.max(reach, r.right);
+  return { shown: shown.length, left: Math.round(spans[0] ? spans[0].left - box.left : Infinity), right: Math.round(box.right - reach) };
+})()`;
+
+test('the closing rule of a table whose rows are steps runs across the whole table under cells that span rows, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const expected = [{ shown: 2, left: 0, right: 0 }, { shown: 4, left: 0, right: 0 }, { shown: 5, left: 0, right: 0 }];
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/table-steps.html', 'still'));
+  await page.waitFor(deckSettled);
+  await page.evaluate('Reveal.slide(1, 0, -1)');
+  const seen = [];
+  for (let i = 0; i < expected.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await page.waitFor(`${RULE_SPAN('Reveal.getCurrentSlide()')}.shown === ${expected[i].shown}`);
+    seen.push(await page.evaluate(RULE_SPAN('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen, expected);
+  await page.evaluate(`(() => { const s = document.createElement('style'); s.textContent = 'table { --closing-rule: transparent }'; document.head.append(s); Reveal.slide(1, 0, -1); })()`);
+  await page.waitFor(`${RULE_SPAN('Reveal.getCurrentSlide()')}.shown === 2`);
+  const off = await page.evaluate(`[...Reveal.getCurrentSlide().querySelectorAll('th, td')].map((c) => getComputedStyle(c).backgroundImage).filter((b) => b.startsWith('linear-gradient') && !b.includes('rgba(0, 0, 0, 0)')).length`);
+  assert.equal(off, 0, 'a deck style of one declaration does not turn the closing rule off');
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/table-steps.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < expected.length; i++) pages.push(await print.evaluate(RULE_SPAN(`[...document.querySelectorAll('.pdf-page section')].filter((s) => s.querySelector('h2')?.textContent === 'Rows below a spanning header')[${i}]`)));
+  assert.deepEqual(pages, expected);
   assert.deepEqual(print.errors, []);
 });

@@ -1,11 +1,3 @@
-// the list of the bibliography and the Citation pane, built into theme/editor-tex.js with the
-// sheets. the list is opened at the caret by \cite{ typed in a text, by Insert > Citation…, or by
-// a button of the pane, and it is filtered by author, year, title words, or key, with each entry
-// shown as its reference on a slide. Enter puts the chosen paper into a citation, a comma adds a
-// second one, and Esc closes the list. a BibTeX entry pasted into the list is added to
-// references.bib and cited. each insert or change of a citation is one entry of the history, and
-// its reference is drawn on the slide at once
-
 import type { Entry } from '../../bibtex.ts';
 import { readBibtex } from '../../bibtex.ts';
 import { matches, namesOf, referenceOf, referenceParts } from '../../reference.ts';
@@ -14,9 +6,6 @@ import type { App } from '../app.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import type { CiteTarget } from './install.ts';
 
-// what the sheets give the list: the entries of references.bib once it is read, the read, the
-// choice of the files of a deck opened from a file, and an addition to references.bib as an entry
-// of the history
 export type Store = {
   app: App;
   loaded(): boolean;
@@ -49,12 +38,9 @@ const CSS = `
 const LIMIT = 100;
 const DOI = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?10\.\d{4,9}\/\S+\s*$/i;
 const BIBTEX = /@\s*[A-Za-z]+\s*[{(]/;
-// in a session, references.bib is a file of the talk folder, which the edit command reads
-const HOST = 'In a session, the host adds a paper to references.bib in the talk folder.';
 
 const keysOf = (cite: HTMLElement): string[] => (cite.dataset.key ?? '').split(',').map((k) => k.trim()).filter(Boolean);
 const listed = (names: string[]): string => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`);
-// a press on a button of the list or the pane leaves the focus and the range of a text where they are
 const keepFocus = (el: HTMLElement): void => el.addEventListener('pointerdown', (ev) => ev.preventDefault());
 const button = (cls: string, label: string, run: () => void): HTMLButtonElement => {
   const b = make('button', cls, label);
@@ -68,7 +54,6 @@ const shown = (entry: Entry): (string | Node)[] => {
   return [before, ...(italic ? [make('em', '', italic)] : []), after];
 };
 
-// the full entry of a paper: every author, the title, and the venue with its volume, pages, and year
 function fullEntry(entry: Entry): HTMLElement[] {
   const { names, others } = namesOf(entry.fields.author ?? entry.fields.editor ?? '');
   const people = names.map((n) => [n.given, n.family].filter(Boolean).join(' '));
@@ -83,7 +68,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
   const app = store.app;
   injectStyle('cite', CSS);
 
-  // the references of keys added to tex.js of the page, and the numbers of the deck drawn again
   function draw(keys: string[]): void {
     const page = window as unknown as { beesonTex?: Partial<Tex>; Beeson?: { refreshChrome?(): void } };
     const tex = (page.beesonTex ??= { macros: {}, environments: {}, packages: [], theorems: {}, references: {} });
@@ -97,13 +81,9 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     app.invalidate('content');
   }
 
-  // the list that is open, with its target
   type Open = { target: CiteTarget; box: HTMLElement; ul: HTMLUListElement; note: HTMLElement; choose: HTMLButtonElement; input: HTMLInputElement | null; items: Entry[]; at: number; query: string };
   let open: Open | null = null;
 
-  // the text typed after \cite{ up to the caret of a typed list, with its text node, the offset of
-  // the backslash, and the offset of the caret, or null once the caret has left it. a range of the
-  // typed words, e.g. a double click on them, keeps the list open
   function typed(): { node: Text; from: number; at: number; text: string } | null {
     const r = getSelection()?.rangeCount ? getSelection()!.getRangeAt(0) : null;
     const node = r?.endContainer;
@@ -119,7 +99,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     open = null;
     box.remove();
     if (!back || !input) return;
-    // the focus goes back to the text, with the caret or the citation as its range
     const host = target.host as HTMLElement;
     host.focus({ preventScroll: true });
     const r = target.range?.cloneRange() ?? document.createRange();
@@ -147,7 +126,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     open.ul.children[i]?.scrollIntoView({ block: 'nearest' });
   }
 
-  // the rows of the entries that match the words after the last comma
   function fill(): void {
     if (!open) return;
     const text = textOf() ?? '';
@@ -174,13 +152,12 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     }
     if (loaded) {
       open.choose.hidden = true;
-      if (!open.items.length && open.note.dataset.kind !== 'paste') open.note.textContent = query ? `No entry of references.bib matches ${query}. ${app.session ? HOST : 'Paste the BibTeX of the paper to add it.'}` : `references.bib does not have any entries yet. ${app.session ? HOST : 'Paste the BibTeX of a paper to add it.'}`;
+      if (!open.items.length && open.note.dataset.kind !== 'paste') open.note.textContent = query ? `No entry of references.bib matches ${query}. Paste the BibTeX of the paper to add it.` : 'references.bib does not have any entries yet. Paste the BibTeX of a paper to add it.';
       else if (open.note.dataset.kind !== 'paste') open.note.textContent = '';
     }
     place();
   }
 
-  // the bibliography read, or the reason that it is not read yet with the control to choose it
   function read(): void {
     if (!open || store.loaded()) return fill();
     const o = open;
@@ -194,7 +171,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       o.note.textContent = 'Reading references.bib…';
       void store.ensure().then(done, failed);
     } else {
-      o.note.textContent = 'references.bib is not read yet, since a browser reads the files next to a deck opened from a file only after you choose them.';
+      o.note.textContent = 'references.bib is not read yet, since the files next to a deck opened from a file can be read only after you choose them.';
       o.choose.textContent = store.chooseLabel();
       o.choose.hidden = false;
       o.choose.onclick = () => void store.choose().then(done, failed);
@@ -202,7 +179,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     fill();
   }
 
-  // the citation of keys put into the target, as one entry of the history
   function put(target: CiteTarget, keys: string[]): void {
     const host = target.host;
     const unique = [...new Set(keys)];
@@ -227,8 +203,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     app.history.break();
     app.history.beforeTyping(host, 'Insert Citation');
     if (t) {
-      // the citation takes the place of \cite{ and of the words typed after it, and of the space
-      // before it, since the number is put right after the cited words
       let from = t.from;
       while (from > 0 && /[\s ~]/.test(t.node.data[from - 1])) from--;
       const tail = t.node.splitText(t.at);
@@ -236,7 +210,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       tail.before(cite);
       if (!t.node.length) t.node.remove();
     } else {
-      // after the words of a selected range, as a citation follows the cited words
       const range = target.range?.cloneRange() ?? document.createRange();
       if (!target.range) {
         range.selectNodeContents(host);
@@ -244,8 +217,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       range.collapse(false);
       range.insertNode(cite);
     }
-    // the caret after the citation is put into a text node, so that the next typing is not put
-    // into the cite
     const sibling = cite.nextSibling;
     const next = sibling instanceof Text ? sibling : document.createTextNode('');
     if (next !== sibling) cite.after(next);
@@ -257,8 +228,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     draw(unique);
   }
 
-  // a browser puts the caret after an empty element at the end of the text before it, hence the
-  // first character typed after a new citation is put after it here
   let after: { cite: HTMLElement; next: Text } | null = null;
   window.addEventListener('beforeinput', (ev) => {
     const a = after;
@@ -272,16 +241,15 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     ev.preventDefault();
     ev.stopImmediatePropagation();
     app.history.beforeTyping(host);
-    a.next.insertData(0, ev.data);
-    s.collapse(a.next, ev.data.length);
+    const data = a.next.data || a.next.nextSibling ? ev.data : ev.data.replace(/ $/, '\u00a0');
+    a.next.insertData(0, data);
+    s.collapse(a.next, data.length);
     app.history.afterTyping(host);
     app.markDirty();
     app.invalidate('content');
   }, true);
   document.addEventListener('pointerdown', () => (after = null), true);
 
-  // the keys of the text of the list: each word before a comma as its key, and the chosen entry
-  // for the words after the last comma, or null when the words do not match an entry
   function keysOfText(): string[] | null {
     if (!open) return null;
     const text = textOf() ?? '';
@@ -300,7 +268,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     put(target, keys);
     close(false);
     if (target.cite?.isConnected) {
-      // the citation stays the range of its text, whose pane shows its papers
       const r = document.createRange();
       r.selectNode(target.cite);
       (target.host as HTMLElement).focus({ preventScroll: true });
@@ -311,9 +278,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     return true;
   }
 
-  // a BibTeX entry pasted into the list is added to references.bib and cited, together with the
-  // papers before the last comma. an entry whose key is in references.bib is cited as it is there.
-  // an entry pasted in a session is refused with a note
   function pasted(text: string): boolean {
     if (!open) return false;
     const o = open;
@@ -323,14 +287,10 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       place();
     };
     if (DOI.test(text)) {
-      note(`A DOI is not looked up, since the editor does not fetch anything. ${app.session ? HOST : 'Paste the BibTeX of the paper instead, e.g. from Zotero or from the page of the journal.'}`);
+      note('A DOI is not looked up, since the editor does not fetch anything. Paste the BibTeX of the paper instead, e.g. from Zotero or from the page of the journal.');
       return true;
     }
     if (!BIBTEX.test(text)) return false;
-    if (app.session) {
-      note(`A BibTeX entry is not added in a session. ${HOST}`);
-      return true;
-    }
     if (!store.loaded()) {
       note('references.bib is not read yet, hence the entry is not added.');
       return true;
@@ -353,8 +313,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     return true;
   }
 
-  // the typing after \cite{: a comma puts the key of the chosen entry in place of the words before
-  // it, and a closing brace inserts the citation as Enter does
   function typedInput(): void {
     const t = typed();
     if (!t || !open) return close(false);
@@ -362,12 +320,12 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       t.node.deleteData(t.at - 1, 1);
       getSelection()!.collapse(t.node, t.at - 1);
       fill();
-      // a key that matches no paper keeps its brace, as typed TeX
       if (!open.items.length) {
         t.node.insertData(t.at - 1, '}');
         getSelection()!.collapse(t.node, t.at);
         return close(false);
       }
+      app.history.afterTyping(open.target.host);
       accept();
       return;
     }
@@ -381,7 +339,6 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     open.note.dataset.kind = '';
     fill();
   }
-  // the words between the last two commas of text replaced by the key of the chosen entry
   function commaIn(text: string, replace: (start: number, end: number, key: string) => void): void {
     const end = text.length - 1;
     const start = text.lastIndexOf(',', end - 1) + 1;
@@ -404,6 +361,11 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     ev.stopImmediatePropagation();
   }, true);
   app.listen('slide', () => close(false));
+  const gone = () => {
+    if (open && !open.target.host.isConnected) close(false);
+  };
+  app.listen('history', gone);
+  app.onRefresh(['content', 'structure'], gone);
 
   return {
     cite(target) {
@@ -423,7 +385,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       if (!target.typed) {
         input = make('input');
         input.type = 'search';
-        input.placeholder = app.session ? 'Author, year, title, or key' : 'Author, year, title, key, or pasted BibTeX';
+        input.placeholder = 'Author, year, title, key, or pasted BibTeX';
         input.setAttribute('aria-label', 'Search');
         input.addEventListener('input', () => {
           if (input!.value.endsWith(',')) commaIn(input!.value, (start, end, key) => (input!.value = `${input!.value.slice(0, start)}${key},`));
@@ -446,11 +408,9 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       const mod = ev.metaKey || ev.ctrlKey || ev.altKey;
       if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && n && !mod) choose((open.at + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n);
       else if ((ev.key === 'Enter' || ev.key === 'Tab') && !mod && !ev.shiftKey) {
-        // a key that does not insert is kept from the text, where Enter would start a new line
         accept();
       } else if (ev.key === 'Escape') close();
       else {
-        // the other keys of the search field are typed into it, and not run as keys of the editor
         if (open.input) ev.stopImmediatePropagation();
         return false;
       }

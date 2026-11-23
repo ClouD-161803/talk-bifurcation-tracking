@@ -161,7 +161,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      and 33 at the right. each window holds its drawing whole, about 40 px clear of the edges of its
      box. each strand is begun at a golden-ratio fraction of its length and traced in 9 s, and the
      strands are started 0.05 s apart in the order of the file, hence the last starts after about 1.6 s. each family is ramped in e through viridis at the left and plasma at the right -->
-<section class="figure">
+<section class="figure" data-allow="notes">
   <div class="backdrop" data-trajectories="backdrops/broucke-families.js" data-trajectories-select="frame=pulsating,begin=golden,thin=1,branch=periapsis; frame=pulsating,begin=golden,thin=1,e<0.6" data-trajectories-color="family" data-trajectories-ramp="e" data-trajectories-colormap="viridis" data-duration="9" data-stagger="0.08" data-live data-cx="1.445" data-cy="0" data-half="2.88" style="width: 960px"></div>
   <div class="backdrop" data-trajectories="backdrops/broucke-families.js" data-trajectories-select="frame=inertial,begin=golden,thin=1" data-trajectories-color="family" data-trajectories-ramp="e" data-trajectories-colormap="plasma" data-duration="9" data-stagger="0.08" data-live data-cx="-0.124" data-cy="0" data-half="2.66" style="left: 960px; width: 960px"></div>
   <h2>Presentation outline</h2>
@@ -225,7 +225,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
 <!-- 5, about 1.5 min. the surface of the effective potential at mu = 0.03, flat at first. its stage is
      set by data-surface-state on the fragments that color the terms of H: gravitational (the gravitational
      potential, blue), centrifugal (the centrifugal potential, red), and effective (the effective potential, violet) -->
-<section>
+<section data-allow="notes">
   <h2>CR3BP equations of motion</h2>
   <p>The system is <strong>Hamiltonian</strong>:</p>
   <div class="math fragment" data-fragment-index="1">\[\begin{aligned} H &= \class{hl-u}{\Ut} + \tfrac{1}{2}\|\dot{\boldsymbol x}\|_2^2 \\ &= \class{hl-g}{-\left(\frac{1-\mu}{\rho_1} + \frac{\mu}{\rho_2}\right)} \class{hl-c}{{} - \tfrac{1}{2}\left(x^2 + y^2\right)} \\ &\phantom{{}={}} + \tfrac{1}{2}\left(\dot x^2 + \dot y^2 + \dot z^2\right),\end{aligned}\]</div>
@@ -241,7 +241,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      are shown at the stage extrema, the collinear and then the triangular set lit by
      data-surface-points, and then colored by stability with data-surface-accent and
      data-surface-violet. the QR code links to the MAE 541 term paper on claudiovestini.com -->
-<section>
+<section data-allow="notes">
   <h2>CR3BP equilibrium points</h2>
   <p>The system has \(5\) equilibrium points, which satisfy</p>
   <div class="math fragment" data-fragment-index="1" data-surface-state="extrema" style="display: flex; justify-content: center">\[\nabla_{\boldsymbol x}\Ut = \boldsymbol 0.\]</div>
@@ -274,7 +274,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      between the two marker comments is written by tools/deck/embed_scene.py. its controls and its Add
      panel group are shown, and it starts paused with the inertial panel alone, at the Earth-Moon mu and
      e = 0, with the orbit off and the clock on t. the presenter adds the other two panels by hand -->
-<section>
+<section data-allow="notes">
   <h2>ER3BP dynamics</h2>
   <ul style="width: 1043px; translate: -43px 0px">
     <li class="fragment" data-fragment-index="1">In the ER3BP, the primary and secondary are instead restricted to <span class="tone-violet">ellipses</span> of eccentricity \(e\). Their separation \(\rho\) depends on true anomaly \(\theta.\) </li>
@@ -310,7 +310,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      each, from the periapsis member of largest e down to e = 0 and then out along the apoapsis branch.
      each is begun at the upper left of the drawing, where it crosses the ray at 160 deg from the
      secondary, and is traced upward from there. the drawing is complete after 8.4 s -->
-<section class="section">
+<section class="section" data-allow="notes">
   <div class="sec">
     <h2>Families of periodic orbits</h2>
     <ul class="outline" data-auto></ul>
@@ -368,7 +368,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      and half-period targeting is built in its place. data-viewer-speed
      is the playback speed at which the script at the end of this file puts the viewer when the slide
      is shown -->
-<section data-viewer-speed="0.5">
+<section data-viewer-speed="0.5" data-allow="notes">
   <h2>Single shooting</h2>
   <div class="rederive">
     <div class="fragment fade-out" data-fragment-index="5">
@@ -412,7 +412,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      are colored with the matching terms of the defects: the state transition matrices violet with the
      flow, the -I blocks orange with the next node, and then the closing block alone orange with
      x_S := x_0. the ER3BP is shown in the viewer only, at the last step -->
-<section data-viewer-speed="0.5">
+<section data-viewer-speed="0.5" data-allow="notes">
   <h2>Multiple shooting</h2>
   <p>Partition the arc into \(S\) segments at nodes \(\boldsymbol x_i\),</p>
   <div class="fragment" data-fragment-index="1">
@@ -439,7 +439,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      coordinate of each member against the parameter and a close-up of it, over one orbit panel of the
      members, embedded as on slide 11. it is loaded paused on the L1 Lyapunov family with the medium
      step and the natural-parameter pen alone -->
-<section data-viewer-speed="0.25">
+<section data-viewer-speed="0.25" data-allow="notes">
   <h2>Continuation: natural parameter</h2>
   <p>Add a parameter \(p \in \mathbb{R}\) to the constraint, so that</p>
   <div class="fragment" data-fragment-index="1">
@@ -461,7 +461,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
 
 <!-- 14, about 1.5 min, on the continuation scene, embedded as on slide 11. it is loaded paused on
      family 11 with the medium step and both pens -->
-<section data-viewer-speed="0.25">
+<section data-viewer-speed="0.25" data-allow="notes">
   <h2>Continuation: pseudo-arclength</h2>
   <p>We continue the curve \(\boldsymbol Y = (\boldsymbol X, p)\) in arclength \(s\),</p>
   <div class="fragment" data-fragment-index="1">
@@ -497,7 +497,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      unstable direction is grown out of the orbit at step 13 and the stable one at step 14, each first as
      segments at 12 points spaced evenly along the orbit and then as a sheet. a compass with a needle
      toward the Earth is drawn at the upper left -->
-<section>
+<section data-allow="notes">
   <h2>Periodic orbit stability: PCR3BP</h2>
   <div class="rederive">
     <div class="fragment fade-out" data-fragment-index="5">
@@ -550,7 +550,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      beside the unit circle, and from 42 to 52 a point is moved across the diagram for each
      crossing, with the multipliers on the circle, before its line of the table is shown. at a
      crossing of k = 2 or k = -2 the traces of the pair pass through 1 or -1 -->
-<section class="narrow broucke">
+<section class="narrow broucke" data-allow="notes">
   <h2>Broucke's diagram</h2>
   <p>In the CR3BP the multipliers solve</p>
   <div class="fragment" data-fragment-index="1">
@@ -614,7 +614,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      their values, and the family in Broucke's diagram. the pair at 1 is blue, the in-plane pair
      orange and violet as on slide 13, and the vertical pair green, as k2. the crossing of k = 2 is
      marked in each panel -->
-<section class="narrow">
+<section class="narrow" data-allow="notes">
   <h2>Lyapunov to Halo bifurcation (CR3BP)</h2>
   <p>Around the \(\mathcal{L}_1\) point of the Earth–Moon CR3BP, the planar Lyapunov orbit family bifurcates into a spatial Halo family at \(\class{kplus}{C = 3.174378}\).</p>
   <div class="figure-box stability fragment fade-out" data-fragment-index="1"><img class="for-dark" src="figures/dylan/lyapunov-l1-orbits-dark.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"><img class="for-light" src="figures/dylan/lyapunov-l1-orbits-light.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"></div>
@@ -635,7 +635,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      where it crosses the ray at 175 deg from the secondary, and is traced upward from there. a ray at
      150 deg would cross the apoapsis members on an inner arc, which is traced the other way. the
      drawing is complete after 9 s -->
-<section class="section">
+<section class="section" data-allow="notes">
   <div class="sec">
     <h2>Broucke 1969 reproduction</h2>
     <ul class="outline" data-auto></ul>
@@ -651,7 +651,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      group is faded out, the middle ones are shown only while current, and the last one is kept. the
      section between the markers is written by build_sections.py from figures/dylan/ and figures/broucke/ -->
 <!-- families start -->
-<section class="figure">
+<section class="figure" data-allow="notes copy">
   <h2 style="width: auto">ER3BP periodic orbits and stability diagrams</h2>
   <div class="cmp fragment fade-out" data-fragment-index="1">
     <div class="grid five">
@@ -787,7 +787,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      k1 = k2 is marked by a ring with the name of its bifurcation. the text of each family is swapped
      in at its first step. Broucke's sentence on the divergence at e = 0.454 is cut from page 1009 of
      the AIAA paper by figures/crop_broucke.py -->
-<section class="narrow">
+<section class="narrow" data-allow="notes">
   <h2>Bifurcations of Broucke&rsquo;s families</h2>
   <p>Each orbit is a point \((a_1, a_2)\), and each family starts on \(k = 2\) at \(e = 0\).</p>
   <div class="swap">
@@ -829,7 +829,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      only the family and branch tabs and the transport, playing on the elapsed time from family 11 at
      periapsis. the viewer between the two marker comments is written by tools/deck/embed_scene.py
      with build_embed of pytycho -->
-<section class="figure">
+<section class="figure" data-allow="notes">
   <h2>Three families in five frames</h2>
 <!-- tycho-viewer start, the Broucke page, written by embed_scene.py -->
 <tycho-viewer theme="dark" lean autoplay class="figure-box" style="left: 120px; top: 180px; width: 1680px; height: 830px">
@@ -849,7 +849,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      between the markers is data/pydylan_calls_dylan.py without its docstring and its blank lines,
      written by build_sections.py, with one group of lines per step in data-line-numbers, colored and
      stepped through by the highlight plugin of reveal.js -->
-<section class="wide">
+<section class="wide" data-allow="notes">
   <h2>Computing family 11 using pydylancore API</h2>
 <!-- calls start -->
 <pre style="font-size: 19px; line-height: 1.1"><code class="language-python" data-line-numbers="1-8|10-12|14-17|19-24|26-30|32">import math
@@ -897,7 +897,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 </section>
 
 <!-- 24, about 1 min. the tubes are traced in 9 s -->
-<section class="closing">
+<section class="closing" data-allow="notes">
   <div class="backdrop" data-backdrop="tubes" data-duration="9" data-cx="0.42" data-cy="0" data-half="0.6"></div>
   <div class="title-text">
     <h1>Thank you</h1>
@@ -913,7 +913,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
      L1 of the Earth-Moon CR3BP, drawn by the plot of the block id="saddle", written by
      demos/stability/build.py --deck. the stable and unstable eigenlines, the hyperbolas between them,
      and the center ellipse are revealed with the sentences that name them -->
-<section class="narrow">
+<section class="narrow" data-allow="notes">
   <h2 style="width: 1680px">Appendix: linear stability of collinear equilibrium points</h2>
   <p>Near an equilibrium \(\boldsymbol x^*\), perturbations obey \(\delta\dot{\boldsymbol x} = \boldsymbol A\,\delta\boldsymbol x\), where \(\boldsymbol A = \boldsymbol D\boldsymbol f(\boldsymbol x^*)\) is the Jacobian matrix.</p>
   <p class="fragment" data-fragment-index="1">The domain is spanned by the eigenvalue-vector pairs \((\alpha_k, \boldsymbol v_k)\) of \(\boldsymbol A\),</p>
@@ -937,7 +937,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
      one clock over mu from 0 to 0.045: the unit circle with the multipliers exp(pi alpha) of the two
      planar pairs, and the same multipliers as a point of Broucke's diagram, which crosses the
      parabola k1 = k2 from E2 into N at the Routh value -->
-<section class="narrow">
+<section class="narrow" data-allow="notes">
   <h2 style="width: 1659px">Appendix: linear stability of triangular equilibrium points</h2>
   <p>The planar eigenvalues \(\alpha\) at \(\mathcal{L}_4\) solve</p>
   <div class="math">\[\alpha^4 + \alpha^2 + \tfrac{27}{4}\mu(1 - \mu) = 0.\]</div>
@@ -955,7 +955,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 
 <!-- 25, appendix. the mass-ratio bridge of DYLAN-533, family 7 from apoapsis to family 8 from apoapsis,
      drawn by data/bridge/draw_bridge.py -->
-<section class="figure">
+<section class="figure" data-allow="notes">
   <div class="plate" style="translate: 90px -6px" data-locked>
     <video class="for-dark" src="data/bridge/bridge-dark.mp4" poster="data/bridge/bridge-dark.png" muted loop data-autoplay style="width: 1499px"></video>
     <video class="for-light" src="data/bridge/bridge-light.mp4" poster="data/bridge/bridge-light.png" muted loop data-autoplay style="width: 1499px"></video>

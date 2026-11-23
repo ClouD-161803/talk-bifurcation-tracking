@@ -1,6 +1,3 @@
-// a short message beside an element, e.g. why a text element cannot be edited now, hidden after
-// SHOWN ms. one bubble is shown at a time, and a new one takes the place of the last
-
 import { make, style } from './dom.ts';
 
 const SHOWN = 4000;
@@ -13,8 +10,6 @@ const CSS = `
 let shown: { el: HTMLElement; timer: number } | null = null;
 let said: HTMLElement | null = null;
 
-// the hidden status region that a screen reader reads each bubble from, made once before the first
-// bubble, since a region added together with its text is not read by every screen reader
 export function ready(): HTMLElement {
   style('bubble', CSS);
   if (!said?.isConnected) {
@@ -29,7 +24,6 @@ export function bubble(near: Element | null, text: string | (string | Node)[]): 
   const region = ready();
   const parts = typeof text === 'string' ? [text] : text;
   const plain = parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join('');
-  // a repeated text is changed by a space, so that it is read again
   region.textContent = region.textContent === plain ? `${plain}\u00a0` : plain;
   if (shown) {
     clearTimeout(shown.timer);
@@ -38,11 +32,10 @@ export function bubble(near: Element | null, text: string | (string | Node)[]): 
   const el = make('div', 'beeson-bubble');
   el.append(...parts);
   document.body.append(el);
-  // under near, or over it when the window has no room below, and inside the window
   const r = near?.isConnected ? near.getBoundingClientRect() : null;
   const w = el.offsetWidth, h = el.offsetHeight;
   let x = r ? r.left : (innerWidth - w) / 2;
-  let y = r ? r.bottom + 8 : 72;
+  let y = ((r ?? document.querySelector('.beeson-edit-header')?.getBoundingClientRect())?.bottom ?? 64) + 8;
   if (r && y + h > innerHeight - 8) y = r.top - h - 8;
   x = Math.max(8, Math.min(x, innerWidth - w - 8));
   y = Math.max(8, Math.min(y, innerHeight - h - 8));

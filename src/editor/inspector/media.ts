@@ -1,13 +1,3 @@
-// the Image, Video, and QR panes of the Format tab. the Image pane has the file, the description
-// read by a screen reader, i.e. the alt of the image, the page and Match the Mode of a PDF figure, the classes white-figure and invert, its mask, and
-// the mode in which the image is shown, as the Image tab of Keynote. the Video pane has the file, the poster,
-// and the switches of playback, and the QR pane the text of the code with the count of its bytes.
-// the file of an image or a video is shown in a well with Replace…, and the poster of a video in a
-// well with Capture Poster, as the Replace button of the Image tab of Keynote. the Poster Frame
-// slider of the Movie tab of Keynote chooses the time of the frame: a move of it shows the frame on
-// the slide, and its release captures the frame as the poster. Play beside it plays the video on
-// the slide from that frame, as the play button of the Movie tab
-
 import type { App } from '../app.ts';
 import { capacity } from '../../qr.ts';
 import { QR_MAX, bytesOf, paneImageOf, paneVideoOf, qrOf } from '../commands/figure.ts';
@@ -30,7 +20,6 @@ const CSS = `
 .beeson-edit-inspector .ed-frame.off { opacity: 0.45; }
 `;
 
-// the path in the deck of a src or a poster, which the page shows from an object URL for a new file
 const pathOf = (value: string | null) => media.pathOf(value);
 const fileName = (src: string | null) => {
   const path = pathOf(src);
@@ -41,8 +30,6 @@ const unsaved = (value: string | null) => {
   return !!f && !f.saved;
 };
 
-// a thumbnail of the picture at url, the name of its file, and a button
-// label gives the text and the title of the button at each sync, in place of text
 type Label = () => { text: string; title: string };
 function well(app: App, run: Run, url: () => string | null, name: () => string, command: string, arg: unknown, text: string, labelOf?: Label): Control {
   const el = make('div', 'ed-well');
@@ -51,7 +38,6 @@ function well(app: App, run: Run, url: () => string | null, name: () => string, 
   const b = button(app, run, { command, arg, text });
   el.append(thumb, label, b.el);
   const sync = () => {
-    // a new file is shown from its object URL, also while the page still has its path
     const raw = url();
     const u = media.get(raw)?.url ?? raw;
     thumb.style.backgroundImage = u ? `url("${u.replace(/"/g, '%22')}")` : '';
@@ -69,8 +55,6 @@ function well(app: App, run: Run, url: () => string | null, name: () => string, 
   return { el, sync };
 }
 
-// on a picture that its mode hides, Replace… chooses the twin for the other mode, as the command
-// names it, without the kind that the pane already gives
 const replaceLabel = (app: App): Label => () => {
   const title = app.commands.state('media.replace').label;
   return { text: title.startsWith('Choose') ? title.replace(/ (Image|Video) for /, ' for ') : 'Replace…', title: title.startsWith('Choose') ? title : '' };
@@ -89,7 +73,6 @@ const modes = (app: App, run: Run, what: string): Control =>
     note(() => `A pair of ${what}s, one for each mode of the deck, is marked Dark and Light. On a pair, Dark or Light swaps the two, and Both keeps this ${what} alone.`),
   ]);
 
-// the page of a PDF figure and Match the Mode, which render the PDF again
 const pdfSection = (app: App, run: Run, img: HTMLImageElement): Control =>
   section('PDF', [
     row([numberField(app, { label: 'Page', unit: '', min: 1, step: 1, refuse: true, value: () => pageOfFigure(img), enabled: () => img.isConnected, commit: (page) => run('media.pdfPage', { el: img, page }) })]),
@@ -134,14 +117,11 @@ export function imagePane(app: App, run: Run): Control[] {
   ];
 }
 
-// a time in s as minutes, seconds, and tenths, e.g. 0:03.4
 export const clock = (s: number): string => {
   const t = Math.max(0, Math.round(s * 10) / 10);
   return `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 };
 
-// the video played by Play of the Video pane. the play is a preview, which changes neither the file
-// nor the history, and it is paused when the selection or the slide changes
 let previewed: HTMLVideoElement | null = null;
 const stopPreview = () => {
   previewed?.pause();
@@ -150,8 +130,6 @@ const stopPreview = () => {
 const stopping = new WeakSet<App>();
 const LOADED = ['loadedmetadata', 'durationchange'] as const;
 
-// the Poster Frame slider over the length of the video, with the time of the frame. a move seeks
-// the video on the slide to the frame, and a release captures it as the poster
 function frameSlider(app: App, run: Run, video: HTMLVideoElement | null): Control {
   const el = make('label', 'ed-frame');
   const input = make('input');
@@ -163,7 +141,6 @@ function frameSlider(app: App, run: Run, video: HTMLVideoElement | null): Contro
   const time = make('output');
   const play = make('button', 'ed-play');
   el.append(make('span', '', 'Frame'), play, input, time);
-  // the icon is drawn again only when it changes, since a click is lost on an icon replaced under it
   let was: boolean | null = null;
   const shown = () => {
     const on = !!video && previewed === video && !video.paused;
@@ -186,7 +163,6 @@ function frameSlider(app: App, run: Run, video: HTMLVideoElement | null): Contro
     video.currentTime = Number(input.value);
     void video.play().catch(() => {});
   });
-  // the slider follows the video while it plays
   const follow = () => {
     if (!input.isConnected) return void video?.removeEventListener('timeupdate', follow);
     if (video && previewed === video) {
@@ -220,8 +196,6 @@ function frameSlider(app: App, run: Run, video: HTMLVideoElement | null): Contro
   input.addEventListener('change', () => {
     if (video) void run('media.poster', { el: video });
   });
-  // the length of a video is known once its metadata is loaded, also again after an undo or a redo
-  // of Replace… sets another src while the pane is kept
   const loaded = () => {
     if (input.isConnected) return sync();
     for (const type of LOADED) video?.removeEventListener(type, loaded);
@@ -242,10 +216,10 @@ export function videoPane(app: App, run: Run): Control[] {
     ]),
     section('Poster', [
       well(app, run, poster, () => fileName(poster()), 'media.poster', { el: video }, 'Capture Poster', () => (video && unreadable(video)
-        ? { text: 'Capture Poster…', title: 'Capture the frame of the slider as the poster. In a deck opened from a file, it asks once for the file of the video, whose frames the browser keeps from the page' }
+        ? { text: 'Capture Poster…', title: 'Capture the frame of the slider as the poster. In a deck opened from a file, you are asked once for the file of the video, since its frames cannot be read from the page' }
         : { text: 'Capture Poster', title: 'Capture the frame of the slider as the poster' })),
       frameSlider(app, run, video),
-      note(() => (poster() ? 'The frame shown before the video plays and printed in the PDF. Drag the slider to choose another one.' : 'The video does not have a poster, which the PDF prints.'), () => !poster()),
+      note(() => (poster() ? 'The frame shown before the video plays and printed in the PDF. Drag the slider to choose another one.' : 'The video does not have a poster for the PDF.'), () => !poster()),
       note(() => (video && unreadable(video) ? `In a deck opened from a file, the browser keeps the frames of ${fileName(video.getAttribute('src'))} from the page, hence Capture Poster asks once for the file.` : '')),
       keptNote(poster),
     ]),
@@ -259,11 +233,8 @@ export function videoPane(app: App, run: Run): Control[] {
   ];
 }
 
-// the longest text of a QR code drawn with the logo, at level H in version 40, after which src/qr.ts
-// draws it without the logo at level M
 const LOGO_MAX = capacity(40, 'H');
 
-// the codes of the deck are drawn with the logo, unless --qr-logo is none, as with no-logo on the body
 const withLogo = (qr: Element) => {
   const image = getComputedStyle(qr).getPropertyValue('--qr-logo').trim();
   return image !== '' && image !== 'none';

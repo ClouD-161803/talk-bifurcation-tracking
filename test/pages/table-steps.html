@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Table steps deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h2>Rows shown one at a time</h2>
+  <table>
+    <thead>
+      <tr><th>Point</th><th>Planar</th><th>Spatial</th></tr>
+    </thead>
+    <tbody>
+      <tr class="fragment" data-fragment-index="1"><td>L1</td><td>saddle</td><td>unstable</td></tr>
+      <tr class="fragment" data-fragment-index="2"><td>L4</td><td>center</td><td>open problem</td></tr>
+      <tr class="fragment" data-fragment-index="3"><td>L5</td><td>complex saddle</td><td>unstable</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Rows below a spanning header</h2>
+  <table>
+    <thead>
+      <tr><th rowspan="2">Point</th><th colspan="2">Stability</th></tr>
+      <tr><th>Planar</th><th>Spatial</th></tr>
+    </thead>
+    <tbody>
+      <tr class="fragment" data-fragment-index="1"><td rowspan="2">L1, L2, L3</td><td>saddle</td><td>unstable</td></tr>
+      <tr class="fragment" data-fragment-index="1"><td>center</td><td>stable</td></tr>
+      <tr class="fragment" data-fragment-index="2"><td>L4</td><td>center</td><td>open problem</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

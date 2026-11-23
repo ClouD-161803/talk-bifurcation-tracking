@@ -1,64 +1,103 @@
-// the caret of a text element kept through an apply that sets the content of the element or moves
-// it. the caret is an offset into the text of the element, in which each formula counts as its TeX
-// between its delimiters, as in the file, hence the offset is the same before and after MathJax
-
 import type { MathLookup } from '../math.ts';
+import { charEdits, shared, type Edit } from '../merge.ts';
 
-// the text of host up to each point, and the offset of the point (node, at) in it, or -1
-function walk(host: Element, math: MathLookup, node: Node | null, at: number): { text: string; offset: number } {
+function walk(host: Element, math: MathLookup, points: readonly [Node, number][], br = false): { text: string; offsets: number[] } {
   let text = '';
-  let offset = -1;
+  const offsets = points.map(() => -1);
   const visit = (n: Node): void => {
     if (n.nodeType === Node.TEXT_NODE) {
-      if (n === node) offset = text.length + at;
+      points.forEach(([node, at], i) => {
+        if (n === node) offsets[i] = text.length + at;
+      });
       text += (n as Text).data;
       return;
     }
     if (!(n instanceof Element)) return;
+    if (br && n.localName === 'br') {
+      text += '\n';
+      return;
+    }
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       text += info.open + info.tex + info.close;
-      if (node && n.contains(node)) offset = text.length;
+      points.forEach(([node], i) => {
+        if (n.contains(node)) offsets[i] = text.length;
+      });
       return;
     }
-    n.childNodes.forEach((c, i) => {
-      if (n === node && i === at) offset = text.length;
+    n.childNodes.forEach((c, j) => {
+      points.forEach(([node, at], i) => {
+        if (n === node && j === at) offsets[i] = text.length;
+      });
       visit(c);
     });
-    if (n === node && at >= n.childNodes.length) offset = text.length;
+    points.forEach(([node, at], i) => {
+      if (n === node && at >= n.childNodes.length) offsets[i] = text.length;
+    });
   };
   visit(host);
-  return { text, offset };
+  return { text, offsets };
 }
 
-// the caret of the selection in host, with the text of host, or null when it is not in host
-export function caretOf(host: Element, math: MathLookup): { offset: number; text: string } | null {
+export function caretOf(host: Element, math: MathLookup, br = false): { offset: number; anchor: number; text: string } | null {
   const sel = getSelection();
   if (!sel?.rangeCount || !sel.focusNode || !host.contains(sel.focusNode)) return null;
-  const { text, offset } = walk(host, math, sel.focusNode, sel.focusOffset);
-  return offset < 0 ? null : { offset, text };
+  const points: [Node, number][] = [[sel.focusNode, sel.focusOffset]];
+  if (sel.anchorNode && host.contains(sel.anchorNode)) points.push([sel.anchorNode, sel.anchorOffset]);
+  const { text, offsets: [offset, anchor = offset] } = walk(host, math, points, br);
+  return offset < 0 ? null : { offset, anchor: anchor < 0 ? offset : anchor, text };
 }
 
-export const textIn = (host: Element, math: MathLookup): string => walk(host, math, null, 0).text;
+export const textIn = (host: Element, math: MathLookup, br = false): string => walk(host, math, [], br).text;
 
-// the offset of the caret moved with a change of before into after: kept before the change, moved
-// by its length after it, and put at its end inside it
+const WORD = /^[\p{L}\p{M}\p{N}]+$/u;
+
+export function runsOf(before: string, after: string): Edit[] {
+  let runs = charEdits(before, after, 500);
+  if (!runs) {
+    const [head, tail] = shared(before, after);
+    runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
+  }
+  runs = runs.map((r, i) => {
+    const c = before.charAt(r.start - 1);
+    if (r.start !== r.end || !/[ \u00a0]/.test(c) || !r.text.endsWith(c) || /^\s/.test(r.text) || WORD.test(before.charAt(r.start)) || runs![i - 1]?.end === r.start) return r;
+    return { start: r.start - 1, end: r.start - 1, text: c + r.text.slice(0, -1) };
+  });
+  const letter = (i: number) => WORD.test(before.charAt(i));
+  const out: Edit[] = [];
+  runs.forEach((r, i) => {
+    const p = out.at(-1);
+    const gap = p ? before.slice(p.end, r.start) : '';
+    let end = r.end;
+    while (end < (runs[i + 1]?.start ?? before.length) && letter(end)) end++;
+    if (r.end === r.start && p && p.end > p.start && letter(r.start - 1) && WORD.test(before.slice(p.start, p.end) + p.text + gap + r.text)) return void (out[out.length - 1] = { start: p.start, end, text: p.text + gap + r.text + before.slice(r.end, end) });
+    if (r.end === r.start || !WORD.test(before.slice(r.start, r.end)) || (r.text && !WORD.test(r.text))) return void out.push(r);
+    let { start } = r;
+    while (start > (p?.end ?? 0) && letter(start - 1)) start--;
+    const grown = { start, end, text: before.slice(start, r.start) + r.text + before.slice(r.end, end) };
+    if (p && p.end === start && p.end > p.start && letter(start - 1)) out[out.length - 1] = { start: p.start, end, text: p.text + grown.text };
+    else out.push(grown);
+  });
+  return out;
+}
+
+let last: { before: string; after: string; runs: Edit[] } | null = null;
+
 export function mapOffset(offset: number, before: string, after: string): number {
-  let head = 0;
-  while (head < before.length && head < after.length && before[head] === after[head]) head++;
-  let tail = 0;
-  while (tail < before.length - head && tail < after.length - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
-  if (offset <= head) return offset;
-  if (offset >= before.length - tail) return offset + after.length - before.length;
-  return after.length - tail;
+  if (last?.before !== before || last.after !== after) last = { before, after, runs: runsOf(before, after) };
+  let shift = 0;
+  for (const run of last.runs) {
+    if (offset <= run.start) break;
+    if (offset < run.end) return run.start + shift + run.text.length;
+    shift += run.text.length - (run.end - run.start);
+  }
+  return offset + shift;
 }
 
-// the caret put at offset into the text of host, after a formula that the offset falls inside
-export function putCaret(host: Element, offset: number, math: MathLookup): void {
-  const sel = getSelection();
-  if (!sel) return;
-  let left = offset;
-  let spot = null as [Node, number] | null;
+export function pointIn(host: Element, offset: number, math: MathLookup, br = false): [Node, number] {
+  let left = Math.max(0, offset);
+  let spot: [Node, number] | null = null;
+  const after = (n: Node, k: number): [Node, number] => [n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode) + k];
   const visit = (n: Node): boolean => {
     if (n.nodeType === Node.TEXT_NODE) {
       const length = (n as Text).length;
@@ -70,12 +109,19 @@ export function putCaret(host: Element, offset: number, math: MathLookup): void 
       return false;
     }
     if (!(n instanceof Element)) return false;
+    if (br && n.localName === 'br') {
+      if (left === 0) {
+        spot = after(n, 0);
+        return true;
+      }
+      left--;
+      return false;
+    }
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       const length = info.open.length + info.tex.length + info.close.length;
       if (left < length) {
-        const parent = n.parentNode!;
-        spot = [parent, [...parent.childNodes].indexOf(n as ChildNode) + 1];
+        spot = after(n, 1);
         return true;
       }
       left -= length;
@@ -85,13 +131,18 @@ export function putCaret(host: Element, offset: number, math: MathLookup): void 
     return false;
   };
   visit(host);
-  if (document.activeElement !== host && !host.contains(document.activeElement)) (host as HTMLElement).focus?.({ preventScroll: true });
-  const [node, at] = spot ?? [host, host.childNodes.length];
-  sel.collapse(node, at);
+  return spot ?? [host, host.childNodes.length];
 }
 
-// the presses and keys of the person, which tell a caret moved by the person from a caret moved by
-// MathJax, whose nodes the selection follows
+export function putCaret(host: Element, focus: number, math: MathLookup, anchor = focus): void {
+  const sel = getSelection();
+  if (!sel) return;
+  if (document.activeElement !== host && !host.contains(document.activeElement)) (host as HTMLElement).focus?.({ preventScroll: true });
+  const [node, at] = pointIn(host, focus, math);
+  if (anchor === focus) sel.collapse(node, at);
+  else sel.setBaseAndExtent(...pointIn(host, anchor, math), node, at);
+}
+
 let acts = 0;
 for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => void (acts += 1), true);
 
@@ -99,5 +150,4 @@ export type Mark = { active: Element | null; acts: number };
 
 export const markOf = (): Mark => ({ active: document.activeElement, acts });
 
-// whether the person moved the caret since mark, i.e. focused another element, pressed, or typed
 export const moved = (mark: Mark): boolean => document.activeElement !== mark.active || acts !== mark.acts;

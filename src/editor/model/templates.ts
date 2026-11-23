@@ -1,25 +1,15 @@
-// the text of a new slide of each of the eight layouts and of Title Only, and of a new element of
-// each kind, written in the line endings and the indentation of the file of the deck. a
-// placeholder is empty in the text, and the editor shows its prompt from its own stylesheet. the
-// skeletons follow the vocabulary of AGENTS.md. pure, without the DOM
-
 import { eolOf } from './units.ts';
 
 export type Layout = 'title' | 'section' | 'content' | 'narrow' | 'wide' | 'figure' | 'split' | 'closing';
 export const LAYOUTS: Layout[] = ['title', 'section', 'content', 'narrow', 'wide', 'figure', 'split', 'closing'];
-// a new slide may also be Title Only, a content slide with its h2 and nothing else, which Change
-// Layout reads as Content
 export type NewLayout = Layout | 'titleOnly';
 export const NEW_LAYOUTS: NewLayout[] = [...LAYOUTS, 'titleOnly'];
 
 export type ElementKind = 'text' | 'image' | 'video' | 'table' | 'formula' | 'code' | 'qr' | 'backdrop' | 'shape';
 export const ELEMENT_KINDS: ElementKind[] = ['text', 'image', 'video', 'table', 'formula', 'code', 'qr', 'backdrop', 'shape'];
 
-// the line ending of a file and one step of its indentation
 export type TextStyle = { eol: string; step: string };
 
-// the style of the text of a deck. the step is the smallest indentation of a line that starts
-// with a tag, two spaces when no line is indented
 export function textStyle(text: string): TextStyle {
   let step: string | null = null;
   for (const m of text.matchAll(/^([ \t]+)</gm)) if (step === null || m[1].length < step.length) step = m[1];
@@ -28,13 +18,10 @@ export function textStyle(text: string): TextStyle {
 
 const attr = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
-// the lines of a skeleton, each given with its depth below the first line, joined at base
 function lines(rows: [number, string][], style: TextStyle, base: string): string {
   return rows.map(([depth, row], i) => (i ? base + style.step.repeat(depth) : '') + row).join(style.eol);
 }
 
-// a section of the layout, without the white space before it. base is the indentation of the
-// slides of the file, empty in the demo deck
 export function layoutText(layout: NewLayout, style: TextStyle, base = ''): string {
   const titleText: [number, string][] = [[1, '<div class="title-text">'], [2, '<h1></h1>'], [2, '<p class="sub"></p>'], [2, '<p class="who"></p>'], [1, '</div>']];
   switch (layout) {
@@ -44,7 +31,7 @@ export function layoutText(layout: NewLayout, style: TextStyle, base = ''): stri
       return lines([[0, '<section class="closing">'], [1, '<div class="backdrop" data-backdrop="tubes" data-cx="0.42" data-cy="0" data-half="0.6"></div>'], ...titleText, [0, '</section>']], style, base);
     case 'section':
       return lines(
-        [[0, '<section class="section">'], [1, '<div class="sec">'], [2, '<h2></h2>'], [2, '<ul class="outline" data-auto></ul>'], [1, '</div>'], [1, '<div class="backdrop" data-backdrop="wideRibbon" data-cx="0.2" data-cy="0" data-half="1.3"></div>'], [0, '</section>']],
+        [[0, '<section class="section">'], [1, '<div class="sec">'], [2, '<h2></h2>'], [2, '<ol class="outline" data-auto></ol>'], [1, '</div>'], [1, '<div class="backdrop" data-backdrop="wideRibbon" data-cx="0.2" data-cy="0" data-half="1.3"></div>'], [0, '</section>']],
         style,
         base,
       );
@@ -54,8 +41,6 @@ export function layoutText(layout: NewLayout, style: TextStyle, base = ''): stri
       return lines([[0, '<section class="split">'], [1, '<div class="text-column">'], [2, '<h2></h2>'], [2, '<p></p>'], [1, '</div>'], [1, '<div class="figure-box"></div>'], [0, '</section>']], style, base);
     case 'titleOnly':
       return lines([[0, '<section>'], [1, '<h2></h2>'], [0, '</section>']], style, base);
-    // a content slide holds a dash list under its paragraph, as a slide of Title & Bullets in
-    // Keynote holds the bullet placeholder of its thumbnail
     default:
       return lines(
         [
@@ -73,12 +58,8 @@ export function layoutText(layout: NewLayout, style: TextStyle, base = ''): stri
   }
 }
 
-// pictures are the tags of the images of a new figure box in place of the one of src, e.g. the
-// renders of a PDF figure for each mode
 export type ElementOptions = { src?: string; alt?: string; pictures?: string[]; poster?: string; tex?: string; language?: string; qr?: string; columns?: number; rows?: number; backdrop?: string };
 
-// the units of a new element of the kind, each without the white space before it, in the order in
-// which they are inserted. base is the indentation of the children of the container
 export function elementText(kind: ElementKind, style: TextStyle, base: string, options: ElementOptions = {}): string[] {
   const o = options;
   switch (kind) {
@@ -111,7 +92,6 @@ export function elementText(kind: ElementKind, style: TextStyle, base: string, o
   }
 }
 
-// the words of the placeholders of the samples, by the tag and the class of the empty element
 const SAMPLE_WORDS: Partial<Record<NewLayout, [string, string][]>> & { all: [string, string][] } = {
   title: [['<h1></h1>', 'Title of the talk'], ['<p class="sub"></p>', 'Subtitle of the talk'], ['<p class="who"></p>', 'Name of the speaker']],
   closing: [['<h1></h1>', 'Thank you'], ['<p class="sub"></p>', 'Questions'], ['<p class="who"></p>', '']],
@@ -121,15 +101,8 @@ const SAMPLE_WORDS: Partial<Record<NewLayout, [string, string][]>> & { all: [str
   all: [['<h2></h2>', 'Title of the slide'], ['<p></p>', 'A paragraph of the text column, which is set in the width of the layout and runs over a few lines.']],
 };
 
-// the gray box of a sample where a figure or a backdrop goes, inside the padding of a plate
 const BOX = 'style="background: color-mix(in srgb, var(--muted) 34%, var(--bg)); background-clip: content-box"';
 
-// the text of a sample slide of the layout for the tiles of the layout chooser: the skeleton of
-// layoutText with placeholder words, two items in its list, and a gray box in place of each figure
-// and backdrop. a content slide and a narrow slide are written without a figure, hence their
-// samples get a gray figure box and a gray backdrop at the place of the layout, and a wide slide is
-// without one, since its text column runs over this place. a sample does not depend on the deck,
-// and it is drawn but never written into a file
 export function sampleText(layout: NewLayout): string {
   const style = { eol: '\n', step: '  ' };
   let text = layoutText(layout, style);
@@ -137,7 +110,7 @@ export function sampleText(layout: NewLayout): string {
     text = text.replace(empty, words ? empty.replace('></', `>${words}</`) : '');
   }
   text = text
-    .replace('<ul class="outline" data-auto></ul>', '<ul class="outline"><li class="now">Chapter one</li><li>Chapter two</li></ul>')
+    .replace('<ol class="outline" data-auto></ol>', '<ol class="outline"><li class="now">Chapter one</li><li>Chapter two</li></ol>')
     .replace(/<div class="(backdrop|plate|figure-box)"[^>]*>/g, (_, cls: string) => `<div class="${cls}" ${BOX}>`);
   text = text.replace(/<ul>\s*<li><\/li>\s*<\/ul>/, '<ul><li>A first point</li><li>A second point</li></ul>');
   const place = layout === 'content' ? 'figure-box' : layout === 'narrow' ? 'backdrop' : null;

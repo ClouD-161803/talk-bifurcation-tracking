@@ -1,42 +1,43 @@
-// the edit command: it serves the talk folder to the browsers of a session at
-// http://127.0.0.1:<port>/<key>/, keeps the authority of the session, and writes every edit into
-// index.html. a request through a relay is handled by the same code as a direct one, with host
-// false and without the check of the Host header, since the relay already matched the key
-
 import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
+import { readPreamble } from '../preamble.ts';
 import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Comments, isCommentId, isFailure, type CommentsOptions, type Failure } from './comments.ts';
-import { Disk, readText, renameRetriedSync } from './disk.ts';
+import { Disk, readText, renameRetried, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
-import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
+import { error, fileInside, json, paramNames, segmentsOf, servedSegment, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
-import { TexWriter } from './tex.ts';
+import { deriveTex, TexWriter } from './tex.ts';
+import { FigureWatcher, type Box } from './figures.ts';
+import { Single, singleOf, SingleTooLarge } from './single.ts';
+import { Changed, MOST_FILES, TooLarge, zipOf, type Zip } from './zip.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
 export const MEDIA_MAX = 64 * 1024 * 1024;
-// the largest upload of a page that does not run on the machine of the host
 export const GUEST_MEDIA_MAX = 16 * 1024 * 1024;
-// the types of IMAGE_EXT and VIDEO_EXT in src/editor/media/store.ts, and json
-const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'json']);
-// the time in ms within which the edit command of a lock must answer, shorter in the tests
+const UPLOADS_MAX = Number(process.env.SLIDES_UPLOADS_MAX) || 1000;
+const UPLOADS_MAX_BYTES = Number(process.env.SLIDES_UPLOADS_MAX_BYTES) || 2048 * 1024 * 1024;
+const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'pdf', 'json']);
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
-// the time in ms for which End session waits for the polls of the guests, shorter in the tests
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
-// the time in ms for which a stopped edit command still answers a poll with ended, longer in the tests
-const CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
+const CLOSE_WAIT = 200;
+const TOLD_WAIT = 3000;
+const ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 0xffffffff;
+const ZIP_HELD = Number(process.env.SLIDES_ZIP_HELD_BYTES) || 512 * 1024 * 1024;
+const ZIP_PIECE = 2 * 1024 * 1024;
+const ZIP_KEPT = Number(process.env.SLIDES_ZIP_KEPT_MS) || 120_000;
+const MB = 1024 * 1024;
 
 export type StartOptions = {
   folder?: string;
-  // 0 for a free port. without a port, the port of the last start and DEFAULT_PORT are tried first
   port?: number;
   relay?: string;
   log?: (message: string) => void;
@@ -50,17 +51,11 @@ export type Running = {
   key: string;
   root: string;
   authority: Authority;
-  // the link of the session through the relay, or null
   link: () => string | null;
-  // resolves with the number of operations that are not written into index.html, plus one when
-  // comments.json is not written
   close: () => Promise<number>;
-  // resolves with the same number once close() has written both files, before the share and the
-  // server are closed
   unwritten: Promise<number>;
 };
 
-// the address of an edit command that already runs on the talk folder
 export type Found = { url: string; port: number; key: string };
 
 export class AlreadyRunning extends Error {
@@ -73,9 +68,6 @@ export class AlreadyRunning extends Error {
 
 type Lock = { pid: number; port: number; root: string };
 
-// the edit command of .session/lock, when it runs on root, its process is alive, and its port
-// answers for key or does not answer in time. a lock left by a command that died, or copied with
-// the talk folder, is not
 async function holderOf(file: string, root: string, key: string, log: (message: string) => void): Promise<Found | null> {
   let lock: Lock;
   try {
@@ -95,15 +87,12 @@ async function holderOf(file: string, root: string, key: string, log: (message: 
     await answer.body?.cancel();
     return answer.status === 302 ? { url, port: lock.port, key } : null;
   } catch (e) {
-    // a command that is stopped, e.g. by Ctrl+Z, or busy still writes index.html once it goes on
     if ((e as Error).name !== 'TimeoutError') return null;
     log(`the edit command of process ${lock.pid} holds this folder and does not answer. Bring it back to the front, or end it`);
     return { url, port: lock.port, key };
   }
 }
 
-// the text of a session that could not be written into index.html, kept in .session/ of the talk
-// folder or else in the temporary folder of the system, and the path of the file or null
 function keepUnwritten(root: string, text: string): string | null {
   const name = `unwritten-${new Date().toISOString().replace(/[:.]/g, '-')}.html`;
   for (const dir of [join(root, '.session'), tmpdir()]) {
@@ -116,11 +105,9 @@ function keepUnwritten(root: string, text: string): string | null {
   return null;
 }
 
-// the key of the session, kept in .session/key so that a link survives a restart
 function keyOf(root: string): string {
   const dir = join(root, '.session');
   mkdirSync(dir, { recursive: true });
-  // the folder ignores itself in every talk, also in one whose .gitignore is older than it
   try {
     writeFileSync(join(dir, '.gitignore'), '*\n', { flag: 'wx' });
   } catch {}
@@ -134,8 +121,6 @@ function keyOf(root: string): string {
   return key;
 }
 
-// the port of the last start, kept in .session/port so that the address of a page, and with it the
-// storage of the browser for this address, survives a restart
 function savedPort(root: string): number | null {
   try {
     const port = Number(readFileSync(join(root, '.session', 'port'), 'utf8').trim());
@@ -145,8 +130,6 @@ function savedPort(root: string): number | null {
   }
 }
 
-// a name of an upload made safe for every system, or null when its type is not an image, a video,
-// or json
 export function cleanName(raw: string): string | null {
   let name: string;
   try {
@@ -159,16 +142,33 @@ export function cleanName(raw: string): string | null {
   if (dot < 0) return null;
   const ext = name.slice(dot + 1).toLowerCase();
   if (!MEDIA_TYPES.has(ext)) return null;
-  let stem = name.slice(0, dot).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
-  if (!stem) stem = 'media';
-  if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
-  return `${stem}.${ext}`;
+  return `${cleanStem(name.slice(0, dot), 'media')}.${ext}`;
+}
+
+function cleanStem(raw: string, fallback: string): string {
+  let stem = raw.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
+  if (!stem) stem = fallback;
+  if (WINDOWS_DEVICES.test(stem)) stem = `${stem}-file`;
+  return stem;
+}
+
+const WINDOWS_DEVICES = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+const FIGURE_NAME = /^[\w-]+$/;
+const SOURCES = ['preamble.tex', 'references.bib'];
+
+function boxOf(value: unknown): Box | null {
+  if (!value || typeof value !== 'object') return null;
+  const box: Box = { width: null, height: null };
+  for (const key of ['width', 'height'] as const) {
+    const size = (value as Record<string, unknown>)[key] ?? null;
+    if (size !== null && !(typeof size === 'number' && size > 0 && size <= 100_000)) return null;
+    box[key] = size;
+  }
+  return box;
 }
 
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
-// the name of a file in dir of size bytes with the SHA-256 hash, under name or a numbered name of
-// it as the media route gives one, e.g. plot.png or plot-2.png, or null
 async function sameFile(dir: string, name: string, size: number, hash: string): Promise<string | null> {
   const dot = name.lastIndexOf('.');
   const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -181,16 +181,13 @@ async function sameFile(dir: string, name: string, size: number, hash: string): 
     const file = join(dir, f.name);
     try {
       if ((await stat(file)).size === size && sha256(await readFile(file)) === hash) return f.name;
-    } catch {
-      // a file removed meanwhile is not the same file
-    }
+    } catch {}
   }
   return null;
 }
 
 const isJson = (request: Request) => (request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
 
-// the JSON object of a POST, or the answer that refuses it
 function bodyOf(request: Request): Record<string, unknown> | Response {
   if (!isJson(request)) return error(415, 'the body must be application/json');
   try {
@@ -204,33 +201,43 @@ const isResponse = (x: unknown): x is Response => !!x && typeof (x as Response).
 
 export async function start(options: StartOptions = {}): Promise<Running> {
   const log = options.log ?? ((m: string) => process.stderr.write(`${m}\n`));
-  // the native realpath resolves the short names of Windows, as realpath of fs/promises does
   const root = realpathSync.native(resolve(options.folder ?? '.'));
   const index = join(root, 'index.html');
   const { text, bom } = readText(index);
   const key = keyOf(root);
+  const fit = (name: string) => {
+    let out = '';
+    for (const c of name) {
+      if (out.length + c.length > 64) break;
+      out += c;
+    }
+    return out.replace(/[\s.]+$/, '');
+  };
+  const DEVICE = /^(con|prn|aux|nul|clock\$|conin\$|conout\$|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])(?= *\.|$)/i;
+  const zipName = fit(fit(basename(root).normalize('NFC').replace(/[<>:"/\\|?*\p{Cc}\p{Cf}]/gu, '-').replace(/^[\s.~]+/, '')).replace(DEVICE, '$1-')) || 'talk';
   const lockFile = join(root, '.session', 'lock');
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
   const appliedFile = join(root, '.session', 'applied.json');
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
-  // the pages draw the deck again at each change of tex.js on disk
   const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
   const onWritten = (n: number, written: string) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written);
+    figures.written(written);
   };
-  // the pages are told of a write that fails, since an operation is acknowledged before it is written
-  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => {
+      tex.poll();
+      figures.poll();
+    }, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
-  // made once this command holds the lock, so that a second start does not write the history
+  const figures = new FigureWatcher(root, text, { log, onChange: () => people.news() });
   let history!: History;
   let comments!: Comments;
   let port = 0;
   let relay: RelayLink | null = null;
   let closed = false;
-  // the changes of the relay link run one at a time, so that a link is never left running unseen
   let relayQueue: Promise<unknown> = Promise.resolve();
   const serial = <T>(task: () => Promise<T>): Promise<T> => {
     const run = relayQueue.then(task, task);
@@ -243,8 +250,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (request.method === 'GET') return json(200, { link: relay?.active ? relay.link : null });
     if (request.method === 'DELETE') {
       return serial(async () => {
-        // the guests are told before the relay that carries the answers is left, also a guest whose
-        // next poll is on its way, which the pulls that still run bring in
         const told = people.endGuests();
         if (relay) {
           let timer: ReturnType<typeof setTimeout> | undefined;
@@ -266,8 +271,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     const saved = loadConfig();
     const address = relayAddress(body.relay ?? saved.relay);
-    // the saved secret goes only to the saved address, since a script in the deck may send this
-    // request with an address of its own
     const secret = body.secret ?? (address !== null && address === relayAddress(saved.relay) ? saved.secret : undefined);
     if (!address) return json(400, { link: null, error: ADDRESS_RULE });
     if (secret === undefined) return json(400, { link: null, error: 'a new address of the relay needs the secret' });
@@ -283,14 +286,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     });
   }
 
-  // called through serial alone
   async function connect(address: string, secret: string): Promise<void> {
-    // the guests of another relay cannot reach this session any more
     if (relay && relay.relay !== address) void people.endGuests();
     await relay?.stop();
     relay = null;
     if (closed) throw new Error('the edit command is stopping');
-    const next = new RelayLink(address, secret, key, handle, log);
+    const next = new RelayLink(address, secret, key, handle, log, { file: join(root, '.session', 'relay.json'), folder: root });
     await next.start();
     if (closed) {
       await next.stop();
@@ -299,19 +300,105 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     relay = next;
   }
 
+  const zips = new Map<string, { id: string; zip: Zip | Single; timer: ReturnType<typeof setTimeout> }>();
+  const dropZip = (client: string) => {
+    clearTimeout(zips.get(client)?.timer);
+    zips.delete(client);
+  };
+  const dropAfter = (client: string, id: string, ms: number) => {
+    const timer = setTimeout(() => zips.get(client)?.id === id && zips.delete(client), ms);
+    timer.unref();
+    return timer;
+  };
+  let building = 0;
+  const zipsFull = (bytes: number) => {
+    let held = building;
+    for (const z of zips.values()) held += z.zip.held;
+    return held > 0 && held + bytes > ZIP_HELD;
+  };
+
+  async function zipApi(route: string, request: Request): Promise<Response> {
+    const query = new URLSearchParams(request.query);
+    const client = people.clientOf(query.get('token'));
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
+    if (route === 'zip') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const tex = deriveTex(root, authority.text);
+      const deck = { html: authority.text, bom: disk.bom, tex: tex.sources && !tex.unread.length ? tex.text : null };
+      let reserved = 0;
+      let zip: Zip | null;
+      try {
+        zip = await zipOf(root, zipName, deck, ZIP_MAX, (most) => !zipsFull(most) && ((building += reserved = most), true));
+      } catch (e) {
+        if (!(e instanceof TooLarge)) throw e;
+        if (e.files > MOST_FILES) return error(413, `The zip of the talk folder would hold more than ${MOST_FILES.toLocaleString('en-US')} files, the most that a zip holds.`);
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The talk folder is ${size} MB, over the limit of ${Math.floor(ZIP_MAX / MB)} MB for a download.`);
+      } finally {
+        building -= reserved;
+      }
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (!zip || zipsFull(zip.held)) return error(503, 'The edit command is busy with other downloads of the talk folder. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: zip.size, name: `${zipName}.zip` });
+    }
+    if (route === 'single') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const tex = deriveTex(root, authority.text);
+      let built;
+      try {
+        built = await singleOf(root, authority.text, tex.sources && !tex.unread.length ? tex.text : null, ZIP_MAX);
+      } catch (e) {
+        if (!(e instanceof SingleTooLarge)) throw e;
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The single web page would be ${size} MB, over the limit of ${Math.floor(ZIP_MAX / MB)} MB for a download.`);
+      }
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (zipsFull(built.single.held)) return error(503, 'The edit command is busy with other downloads. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      zips.set(client, { id, zip: built.single, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: built.single.size, name: `${zipName}.html`, missing: built.missing });
+    }
+    const held = zips.get(client);
+    if (!held || held.id !== route.slice(route.indexOf('/') + 1)) return error(404, 'the zip is not kept any more');
+    if (request.method === 'DELETE') {
+      dropZip(client);
+      return json(200, {});
+    }
+    if (request.method !== 'GET') return error(405, 'GET or DELETE');
+    const at = Number(query.get('at') ?? 0);
+    if (!Number.isInteger(at) || at < 0 || at >= held.zip.size) return error(416, 'at is not a byte of the zip');
+    clearTimeout(held.timer);
+    held.timer = dropAfter(client, held.id, ZIP_KEPT);
+    try {
+      return { status: 200, headers: { 'Content-Type': held.zip instanceof Single ? 'application/octet-stream' : 'application/zip', 'Cache-Control': 'no-store' }, body: await held.zip.piece(at, ZIP_PIECE) };
+    } catch (e) {
+      if (!(e instanceof Changed)) throw e;
+      dropZip(client);
+      return error(409, e.message);
+    }
+  }
+
+  const uploads = { files: 0, bytes: 0 };
   async function media(name: string, request: Request): Promise<Response> {
     if (request.method !== 'PUT') return error(405, 'PUT');
     const client = people.clientOf(new URLSearchParams(request.query).get('token'));
     if (client === null || !people.present(client)) return error(404, 'say hello first');
     const clean = cleanName(name);
-    if (!clean) return error(415, 'the file must be an image, a video, or json');
+    if (!clean) return error(415, 'the file must be an image, a video, a PDF, or json');
     if (request.body.length > MEDIA_MAX) return error(413, 'the file is larger than 64 MB');
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, 'the file is larger than 16 MB, the limit of an upload through the relay');
     const dir = join(root, 'media');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
-    if (!real.startsWith(root + sep)) return error(403, 'media/ leaves the talk folder');
-    // with the hash of the page, a file sent again, e.g. after its answer was lost, is not copied
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
     const sent = request.headers['x-content-sha256'];
     if (sent !== undefined) {
       const hash = sha256(request.body);
@@ -319,20 +406,172 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const same = await sameFile(real, clean, request.body.length, hash);
       if (same) return json(200, { path: `media/${same}` });
     }
+    if (uploads.files >= UPLOADS_MAX) return error(413, `the session took ${UPLOADS_MAX} new files already, the most that it takes until the host starts it again`);
+    if (uploads.bytes + request.body.length > UPLOADS_MAX_BYTES) return error(413, `the session took ${Math.round(uploads.bytes / MB)} MB of new files already, and it takes at most ${Math.round(UPLOADS_MAX_BYTES / MB)} MB until the host starts it again`);
+    uploads.files++;
+    uploads.bytes += request.body.length;
     const dot = clean.lastIndexOf('.');
-    for (let i = 1; i < 1000; i++) {
-      const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
-      try {
-        await writeFile(join(real, candidate), request.body, { flag: 'wx' });
-        return json(200, { path: `media/${candidate}` });
-      } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    let kept = false;
+    try {
+      for (let i = 1; i < 1000; i++) {
+        const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
+        try {
+          await writeFile(join(real, candidate), request.body, { flag: 'wx' });
+          kept = true;
+          return json(200, { path: `media/${candidate}` });
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        }
+      }
+    } finally {
+      if (!kept) {
+        uploads.files--;
+        uploads.bytes -= request.body.length;
       }
     }
     return error(409, 'too many files of this name');
   }
 
-  // the version history and the texts set aside, for every page with a token
+  let figureWrites: Promise<unknown> = Promise.resolve();
+  const oneAtATime = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = figureWrites.then(task, task);
+    figureWrites = run.catch(() => {});
+    return run;
+  };
+
+  async function figuresApi(route: string, request: Request): Promise<Response> {
+    if (!['preview', 'source', 'data'].includes(route)) return error(404, 'not found');
+    if (request.method !== 'POST') return error(405, 'POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    if (client === null) return error(404, 'say hello first');
+    if (!request.direct) return error(403, 'only the host changes a TikZ figure');
+    if (route === 'preview') {
+      const box = boxOf(body.box);
+      if (typeof body.name !== 'string' || !FIGURE_NAME.test(body.name) || typeof body.source !== 'string' || !box) return error(400, 'name, source, or box is not valid');
+      if (figures.state().compiler === 'missing') return error(503, 'latex or dvisvgm is not found on the host machine');
+      return json(200, await figures.preview(client, body.name, body.source, box));
+    }
+    const text = route === 'data' ? body.text : body.source;
+    if (typeof text !== 'string') return error(400, `${route === 'data' ? 'text' : 'source'} is missing`);
+    if (Buffer.byteLength(text) > RELAY_BODY) return error(413, 'the file is larger than 16 MB');
+    const dir = join(root, 'figures');
+    await mkdir(dir, { recursive: true });
+    const real = await realpath(dir);
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
+    if (route === 'data') {
+      if (typeof body.stem !== 'string') return error(400, 'stem is missing');
+      const clean = `${cleanStem((body.stem.split(/[\\/]/).pop() ?? '').replace(/\.csv$/i, ''), 'data')}.csv`;
+      const bytes = Buffer.from(text, 'utf8');
+      return oneAtATime(async () => {
+        const same = await sameFile(real, clean, bytes.length, sha256(bytes));
+        if (same) return json(200, { path: `figures/${same}` });
+        for (let i = 1; i < 1000; i++) {
+          const candidate = i === 1 ? clean : `${clean.slice(0, -4)}-${i}.csv`;
+          try {
+            await writeFile(join(real, candidate), bytes, { flag: 'wx' });
+            figures.changed();
+            return json(200, { path: `figures/${candidate}` });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many files of this name');
+      });
+    }
+    if (body.base !== null && typeof body.base !== 'string') return error(400, 'base is missing');
+    if (body.name === undefined) {
+      if (typeof body.stem !== 'string') return error(400, 'name or stem is missing');
+      const stem = cleanStem(body.stem.replace(/\.tex$/i, ''), 'figure');
+      return oneAtATime(async () => {
+        for (let i = 1; i < 1000; i++) {
+          const name = i === 1 ? stem : `${stem}-${i}`;
+          if ((await stat(join(real, `${name}.js`)).catch(() => null)) !== null) continue;
+          try {
+            await writeFile(join(real, `${name}.tex`), text, { flag: 'wx' });
+            figures.changed();
+            return json(200, { name });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many figures of this name');
+      });
+    }
+    const name = body.name;
+    if (typeof name !== 'string' || !FIGURE_NAME.test(name) || WINDOWS_DEVICES.test(name)) return error(400, 'the name of a figure is letters, digits, - and _');
+    return oneAtATime(async () => {
+      const file = join(real, `${name}.tex`);
+      const current = await readFile(file, 'utf8').catch((e) => {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw e;
+      });
+      const bom = current?.startsWith('\ufeff') ? '\ufeff' : '';
+      const unmarked = bom ? current!.slice(1) : current;
+      if (unmarked !== body.base) return json(409, { error: `figures/${name}.tex changed since it was read`, text: unmarked });
+      const tmp = join(real, `.${name}.tex.${randomBytes(6).toString('hex')}.tmp`);
+      try {
+        await writeFile(tmp, bom + text.replace(/^\ufeff/, ''));
+        await renameRetried(tmp, file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        return error(500, `could not write figures/${name}.tex: ${(e as Error).message}`);
+      }
+      figures.changed();
+      return json(200, { name });
+    });
+  }
+
+  async function sourceApi(name: string, request: Request): Promise<Response> {
+    if (!SOURCES.includes(name)) return error(404, 'only preamble.tex and references.bib are written');
+    if (request.method !== 'PUT') return error(405, 'PUT');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
+    const { base, text } = body;
+    if (typeof base !== 'string' || typeof text !== 'string') return error(400, 'base or text is missing');
+    if (Buffer.byteLength(text) > RELAY_BODY) return error(413, 'the file is larger than 16 MB');
+    if (!request.direct && name === 'preamble.tex') {
+      const outside: string[] = [];
+      readPreamble(text, {
+        resolve: (input, kind) => {
+          const file = kind === 'input' ? input : `${input}.${kind === 'package' ? 'sty' : 'cls'}`;
+          if (!file.replace(/^(\.\/)+/, '').split('/').every(servedSegment)) outside.push(input);
+          return null;
+        },
+      });
+      if (outside.length) return error(403, `a guest inputs only files of the talk folder in preamble.tex, not ${outside.join(', ')}`);
+    }
+    return oneAtATime(async () => {
+      let file = join(root, name);
+      const real = await realpath(file).catch(() => null);
+      if (real !== null && !real.startsWith(root + sep)) return error(403, `${name} is a link out of the talk folder`);
+      file = real ?? file;
+      const current = await readFile(file, 'utf8').catch((e) => {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return '';
+        throw e;
+      });
+      const bom = current.startsWith('﻿') ? '﻿' : '';
+      const unmarked = current.slice(bom.length);
+      if (unmarked !== base) return json(409, { error: `${name} changed since it was read`, text: unmarked });
+      if (text === unmarked) return json(200, {});
+      const tmp = join(root, `.${name}.${randomBytes(6).toString('hex')}.tmp`);
+      try {
+        await writeFile(tmp, bom + text.replace(/^﻿/, ''));
+        await renameRetried(tmp, file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        return error(500, `could not write ${name}: ${(e as Error).message}`);
+      }
+      tex.sourceWritten();
+      return json(200, {});
+    });
+  }
+
   function historyApi(route: string, request: Request): Response {
     const parts = route.split('/');
     if (request.method === 'GET') {
@@ -356,7 +595,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (parts.length !== 3 || parts[0] !== 'history') return error(404, 'not found');
     if (parts[2] === 'name') {
       const named = history.name(parts[1], body.name);
-      if (named === 'long') return error(400, 'the name must be a text of at most 80 characters');
+      if (named === 'long') return error(400, 'the tag must be a text of at most 80 characters');
       return named ? json(200, named) : error(404, 'there is no such version');
     }
     if (parts[2] === 'restore') {
@@ -366,7 +605,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return error(404, 'not found');
   }
 
-  // the comments, for every page with a token
   function commentsApi(route: string, request: Request): Response {
     const parts = route.split('/');
     if (request.method === 'GET') {
@@ -410,15 +648,18 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
+    if (/^(zip|single)(\/|$)/.test(route)) return zipApi(route, request);
+    if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
+    if (route.startsWith('source/')) return sourceApi(route.slice('source/'.length), request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
-      const waiting = people.events(people.clientOf(query.get('token')) ?? '', query.get('since') ?? '');
+      const hold = Number(query.get('hold') ?? NaN);
+      const waiting = people.events(people.clientOf(query.get('token')) ?? '', query.get('since') ?? '', hold >= 0 ? hold : undefined);
       return waiting ? json(200, await waiting) : error(404, 'say hello first');
     }
     if (!['hello', 'name', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');
     if (request.method !== 'POST') return error(405, 'POST');
-    // index.html is written for the last time once the stop begins, hence a later change would be lost
     if (closed && (route === 'op' || route === 'hello')) return error(503, 'the edit command is stopping');
     if (!isJson(request)) return error(415, 'the body must be application/json');
     let body: Record<string, unknown>;
@@ -437,11 +678,10 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if ('full' in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
-      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), ...(applied === undefined ? {} : { applied }) };
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), figures: figures.state(), ...(applied === undefined ? {} : { applied }) };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
-    // the client id is found from the secret token, and a client in the body is not read
     const client = people.clientOf(body.token);
     if (route === 'op') {
       const person = client === null ? null : people.personOf(client);
@@ -473,7 +713,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     let version = authority.version;
     let html = authority.text;
     const names = paramNames(request.query);
-    // a version or a text set aside, for a preview in an iframe
     if (names.has('version') || names.has('aside')) {
       if (names.has('edit') || names.has('session')) return error(400, 'a version is shown without edit and session');
       const query = new URLSearchParams(request.query);
@@ -485,8 +724,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const mode = request.headers['sec-fetch-mode'];
       const navigation = mode ? mode === 'navigate' : (request.headers.accept ?? '').includes('text/html');
       const v = new URLSearchParams(request.query).get('v');
-      // a page and the text that the editor reads are of one version, hence a navigation is sent to
-      // the URL of the current version
       if (navigation && v !== authority.version) {
         return { status: 302, headers: { Location: `index.html?${withParam(request.query, 'v', authority.version)}`, 'Cache-Control': 'no-store' } };
       }
@@ -501,9 +738,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'x-session-version': version }, body };
   }
 
-  // every answer below the key is marked, since a page that the edit command serves without
-  // x-session-version, e.g. another page of the talk folder, writes a hash of the key into a copy,
-  // see deckAddress() in src/editor/commands/origin.ts
   async function handle(request: Request): Promise<Response> {
     const prefix = `/${key}/`;
     if (!request.path.startsWith(prefix)) return error(404, 'not found');
@@ -540,7 +774,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         chunks.push(chunk as Buffer);
       }
     } catch {
-      // the browser closed the connection before the end of the body
       res.destroy();
       return;
     }
@@ -562,10 +795,17 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (close) headers.Connection = 'close';
     const head = req.method === 'HEAD';
     if (b !== undefined && typeof b === 'object' && !Buffer.isBuffer(b)) {
-      headers['Content-Length'] = String(b.end - b.start + 1);
+      const length = b.end - b.start + 1;
+      headers['Content-Length'] = String(length);
       res.writeHead(response.status, headers);
-      if (head || b.end < b.start) res.end();
-      else createReadStream(b.file, { start: b.start, end: b.end }).on('error', () => res.destroy()).pipe(res);
+      if (head || length <= 0) {
+        res.end();
+        return;
+      }
+      const stream = createReadStream(b.file, { start: b.start, end: b.end });
+      stream.on('error', () => res.destroy());
+      stream.on('end', () => (stream.bytesRead < length ? res.destroy() : res.end()));
+      stream.pipe(res, { end: false });
       return;
     }
     const bytes = b === undefined ? Buffer.alloc(0) : Buffer.isBuffer(b) ? b : Buffer.from(b);
@@ -582,12 +822,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   );
   server.headersTimeout = 20_000;
   server.requestTimeout = 120_000;
-  // the next port is tried when one is taken, or reserved by Windows, which answers EACCES
+  const takenOrReservedByWindows = (code?: string) => code === 'EADDRINUSE' || code === 'EACCES';
   const ports = options.port !== undefined ? [options.port] : [...new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
   await new Promise<void>((done, fail) => {
     const tryListen = (i: number) => {
       server.once('error', (e: NodeJS.ErrnoException) => {
-        if ((e.code === 'EADDRINUSE' || e.code === 'EACCES') && i + 1 < ports.length) tryListen(i + 1);
+        if (takenOrReservedByWindows(e.code) && i + 1 < ports.length) tryListen(i + 1);
         else fail(e);
       });
       server.listen(ports[i], '127.0.0.1', () => {
@@ -598,14 +838,11 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     tryListen(0);
   });
   port = (server.address() as { port: number }).port;
-  // a second start at the same time is found by the lock that the first one created
   const lock = JSON.stringify({ pid: process.pid, port, root } satisfies Lock);
   try {
     writeFileSync(lockFile, lock, { flag: 'wx' });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
-    // a lock that names the port of this process was left by an edit command that died, since a
-    // live one would still hold the port. the answer came from this process
     if (other && other.port !== port) {
       people.end();
       await new Promise((done) => server.close(done));
@@ -631,8 +868,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       answer.history = history.rev;
     },
   });
-  // a restore is told as a toast to each page of a version before it, also to a page that was
-  // dropped while it was away
   people.feed({
     rev: () => history.restores,
     write: (answer, _seen, since) => {
@@ -640,11 +875,16 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (restored) answer.restored = restored;
     },
   });
-  // a change from outside that replaced text of a person is told in the same way
   people.feed({
     rev: () => history.overwritten,
     write: (answer, _seen, since) => {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
+    },
+  });
+  people.feed({
+    rev: () => figures.rev,
+    write: (answer) => {
+      answer.figures = figures.state();
     },
   });
   comments = new Comments(join(root, '.session'), authority, history.found, { ...options.comments, log });
@@ -655,7 +895,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       answer.comments = comments.since(seen);
     },
   });
-  // the times up to which the person of a page read, after a read on another page of the person
   people.feed({
     rev: () => comments.reads,
     of: (person) => comments.readsOf(person),
@@ -671,7 +910,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const secret = process.env.SLIDES_RELAY_SECRET || (address !== null && address === relayAddress(saved.relay) ? saved.secret : undefined);
     if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log('the secret of the relay is not set, and the session is not shared');
-    // not awaited, so that the caller can stop the command, with its last write, while the relay is asked
     else void serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
   }
 
@@ -689,9 +927,10 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     close: () =>
       (closing ??= (async () => {
         closed = true;
-        // a start during the stop begins a new edit command rather than finding this one
+        for (const client of [...zips.keys()]) dropZip(client);
         unlock();
-        people.end();
+        const told = people.end();
+        const figuresStopped = figures.stop();
         const unwritten = await disk.stop();
         await tex.stop();
         await appliedTable.stop();
@@ -700,14 +939,11 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
         history.stopSync();
-        // comments.stopSync logs the file and the reason when it is not written
         const all = unwritten + (comments.stopSync() ? 0 : 1);
         written(all);
-        // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
-        // keeps the record of the end for a guest who was not waiting at the edit command
+        await figuresStopped;
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
-        // a poll that arrives in this time is answered with ended, rather than reset by the close
-        await new Promise((done) => setTimeout(done, CLOSE_WAIT));
+        await Promise.all([new Promise((done) => setTimeout(done, CLOSE_WAIT)), Promise.race([told, new Promise((done) => setTimeout(done, TOLD_WAIT))])]);
         await new Promise<void>((done) => {
           server.close(() => done());
           setTimeout(() => {

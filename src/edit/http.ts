@@ -1,23 +1,15 @@
-// the requests of the edit command in one shape, whether they come straight from a browser or
-// through a relay, and the static files of the talk folder
-
 import { open, realpath, stat } from 'node:fs/promises';
 import { extname, join, relative, sep } from 'node:path';
 
 export type Request = {
   method: string;
-  // the raw path, with the key, e.g. /<key>/media/a%20b.png
   path: string;
-  // the raw query, without the ?
   query: string;
-  // with lowercase names
   headers: Record<string, string>;
   body: Buffer;
-  // true for a browser that reaches the edit command without the relay
   direct: boolean;
 };
 
-// a file answered from start to end, both included, read only when the answer is sent
 export type FileBody = { file: string; start: number; end: number };
 
 export type Response = { status: number; headers: Record<string, string>; body?: Buffer | string | FileBody };
@@ -37,7 +29,6 @@ export const MIME: Record<string, string> = {
   '.avif': 'image/avif',
   '.bmp': 'image/bmp',
   '.mp4': 'video/mp4',
-  // an m4v is played as an mp4, which every browser names
   '.m4v': 'video/mp4',
   '.webm': 'video/webm',
   '.mov': 'video/quicktime',
@@ -60,12 +51,10 @@ export const json = (status: number, value: unknown): Response => ({
 
 export const error = (status: number, message: string): Response => json(status, { error: message });
 
-// a segment that is never served: one that starts with a dot or is node_modules, also under a
-// spelling that Windows reads as such, i.e. with a trailing dot or space
-const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
+export const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
 
-// the segments of a path below the talk folder, decoded, or null when a segment is malformed or
-// hidden, or holds a separator, a colon, or a NUL
+export const servedSegment = (s: string) => s !== '' && !hiddenSegment(s) && !/[\\/:\0]/.test(s);
+
 export function segmentsOf(rest: string): string[] | null {
   const out: string[] = [];
   for (const raw of rest.split('/')) {
@@ -75,15 +64,12 @@ export function segmentsOf(rest: string): string[] | null {
     } catch {
       return null;
     }
-    if (s === '' || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
+    if (!servedSegment(s)) return null;
     out.push(s);
   }
   return out;
 }
 
-// the real path of a file of the talk folder, or null when it is not a file inside the folder, e.g.
-// through a symlink that leaves it, or when its real path has a hidden segment, e.g. through a
-// short name of Windows such as GIT~1
 export async function fileInside(root: string, segments: string[]): Promise<string | null> {
   try {
     const real = await realpath(join(root, ...segments));
@@ -94,8 +80,6 @@ export async function fileInside(root: string, segments: string[]): Promise<stri
   }
 }
 
-// a range of the form bytes=a-b, bytes=a-, or bytes=-n of a file of size bytes. null for a header
-// without a single range, and 'bad' for a range outside the file
 export function rangeOf(header: string | undefined, size: number): { start: number; end: number } | null | 'bad' {
   const m = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
   if (!m || (!m[1] && !m[2])) return null;
@@ -104,7 +88,6 @@ export function rangeOf(header: string | undefined, size: number): { start: numb
   return start > end || start >= size ? 'bad' : { start, end };
 }
 
-// a static file, answered with a range when one is asked for, and with 304 when the ETag matches
 export async function serveFile(file: string, request: Request, maxBytes = Infinity): Promise<Response> {
   const info = await stat(file);
   const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
@@ -119,7 +102,6 @@ export async function serveFile(file: string, request: Request, maxBytes = Infin
   const range = rangeOf(request.headers.range, info.size);
   if (range === 'bad') return { status: 416, headers: { ...headers, 'Content-Range': `bytes */${info.size}` } };
   if (range) {
-    // a range answered through the relay is cut to what a relayed body may hold
     const end = Math.min(range.end, range.start + maxBytes - 1);
     return { status: 206, headers: { ...headers, 'Content-Range': `bytes ${range.start}-${end}/${info.size}` }, body: { file, start: range.start, end } };
   }
@@ -127,7 +109,6 @@ export async function serveFile(file: string, request: Request, maxBytes = Infin
   return { status: 200, headers, body: { file, start: 0, end: info.size - 1 } };
 }
 
-// the bytes of a file body, for an answer through the relay
 export async function readBody(body: FileBody): Promise<Buffer> {
   const length = Math.max(0, body.end - body.start + 1);
   const buffer = Buffer.alloc(length);
@@ -146,7 +127,6 @@ export async function readBody(body: FileBody): Promise<Buffer> {
   }
 }
 
-// the raw query with the parameter name set to value, every other parameter kept as written
 export function withParam(query: string, name: string, value: string): string {
   const parts = query.split('&').filter((p) => p !== '' && decodeName(p) !== name);
   parts.push(`${name}=${encodeURIComponent(value)}`);
@@ -162,5 +142,4 @@ const decodeName = (part: string) => {
   }
 };
 
-// the names of the parameters of a raw query
 export const paramNames = (query: string) => new Set(query.split('&').filter(Boolean).map(decodeName));

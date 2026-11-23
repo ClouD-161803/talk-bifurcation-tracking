@@ -1,7 +1,3 @@
-// the status bar: the previous and next slide with the number of the current one, the switch
-// of the steps shown, the buttons Navigator, Steps, and Notes, the zoom (−, a slider, +, the percentage as a
-// menu, and Fit), and the switch ◐ of the mode of the slide
-
 import type { App } from '../app.ts';
 import { button, injectStyle, make, wire } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
@@ -17,13 +13,9 @@ const CSS = `
 .beeson-edit-bottom button:focus-visible, .beeson-edit-bottom input:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: -1px; }
 .beeson-edit-bottom .count { white-space: nowrap; min-width: 9ch; text-align: center; color: var(--ed-text); font-variant-numeric: tabular-nums; }
 .beeson-edit-bottom .rule { width: 1px; height: 14px; background: var(--ed-line); flex: none; }
-.beeson-edit-bottom .beeson-shown-steps { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.beeson-edit-bottom .beeson-shown-steps[hidden] { display: none; }
-.beeson-edit-bottom .beeson-shown-steps > span { margin-right: 4px; }
 .beeson-edit-bottom .gap { flex: 1; }
 .beeson-edit-bottom .zoom { display: flex; align-items: center; gap: 2px; }
 .beeson-edit-bottom .zoom button { padding: 0 4px; }
-/* the percentage keeps one width, so that the slider stays under the pointer while the zoom changes */
 .beeson-edit-bottom .zoom .percent { min-width: 60px; justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .beeson-edit-bottom .slider { position: relative; display: inline-flex; align-items: center; width: 120px; height: 16px; margin: 0 2px; flex: none; }
 .beeson-edit-bottom .slider .tick { position: absolute; left: calc(7px + (100% - 14px) * var(--tick)); top: 3px; width: 1px; height: 10px; margin-left: -0.5px; background: var(--ed-muted); pointer-events: none; }
@@ -34,23 +26,18 @@ const CSS = `
 .beeson-edit-bottom input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.3); }
 .beeson-edit-bottom .beeson-edit-select { min-width: 52px; justify-content: space-between; font-variant-numeric: tabular-nums; }
 @media (max-width: 1099px) { .beeson-edit-bottom .slider { width: 72px; } }
-/* in a narrow window the zoom is left to its buttons, so that every button of the bar is drawn whole */
 @media (max-width: 759px) {
   .beeson-edit-bottom .slider { display: none; }
 }
 `;
 
-// the slider is linear in the logarithm of the zoom, from 10 to 400 percent, in steps of a
-// thousandth of its length. TICK is the place of 100 percent, to which a drag within SNAP px is
-// snapped, as on the zoom slider of PowerPoint
 const LOG_MIN = Math.log(0.1);
 const LOG_MAX = Math.log(4);
 const STEPS = 1000;
 const TICK = -LOG_MIN / (LOG_MAX - LOG_MIN);
 const SNAP = 4;
 
-// shownSteps is the switch of shown-steps.ts, placed after the slide number
-export function install(app: App, shownSteps: HTMLElement): void {
+export function install(app: App): void {
   injectStyle('statusbar', CSS);
   const bottom = make('div', 'beeson-edit-bottom beeson-edit-region');
   const prevButton = button('‹', 'Previous slide', 'Previous slide');
@@ -84,26 +71,19 @@ export function install(app: App, shownSteps: HTMLElement): void {
   const fitButton = button('Fit', 'Fit the slide into the window');
   zoomBox.append(outButton, track, inButton, percent, fitButton);
 
-  // the mode of the slide is flipped by the button of the theme, from the point of this one
   const modeButton = button('', 'Flip the slide between dark and light mode, D', 'Flip the mode of the slide');
   modeButton.append(icon('contrast', 14));
 
   const rule = () => make('span', 'rule');
-  bottom.append(prevButton, countEl, nextButton, shownSteps, make('span', 'gap'), app.nav.button, app.steps.button, app.notes.button, rule(), zoomBox, rule(), modeButton);
+  bottom.append(prevButton, countEl, nextButton, make('span', 'gap'), app.nav.button, app.steps.button, app.notes.button, rule(), zoomBox, rule(), modeButton);
   const fail = (e: unknown) => app.fail(e);
   wire(prevButton, () => app.commands.run('navigate.previous'), fail);
   wire(nextButton, () => app.commands.run('navigate.next'), fail);
   wire(app.notes.button, () => app.commands.run('view.notes'), fail);
-  // the panes wire Slides and Steps themselves, and a pointer click leaves the focus on the slide
   for (const b of [app.nav.button, app.steps.button]) b.addEventListener('click', (ev) => ev.detail > 0 && b.blur());
   wire(outButton, () => app.stage.zoomOut(), fail);
   wire(inButton, () => app.stage.zoomIn(), fail);
   wire(fitButton, () => app.stage.setZoom(null), fail);
-  // a press or a drag on the slider is followed here rather than by the browser, which loses the
-  // pointer once the thumb is held at the tick. the thumb of 14 px runs over the width of the
-  // slider less its own, measured at the press, and the arrow keys move it one step at a time
-  // without a snap. the moves of one frame are one live zoom, at the last of them, and the release
-  // lays the zoom out
   const zoomAt = (at: number, live = false) => app.stage.setZoom(Math.exp(LOG_MIN + (at / STEPS) * (LOG_MAX - LOG_MIN)), undefined, live);
   let r = track.getBoundingClientRect();
   let moved: PointerEvent | null = null;
@@ -149,9 +129,6 @@ export function install(app: App, shownSteps: HTMLElement): void {
     document.querySelector('.theme-switch')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
   }, fail);
 
-  // the place of the current slide in the show and the count of the slides in the show, as the
-  // navigator numbers them. a hidden slide is not numbered, as the navigator draws it as the bar of
-  // a skipped slide of Keynote, and it is read by the shown slide before it
   const count = () => {
     const d = app.deck();
     if (!d) return;
@@ -159,7 +136,9 @@ export function install(app: App, shownSteps: HTMLElement): void {
     const cur = app.current();
     const i = cur ? slides.indexOf(cur) : -1;
     if (i < 0) {
-      countEl.textContent = `Slide ${d.getSlidePastCount() + 1} of ${d.getTotalSlides()}`;
+      const top = cur ? slides.findIndex((s) => s.contains(cur)) : -1;
+      const before = slides.slice(0, Math.max(top, 0)).filter(isHidden).length;
+      countEl.textContent = `Slide ${d.getSlidePastCount() + 1 - before} of ${d.getTotalSlides() - slides.filter(isHidden).length}`;
       return;
     }
     const n = showPlaces(slides)[i];

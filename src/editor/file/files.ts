@@ -1,8 +1,3 @@
-// the file of the deck: open, save, save as, autosave, and present, with the dialogs that ask for the
-// file, ask before Open or Present with unsaved changes, and list the texts that cannot be edited.
-// the file is written through the File System Access API where a browser has it, i.e. in Chrome
-// and Edge, and elsewhere a copy with the edits is put into the downloads of the browser
-
 import type { App, Files, Line } from '../app.ts';
 import { parseSource } from '../source.ts';
 import { pair, renderDeck, type Pairing } from '../render.ts';
@@ -20,40 +15,26 @@ type Pickers = {
   showSaveFilePicker?: (options?: PickerOptions) => Promise<FileSystemFileHandle>;
 };
 
-// the type of the file to save. a file to open is chosen without a filter, since a filter may leave
-// index.html grayed out in the dialog of macOS, and a file that is not the deck is reported once read
-const FILE_TYPES = [{ description: 'HTML', accept: { 'text/html': ['.html', '.htm'] } }];
+const SAVE_TYPES = [{ description: 'HTML', accept: { 'text/html': ['.html', '.htm'] } }];
 const AUTOSAVE_KEY = 'beeson-autosave';
-// the pause after the last change, in ms, before an autosave
 const AUTOSAVE_DELAY = 1500;
-// the longest wait, in ms, for the edits of a page of a session to be sent before a show or an export
-const SEND_WAIT = 4000;
 
 const pickers = window as unknown as Pickers;
-// the pickers are read when they are used, so that a test can take them away
 export const canPick = (): boolean => typeof pickers.showOpenFilePicker === 'function';
 export const canWrite = (): boolean => typeof pickers.showSaveFilePicker === 'function';
 
 export const fileName = (): string => decodeURIComponent(location.pathname.split('/').pop() || '') || 'index.html';
 export const folder = (): string => decodeURIComponent(location.pathname).replace(/[^/]*$/, '');
-// the advice after a save that is a download. Safari and Firefox put a download into the downloads
-// folder, unless they are set to ask where to save each download. index.html is then chosen and
-// replaced in the dialog of the browser
 const REPLACE = (): string => `Replace ${fileName()} in ${folder()} with it, or set the browser to ask where to save each download`;
 export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 const clock = (): string => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// the files written next to the deck before its text, or downloaded with it: the new images under
-// media/ that a text names, and the sources of the preamble and the bibliography with tex.js. each
-// returns a sentence for the state, empty when it did not have anything to do, and dirty tells
-// whether its files have changes that the text of the deck does not show
 export type Companions = { write(text: string, deck: FileSystemFileHandle): Promise<string>; download(text: string): string; dirty?(): boolean };
 const companions: Companions[] = [];
 export const addCompanion = (c: Companions): void => void companions.push(c);
 const notes = (list: string[]): string => list.filter(Boolean).join('. ');
 const companionsDirty = (): boolean => companions.some((c) => c.dirty?.());
 
-// a copy of the file for a browser that cannot write it in place
 export function download(name: string, text: string): string {
   const note = notes(companions.map((c) => c.download(text)));
   const url = URL.createObjectURL(new Blob([text], { type: 'text/html' }));
@@ -77,12 +58,10 @@ export async function write(to: FileSystemFileHandle, text: string): Promise<str
   return note;
 }
 
-// the file is asked for with the save picker and kept in app.handle, and false is returned when
-// the picker is dismissed
 export async function pickTarget(app: App): Promise<boolean> {
   if (!pickers.showSaveFilePicker) return false;
   try {
-    app.handle = await pickers.showSaveFilePicker({ suggestedName: app.handle?.name ?? fileName(), types: FILE_TYPES });
+    app.handle = await pickers.showSaveFilePicker({ suggestedName: app.handle?.name ?? fileName(), types: SAVE_TYPES });
     return true;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return false;
@@ -90,7 +69,6 @@ export async function pickTarget(app: App): Promise<boolean> {
   }
 }
 
-// a file chosen with the input element, in a browser without the open picker
 function pickFile(): Promise<File | null> {
   return new Promise((done) => {
     const input = make('input');
@@ -135,7 +113,6 @@ const ASK = {
   },
 };
 
-// the actions of the File menu that are not services of app.files, set at the install
 export type FileActions = {
   revert(): Promise<void>;
   openRecent(r: Recent): Promise<void>;
@@ -155,8 +132,6 @@ export function install(app: App): void {
   const fail = (e: unknown) => app.fail(e);
   const later = (action: () => unknown) => Promise.resolve().then(action).catch(fail);
 
-  // the dialog shown until a file is chosen on file:, where the page cannot read itself. the file of
-  // this page opened last is offered first when the browser keeps it for Open Recent
   const fileDialog = new Dialog({
     title: 'Choose the file of this deck',
     text: '',
@@ -170,22 +145,18 @@ export function install(app: App): void {
   });
   let fileDialogRecent: Recent | null = null;
 
-  // the dialog that asks before File > Revert to Saved, as macOS asks in its apps
   const revertDialog = new Dialog({
     title: 'Do you want to revert to the most recently saved version?',
     text: 'Your current changes will be lost.',
     buttons: [
-      { label: 'Revert', title: 'Forget the edits since the last save, and show the deck as its file holds it', value: 'revert', primary: true },
+      { label: 'Revert', title: 'Forget the edits since the last save, and show the deck as it is saved in its file', value: 'revert', primary: true },
       { label: 'Cancel', title: 'Go on editing', value: 'cancel' },
     ],
     className: 'revert',
   });
 
-  // the dialog shown when Open or Present is pressed with unsaved changes, as the prompt of PowerPoint
   const ask = new Dialog({ title: 'The deck has unsaved changes', text: '', buttons: [], className: 'ask' });
 
-  // the dialog of PowerPoint… of Export To, with the command that writes the file, since a page
-  // cannot take the screenshots of scripts/export-pptx.mjs
   const pptxCommand = make('code');
   const pptxBody = make('p');
   pptxBody.append(pptxCommand);
@@ -205,14 +176,13 @@ export function install(app: App): void {
       void navigator.clipboard.writeText(pptxCommand.textContent ?? '').then(
         () => button && (button.textContent = 'Copied'),
         () => {
-          app.note = { text: 'The browser did not let the page copy the command', warn: true };
+          app.note = { text: 'The command could not be copied to the clipboard', warn: true };
           app.report();
         },
       );
     },
   });
 
-  // the dialog that lists the texts that cannot be edited, opened with Which? after the state
   const problemsList = make('ul');
   const problemsDialog = new Dialog({
     title: 'Texts that cannot be edited',
@@ -222,14 +192,10 @@ export function install(app: App): void {
     onButton: () => later(closeProblems),
   });
 
-  // a save in flight, and whether another one was asked for meanwhile
   let saving = false;
   let again = false;
-  // a save after Save as writes the chosen file without a merge
   let overwrite = false;
   let autosaveTimer = 0;
-  // true once a save was a download, after which the file at the address of the page is not the
-  // saved text
   let downloaded = false;
 
   const problemText = (p: Pairing['problems'][number]): string => `slide ${app.slideNumber(p.slide) ?? '?'}, ${p.tag}: ${p.reason}`;
@@ -251,7 +217,6 @@ export function install(app: App): void {
     void problemsDialog.open('close');
   }
 
-  // the focus goes back to Which? in the menu bar
   function closeProblems(): void {
     problemsDialog.close(null);
     const which = document.querySelector<HTMLButtonElement>('.beeson-edit-header button.which');
@@ -265,11 +230,8 @@ export function install(app: App): void {
     if (!pairing) return plain(app.note?.text ?? 'Loading', app.note?.warn ?? false);
     if (!pairing.texts.length) return plain('This file is not the deck on the page', true);
     const problems = pairing.problems;
-    // in a session, the edits are not saved to a file, and its status takes the place of the save
     const first = app.session ? app.session.status : app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes';
     const parts = first ? [first] : [];
-    // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too. in a
-    // session, the note of a command follows the status until the next edit of the person
     const warn = app.note?.warn ?? false;
     if (app.note && (app.session || (app.dirty && warn))) parts.push(app.note.text);
     if (problems.length) parts.push(`${plural(problems.length, 'text')} cannot be edited`);
@@ -279,13 +241,9 @@ export function install(app: App): void {
     if (app.autosave && !app.handle && canWrite() && !app.session) parts.push('autosave starts after the first save');
     const changed = app.follow?.line();
     if (changed) parts.push(changed);
-    // a part may end in a full stop of its own, e.g. a note
     return { text: parts.map((p, i) => (i < parts.length - 1 ? p.replace(/\.$/, '') : p)).join('. '), warn: warn || problems.length > 0 || app.overflow > 0, title: problems.map(problemText).join('\n') };
   }
 
-  // pairs the text of the file with the page and makes the paired text elements editable. the state
-  // reports the text elements that could not be paired. a fresh file starts the history anew and is
-  // checked against the edits kept in the storage, and the text of a save is paired again in place
   function open(text: string, fresh = true): void {
     app.tagEdits.clear();
     if (fresh) {
@@ -313,14 +271,11 @@ export function install(app: App): void {
     if (fresh) app.drafts.offer();
   }
 
-  // the text of the file with the edits of the page, without writing it
   function render(): string {
     if (!app.source || !app.pairing) throw new Error('no file is open');
     return renderDeck(app.source, app.pairing, mathLookup(), app.tagEdits).text;
   }
 
-  // the edits since the last save are undone, so that the page reads as the saved file again. the
-  // undo stops at the text last saved, since the history also holds the edits written by a save
   async function discardEdits(): Promise<void> {
     while (app.history.canUndo && !readsAsSaved()) await app.history.undo();
     app.history.clear();
@@ -332,8 +287,6 @@ export function install(app: App): void {
     app.report();
   }
 
-  // with unsaved changes, the user is asked first, as in PowerPoint: a save, a discard, or no open,
-  // for which false is returned
   async function readyToOpen(): Promise<boolean> {
     app.note = null;
     if (!app.dirty) return true;
@@ -347,15 +300,12 @@ export function install(app: App): void {
     return true;
   }
 
-  // the handle last put on the list of Open Recent, which a save does not put there again
   let kept: FileSystemFileHandle | null = null;
   const keep = (handle: FileSystemFileHandle): void => {
     kept = handle;
     void remember(handle).catch(() => {});
   };
 
-  // a file that is not the deck on the page is not kept for Open Recent, since it is offered on
-  // the dialog of this page
   async function openHandle(handle: FileSystemFileHandle): Promise<void> {
     const text = await (await handle.getFile()).text();
     app.handle = handle;
@@ -364,7 +314,6 @@ export function install(app: App): void {
     if (app.pairing?.texts.length) keep(handle);
   }
 
-  // Open, Open Recent, and Revert to Saved would replace the deck of everyone in a session
   async function openFile(): Promise<void> {
     if (app.session || !(await readyToOpen())) return;
     if (canPick() && pickers.showOpenFilePicker) {
@@ -384,8 +333,6 @@ export function install(app: App): void {
     open(await file.text());
   }
 
-  // the browser asks once per session whether the page may edit a file kept from an earlier one,
-  // at the click that opens it
   async function permitted(handle: FileSystemFileHandle): Promise<boolean> {
     type Asking = { queryPermission?(o: { mode: 'readwrite' }): Promise<PermissionState>; requestPermission?(o: { mode: 'readwrite' }): Promise<PermissionState> };
     const h = handle as FileSystemFileHandle & Asking;
@@ -394,8 +341,6 @@ export function install(app: App): void {
     return (await h.requestPermission?.(mode)) === 'granted';
   }
 
-  // a deck of Open Recent kept on another page is opened on its page, where the dialog offers its
-  // file. a deck that is missing is taken off the list
   async function openRecent(r: Recent): Promise<void> {
     if (app.session || !(await readyToOpen())) return;
     if (r.page !== pageOf()) {
@@ -417,8 +362,6 @@ export function install(app: App): void {
     }
   }
 
-  // the page is loaded again from the file, without the edits and their draft, hence the dialog of
-  // the edits that were not saved is not offered after the reload
   async function revert(): Promise<void> {
     if (!app.dirty || app.session) return;
     if ((await revertDialog.open('cancel')) !== 'revert') return;
@@ -429,35 +372,16 @@ export function install(app: App): void {
     location.reload();
   }
 
-  // the address of the deck with the parameters of this page but edit, and with extra. the version
-  // v of a session is left out too, since it would play the deck as it was when the page was loaded
   function deckAddress(extra: string[] = []): string {
     const params = new URLSearchParams(location.search);
     for (const name of ['edit', 'session', 'v']) params.delete(name);
     for (const name of extra) params.set(name, '');
-    // a parameter without a value, such as still, is kept without an equals sign
     const query = params.toString().replace(/=(?=&|$)/g, '');
     return `${pageOf()}${query ? `?${query}` : ''}`;
   }
 
-  // the edits of this page sent in a session, before a show or an export. a page that is offline
-  // cannot send them, hence the wait ends after SEND_WAIT with the reason
-  async function sent(): Promise<void> {
-    let timer = 0;
-    const late = new Promise<never>((_, fail) => {
-      timer = window.setTimeout(() => fail(new Error('Your last changes are not sent yet. Try again once they are saved')), SEND_WAIT);
-    });
-    try {
-      await Promise.race([app.session!.save(), late]);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  // with unsaved changes, the user is asked first, and false is returned for no export or show. in a
-  // session every edit is shared, and the edits of this page are sent first
   async function savedFirst(action: 'present' | 'export' | 'print' | 'pptx'): Promise<boolean> {
-    if (app.session) await sent();
+    if (app.session) await app.session.sent();
     if (!app.dirty || app.session) return true;
     const choice = await askFirst(action);
     if (!choice) return false;
@@ -465,16 +389,13 @@ export function install(app: App): void {
     return choice === 'discard' || !app.dirty;
   }
 
-  // the print view of the saved deck, with one page per step as npm run pdf prints it, opened in a
-  // new tab and printed there once it is ready. a view that the page cannot read, e.g. on file:,
-  // where each file is an origin of its own, is printed with the key of the browser
   async function exportPdf(action: 'export' | 'print' = 'export'): Promise<void> {
     if (!(await savedFirst(action))) return;
     const win = window.open(deckAddress(['print-pdf', 'still']), '_blank');
     const key = display('Mod+P', app.platform);
     const then = action === 'print' ? 'choose a printer' : 'choose Save as PDF';
     if (!win) {
-      app.note = { text: `The browser did not open the print view. Allow this page to open a tab, and ${action} again`, warn: true };
+      app.note = { text: `The print view could not be opened. Allow this page to open a tab, and ${action} again`, warn: true };
       app.report();
       return;
     }
@@ -486,22 +407,17 @@ export function install(app: App): void {
     }
   }
 
-  // the dialog of the command that writes the PowerPoint file from the saved deck, run in its folder
   async function exportPptx(): Promise<void> {
     if (!(await savedFirst('pptx'))) return;
-    // the attached file is named as it is, and its folder is not known to the page. the folder of
-    // the address is that of the deck only on file:, since a server maps an address to a folder
     const name = app.handle?.name ?? fileName();
     const where = location.protocol === 'file:' && name === fileName() ? `, i.e. ${folder()}` : '';
     pptxCommand.textContent = name === 'index.html' ? 'npm run pptx' : `npm run pptx -- ${name}`;
-    pptxDialog.text.textContent = `The PowerPoint file is written from the saved ${name} by this command, run in the folder of the deck${where}. It writes slides.pptx, with one click per step.`;
+    pptxDialog.text.textContent = `Run this command in the folder of the deck${where}. slides.pptx is then written from the saved ${name}, with one click per step.`;
     const copy = pptxDialog.buttons.get('copy');
     if (copy) copy.textContent = 'Copy Command';
     await pptxDialog.open('copy');
   }
 
-  // a copy of the deck with the edits, written into a file chosen with the picker or put into the
-  // downloads, while the deck stays in its own file
   async function exportHtml(): Promise<void> {
     if (!app.source || !app.pairing) {
       app.note = { text: 'Choose the file of this deck first', warn: true };
@@ -512,7 +428,7 @@ export function install(app: App): void {
     if (pickers.showSaveFilePicker) {
       let to: FileSystemFileHandle;
       try {
-        to = await pickers.showSaveFilePicker({ suggestedName: fileName(), types: FILE_TYPES });
+        to = await pickers.showSaveFilePicker({ suggestedName: fileName(), types: SAVE_TYPES });
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         throw error;
@@ -526,9 +442,6 @@ export function install(app: App): void {
     app.report();
   }
 
-  // writes the rendered text to the file, asking for the file at the first save of a deck opened
-  // from a server. the saved text is then paired again, so that the next save starts from it. a
-  // save asked for while one is in flight is run after it
   async function save(): Promise<void> {
     if (app.session) return app.session.save();
     if (saving) {
@@ -556,8 +469,6 @@ export function install(app: App): void {
       return;
     }
     if (!app.handle && canWrite() && !(await pickTarget(app))) return;
-    // a file changed since it was read, e.g. by an agent, gets the edits merged into it, unless
-    // Save as chose it
     if (app.handle && !overwrite) {
       const merged = await app.follow.merge(app.handle);
       if (merged === 'merged' || merged === 'cancelled') return;
@@ -578,12 +489,9 @@ export function install(app: App): void {
       text = `${n ? `Saved a copy with ${edits}` : `Saved a copy of ${fileName()}`}. ${REPLACE()}${also ? `. ${also}` : ''}`;
     }
     app.saved = rendered.text;
-    // the typing after a save is a new entry of the history, hence a discard can stop at the save
     app.history.break();
     const warnings = rendered.warnings.length ? `, ${rendered.warnings.join(', ')}` : '';
     app.note = { text: `${text}${warnings}`, warn: rendered.warnings.length > 0 };
-    // an edit made while the file was written is kept for the next save, since the page no longer
-    // reads as the saved text
     if (render() === rendered.text) {
       open(rendered.text, false);
       app.drafts.drop();
@@ -593,8 +501,6 @@ export function install(app: App): void {
     }
   }
 
-  // the deck is written into a file chosen with the picker, and where there is no picker a save is
-  // a download anyway
   async function saveAs(): Promise<void> {
     if (app.session) return app.session.save();
     if (!app.source || !app.pairing) {
@@ -615,7 +521,6 @@ export function install(app: App): void {
     }
   }
 
-  // a deck whose text is the file again, e.g. after its edits were undone, is clean
   function cleanIfSaved(): void {
     if (!app.source || !app.pairing || app.saved === null || companionsDirty()) return;
     try {
@@ -637,7 +542,6 @@ export function install(app: App): void {
     }, AUTOSAVE_DELAY);
   }
 
-  // the switch is kept in the storage, as the AutoSave switch of PowerPoint
   function toggleAutosave(): void {
     app.autosave = !app.autosave;
     store(AUTOSAVE_KEY, app.autosave ? '1' : '0');
@@ -645,26 +549,18 @@ export function install(app: App): void {
     app.report();
   }
 
-  // the saved deck at hash, without the editor, played in place or, with tab, in a new tab. with
-  // unsaved changes, the user is asked to save or discard them first. the show in place takes the
-  // full screen before the save, while the click on the dialog still counts. in a session the edits
-  // are sent first without a question. null is returned when nothing is played
   async function present(hash = '', tab = false): Promise<{ win: Window | null } | null> {
     const choice = app.session ? 'save' : app.dirty ? await askFirst('present') : 'saved';
     if (!choice) return null;
-    // a save that is a download does not write the file at the address of the page, hence the show
-    // then plays the saved text. the copy is downloaded once a show in place ends, since the
-    // browser may ask where to save it in a dialog that would cover the show
     const later = choice === 'save' && !app.session && !tab && !app.handle && !canWrite();
     const show = tab ? null : startShow(app, later ? () => void save().catch((e) => app.fail(e)) : undefined);
-    if (choice === 'save' && !later) await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
+    if (choice === 'save' && !later) await (app.session ? app.session.sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
     if (choice === 'save' && app.dirty && !later && !app.session) {
       show?.end();
       return null;
     }
     const text = later ? render() : downloaded && !app.handle ? app.saved : null;
-    // from-editor lets the show in a tab end at a click past its last step (src/main.ts)
     const url = `${deckAddress(show ? [] : ['from-editor'])}${hash}`;
     if (show) return { win: show.load(url, text) };
     const win = window.open(text === null ? url : '', '_blank');
@@ -715,14 +611,11 @@ export function install(app: App): void {
     }
     if (!fileDialog.shown) void fileDialog.open(last ? 'recent' : 'choose');
   });
-  // the list is read after the start, and the dialog is updated with it
   void loadRecents().then(() => app.report()).catch(() => {});
   app.listen('history', () => {
     if (app.dirty) cleanIfSaved();
   });
   app.listen('dirty', scheduleAutosave);
-  // the file has not been written by this page during a session, hence the deck counts as changed
-  // after it
   app.listen('session', () => {
     window.clearTimeout(autosaveTimer);
     if (!app.session && app.state === 'loaded') app.markDirty();
@@ -730,8 +623,6 @@ export function install(app: App): void {
   window.addEventListener('beforeunload', (ev) => { if (app.dirty && !app.session) ev.preventDefault(); });
 }
 
-// the slide shown is kept in the hash through a reload, which reveal.js does not keep up to date
-// while the deck is edited
 export function keepSlide(app: App): void {
   const d = app.deck();
   const current = app.current();
@@ -740,9 +631,6 @@ export function keepSlide(app: App): void {
   history.replaceState(history.state, '', `${location.pathname}${location.search}${v ? `#/${h}/${v}` : h ? `#/${h}` : ''}`);
 }
 
-// whether the print view in win can be read by this page, once it is ready to print, after which
-// it is printed. the view is ready as scripts/chrome.mjs waits for it before npm run pdf prints it:
-// a page per step, the fonts, MathJax, and the backdrops loaded, and a frame of each video shown
 async function printWhenReady(win: Window): Promise<boolean> {
   type View = Window & { Reveal?: { isReady(): boolean }; MathJax?: { startup?: { promise?: Promise<unknown> } }; Beeson?: { backdrops?: { ready: Promise<unknown> }[] } };
   const view = win as View;
@@ -758,7 +646,6 @@ async function printWhenReady(win: Window): Promise<boolean> {
     } catch {
       return false;
     }
-    // the global Reveal of the tab has isReady only once the deck is initialized
     if (typeof view.Reveal?.isReady !== 'function' || !view.Reveal.isReady() || !d.querySelector('.pdf-page') || d.querySelector('.reveal-viewport.loading-scroll-mode')) continue;
     if (!loaded) {
       loaded = true;
@@ -781,7 +668,6 @@ async function printWhenReady(win: Window): Promise<boolean> {
   return false;
 }
 
-// the text is fetched when the deck is served, and with file: it is chosen with the dialog
 export async function fetchSource(app: App): Promise<boolean> {
   if (location.protocol === 'file:') return false;
   try {

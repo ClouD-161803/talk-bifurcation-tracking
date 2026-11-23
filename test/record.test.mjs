@@ -1,7 +1,3 @@
-// checks of the recordings of the animated backdrops, made in the print view of test/pages/record.html
-// as in scripts/export-pptx.mjs. the pictures are compared in the page of the print view, whose file
-// URL makes it a secure context, as WebCodecs needs
-
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deckUrl, launch, printView } from '../scripts/chrome.mjs';
@@ -10,21 +6,12 @@ import { recorder } from '../scripts/record.mjs';
 const DECK = 'test/pages/record.html';
 const FPS = 60;
 
-// the bounds of the comparisons, above the values measured on a Mac. a channel of a pixel differs
-// by mean on average, by at most max, and by more than 8 in at most a fraction few of the pixels.
-// a frame of the video differs from its composed frame along the hairlines of the trajectories, whose
-// color is halved in H.264 at 4:2:0, by mean 0.55, max 134, and few 0.034 at frame 30 with the
-// software encoder, and by about as much with the encoder of macOS at a quantizer of 10. the still
-// with the picture of the words differs from the print view by at most mean 0.0008, max 99, and
-// few 0.000006, i.e. in about 50 pixels
 const VIDEO = { mean: 1.5, max: 192, few: 0.08 };
 const LAYERS = { mean: 0.005, max: 160, few: 0.0001 };
 
 let browser, page, rec;
-// the recording of the title slide, made once and read in several tests
 let title;
 
-// the comparisons of the tests, run in the print view
 const LAB = `window.lab = (() => {
   const bytes = (b64) => {
     const s = atob(b64), u = new Uint8Array(s.length);
@@ -67,13 +54,11 @@ const LAB = `window.lab = (() => {
       const [a, b] = await Promise.all([image(first), image(second)]);
       return stats(pixels((x) => x.drawImage(a, 0, 0), a.width, a.height), pixels((x) => x.drawImage(b, 0, 0), a.width, a.height));
     },
-    // the picture of the words drawn over the still, against the screenshot of the step
     async layers(still, top, shot) {
       const [s, t, o] = await Promise.all([image(still), image(top), image(shot)]);
       const a = pixels((x) => { x.drawImage(s, 0, 0); x.drawImage(t, 0, 0); }, o.width, o.height);
       return stats(a, pixels((x) => x.drawImage(o, 0, 0), o.width, o.height));
     },
-    // the size and duration of a video, and its frame at each time against the composed frame
     async video(mp4, frames) {
       const v = document.createElement('video');
       v.muted = true;
@@ -94,7 +79,6 @@ const LAB = `window.lab = (() => {
 
 const b64 = (buffer) => buffer.toString('base64');
 
-// the indices of the .pdf-pages of the slide whose heading is name, in the print view of p
 async function stepsOf(name, p = page) {
   const names = await p.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => p.querySelector('h1, h2')?.textContent ?? '')`);
   const steps = names.flatMap((n, i) => (n === name ? [i] : []));
@@ -102,8 +86,6 @@ async function stepsOf(name, p = page) {
   return steps;
 }
 
-// a screenshot of the .pdf-page of index i of p, clipped to its box in the document as in record()
-// of scripts/record.mjs
 async function shot(i, p = page) {
   const y = await p.evaluate(`window.scrollY + document.querySelectorAll('.pdf-page')[${i}].getBoundingClientRect().top`);
   await p.evaluate(`window.scrollTo(0, ${y})`);
@@ -111,8 +93,6 @@ async function shot(i, p = page) {
   return p.screenshot({ x: 0, y, width: 1920, height: 1080, scale: 1 });
 }
 
-// the still with the picture of the words of each step of the slide name of p, against the
-// screenshot of the step
 async function layers(name, { still, tops }, p = page) {
   const steps = await stepsOf(name, p);
   assert.equal(tops.length, steps.length);
@@ -124,7 +104,29 @@ async function layers(name, { still, tops }, p = page) {
   }
 }
 
-// the print view of test/pages/record-edges.html, opened by the first test that reads it
+async function record(p, steps, options, limit = 100_000) {
+  let last = null;
+  const traced = new Proxy(p, {
+    get(target, key) {
+      const value = target[key];
+      if (typeof value !== 'function') return value;
+      return (...args) => {
+        last = { call: `${String(key)}(${JSON.stringify(args[0] ?? '').slice(0, 80)})`, at: performance.now() };
+        return value.apply(target, args);
+      };
+    },
+  });
+  let timer;
+  const hang = new Promise((_, fail) => {
+    timer = setTimeout(() => fail(new Error(`the recording hangs at ${last?.call}, called ${last ? ((performance.now() - last.at) / 1000).toFixed(1) : '?'} s ago`)), limit);
+  });
+  try {
+    return await Promise.race([rec.record(traced, steps, options), hang]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 let edges;
 async function edgesPage() {
   if (!edges) {
@@ -137,12 +139,11 @@ async function edgesPage() {
 before(async () => {
   browser = await launch({ wholeFrames: true });
   page = await browser.newPage({ scale: 2 });
-  // with pdfPageHeightOffset=0 as in scripts/export-pptx.mjs, hence a page is the whole slide
   await printView(page, deckUrl(DECK, 'print-pdf&still&pdfPageHeightOffset=0'));
   await page.evaluate(LAB);
   rec = await recorder(browser, { fps: FPS, scale: 2 });
   const steps = await stepsOf('A title with steps');
-  title = await rec.record(page, steps, { keep: [0, 30, 'last'] });
+  title = await record(page, steps, { keep: [0, 30, 'last'] }, 280_000);
 }, { timeout: 300000 });
 
 after(async () => {
@@ -152,20 +153,16 @@ after(async () => {
 test('a backdrop is reported live at the steps where the deck traces it', { timeout: 60000 }, async () => {
   const live = await rec.live(page);
   const at = async (name) => (await stepsOf(name)).map((i) => live[i]);
-  // a title slide with two steps, and the step that restores the dimmed fragments
   assert.deepEqual(await at('A title with steps'), [[0], [0], [0], [0]]);
   assert.deepEqual(await at('A closing slide'), [[0]]);
   assert.deepEqual(await at('A loop'), [[0]]);
-  // a backdrop that is a step is blank before its step
   assert.deepEqual(await at('A trace that is a step'), [[], [0]]);
-  // a backdrop of a content slide without data-live is drawn complete at its step
   assert.deepEqual(await at('A still backdrop that is a step'), [[], []]);
   assert.deepEqual(await at('Two traces from two steps'), [[0], [0, 1]]);
 });
 
 test('a recording of a trace ends with its last frame, the still', { timeout: 60000 }, () => {
   const { recording, still, tops } = title;
-  // a trace of 1 s ends at the frame whose clock reaches its end
   assert.equal(recording.frames, FPS + 1);
   assert.equal(recording.duration, (recording.frames * 1000) / FPS);
   assert.equal(recording.loop, false);
@@ -190,9 +187,7 @@ test('a recording plays in Chrome with the composed frames', { timeout: 120000 }
 });
 
 test('two recordings of one backdrop give the same frames', { timeout: 120000 }, async () => {
-  const again = await rec.record(page, await stepsOf('A title with steps'), { keep: [0, 30, 'last'] });
-  // the traces are drawn alike, and the two screenshots of the layer under them differ by at most
-  // 2 in a channel, measured at the edges of the Princeton Engineering lockup
+  const again = await record(page, await stepsOf('A title with steps'), { keep: [0, 30, 'last'] });
   for (const k of [0, 30, 'last']) {
     const s = await page.evaluate(`lab.compare(${JSON.stringify(b64(title.kept[k]))}, ${JSON.stringify(b64(again.kept[k]))})`);
     assert.ok(s.max <= 4 && s.few === 0, `frame ${k}: ${JSON.stringify(s)}`);
@@ -201,51 +196,44 @@ test('two recordings of one backdrop give the same frames', { timeout: 120000 },
 
 test('the still with the picture of the words of a step is the step of the print view', { timeout: 300000 }, async () => {
   const slides = [['A title with steps', title]];
-  for (const name of ['A closing slide', 'Two traces from two steps']) slides.push([name, await rec.record(page, await stepsOf(name))]);
+  for (const name of ['A closing slide', 'Two traces from two steps']) slides.push([name, await record(page, await stepsOf(name), {}, 140_000)]);
   for (const [name, result] of slides) await layers(name, result);
 });
 
 test('a loop is recorded over one period', { timeout: 120000 }, async () => {
-  const loop = await rec.record(page, await stepsOf('A loop'), { keep: [0, 'end'] });
+  const loop = await record(page, await stepsOf('A loop'), { keep: [0, 'end'] });
   assert.equal(loop.recording.loop, true);
-  // the heads of a loop go round in 9 s, see LOOP in src/orbits.ts
   assert.equal(loop.recording.frames, 9 * FPS);
-  // the frame one period after the first frame, which is not in the recording
   const [a, b] = await page.evaluate(`Promise.all([lab.hash(${JSON.stringify(b64(loop.kept[0]))}), lab.hash(${JSON.stringify(b64(loop.kept.end))})])`);
   assert.equal(a, b);
 });
 
 test('a backdrop that is a step is recorded from its step', { timeout: 120000 }, async () => {
   const steps = await stepsOf('A trace that is a step');
-  await assert.rejects(rec.record(page, steps), /does not trace a backdrop/);
-  const { recording, tops } = await rec.record(page, steps.slice(1));
+  await assert.rejects(record(page, steps), /does not trace a backdrop/);
+  const { recording, tops } = await record(page, steps.slice(1));
   assert.equal(recording.frames, FPS + 1);
   assert.equal(tops.length, 1);
 });
 
 test('a traced backdrop that is not drawn is not live, and its slide is not recorded', { timeout: 120000 }, async () => {
   const p = await edgesPage();
-  // the backdrop of the slide is drawn in the light mode alone, and the print view is dark
   const steps = await stepsOf('A backdrop that is not drawn', p);
   const live = await rec.live(p);
   assert.deepEqual(steps.map((i) => live[i]), [[]]);
-  await assert.rejects(rec.record(p, steps), /does not trace a backdrop/);
+  await assert.rejects(record(p, steps), /does not trace a backdrop/);
 });
 
 test('a step that adds an element to its page keeps the elements under a recorded backdrop under it', { timeout: 120000 }, async () => {
   const p = await edgesPage();
-  // a tick of the scrubber of the plot is added at the second step, over a shape under the backdrop
   const name = 'A plot stepped over a trace';
   const counts = await p.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => p.querySelectorAll('*').length)`);
   const steps = await stepsOf(name, p);
   assert.notEqual(counts[steps[0]], counts[steps[1]]);
-  await layers(name, await rec.record(p, steps), p);
+  await layers(name, await record(p, steps), p);
 });
 
 test('an error of the encoder is reported with its reason and the option --still', { timeout: 120000 }, async (t) => {
-  // an encoder that fails in a task after its first frame, as the encoder of Chrome does, by
-  // closing itself and calling its error callback. the task is run while the PNG of the first
-  // frame is made, before the second frame is encoded
   await page.evaluate(`(() => {
     const Real = window.VideoEncoder;
     window.__realEncoder = Real;
@@ -263,7 +251,7 @@ test('an error of the encoder is reported with its reason and the option --still
     return true;
   })()`);
   t.after(() => page.evaluate(`(window.VideoEncoder = window.__realEncoder, delete window.__realEncoder)`));
-  await assert.rejects(rec.record(page, await stepsOf('A closing slide')), (e) => {
+  await assert.rejects(record(page, await stepsOf('A closing slide')), (e) => {
     assert.match(e.message, /EncodingError: the stub failed/);
     assert.match(e.message, /--still/);
     return true;
@@ -274,18 +262,21 @@ test('a recording leaves the print view as it was, without an error in the page'
   const state = await page.evaluate(`({
     classes: document.documentElement.className,
     marked: document.querySelectorAll('[data-rec]').length,
-    done: Beeson.backdrops.every((o) => o.done || !o.el.isConnected),
+    undone: Beeson.backdrops.filter((o) => o.el.isConnected && !o.done).map((o) => ({
+      tracing: o.tracing,
+      held: ((cues) => cues.length > 0 && cues.every((f) => !f.classList.contains('visible')))([...o.el.closest('section').querySelectorAll('.fragment[data-backdrop-play]')]),
+    })),
     now: performance.now === Performance.prototype.now,
   })`);
   assert.doesNotMatch(state.classes, /\brec-/);
   assert.equal(state.marked, 0);
-  assert.ok(state.done);
+  assert.ok(state.undone.length > 0);
+  assert.deepEqual(state.undone, state.undone.map(() => ({ tracing: false, held: true })));
   assert.ok(state.now);
   assert.deepEqual(page.errors, []);
   assert.deepEqual(edges?.errors ?? [], []);
 });
 
-// the browser, with VideoEncoder.isConfigSupported replaced by supported(config) in its new pages
 const stubbed = (supported) => ({
   async newPage(options) {
     const p = await browser.newPage(options);
@@ -296,7 +287,7 @@ const stubbed = (supported) => ({
   },
 });
 
-test('the software encoder is asked for first, and the encoder of the system after it', { timeout: 60000 }, async () => {
+test('the software encoder is asked for first, since it gives the same file on every system, and the encoder of the system after it', { timeout: 60000 }, async () => {
   assert.equal(rec.acceleration, 'prefer-software');
   const hardware = await recorder(stubbed(`(config) => config.hardwareAcceleration !== 'prefer-software'`), { fps: FPS, scale: 2 });
   assert.equal(hardware.acceleration, 'no-preference');

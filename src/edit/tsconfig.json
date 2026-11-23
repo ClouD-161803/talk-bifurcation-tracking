@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "lib": ["es2022"],
-    "types": ["node"]
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false
   },
   "include": ["./**/*.ts", "../session/**/*.ts", "../editor/merge.ts", "../editor/tokens.ts"],
   "exclude": ["../session/qr.ts", "../session/client/**"]

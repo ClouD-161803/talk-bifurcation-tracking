@@ -1,7 +1,3 @@
-// the names of the glossary in the theme, the editor, and the demo deck. each class and attribute
-// renamed for the glossary is read and written only by its new name, and the old name is not
-// kept as an alias, since a talk carries its own copy of theme/
-
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,15 +8,10 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const sources = (dir) =>
   readdirSync(join(root, dir), { recursive: true })
     .filter((f) => f.endsWith('.ts'))
-    // with forward slashes on Windows too, since the paths are matched against OTHER
     .map((f) => `${dir}/${f.replaceAll('\\', '/')}`);
 
-// the files of the theme, the editor, and the demo deck, the compiled bundles included
 const FILES = ['theme/beeson.css', 'theme/beeson.js', 'theme/editor.js', 'index.html', ...sources('src')];
 
-// each old name, the pattern of its use as a class, an attribute, a custom property, or a label,
-// and the new name. the drag ghost of the editor, the faint path of a plot (its JSON key ghost),
-// the quiet zone of a QR code, and the inspector panel of the editor are other words and stay
 const OLD = [
   ['zone', /(?<![\w$}?])\.zone(?![\w-])|class="(?:[^"]* )?zone[ "]|["']zone["']/, 'figure-box'],
   ['panel', /(?<!inspector > )(?<![\w$}?])\.panel(?![\w\-.[:])|class="panel"|["']panel["']|--panel\b/, 'text-column'],
@@ -40,16 +31,10 @@ const OLD = [
   ['JSON block', /JSON block/, 'JSON script'],
   ['the surface states flat, wells, bowl, and sum', /data-surface-state="(?:flat|wells|bowl|sum)"/, 'zero, gravitational, centrifugal, and effective'],
   ['beeson-session-sheet', /beeson-session-sheet/, 'beeson-session-fit'],
-  ['beeson-locked', /beeson-locked/, 'beeson-held'],
 ];
 
-// the files where an old word means something else, e.g. the JSON key ghost of a plot, and of a
-// family of a bundle, which mirrors it
 const OTHER = { ghost: /^src\/(plot|orbits|switcher|bundle)\.ts$|^theme\/beeson\.js$/ };
 
-// the uses of block in the editor that do not mean a text element: a blockquote, a CSS display, a
-// block arrow of a shape, a blocked request, the block option of scrollIntoView, and the
-// error-correction blocks of a QR code, whose encoder is bundled into editor.js
 const OTHER_BLOCK = /blockquote|inline-block|display(?::\s*|\s*=\s*['"]|\s*:\s*['"])block|Block Arrow|\bblocked\b|onblocked|block:\s*['"](?:nearest|center|start|end)['"]|\bBLOCKS\b/g;
 
 test('the editor does not call a text element a block', () => {
@@ -79,8 +64,6 @@ test('a surface function does not name its heights, and its states are named aft
   assert.deepEqual(hits, []);
 });
 
-// the retired words of the glossary in REFERENCE.md, AGENTS.md, and the skills. the error-correction
-// block of a QR code and the block arrow of a shape are other words and stay
 const PROSE = [
   /\bGhosted\b/, /marks of Markdown/, /closing mark\b/, /\bits mark\b/, /each mark is drawn/,
   /cut into layers/, /one layer at a time/, /on a layer that hides/, /\bglue/i, /(?<!dis)\bcards?\b/i,

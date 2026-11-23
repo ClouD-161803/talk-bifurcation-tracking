@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Deck with copies</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Copied</h2>
+      <p class="fragment current-visible" data-fragment-index="1" style="translate: 0 100px">One sentence  written twice.</p>
+      <p class="fragment current-visible" data-fragment-index="2" style="translate: 0 0">One sentence written twice.</p>
+      <div class="math fragment current-visible" data-fragment-index="1">\[\class{a}{x} = y\]</div>
+      <div class="math fragment current-visible" data-fragment-index="2">\[\class{a b}{x} = y\]</div>
+    </section>
+    <section>
+      <h2>Written once</h2>
+      <p>Entry</p>
+      <p class="fragment" data-fragment-index="1">Entry</p>
+      <div class="math" data-highlight="a">\[\class{a}{x} = y\]</div>
+      <div class="r-stack">
+        <div><p>A first form.</p></div>
+        <div class="fragment" data-fragment-index="2"><p>A second form.</p></div>
+      </div>
+    </section>
+    <section data-allow="copy">
+      <h2>Copied on purpose</h2>
+      <p class="fragment current-visible" data-fragment-index="1">A sentence written twice.</p>
+      <p class="fragment current-visible" data-fragment-index="2">A sentence written twice.</p>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

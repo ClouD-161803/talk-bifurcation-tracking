@@ -1,8 +1,3 @@
-// the commands of the selection on the canvas and of the Arrange menu: Select All, Deselect, the
-// ladder of Esc from a text to its text element to nothing, Return into the text of a text element, Tab between
-// the elements, the nudges by 1 and 10 slide pixels, and the reset of a place or a width. their keys
-// are run by the one keyboard dispatch of commands.ts
-
 import type { App } from '../app.ts';
 import type { Entry } from '../history.ts';
 import { HOST } from '../app.ts';
@@ -19,31 +14,23 @@ import { groupsOf } from '../model/groups.ts';
 import { onSlides } from './slide.ts';
 import { injectStyle } from '../ui/dom.ts';
 
-// a faint step is drawn faint while every step is shown at full opacity, as in theme/beeson.css
 const CSS = `html.beeson-editing .reveal .slides section .fragment.faint { opacity: 0.25 !important; }`;
 
-// the objects that Faint acts on: the figure of a picture selected inside it, a text element, a line
 const faintEls = (app: App): Element[] => movedEls(app).filter((el) => el.localName !== 'section' && !!app.pairing?.elements.get(el)?.open);
 const isFaint = (app: App): boolean => {
   const els = faintEls(app);
   return els.length > 0 && els.every((el) => el.classList.contains('faint'));
 };
 
-// the nudges of the same elements closer than this, in ms, are one entry of the history
 const PAUSE = 1000;
 
-// whether the focus is on the canvas itself, i.e. on nothing, on a figure, or on the handle of a
-// text element, and not on a button of the chrome
 function onCanvas(): boolean {
   const a = document.activeElement;
   return !a || a === document.body || a.classList.contains('beeson-handle') || (!!a.closest('.reveal .slides') && !a.closest(HOST));
 }
 
-// the elements that Reset Position and Reset Size act on, without the shapes, whose place and size
-// are set in their style alone, and the backdrops, whose box Reset Slide puts back
 const resettable = (els: Element[]) => els.filter((el) => !el.matches('.shape, .backdrop'));
 
-// the caret at the end of the text of el
 function caretAtEnd(el: Element): void {
   (el as HTMLElement).focus({ preventScroll: true });
   const range = document.createRange();
@@ -54,21 +41,14 @@ function caretAtEnd(el: Element): void {
   s?.addRange(range);
 }
 
-// the run of nudges in progress: the time of its last nudge, its changes, whose destinations each
-// nudge of the run moves, and its entry of the history. a run ends at a pause, at another
-// selection, when an element is no longer where the run put it, e.g. after a drag or an undo, and
-// when its entry is no longer the last of the history, e.g. after an apply of a session dropped it
 let run: { at: number; changes: { el: Element; from: Place; to: Place }[]; entry: Entry | null } | null = null;
 
 const samePlace = (a: Place, b: Place) => (a.translate?.x ?? 0) === (b.translate?.x ?? 0) && (a.translate?.y ?? 0) === (b.translate?.y ?? 0) && a.width === b.width;
 
-// the elements that a move acts on, i.e. the figure of a picture selected inside it, and the pictures
-// that a size acts on, i.e. the shown picture of a figure
 const movedEls = (app: App): Element[] => objectsOf(app, app.selection.elements());
 const sizedEls = (app: App): Element[] => movedEls(app).map((el) => (el.matches(CONTAINER) ? pictureOf(el) : el));
 
 function nudge(app: App, dx: number, dy: number): void {
-  // a selected backdrop is not moved, and its drawing is panned instead
   if (nudgeBackdrop(app, dx, dy)) return;
   const els = movedEls(app);
   if (!els.length) return;
@@ -87,16 +67,12 @@ function nudge(app: App, dx: number, dy: number): void {
     const recorded = record(app, 'move', changes);
     run = { at: now, changes: recorded, entry: app.history.last };
   }
-  // the upper left corner of the elements on the slide that the fields X and Y give, at the lower
-  // right of the frames
   const boxes = els.map(frameRect);
   const c = cornerBoxOf(app, els, els[0]);
   view.readout = { text: xy(c.left, c.top), x: Math.max(...boxes.map((b) => b.left + b.width)) + 6, y: Math.max(...boxes.map((b) => b.top + b.height)) + 10, at: 'frame' };
   app.invalidate('content');
 }
 
-// the objects of the current slide as the rows of the Object List of navigator/objects.ts, from
-// front to back: a group as one row at the place of its member in front, and the backdrop last
 function rowsOf(app: App): Element[][] {
   const found = [...movablesOf(app), ...linesOf(app)];
   const els = found.filter((el) => !found.some((o) => o !== el && o.contains(el))).sort((a, b) => (drawnUnder(a, b) ? 1 : -1));
@@ -115,9 +91,6 @@ function rowsOf(app: App): Element[][] {
   return ground ? [...rows, [ground]] : rows;
 }
 
-// the row of the Object List in front of the selected one, or behind it with back, around both
-// ends, as Tab and Shift+Tab walk the objects from back to front in Keynote and PowerPoint. a
-// locked object is selected as by a click
 function step(app: App, back: boolean): void {
   const rows = rowsOf(app).reverse();
   if (!rows.length) return;
@@ -132,8 +105,6 @@ function step(app: App, back: boolean): void {
 
 const ARROWS: [string, string, number, number][] = [['left', 'ArrowLeft', -1, 0], ['right', 'ArrowRight', 1, 0], ['up', 'ArrowUp', 0, -1], ['down', 'ArrowDown', 0, 1]];
 
-// each selected object turned by a quarter turn about its own center, a whole group about the
-// center of its frame, as Rotate Left 90° and Rotate Right 90° of PowerPoint
 async function quarter(app: App, by: number): Promise<void> {
   const els = app.selection.elements().filter((el, _, all) => !all.some((o) => o !== el && o.contains(el)));
   const units = new Map<Element | string, Element[]>();
@@ -150,7 +121,6 @@ export function commands(): Command[] {
       id: 'selection.all',
       label: 'Select All',
       keys: { mac: ['Mod+A'], other: ['Mod+A'] },
-      // in a text, the first one selects the text of the text element and the next one every element
       in: ['canvas', 'text'],
       menu: { bar: 'Edit', group: 'select', order: 31 },
       context: ['canvas'],
@@ -159,7 +129,6 @@ export function commands(): Command[] {
       runsAs: (app) => (onSlides(app) ? 'slide.selectAll' : 'selection.all'),
       run: (app) => {
         if (onSlides(app)) return app.commands.run('slide.selectAll');
-        // in a field of a pane, the text of the field
         const field = fieldOf(app);
         if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) return field.select();
         if (field) return void getSelection()?.selectAllChildren(field);
@@ -167,11 +136,8 @@ export function commands(): Command[] {
       },
     },
     {
-      // Esc on an image selected inside its figure selects the figure, inside an entered group the
-      // group, and else clears
       id: 'selection.clear',
       label: 'Deselect',
-      // ⇧⌘A is Deselect All of Keynote
       keys: { mac: ['Mod+Shift+A', 'Escape'], other: ['Mod+Shift+A', 'Escape'] },
       in: ['canvas'],
       menu: { bar: 'Edit', group: 'select', order: 32 },
@@ -186,8 +152,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // ⇧⌘A of Deselect in a text, as the item of the menu, which leaves the text with nothing
-      // selected. Esc in a text is Select Text element
       id: 'selection.clearText',
       label: 'Deselect',
       keys: { mac: ['Mod+Shift+A'], other: ['Mod+Shift+A'] },
@@ -196,8 +160,6 @@ export function commands(): Command[] {
       run: (app) => app.commands.run('selection.clear'),
     },
     {
-      // the figure around an image, a video, or a QR code selected by a second click on it, or
-      // around a figure selected inside a plate that holds several, as Esc selects it
       id: 'selection.container',
       label: 'Select Figure',
       menu: { bar: 'Edit', group: 'select', order: 33 },
@@ -225,8 +187,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // Return puts the caret at the end of the text of a text element. the command is enabled only on an
-      // element that holds a text element, since Keynote offers Edit Text only on an element with text
       id: 'selection.editText',
       label: 'Edit Text',
       keys: { mac: ['Enter'], other: ['Enter'] },
@@ -244,9 +204,6 @@ export function commands(): Command[] {
       },
     },
     {
-      // Return on a figure without text selects its image or video, unless the figure is locked, and
-      // on a plate of several figures the figure of its first shown picture, one level down, as a
-      // second click does
       id: 'selection.selectMedia',
       label: 'Select Image',
       keys: { mac: ['Enter'], other: ['Enter'] },
@@ -280,8 +237,6 @@ export function commands(): Command[] {
       run: (app) => step(app, true),
     },
     {
-      // the opacity of Keynote and PowerPoint as one token of the theme, the class faint, on every
-      // selected object, or off every one when each is faint
       id: 'arrange.faint',
       label: 'Faint',
       in: ['canvas'],
@@ -328,8 +283,6 @@ export function commands(): Command[] {
           return { el, from, to };
         }));
         record(app, 'resize', changes);
-        // object-fit contain, which a typed size writes with the box of a letterboxed picture, does
-        // not change a picture without a width and a height, hence it is taken off with them
         for (const el of els) if ((el as HTMLElement).style.objectFit === 'contain') app.doc.setTag(el, { style: { 'object-fit': null } }, 'resize');
         app.invalidate('content');
       },

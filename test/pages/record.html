@@ -8,8 +8,6 @@
 <link rel="stylesheet" href="../../theme/beeson.css">
 </head>
 <body>
-<!-- the animated backdrops of test/record.test.mjs, each traced in 1 s, a loop, and two backdrops
-     that are steps -->
 <div class="reveal">
   <div class="slides">
     <section class="title">
@@ -45,6 +43,12 @@
       <h2>Two traces from two steps</h2>
       <div class="backdrop" data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5" data-duration="1" data-live></div>
       <div class="backdrop fragment" data-fragment-index="1" data-backdrop="tubes" data-cx="0.42" data-cy="0" data-half="0.6" data-duration="1" data-live style="left: 600px; width: 1320px"></div>
+    </section>
+    <section>
+      <h2>A trace started at a step</h2>
+      <div class="backdrop" data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5" data-duration="1"></div>
+      <p class="fragment" data-fragment-index="0">Before the trace</p>
+      <p class="fragment" data-fragment-index="1" data-backdrop-play>With the trace</p>
     </section>
   </div>
 </div>

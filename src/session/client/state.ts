@@ -1,24 +1,15 @@
-// the save state of a session, a button in .right of the title bar in place of Autosave, whose
-// text is given to the title as well. a click on it opens its menu, with Try Now while a
-// reconnect waits and the items that other parts add, or else saves, which in a session waits for
-// the acknowledgments. a second button beside it is Try now while a reconnect waits, and Load again
-// while the page is blocked
-
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
+import { timeOf } from './labels.ts';
 import { failedLine, lostLine, retry as retryUpload } from './media.ts';
+import type { FigureState } from '../protocol.ts';
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { isLeaving } from './people.ts';
 
-// the items of the menu after Try Now, e.g. Version History
 const ITEMS: MenuItem[] = [];
 export const addStateItem = (item: MenuItem): void => void ITEMS.push(item);
 
-// the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
-// of their own, see people.ts. the button is drawn without its text while the title shows it, i.e.
-// from the width at which menubar.ts shows the state, and while the title has room for it. in a
-// narrow title bar a warning takes a line of its own under the buttons, on which it wraps
 const CSS = `
 @media (min-width: 900px) { .beeson-edit-titlebar:has(.doc:not(.tight) .state) .right button.beeson-session-state .name { display: none; } }
 .beeson-edit-titlebar .right button.beeson-session-state, .beeson-edit-titlebar .right button.beeson-session-action { position: relative; }
@@ -31,11 +22,17 @@ const CSS = `
 `;
 
 type Action = 'retry' | 'reload' | 'upload' | null;
-// note is a warning of the editor, e.g. why a file is not added, which follows text until the next
-// edit. the title shows it in place of the status, hence text is the status
 type View = { text: string; icon: string; warn: boolean; action: Action; note?: string };
+type Compile = { name: string; at: number } | null;
 
-function view(client: Client): View {
+function figuresLine(state: FigureState | null, done: Compile): string | null {
+  if (!state) return null;
+  if (state.compiling) return `Compiling ${state.compiling}.tex`;
+  if (state.uncompiled) return `${state.uncompiled} ${state.uncompiled === 1 ? 'figure is' : 'figures are'} not compiled`;
+  return done && `Compiled ${done.name}.tex at ${timeOf(done.at)}`;
+}
+
+function view(client: Client, done: Compile): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
   if (client.blocked) return { text: BLOCKED, icon: 'warning', warn: true, action: 'reload' };
   if (isLeaving()) return { text: 'Leaving…', icon: 'cloud', warn: false, action: null };
@@ -52,9 +49,7 @@ function view(client: Client): View {
     case 'no-host':
       return { text: "The host's edit command is not running", icon: 'warning', warn: true, action: retry };
     default:
-      // a line that asks the person to act is not hidden behind a note
       const note = client.app.note?.warn ? client.app.note.text : undefined;
-      // the one place for a warning of the edit command, e.g. that it cannot write index.html
       if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null, note };
       const failed = failedLine(client);
       if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload', note };
@@ -62,6 +57,8 @@ function view(client: Client): View {
       if (lost) return { text: lost, icon: 'warning', warn: true, action: null, note };
       if (note) return { text: '', icon: 'warning', warn: true, action: null, note };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
+      const figures = figuresLine(client.figures, done);
+      if (figures) return { text: figures, icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
       return { text: client.host ? 'Saved to index.html' : 'Saved', icon: 'cloud', warn: false, action: null };
@@ -85,13 +82,15 @@ export function install(client: Client): void {
   let shown = '';
   let icon = '';
   let doing: Action = null;
+  let told: Record<string, number> | null = null;
+  let done: Compile = null;
   const draw = () => {
     if (client.connection === 'ended') {
       button.remove();
       action.remove();
       return;
     }
-    const v = view(client);
+    const v = view(client, done);
     if (v.icon !== icon) {
       icon = v.icon;
       button.replaceChildren(client.shell.icon(icon, 14), name);
@@ -136,6 +135,16 @@ export function install(client: Client): void {
   });
   client.on('state', draw);
   client.on('me', draw);
+  client.on('figures', (state) => {
+    if (told) for (const [name, at] of Object.entries(state.compiled)) if (at !== told[name] && (!done || at >= done.at)) done = { name, at };
+    told = state.compiled;
+    draw();
+  });
+  client.app.listen('history', () => {
+    if (!done) return;
+    done = null;
+    draw();
+  });
   client.app.listen('report', draw);
   draw();
 }

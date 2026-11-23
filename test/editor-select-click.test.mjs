@@ -1,9 +1,3 @@
-// the click model of Keynote for text elements, with trusted input: the first click on a text element
-// selects it as a box, a drag from it moves it, a second click or a double click puts the caret in,
-// and one click and Delete remove it. Alt-click and the submenu Select of the context menu reach
-// the elements under the pointer behind the front one, and the Delete button of the toolbar
-// deletes the selection
-
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -28,11 +22,9 @@ async function open(t, platform = 'other', options) {
 }
 
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-// the selectors among selectors whose element is selected as an object
 const selected = (page, selectors) => page.evaluate(`${js(selectors)}.filter((s) => window.BeesonEditor.selection().includes(document.querySelector(s)))`);
 const caretIn = (page, selector) => page.evaluate(`(() => { const el = document.querySelector(${js(selector)}); const s = getSelection(); return !!el && document.activeElement === el && !!s.rangeCount && el.contains(s.anchorNode); })()`);
 const count = (page, selector) => page.evaluate(`document.querySelectorAll(${js(selector)}).length`);
-// a point on the first line of the words of the element of selector, at the fraction fx of its width
 const onWords = (page, selector, fx = 0.3) => page.evaluate(`(() => {
   const el = document.querySelector(${js(selector)});
   const r = document.createRange();
@@ -40,7 +32,6 @@ const onWords = (page, selector, fx = 0.3) => page.evaluate(`(() => {
   const b = r.getClientRects()[0];
   return { x: b.left + b.width * ${fx}, y: b.top + b.height / 2 };
 })()`);
-// the center of the box where the two paragraphs and the shape overlap, or null
 const overlap = (page) => page.evaluate(`(() => {
   const [a, b, c] = [${js(BACK)}, ${js(FRONT)}, ${js(SHAPE)}].map((s) => document.querySelector(s).getBoundingClientRect());
   const left = Math.max(a.left, b.left, c.left), right = Math.min(a.right, b.right, c.right);
@@ -78,7 +69,6 @@ for (const platform of ['mac', 'other']) {
       order.push(...(await selected(page, [SHAPE, FRONT, BACK])));
     }
     assert.deepEqual(order, [FRONT, BACK, SHAPE], 'Alt-click does not go from front to back and around');
-    // with none of them selected, Alt-click selects the second from the front
     await press(page, 'Escape');
     await click(page, at, { modifiers: 'Alt' });
     assert.deepEqual(await selected(page, [SHAPE, FRONT, BACK]), [FRONT], 'Alt-click without a selection does not select the second from the front');
@@ -117,13 +107,15 @@ test('a double click on a paragraph that is not selected puts the caret in with 
   assert.deepEqual(page.errors, []);
 });
 
-test('a click on a cell of a table puts the caret in it at once', async (t) => {
+test('a click on a cell of a table selects the cell, and a second click puts the caret in', async (t) => {
   const page = await open(t);
   await page.evaluate('Reveal.slide(1)');
   await page.waitFor(`!!document.querySelector('.reveal section.present table')`);
   await frames(page);
   await click(page, '.reveal section.present td');
-  assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present table')`), true, 'a click on a cell does not put the caret in');
+  assert.equal(await page.evaluate(`!document.activeElement?.closest('.reveal section.present table') && window.BeesonEditor.state('table.clearCells').enabled`), true, 'a click on a cell does not select the cell');
+  await click(page, '.reveal section.present td');
+  assert.equal(await page.evaluate(`!!document.activeElement?.closest('.reveal section.present table')`), true, 'a second click on a cell does not put the caret in');
   assert.deepEqual(page.errors, []);
 });
 
@@ -177,7 +169,6 @@ test('Alt-click on an inline formula of the text that has the caret reaches the 
   await click(page, words);
   await click(page, words);
   assert.equal(await caretIn(page, WHERE), true, 'two clicks do not put the caret into the paragraph');
-  // Windows repeats the keydown of a held Alt between the press and the release of the click
   const alt = { key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 1 };
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: formula.x, y: formula.y, modifiers: 1 });
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: formula.x, y: formula.y, button: 'left', buttons: 1, clickCount: 1, modifiers: 1 });
@@ -276,7 +267,6 @@ for (const size of [{ width: 760, height: 700 }, { width: 390, height: 844, mobi
   t.diagnostic(folded ? 'in More' : 'in the toolbar');
 });
 
-// a trusted tap of one finger at the point x, y
 async function tap(page, { x, y }) {
   await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -288,7 +278,6 @@ test('on a phone, a tap selects a paragraph as a box, and a second tap puts the 
   await tap(page, at);
   await page.waitFor(`window.BeesonEditor.selection().includes(document.querySelector(${js(BACK)}))`);
   assert.equal(await caretIn(page, BACK), false, 'the first tap puts a caret into the paragraph');
-  // a second tap within the time of a double tap would be a double tap
   await page.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
   await tap(page, at);
   await page.waitFor(`document.activeElement === document.querySelector(${js(BACK)})`);
@@ -296,7 +285,6 @@ test('on a phone, a tap selects a paragraph as a box, and a second tap puts the 
   assert.deepEqual(page.errors, []);
 });
 
-// a trusted swipe of one finger from the point x, y by dy, in steps of 10 px
 async function swipe(page, { x, y }, dy) {
   const at = (k) => [{ x, y: y + Math.sign(dy) * k, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
   await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });

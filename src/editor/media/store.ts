@@ -1,18 +1,10 @@
-// the image, PDF, and video files added in the editor and not saved yet. each file is kept as a blob under
-// its path in the deck, e.g. media/orbit.png, and the page shows it from an object URL until a save
-// writes it next to the deck. the text of the file names the path, and only the page has the object
-// URL. the blobs are also kept in IndexedDB under the address of the deck, so that a draft of
-// file/drafts.ts is recovered with its files after a crash or a closed tab
-
 export type Kind = 'image' | 'video';
 export type MediaFile = { path: string; blob: Blob; url: string; saved: boolean };
 
-// the folder of the new files, next to the deck
 export const FOLDER = 'media';
 
 const DB = 'beeson-media';
 const STORE = 'files';
-// read when used, since the model of the deck, which a test loads without a page, imports the store
 const deck = () => location.href.split(/[?#]/)[0];
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
@@ -20,7 +12,6 @@ const VIDEO_EXT = /\.(mp4|m4v|webm|mov|ogv)$/i;
 
 export const isPdf = (file: { type: string; name: string }): boolean => file.type === 'application/pdf' || (!file.type && /\.pdf$/i.test(file.name));
 
-// a PDF is put on a slide as the images of its renders, as media/pdf.ts describes
 export function kindOf(file: { type: string; name: string }): Kind | null {
   if (isPdf(file)) return 'image';
   if (file.type.startsWith('image/') || (!file.type && IMAGE_EXT.test(file.name))) return 'image';
@@ -28,13 +19,9 @@ export function kindOf(file: { type: string; name: string }): Kind | null {
   return null;
 }
 
-// the longest stem of a name, as cleanName of src/edit/command.ts cuts it
 const STEM = 80;
 const fit = (stem: string, max = STEM) => stem.slice(0, max).replace(/[-_]+$/, '');
 
-// a name that is safe in a path and in an attribute, e.g. orbit-plot-2.png for "Orbit plot (2).PNG".
-// its stem is cleaned as cleanName of src/edit/command.ts cleans it, so that the edit command keeps
-// the name, e.g. fig-1.png for fig.1.png
 export function safeName(name: string, fallback: string): string {
   const base = name.split(/[\\/]/).pop() ?? '';
   const dot = base.lastIndexOf('.');
@@ -50,7 +37,6 @@ const suffix = () => `-${Array.from(crypto.getRandomValues(new Uint8Array(4)), (
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// whether text has path as the whole value of an attribute
 export const names = (text: string, path: string): boolean => new RegExp(`=\\s*(["']?)${escapeRe(path)}\\1(?=[\\s>/])`).test(text);
 
 type Row = { deck: string; path: string; blob: Blob };
@@ -81,26 +67,19 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 const ofDeck = () => IDBKeyRange.bound([deck(), ''], [deck(), '￿']);
 
 export class MediaStore {
-  // the reason why a file cannot be added, e.g. the limit of a session, or null
   refuse: ((file: File) => string | null) | null = null;
-  // whether a new file gets a name unique to this page, e.g. plot-k3f9.png, while another page of
-  // a session may pick the same name
   unique: (() => boolean) | null = null;
-  // the stems given a suffix by unique, so that the poster of plot-k3f9.mp4 is plot-k3f9.png
   private readonly suffixed = new Set<string>();
   private readonly byPath = new Map<string, MediaFile>();
   private readonly byUrl = new Map<string, MediaFile>();
-  // the chain of the writes to IndexedDB, whose end a test waits for
   private kept: Promise<unknown> = Promise.resolve();
 
-  // a new file under media/ named after name. its path is not one of the store, and taken is
-  // false for it
   add(blob: Blob, name: string, taken: (path: string) => boolean, fallback = 'file'): MediaFile {
     const clean = safeName(name, fallback);
     const dot = clean.lastIndexOf('.');
     const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
     let path: string;
-    if (this.unique?.() && !this.suffixed.has(stem)) {
+    if (this.unique?.() && ![...this.suffixed].some((s) => stem === s || stem.startsWith(`${s}-`))) {
       let named: string;
       do {
         named = fit(stem, STEM - 5) + suffix();
@@ -111,8 +90,6 @@ export class MediaStore {
     return this.put({ path, blob, url: URL.createObjectURL(blob), saved: false }, true);
   }
 
-  // path, or a numbered name of it, e.g. media/plot-2.png, that is not a path of the store and for
-  // which taken is false
   private free(path: string, taken: (path: string) => boolean): string {
     const dot = path.lastIndexOf('.');
     const [stem, ext] = dot > path.lastIndexOf('/') ? [path.slice(FOLDER.length + 1, dot), path.slice(dot)] : [path.slice(FOLDER.length + 1), ''];
@@ -120,7 +97,6 @@ export class MediaStore {
     return path;
   }
 
-  // a file of path kept elsewhere, e.g. in the copy of a session in the browser
   adopt(path: string, blob: Blob): MediaFile {
     return this.byPath.get(path) ?? this.put({ path, blob, url: URL.createObjectURL(blob), saved: false }, false);
   }
@@ -132,7 +108,6 @@ export class MediaStore {
     return f;
   }
 
-  // a browser without IndexedDB, e.g. in a private window, keeps the files on the page only
   private keep(fn: () => Promise<unknown>): void {
     this.kept = this.kept.then(fn).catch(() => {});
   }
@@ -145,19 +120,15 @@ export class MediaStore {
     return (path && this.byPath.get(path)) || null;
   }
 
-  // the path in the deck of the value of a src or a poster on the page
   pathOf(value: string | null): string | null {
     if (!value) return value;
     return this.byUrl.get(value)?.path ?? value;
   }
 
-  // the files that text names and that are not on the disk yet
   unsaved(text: string): MediaFile[] {
     return [...this.byPath.values()].filter((f) => !f.saved && names(text, f.path));
   }
 
-  // files are on the disk, hence IndexedDB no longer keeps them for a draft. the page keeps
-  // showing them from their object URLs
   saved(files: MediaFile[]): void {
     for (const f of files) {
       f.saved = true;
@@ -166,16 +137,12 @@ export class MediaStore {
     }
   }
 
-  // f is kept under path, the name that the edit command gave it, so that an element of another
-  // page that names the first name of f shows the file in media/. a file not uploaded yet that had
-  // path is given a new name for which taken is false, under which it is uploaded
   renamed(f: MediaFile, path: string, taken: (path: string) => boolean): void {
     const other = this.byPath.get(path);
     this.move(f, path);
     if (other && other !== f && !other.saved) this.move(other, this.free(path, taken));
   }
 
-  // the row of a file not uploaded yet is moved as well, so that a draft finds it under path
   private move(f: MediaFile, path: string): void {
     const from = f.path;
     if (this.byPath.get(from) === f) this.byPath.delete(from);
@@ -184,10 +151,13 @@ export class MediaStore {
     if (!f.saved) this.keep(() => tx('readwrite', (s) => (s.delete([deck(), from]), s.put({ deck: deck(), path, blob: f.blob } satisfies Row))));
   }
 
-  // each src and poster under root, root included, that names a file of the store is shown from
-  // the object URL of the file. a later src or poster set on these elements with the path of a new
-  // file, e.g. by app.doc at an undo, is set to its object URL at once, since a browser asks the
-  // server for a poster as soon as it is set
+  resolveText(html: string): string {
+    return html.replace(/(\s(?:src|poster)=")([^"]*)"/g, (all, head: string, path: string) => {
+      const f = this.byPath.get(path);
+      return f ? `${head}${f.url}"` : all;
+    });
+  }
+
   resolve(root: Element): void {
     for (const el of [root, ...root.querySelectorAll('img, video, source')]) {
       if (!el.matches('img, video, source')) continue;
@@ -207,9 +177,6 @@ export class MediaStore {
     el.setAttribute = (name: string, value: string) => set.call(el, name, name === 'src' || name === 'poster' ? (this.byPath.get(value)?.url ?? value) : value);
   }
 
-  // the files that IndexedDB keeps for a draft of this deck. with keep false, e.g. when the deck
-  // does not have a draft, they are forgotten. the read is on the chain of the writes, so that a
-  // file added while the database is still opened is kept after the others are forgotten
   async load(keep: boolean): Promise<number> {
     const read = this.kept.then(async () => {
       const rows = (await tx('readonly', (s) => s.getAll(ofDeck()))) as Row[];
@@ -229,5 +196,4 @@ export class MediaStore {
   }
 }
 
-// the one store of the editor
 export const media = new MediaStore();

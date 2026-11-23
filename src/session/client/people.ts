@@ -1,40 +1,23 @@
-// the avatars of a session in .right of the title bar: a circle with initials per person in the
-// tone of the person, the others in the order of joining, at most four, then +N with a list of the
-// rest, and the own avatar last. a person with two pages has one avatar. each avatar opens a menu
-// on a click, a right-click, a hold of 500 ms, and Enter or Shift+F10 with the focus on it. the
-// own menu holds Change Name… and, for a guest, Leave Session. a hidden status region announces
-// who joined and who left.
-//
-// in a title bar too narrow for the menus and the controls of the session in one row, e.g. on a
-// phone, menubar.ts sets the class narrow, and the controls of the session take a row of their own
-// under the menus. at most two other avatars are shown there
-
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
-import { COLORS, nameKey, type Person } from '../protocol.ts';
+import { nameKey, type Person } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { fitClass, make, style } from './dom.ts';
 import { askTaken, claimOnReload, initials, nameField, rename } from './join.ts';
+import { toneOf } from './labels.ts';
 
 export { initials };
 
-// a person of the session with the pages that the person has open, in the order of joining
 export type Someone = { person: string; name: string; color: number; host: boolean; pages: Person[] };
 
-// the initials and the colors of the avatar of a person. tone is a CSS color, ink the color of text
-// on it
 export type Badge = { initials: string; tone: string; ink: string };
 
 const HOLD = 500;
-// a move in px of a touch that is a scroll, not a hold
 const SLOP = 10;
 const OTHERS = 4;
 const OTHERS_NARROW = 2;
-// announcements less than SAY_GAP ms apart are read together, the last SAID lines of them
 const SAY_GAP = 1000;
 const SAID = 8;
 
-// the hit area of each control is 32 px, around a circle of 22 px. the save state of a narrow title
-// bar clips its text, hence its line is as tall as the letters of the font, see menubar.ts
 const CSS = `
 .beeson-session-people { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .beeson-edit-titlebar .right button.beeson-session-avatar { position: relative; justify-content: center; width: 22px; min-width: 22px; padding: 0; border-radius: 11px; background: var(--tone); color: var(--ink); font: 600 11px/1 var(--ed-font); letter-spacing: -0.2px; -webkit-touch-callout: none; touch-action: manipulation; }
@@ -59,11 +42,8 @@ const CSS = `
 
 const morePeople = (n: number) => `${n} more ${n === 1 ? 'person' : 'people'}`;
 
-export const toneOf = (color: number): string => `var(${COLORS[((color % 4) + 4) % 4]})`;
-// text on --data-5 is white, and on the other tones near black
 export const inkOf = (color: number): string => (((color % 4) + 4) % 4 === 2 ? '#fff' : '#1d1d1f');
 
-// the persons of the session, with the own person, in the order of joining
 export function everyone(client: Client): Someone[] {
   const out = new Map<string, Someone>();
   for (const page of client.people) {
@@ -76,8 +56,6 @@ export function everyone(client: Client): Someone[] {
   return [...out.values()];
 }
 
-// the badge of a person of the session, or of one who joined it before. two people with one tone
-// and the same initials differ by a digit, given in the order of joining
 export function badge(client: Client, person: string): Badge {
   const present = everyone(client);
   const known = present.find((p) => p.person === person) ?? client.known.find((p) => p.person === person);
@@ -90,7 +68,6 @@ export function badge(client: Client, person: string): Badge {
   return { initials: letters, tone: toneOf(color), ink: inkOf(color) };
 }
 
-// a circle with the initials of a person, e.g. for a row of the Share dialog
 export function disc(client: Client, person: string, size = 22): HTMLElement {
   const b = badge(client, person);
   const el = make('span', 'beeson-session-disc', b.initials);
@@ -101,8 +78,6 @@ export function disc(client: Client, person: string, size = 22): HTMLElement {
 
 const extras: ((someone: Someone) => MenuItem[])[] = [];
 
-// items added under the full name in the menu of the avatar of another person, e.g. Follow and Go
-// to Slide 7
 export function addPersonItems(fn: (someone: Someone) => MenuItem[]): void {
   extras.push(fn);
 }
@@ -113,8 +88,6 @@ export function personItems(someone: Someone): MenuItem[] {
 
 let press: ((person: string) => void) | null = null;
 
-// fn runs at a click, a tap, Enter, or Space on the avatar of another person in place of its menu,
-// e.g. to follow the person. the menu then opens on the other ways of wireMenu
 export function onPersonPress(fn: ((person: string) => void) | null): void {
   press = fn;
 }
@@ -138,8 +111,6 @@ function showMenu(client: Client, owner: HTMLElement, items: () => MenuItem[], k
   openOwner = owner;
 }
 
-// the menu of owner on a press of the mouse, a tap, a hold of a touch or a pen, a right-click, and
-// Enter, Space, Down, Shift+F10, or the Menu key. with act, a press, a tap, Enter, and Space run act
 export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuItem[], act?: () => void): void {
   if (!act) {
     owner.setAttribute('aria-haspopup', 'menu');
@@ -166,7 +137,6 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
       if (!act) toggle(false);
       return;
     }
-    // iOS Safari fires no contextmenu at a long press, hence the hold is timed here
     held = false;
     from = { x: ev.clientX, y: ev.clientY };
     clearTimeout(timer);
@@ -197,7 +167,6 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
   });
   owner.addEventListener('keydown', (ev) => {
     const menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
-    // the click of the button runs act
     if (act && !menuKey && (ev.key === 'Enter' || ev.key === ' ')) return;
     if (!(menuKey || ev.key === 'Enter' || ev.key === ' ' || ev.key === 'ArrowDown')) return;
     ev.preventDefault();
@@ -206,8 +175,6 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
   });
 }
 
-// Change Name…: the field of the join dialog, and the question of the join when another person
-// holds the name. Yes takes the person over at a reload, as the join does
 async function changeName(client: Client): Promise<void> {
   const field = nameField(client.name);
   field.swatch.style.setProperty('--tone', toneOf(client.color));
@@ -240,7 +207,6 @@ async function changeName(client: Client): Promise<void> {
         dialog.close('change');
         return;
       }
-      // the question is asked over the dialog, which stays open for another name
       const holder = client.known.find((p) => nameKey(p.name) === nameKey(name))?.name ?? name.trim();
       if (await askTaken(client, holder)) {
         claimOnReload(holder);
@@ -267,17 +233,13 @@ async function changeName(client: Client): Promise<void> {
 
 let leaving = false;
 
-// true from Leave Session until the page has left, for the save state
 export const isLeaving = (): boolean => leaving;
 
-// Leave Session of a guest: the edits are sent first, and the page leaves the session. the deck
-// stays open in the editor without a session
 async function leave(client: Client): Promise<void> {
   if (leaving) return;
   leaving = true;
   client.emit('state');
   await Promise.race([client.flush().catch(() => {}), new Promise((done) => setTimeout(done, 2000))]);
-  // a session that the host ended meanwhile is told by end.ts
   if (client.ended) return;
   const acked = client.acked();
   const text = client.port.text();
@@ -296,9 +258,7 @@ async function leave(client: Client): Promise<void> {
     stay: ['download'],
     onButton: (value) => {
       if (value === 'download') client.shell.download(text);
-      // the page joins again with the name and the person that it keeps
       if (value !== 'join') return;
-      // the deck counts as changed after a session, and the browser would ask before the reload
       client.app.dirty = false;
       location.reload();
     },
@@ -322,8 +282,6 @@ export function install(client: Client): void {
   };
   const live = region();
   document.body.append(live);
-  // the page outside a modal dialog is inert, hence each modal dialog gets a status region when it
-  // opens, which the announcements go into while this dialog is the top one
   const modals: HTMLDialogElement[] = [];
   const opened = new MutationObserver((records) => {
     for (const { target: d } of records) {
@@ -373,8 +331,6 @@ export function install(client: Client): void {
 
   let said: string[] = [];
   let saidAt = 0;
-  // the lines added to those of an announcement less than SAY_GAP ago, so that a quick second one
-  // does not cut the first
   const say = (lines: string[]) => {
     const now = performance.now();
     said = (now - saidAt < SAY_GAP ? [...said, ...lines] : lines).slice(-SAID);
@@ -433,7 +389,6 @@ export function install(client: Client): void {
     paint(me, client.person, client.name, `${client.name}, you`);
     me.classList.add('me');
     list.push(me);
-    // the nodes that left go first, so that the nodes that stay are not moved and keep the focus
     for (const el of [...box.children]) if (!list.includes(el as HTMLButtonElement)) el.remove();
     list.forEach((el, i) => {
       if (box.children[i] !== el) box.insertBefore(el, box.children[i] ?? null);
@@ -441,7 +396,6 @@ export function install(client: Client): void {
     for (const [person, el] of avatars) if (!el.isConnected) avatars.delete(person);
   };
 
-  // a change of the width of the controls fits the title bar again, see fit() of menubar.ts
   const watch = new ResizeObserver(() => client.app.report());
   watch.observe(bar);
 

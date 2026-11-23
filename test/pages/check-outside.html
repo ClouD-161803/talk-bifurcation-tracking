@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Deck with text off the slide</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Off the slide</h2>
+      <p style="translate: 0 900px">A line below the slide.</p>
+    </section>
+    <section>
+      <h2>Off the slide before the last step</h2>
+      <p class="fragment current-visible" data-fragment-index="1" style="translate: 0 900px">A line below the slide for one step.</p>
+      <p class="fragment" data-fragment-index="2">A line on the slide.</p>
+    </section>
+    <section data-allow="outside">
+      <h2>Off the slide on purpose</h2>
+      <p style="translate: 0 900px">A line below the slide on purpose.</p>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

@@ -1,35 +1,10 @@
-// a `.surface` with data-bundle, i.e. a strip bundle: a closed orbit and strips along it, read from
-// the inline JSON script named by data-bundle. a strip is the surface swept by a segment through each
-// point of the orbit along a unit direction given there, e.g. an eigendirection of the monodromy
-// matrix. the bundle is drawn with three.js on the renderer of surface.ts, under a camera that turns
-// slowly and is turned by a drag. the strips shown at a step are named, separated by spaces, in
-// data-surface-state of a fragment of the slide. a strip that is added is grown out of the orbit,
-// first as segments at its ribs, one after another along the orbit, and then as a sheet between
-// them. a strip that is removed is shrunk back in the reverse order. a compass is drawn at the upper
-// left, with a needle toward the point of each arrow of the script, e.g. a primary body.
-// at the state start, a point is shown at the start of the orbit in an empty ring, at nudge an arrow
-// along the orbit is drawn from it, and at flow it is moved around the orbit once per LAP, at the
-// times of the script. the ring is filled at the end of the first period, and the elements of the
-// slide with data-surface-lap are faded in with it. a script may give families of orbits instead of,
-// or besides, one orbit. a family is moved by the clock of a plot of the same slide: its members up to
-// the value of the clock are drawn faint, and the member at this value bright, interpolated point by
-// point between the two members nearest to it. every member of a family with ghost is drawn fainter
-// still, as the ghost of a trace of a plot
-
 import type * as Three from 'three';
+import { typesetLabels } from './drawn-text.ts';
 import { LINE_FRAGMENT, LINE_VERTEX, clamp, dragToTurn, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
 import type { RGB, Surface } from './surface.ts';
 
 type Vec = [number, number, number];
 
-/**
- * The JSON script of a bundle, in the units of the drawing. The orbit is closed from its last point to
- * its first. A strip has a unit direction at every point of the orbit, a half width, and the indices
- * of the points at which a segment is drawn. Its tone is the name of a custom property of the theme
- * without its dashes, e.g. accent or violet. An arrow is the id of its label and the point toward
- * which its needle is drawn. The times, if given, are the fractions of the period at the points of the
- * orbit, increasing from 0, at which the point of the state flow is moved.
- */
 export type BundleData = {
   orbit?: Vec[];
   libration_point?: Vec;
@@ -39,26 +14,18 @@ export type BundleData = {
   families?: { id: string; tone: string; values: number[]; orbits: Vec[][]; ghost?: boolean }[];
 };
 
-// milliseconds in which a strip is grown in full, and shrunk in full
 const GROW = 3600;
 const SHRINK = 1400;
-// the part of the growth in which the segments are grown, the delay of the last segment after the
-// first, and the part in which the sheet is grown after them
 const RIBS_END = 0.42;
 const RIB_DELAY = 0.2;
 const SHEET_START = 0.42;
-// the default seconds per turn of the camera
 const TURN = 90;
-// widths in slide pixels: the orbit, the segments, and the dot of the libration point
 const ORBIT_WIDTH = 4;
 const RIB_WIDTH = 2;
-// the width of a member of a family passed by the clock, its opacity, and the opacity of a ghost
 const TRAIL_WIDTH = 1.5;
 const TRAIL_ALPHA = 0.3;
 const GHOST_ALPHA = 0.1;
 const DOT_SIZE = 18;
-// the states of the moving point, the milliseconds of one period, of the filling of the ring, and of
-// the fade of the arrow, and the half width in milliseconds of the pulse of the point at its start
 const START = 'start';
 const NUDGE = 'nudge';
 const FLOW = 'flow';
@@ -66,13 +33,9 @@ const LAP = 6000;
 const FILL = 400;
 const FADE = 300;
 const PULSE = 210;
-// the ring at the start in slide pixels: its radius and its width, and the length of the arrow
 const RING = 17;
 const RING_WIDTH = 3;
 const NUDGE_LENGTH = 90;
-// the compass in slide pixels: the middle of its circle from the left and the top edges of the
-// element, its radius, the widths of its circle and of a needle, the length of the head of a
-// needle, and the gap between the head and the label
 const COMPASS_LEFT = 190;
 const COMPASS_TOP = 170;
 const COMPASS_RADIUS = 70;
@@ -80,14 +43,10 @@ const CIRCLE_WIDTH = 1.5;
 const NEEDLE_WIDTH = 3;
 const HEAD = 18;
 const LABEL_GAP = 10;
-// the opacity of a sheet, which shows only its nearest side
 const SHEET_ALPHA = 0.86;
-// the corners of the six vertices of a segment in LINE_VERTEX
 const QUAD = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
 
-// the color of a sheet, from its tone along the orbit to uEdge at its two edges, under a Lambert
-// shade of a fixed light seen from either side
-const SHEET_VERTEX = /* glsl */ `
+const SHEET_VERTEX = `
 attribute vec3 aNormal;
 attribute float aAcross;
 varying vec3 vNormal;
@@ -98,7 +57,7 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-const SHEET_FRAGMENT = /* glsl */ `
+const SHEET_FRAGMENT = `
 uniform vec3 uColor;
 uniform vec3 uEdge;
 uniform vec3 uLight;
@@ -111,15 +70,14 @@ void main() {
   gl_FragColor = vec4(c, uAlpha);
 }`;
 
-const DOT_VERTEX = /* glsl */ `
+const DOT_VERTEX = `
 uniform float uSize;
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   gl_PointSize = uSize;
 }`;
 
-// a disc in uColor, outlined in uRing
-const DOT_FRAGMENT = /* glsl */ `
+const DOT_FRAGMENT = `
 uniform vec3 uColor;
 uniform vec3 uRing;
 uniform float uSize;
@@ -134,14 +92,12 @@ void main() {
 
 const add = (a: Vec, b: Vec, s: number): Vec => [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]];
 
-// the progress of the segment at the rib k of count, and of the sheet, at the growth g of a strip
 const ribGrowth = (g: number, k: number, count: number): number => {
   const start = count > 1 ? (RIB_DELAY * k) / (count - 1) : 0;
   return ease(clamp((g - start) / (RIBS_END - RIB_DELAY), 0, 1));
 };
 const sheetGrowth = (g: number): number => ease(clamp((g - SHEET_START) / (1 - SHEET_START), 0, 1));
 
-/** The data of the text of a JSON script, or the reason it cannot be drawn. */
 export function parseBundle(text: string): BundleData | string {
   let data: BundleData;
   try { data = JSON.parse(text); } catch (error) { return `its JSON is malformed, ${String(error)}`; }
@@ -172,17 +128,15 @@ export function parseBundle(text: string): BundleData | string {
     if (!Array.isArray(r.ribs)) return `the ribs of the strip ${r.id} are not a list`;
     if (r.ribs.some((i) => !(Number.isInteger(i) && i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
   }
-  const t = data.times;
-  if (t && !(t.length === n && t.every((v, i) => v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return 'its times are not increasing fractions of the period, one for each point of the orbit';
   if (data.arrows !== undefined && !Array.isArray(data.arrows)) return 'its arrows are not a list';
   for (const a of data.arrows ?? []) {
     if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
   }
+  const t = data.times;
+  if (t !== undefined && !(Array.isArray(t) && t.length === n && t.every((v, i) => Number.isFinite(v) && v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return 'its times are not increasing fractions of the period, one for each point of the orbit';
   return data;
 }
 
-// one strip as drawn: its sheet, drawn after a depth mesh of the same triangles, so that only its
-// nearest side is shown, and its segments. grow is moved from from to to in a change
 type Strip = {
   id: string;
   tone: string;
@@ -198,8 +152,6 @@ type Strip = {
   drawn: string;
 };
 
-// a family as drawn: its members passed by the clock, faint, the member at the clock, and the ghost
-// of every member, if asked for
 type Family = {
   id: string;
   tone: string;
@@ -210,12 +162,8 @@ type Family = {
   ghost: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial> | null;
 };
 
-// the share of the span of the values of a family by which the clock may be off a value, e.g. by the
-// rounding of a plot to its digits
 const VALUE_TOLERANCE = 1e-3;
 
-// the member at the value v of a monotone list of values, as the index of the member before it and
-// the fraction toward the next one, or null when v is outside the values
 function memberAt(values: number[], v: number): [number, number] | null {
   const lo = Math.min(values[0], values.at(-1)!), hi = Math.max(values[0], values.at(-1)!), tolerance = VALUE_TOLERANCE * (hi - lo);
   if (v < lo - tolerance || v > hi + tolerance) return null;
@@ -227,13 +175,11 @@ function memberAt(values: number[], v: number): [number, number] | null {
   return [0, 0];
 }
 
-// an arrow of the script as a unit direction, from the libration point, or from the middle of the
-// box, toward its point
 type Arrow = { id: string; u: Vec };
 
 const CACHE = new WeakMap<HTMLElement, Bundle>();
+const REPORTED = new WeakMap<HTMLElement, string | null>();
 
-/** One drawing per `.surface` element with data-bundle, made with mount(). */
 export class Bundle {
   readonly el: HTMLElement;
   private THREE: typeof Three;
@@ -241,7 +187,6 @@ export class Bundle {
   private point: Vec | null;
   private strips: Strip[];
   private families: Family[];
-  // the value of the clock of the plot of the slide
   private clock: number | null = null;
   private arrows: Arrow[];
   private subtle = '';
@@ -251,16 +196,6 @@ export class Bundle {
   private camera: Three.PerspectiveCamera;
   private line: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
   private dot: Three.Points<Three.BufferGeometry, Three.ShaderMaterial>;
-  private times: number[] | null;
-  private laps: HTMLElement[];
-  private colors = { accent: '', blue: '', bg: '' };
-  private marked = false;
-  private nudged = false;
-  private flowing = false;
-  private arrow = 0;
-  private fill = 0;
-  private lapStart = 0;
-  private elapsed = 0;
   private center: Vec;
   private radius: number;
   private rate = 0;
@@ -280,6 +215,16 @@ export class Bundle {
   private H = 0;
   private w = 0;
   private h = 0;
+  private times: number[] | null;
+  private laps: HTMLElement[];
+  private colors = { accent: '', blue: '', bg: '' };
+  private marked = false;
+  private nudged = false;
+  private flowing = false;
+  private arrow = 0;
+  private fill = 0;
+  private lapStart = 0;
+  private elapsed = 0;
 
   constructor(el: HTMLElement, data: BundleData, THREE: typeof Three) {
     this.el = el;
@@ -295,6 +240,7 @@ export class Bundle {
     el.prepend(this.canvas);
     el.setAttribute('data-prevent-swipe', '');
     this.labels = [...el.querySelectorAll<HTMLElement>('.label')];
+    typesetLabels(this.labels);
     this.laps = [...(el.closest('section')?.querySelectorAll<HTMLElement>('[data-surface-lap]') ?? [])];
 
     this.scene = new THREE.Scene();
@@ -306,7 +252,6 @@ export class Bundle {
     this.scene.add(this.line, this.dot);
     this.strips = (data.strips ?? []).map((r, i) => this.makeStrip(r, i));
     this.families = (data.families ?? []).map((f) => this.makeFamily(f));
-    // the camera is aimed at the box of the orbit, of every strip in full, and of every family, in every state
     const points: Vec[] = [...this.orbit, ...this.families.flatMap((f) => f.orbits.flat())];
     for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
     const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
@@ -334,8 +279,6 @@ export class Bundle {
     this.fit();
   }
 
-  // the faint members of a family, set once and drawn up to the member passed last, and its member
-  // at the clock, set at each frame
   private makeFamily(f: { id: string; tone: string; values: number[]; orbits: Vec[][]; ghost?: boolean }): Family {
     const n = f.orbits[0].length;
     const trail = this.makeLine(n * f.orbits.length, TRAIL_WIDTH, 1.5), member = this.makeLine(n, ORBIT_WIDTH, 2.5);
@@ -355,9 +298,6 @@ export class Bundle {
     return { id: f.id, tone: f.tone, values: f.values, orbits: f.orbits, trail, member, ghost };
   }
 
-  // the members of each family passed by the clock, i.e. those before the first member past it in the
-  // order of the family, and its member at the clock. before the clock is known, the first member of
-  // the first family is drawn
   private placeFamilies(): void {
     if (!this.families.length) return;
     const value = this.clock ?? this.families[0].values[0];
@@ -374,7 +314,6 @@ export class Bundle {
     }
   }
 
-  // the segments of a line as quads of width pixels, for count segments set with setSegment()
   private makeLine(count: number, width: number, order: number): Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial> {
     const THREE = this.THREE, geometry = new THREE.BufferGeometry();
     const corner = new Float32Array(12 * count);
@@ -382,7 +321,6 @@ export class Bundle {
     geometry.setAttribute('corner', new THREE.BufferAttribute(corner, 2));
     geometry.setAttribute('start', new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('end', new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
-    // three.js draws nothing without a position attribute unless the range is given
     geometry.setDrawRange(0, 6 * count);
     const material = new THREE.ShaderMaterial({
       vertexShader: LINE_VERTEX,
@@ -414,7 +352,6 @@ export class Bundle {
     start.needsUpdate = end.needsUpdate = true;
   }
 
-  // a dot at the point at, hidden when at is null
   private makeDot(at: Vec | null): Three.Points<Three.BufferGeometry, Three.ShaderMaterial> {
     const THREE = this.THREE, geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(at ?? [0, 0, 0]), 3));
@@ -433,8 +370,6 @@ export class Bundle {
     return dot;
   }
 
-  // the sheet of a strip as a mesh of three rows of points across it, at its two edges and on the
-  // orbit, whose positions are set by grow in place()
   private makeStrip(r: BundleData['strips'][number], i: number): Strip {
     const THREE = this.THREE, n = this.orbit.length, geometry = new THREE.BufferGeometry();
     const normal = new Float32Array(9 * n), across = new Float32Array(3 * n);
@@ -466,8 +401,6 @@ export class Bundle {
       uLight: { value: new THREE.Vector3(-0.45, -0.35, 0.82).normalize() },
       uAlpha: { value: SHEET_ALPHA },
     };
-    // the two materials share their uniforms, and the depth mesh of every strip is drawn before
-    // the sheet of any, thus where two sheets cross only the nearest is shown
     const material = (colorWrite: boolean) => new THREE.ShaderMaterial({
       vertexShader: SHEET_VERTEX,
       fragmentShader: SHEET_FRAGMENT,
@@ -484,7 +417,6 @@ export class Bundle {
     return { id: r.id, tone: r.tone, half: r.half_width, ribs: r.ribs, directions: r.directions, sheet, depth, segments, grow: 0, from: 0, to: 0, drawn: '' };
   }
 
-  /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
   recolor(): void {
     const cs = getComputedStyle(this.el), css = (name: string, fallback: RGB) => rgb(cs.getPropertyValue(name), fallback);
     const bg = css('--bg', [0.02, 0.02, 0.02]), text = css('--text', [0.95, 0.95, 0.94]);
@@ -508,8 +440,6 @@ export class Bundle {
     }
   }
 
-  // the strips named by the visible fragment of the slide with data-surface-state and the highest
-  // fragment index, or by the data-surface-state of the element, or none. an unknown name is reported
   private target(): string[] {
     let best: HTMLElement | null = null, index = -Infinity;
     for (const f of this.el.closest('section')?.querySelectorAll<HTMLElement>('.fragment.visible[data-surface-state]') ?? []) {
@@ -517,12 +447,11 @@ export class Bundle {
       if (i >= index) { best = f; index = i; }
     }
     const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? '').split(/\s+/).filter(Boolean);
-    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name) && !([START, NUDGE, FLOW].includes(name) && this.times));
+    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name) && !(this.times && [START, NUDGE, FLOW].includes(name)));
     if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(' ')}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(', ')}`);
     return names;
   }
 
-  /** Sets the strips shown from the fragments of the slide, grown or shrunk, or at once. */
   sync(animate: boolean): void {
     const names = this.target(), name = names.join(' ');
     if (name === this.stateName) return;
@@ -558,19 +487,11 @@ export class Bundle {
     this.kick();
   }
 
-  // the end of a change, at once
   private settle(): void {
     this.moving = false;
     for (const r of this.strips) r.grow = r.from = r.to;
   }
 
-  /**
-   * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
-   * sheet, and that of each of its segments. With settled, the change of state has ended. For each
-   * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
-   * and its direction in the scene, from the libration point to a point 0.1 toward its point. For each
-   * family, the number of its members passed by the clock, and whether its member at the clock is drawn.
-   */
   probe(): {
     state: string;
     settled: boolean;
@@ -590,7 +511,6 @@ export class Bundle {
     };
   }
 
-  /** Sizes the canvas from the box of the element on the screen, and draws. */
   fit(): void {
     const r = this.el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
     const w = this.el.offsetWidth, h = this.el.offsetHeight;
@@ -611,8 +531,6 @@ export class Bundle {
     this.draw();
   }
 
-  // the camera on a sphere about the middle of the box of the drawing, at the distance at which the
-  // sphere around the box fills the narrower field of view, divided by data-zoom
   private aim(): void {
     const [cx, cy, cz] = this.center, R = this.radius;
     const v = (this.camera.fov * Math.PI) / 360, half = Math.min(v, Math.atan(Math.tan(v) * this.camera.aspect));
@@ -625,8 +543,6 @@ export class Bundle {
     this.camera.updateMatrixWorld();
   }
 
-  // the points of the sheets and the segments at the growth of each strip, set only when it has
-  // changed since the last frame
   private place(): void {
     const n = this.orbit.length;
     for (const r of this.strips) {
@@ -651,7 +567,11 @@ export class Bundle {
     }
   }
 
-  // the moving point at the time of now, at the start of the orbit before the state flow
+  private screen(v: Vec): [number, number] {
+    const p = new this.THREE.Vector3(...v).project(this.camera);
+    return [((p.x + 1) / 2) * this.w, ((1 - p.y) / 2) * this.h];
+  }
+
   private position(): Vec {
     const t = this.times;
     if (!this.flowing || !t) return this.orbit[0];
@@ -663,15 +583,12 @@ export class Bundle {
     return [lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f)];
   }
 
-  // the unit direction of the orbit at its start on the screen, and the tip of the arrow along it
   private nudge(): { e: [number, number]; tip: [number, number] } {
     const [x, y] = this.screen(this.orbit[0]), [x1, y1] = this.screen(this.orbit[1]);
     const l = Math.hypot(x1 - x, y1 - y) || 1, e: [number, number] = [(x1 - x) / l, (y1 - y) / l];
     return { e, tip: [x + e[0] * NUDGE_LENGTH, y + e[1] * NUDGE_LENGTH] };
   }
 
-  // the arrow along the orbit, the ring at its start, filled at the end of the first period, and
-  // the moving point, enlarged as it passes the start after a full period, over the image of the scene
   private drawPoint(ctx: CanvasRenderingContext2D): void {
     if (!this.marked) return;
     const [x, y] = this.screen(this.orbit[0]), c = this.colors;
@@ -713,15 +630,7 @@ export class Bundle {
     ctx.stroke();
     ctx.restore();
   }
-  // a point of the drawing in the slide pixels of the element, under the camera of now
-  private screen(v: Vec): [number, number] {
-    const p = new this.THREE.Vector3(...v).project(this.camera);
-    return [((p.x + 1) / 2) * this.w, ((1 - p.y) / 2) * this.h];
-  }
 
-  // the compass in the slide pixels of the element: its middle, and the tip of the needle of each
-  // arrow, along the direction of the arrow under the turn of the camera, without perspective. the
-  // needle of a direction toward the camera or away from it is short
   private compass(): { middle: [number, number]; tips: [number, number][] } {
     const middle: [number, number] = [COMPASS_LEFT, COMPASS_TOP];
     const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
@@ -732,8 +641,6 @@ export class Bundle {
     return { middle, tips: this.arrows.map((a) => at(a.u)) };
   }
 
-  // the circle of the plane of the orbit about the middle of the compass, and a needle with a head
-  // toward the point of each arrow, over the image of the scene
   private drawCompass(ctx: CanvasRenderingContext2D): void {
     if (!this.arrows.length) return;
     const { middle, tips } = this.compass();
@@ -770,17 +677,12 @@ export class Bundle {
     ctx.restore();
   }
 
-  // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
-  // start, for the start of the moving point, nudge, for the tip of its arrow, the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
-  // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
-  // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
-  // along the needle, or above the middle of the compass when the needle is too short to show
   private label(): void {
     const { middle, tips } = this.compass();
     for (const el of this.laps) el.style.opacity = String(this.fill);
     for (const lab of this.labels) {
       const at = lab.dataset.at ?? '';
-      if (at === NUDGE) {
+      if (at === NUDGE && this.times) {
         const { e, tip } = this.nudge(), reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
         lab.style.left = `${tip[0] + e[0] * reach + num(lab.dataset.dx, 0)}px`;
         lab.style.top = `${tip[1] + e[1] * reach + num(lab.dataset.dy, 0)}px`;
@@ -789,6 +691,7 @@ export class Bundle {
       }
       const i = this.arrows.findIndex((a) => a.id === at);
       if (i >= 0) {
+        if (!lab.offsetWidth && !lab.offsetHeight) continue;
         const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
         const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
         const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
@@ -799,7 +702,7 @@ export class Bundle {
       }
       let anchor: Vec | null = null, alpha = 1;
       const r = this.strips.find((rb) => rb.id === at);
-      if (at === START) {
+      if (at === START && this.times) {
         anchor = this.orbit[0];
         alpha = this.marked ? 1 : 0;
       } else if (r) {
@@ -815,7 +718,6 @@ export class Bundle {
     }
   }
 
-  /** Draws the orbit and the strips at their growth and the camera of now, and places the labels. */
   draw(): void {
     if (!this.W) return;
     const r = renderer();
@@ -828,14 +730,12 @@ export class Bundle {
     r.render(this.scene, this.camera);
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
-    // in the same task as the render, since the drawing buffer of WebGL is cleared after a frame
     ctx.clearRect(0, 0, this.W, this.H);
     ctx.drawImage(r.domElement, 0, 0);
     this.drawCompass(ctx);
     this.drawPoint(ctx);
   }
 
-  // whether a frame differs from the last one without input
   private busy(): boolean {
     return this.moving || this.rate > 0 || this.flowing || this.arrow !== (this.nudged ? 1 : 0);
   }
@@ -851,24 +751,22 @@ export class Bundle {
     if (this.moving) {
       const k = Math.min(1, (now - this.t0) / this.duration);
       for (const rb of this.strips) {
-        // each strip is moved at the pace of a full growth or shrinking, and the longest is ended at k = 1
         const span = Math.abs(rb.to - rb.from) * (rb.to > rb.from ? GROW : SHRINK);
         rb.grow = span > 0 ? lerp(rb.from, rb.to, Math.min(1, (k * this.duration) / span)) : rb.to;
       }
       if (k >= 1) this.settle();
     }
+    if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
     if (this.flowing) {
       this.elapsed = Math.max(0, now - this.lapStart);
-      if (this.elapsed > LAP) this.fill = Math.max(this.fill, Math.min(1, (this.elapsed - LAP) / FILL));
+      if (this.elapsed > LAP) this.fill = Math.min(1, this.fill + (1000 * dt) / FILL);
     }
     const arrow = this.nudged ? 1 : 0, da = (1000 * dt) / FADE;
     this.arrow = arrow > this.arrow ? Math.min(arrow, this.arrow + da) : Math.max(arrow, this.arrow - da);
-    if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
     this.draw();
     if (this.busy()) this.kick();
   };
 
-  // the camera and the turn read from the attributes of the element
   private setCamera(): void {
     const w = this.view().written;
     this.rate = w.turn > 0 ? (2 * Math.PI) / w.turn : 0;
@@ -877,7 +775,6 @@ export class Bundle {
     this.zoom = w.zoom;
   }
 
-  /** Turns the camera as a drag by dx and dy screen pixels does. */
   turn(dx: number, dy: number): void {
     const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
     this.azimuth -= (dx / scale) * 0.005;
@@ -885,7 +782,6 @@ export class Bundle {
     if (!this.raf) this.draw();
   }
 
-  /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, as of a Surface for the editor. A bundle does not scale its heights, hence its zscale is 1. */
   view(): { azimuth: number; elevation: number; zoom: number; written: { azimuth: number; elevation: number; zoom: number; turn: number; zscale: number } } {
     const d = this.el.dataset, deg = 180 / Math.PI;
     return {
@@ -896,13 +792,11 @@ export class Bundle {
     };
   }
 
-  /** Reads the camera and the turn from the attributes of the element again, e.g. after the editor changed them. */
   configure(): void {
     this.setCamera();
     this.draw();
   }
 
-  /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other, a bundle. */
   follow(other: Bundle | Surface): void {
     if (!(other instanceof Bundle)) return;
     this.azimuth = other.azimuth;
@@ -910,7 +804,6 @@ export class Bundle {
     this.resume = other.resume;
   }
 
-  /** Starts the turning of the camera and the growth of the strips, while the slide is shown. */
   start(): void {
     this.active = true;
     this.last = 0;
@@ -919,7 +812,6 @@ export class Bundle {
     else this.draw();
   }
 
-  /** Stops the animation, and ends a change at once. */
   stop(): void {
     this.active = false;
     cancelAnimationFrame(this.raf);
@@ -928,22 +820,19 @@ export class Bundle {
   }
 }
 
-/** One Bundle per `.surface` with data-bundle under root, reused when an element was mounted before. An element whose JSON script is missing or malformed, or a page without three.js or WebGL, is reported and left blank. */
 export function mount(root: ParentNode): Bundle[] {
   const out: Bundle[] = [];
   for (const el of root.querySelectorAll<HTMLElement>('.surface[data-bundle]')) {
     const known = CACHE.get(el);
     if (known) { out.push(known); continue; }
     const id = el.dataset.bundle ?? '';
-    const script = document.getElementById(id);
-    const data = script ? parseBundle(script.textContent ?? '') : `the JSON script with the id "${id}" is not found`;
-    if (typeof data === 'string') {
-      console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
-      continue;
-    }
+    const text = document.getElementById(id)?.textContent ?? null;
+    if (REPORTED.has(el) && REPORTED.get(el) === text) continue;
+    const report = (reason: string) => { REPORTED.set(el, text); console.error(`beeson: the bundle ${id} is not drawn, since ${reason}`); };
+    const data = text === null ? `the JSON script with the id "${id}" is not found` : parseBundle(text);
+    if (typeof data === 'string') { report(data); continue; }
     if (!renderer() || !window.THREE) continue;
-    // a fault the parser does not catch leaves this bundle blank, and the deck is started
-    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`); }
+    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { report(String(error)); }
   }
   return out;
 }
