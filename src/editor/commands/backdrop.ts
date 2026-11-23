@@ -9,8 +9,7 @@ import { selectIn } from '../text/elements.ts';
 import { select, type TrajectoryData } from '../../trajectories.ts';
 import { SYSTEMS, systemOf } from '../../poincare.ts';
 import { ALPHAS, PLANES, planeOf, shownTori, toriSpec } from '../../tori.ts';
-import { describe, modelOf } from '../steps.ts';
-import { mathLookup } from '../math.ts';
+import { modelOf } from '../steps.ts';
 
 type View = { cx: number; cy: number; half: number };
 type Box = { left: number; top: number; width: number; height: number };
@@ -191,8 +190,7 @@ export function startSteps(app: App, el: Element | null): StartStep[] {
   m.plan.groups.forEach((g, k) => {
     const els = g.filter((i) => !m.locked[i] && !m.els[i].contains(el) && !el.contains(m.els[i])).map((i) => m.els[i]);
     if (!els.length) return;
-    const d = describe(els[0], (e) => mathLookup()(e)?.tex ?? null);
-    out.push({ step: k, label: `Step ${k + 1}: ${d.kind}, ${d.text}`, els });
+    out.push({ step: k, label: `Step ${k + 1}`, els });
   });
   return out;
 }
