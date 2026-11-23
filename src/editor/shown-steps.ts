@@ -78,6 +78,27 @@ export function showRange(slide: Element, range: StepRange | null): void {
   }
 }
 
+const lastInPlace = (child: Element): boolean => {
+  for (let up: Element | null = child; up; up = up.parentElement?.closest(CHILD) ?? null) {
+    const kin = childrenOf(up.parentElement as Element);
+    if (kin[kin.length - 1] !== up) return false;
+  }
+  return true;
+};
+
+export function completeIndex(slide: Element, ranges: StepRange[] = rangesOf(slide)): number {
+  const lasts = new Set(stacksOf(slide).map((s) => childrenOf(s).at(-1)).filter((c): c is Element => !!c && lastInPlace(c)));
+  if (!lasts.size) return 0;
+  const shown = fragmentsOf(slide).filter((f) => lasts.has(f.el));
+  const at = ranges.findIndex((r) => shown.every((f) => shownAt(f, r.to)));
+  return at < 0 ? ranges.length - 1 : at;
+}
+
+export const completeRange = (slide: Element): StepRange | null => {
+  const ranges = rangesOf(slide);
+  return ranges.length > 1 ? ranges[completeIndex(slide, ranges)] : null;
+};
+
 export const shownChild = (slide: Element): Element | null => stacksOf(slide).flatMap(childrenOf).find((c) => !c.classList.contains(OFF)) ?? null;
 
 export function label(range: StepRange, last: boolean): string {
@@ -107,6 +128,7 @@ export class ShownSteps {
   private readonly onChange: () => void;
   private readonly chosen = new WeakMap<Element, Pick>();
   private key = '';
+  private here: Element | null = null;
   private pressed = false;
   act: ((what: TabAction, at: DOMRect, child: Element | null) => void) | null = null;
 
@@ -121,8 +143,14 @@ export class ShownSteps {
     document.body.append(this.tabs);
   }
 
+  private arrive(slide: Element | null): void {
+    if (slide === this.here) return;
+    this.here = slide;
+    if (slide) this.chosen.delete(slide);
+  }
+
   private at(slide: Element, ranges: StepRange[]): number {
-    const { child, i } = this.chosen.get(slide) ?? { child: null, i: 0 };
+    const { child, i } = this.chosen.get(slide) ?? { child: null, i: completeIndex(slide, ranges) };
     const f = child && slide.contains(child) ? fragmentsOf(slide).find((x) => x.el === child) : undefined;
     if (!f) return Math.min(i, ranges.length - 1);
     const fits = ranges.flatMap((r, k) => (shownAt(f, r.to) ? [k] : []));
@@ -132,6 +160,7 @@ export class ShownSteps {
   refresh(): void {
     if (document.documentElement.classList.contains('beeson-previewing')) return;
     const slide = this.slide();
+    this.arrive(slide);
     const ranges = slide ? rangesOf(slide) : [];
     if (!slide || (ranges.length < 2 && !stacksOf(slide).length)) {
       if (slide) showRange(slide, null);
@@ -234,15 +263,17 @@ export class ShownSteps {
   }
 
   shown(slide: Element): Pick {
-    return this.chosen.get(slide) ?? { child: null, i: 0 };
+    return this.chosen.get(slide) ?? { child: null, i: completeIndex(slide) };
   }
 
   show(slide: Element, pick: Pick): void {
+    if (slide === this.slide()) this.arrive(slide);
     this.chosen.set(slide, pick);
     if (slide === this.slide()) this.refresh();
   }
 
   private choose(slide: Element, i: number): void {
+    this.arrive(slide);
     const ranges = rangesOf(slide);
     showRange(slide, ranges[i] ?? null);
     this.chosen.set(slide, { child: shownChild(slide), i });
@@ -252,7 +283,9 @@ export class ShownSteps {
 
   reveal(el: Element): void {
     const slide = this.slide();
-    if (!slide || !slide.contains(el) || !el.closest(`.${OFF}`)) return;
+    if (!slide || !slide.contains(el)) return;
+    if (slide !== this.here) this.refresh();
+    if (!el.closest(`.${OFF}`)) return;
     const ranges = rangesOf(slide);
     for (let i = 0; i < ranges.length; i++) {
       showRange(slide, ranges[i]);

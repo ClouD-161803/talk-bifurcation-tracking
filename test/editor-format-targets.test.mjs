@@ -106,10 +106,10 @@ test('with words selected in a caption, Center centers the caption, and Align Le
   assert.deepEqual(page.errors, []);
 });
 
-for (const [slide, word, before] of [['s-split', 'words', '<p>Column words here</p>'], ['s-stack', 'first', '<p>Stack first words</p>'], ['s-grid', 'Left', '<p>Left cell words</p>']]) {
+for (const [slide, word, before, selector = 'p'] of [['s-split', 'words', '<p>Column words here</p>'], ['s-stack', 'second', '<p>Stack second words</p>', '.r-stack > :last-child > p'], ['s-grid', 'Left', '<p>Left cell words</p>']]) {
   test(`with words selected in a paragraph of ${slide.slice(2)}, Center and Align Left of the Arrange menu change this paragraph only`, async (t) => {
     const page = await open(t, slide);
-    await wordOn(page, 'p', word);
+    await wordOn(page, selector, word);
     await exec(page, 'text.align.center');
     await byteExact(page, [[before, before.replace('<p>', '<p class="center">')]]);
     await exec(page, 'arrange.align.left');

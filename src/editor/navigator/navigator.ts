@@ -1,5 +1,5 @@
 import type { App, Pane } from '../app.ts';
-import { rangesOf, showRange } from '../shown-steps.ts';
+import { completeRange, showRange } from '../shown-steps.ts';
 import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
@@ -654,8 +654,7 @@ export class Navigator implements Pane {
       el.classList.remove('beeson-hover', 'beeson-overflow', 'current-fragment', 'past', 'future');
       if (el.classList.contains('fragment')) el.classList.add('visible');
     }
-    const ranges = rangesOf(clone);
-    showRange(clone, ranges.length > 1 ? ranges[0] : null);
+    showRange(clone, completeRange(clone));
     clone.classList.add('present');
     clone.style.display = 'block';
     const deck = document.createElement('div');

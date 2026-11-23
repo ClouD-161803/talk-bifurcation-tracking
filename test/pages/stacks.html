@@ -67,6 +67,19 @@
       </div>
       <p id="below">Below the stack.</p>
     </section>
+    <section>
+      <h2>Nested</h2>
+      <div class="r-stack" id="outer">
+        <div><p id="outer-1">The first outer form.</p></div>
+        <div class="fragment" data-fragment-index="1">
+          <div class="r-stack" id="nested">
+            <div><p id="nested-1">The first inner form.</p></div>
+            <div class="fragment" data-fragment-index="2"><p id="nested-2">The last inner form.</p></div>
+          </div>
+        </div>
+      </div>
+      <p id="nested-after" class="fragment" data-fragment-index="3">After both stacks.</p>
+    </section>
   </div>
 </div>
 <script src="../../theme/vendor/reveal/reveal.js"></script>

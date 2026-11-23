@@ -29,8 +29,7 @@ const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((e
 
 test('an edit in one tab of a stack does not move the elements of another tab', { timeout: 120000 }, async (t) => {
   const page = await open(t);
-  assert.deepEqual(await tabs(page), ['*Up to step 1', 'From step 2']);
-  await showTab(page, 1);
+  assert.deepEqual(await tabs(page), ['Up to step 1', '*From step 2']);
   const before = await boxes(page, TWO);
   await showTab(page, 0);
   await page.evaluate(`window.BeesonEditor.exec('insert.text')`);
@@ -52,7 +51,7 @@ test('an edit in one tab of a stack does not move the elements of another tab', 
 
 test('the elements of a tab that is not shown cannot be clicked, cycled to, or caught by a marquee', { timeout: 120000 }, async (t) => {
   const page = await open(t);
-  assert.deepEqual(await tabs(page), ['*Up to step 1', 'From step 2']);
+  await showTab(page, 0);
   await click(page, await center(page, '#two-math'));
   for (const id of await selected(page)) assert.ok(!TWO.includes(id), id);
   await click(page, await center(page, '.present h2'));
@@ -96,6 +95,7 @@ const menuItem = (label) => `[...document.querySelectorAll('[role=menuitem]')].f
 
 test('the + tab adds a copy of the tab shown just before the next tab, and undo gives back the tab shown before', { timeout: 120000 }, async (t) => {
   const page = await open(t);
+  await showTab(page, 0);
   await click(page, await boxOf(page, ADD));
   await page.waitFor(`document.querySelector('.r-stack').children.length === 3`);
   assert.deepEqual(await tabs(page), ['Up to step 1', '*Step 2', 'From step 3']);
@@ -343,5 +343,41 @@ test('Delete Tab and Show on Every Tab keep the elements below the stack in plac
   const text = await rendered(page);
   assert.equal(outside(text), outside(page.source));
   assert.match(text, /<p id="below" style="translate: [^"]+">Below the stack\.<\/p>/);
+  assert.deepEqual(page.errors, []);
+});
+
+const NESTED = 5;
+const seenIn = (root, id) => `(() => { const el = ${root}?.querySelector('#${id}'); return !!el && getComputedStyle(el).visibility === 'visible'; })()`;
+const thumbOf = (pics, i) => `document.querySelectorAll('${pics}')[${i}]?.shadowRoot`;
+
+test('a slide with stacks is shown complete, with the last tab of each stack, also nested, on the slide, its thumbnail, and its tile in Slide Sorter', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  assert.deepEqual(await tabs(page), ['Up to step 1', '*From step 2']);
+  await page.evaluate(`Reveal.slide(${NESTED})`);
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Nested' && !document.querySelector('.beeson-step-tabs').hidden`);
+  assert.deepEqual(await tabs(page), ['Before step 1', 'Step 1', '*From step 2']);
+  for (const [id, shown] of [['outer-1', false], ['nested-1', false], ['nested-2', true], ['nested-after', true]]) assert.equal(await page.evaluate(seenIn('document.querySelector(".present")', id)), shown, id);
+  await page.evaluate(`document.documentElement.classList.contains('beeson-nav') || window.BeesonEditor.exec('view.navigator')`);
+  await page.waitFor(seenIn(thumbOf('.beeson-edit-nav .row .pic', NESTED), 'nested-2'));
+  for (const [id, shown] of [['outer-1', false], ['nested-1', false], ['nested-after', true]]) assert.equal(await page.evaluate(seenIn(thumbOf('.beeson-edit-nav .row .pic', NESTED), id)), shown, id);
+  await page.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
+  await page.waitFor(seenIn(thumbOf('.beeson-edit-sorter .tile .pic', NESTED), 'nested-2'));
+  assert.equal(await page.evaluate(seenIn(thumbOf('.beeson-edit-sorter .tile .pic', NESTED), 'nested-1')), false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a tab picked by hand stays while the slide is shown, the last tab is shown again at the next arrival, and nothing is written or recorded', { timeout: 120000 }, async (t) => {
+  const page = await open(t);
+  await showTab(page, 0);
+  await click(page, await center(page, '.present h2'));
+  await press(page, 'Escape');
+  assert.deepEqual(await tabs(page), ['*Up to step 1', 'From step 2']);
+  await page.evaluate('Reveal.slide(1)');
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Three forms'`);
+  await page.evaluate('Reveal.slide(0)');
+  await page.waitFor(`document.querySelector('.present h2')?.textContent === 'Stack'`);
+  await page.waitFor(`${tab(1)}?.getAttribute('aria-pressed') === 'true'`);
+  assert.equal(await rendered(page), page.source);
+  assert.equal(await page.evaluate(`window.BeesonEditor.state('edit.undo').enabled`), false);
   assert.deepEqual(page.errors, []);
 });

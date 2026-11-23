@@ -79,8 +79,8 @@ test('the PowerPoint file has a slide for each page of the print view', { timeou
     const run = spawnSync(process.execPath, ['scripts/export-pptx.mjs', '--still', DECK, output], { encoding: 'utf8' });
     assert.equal(run.status, 0, run.stderr);
     const slides = [...unzip(readFileSync(output)).keys()].filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name));
-    assert.equal(slides.length, 17);
-    assert.match(run.stdout, /17 slides for 17 steps/);
+    assert.equal(slides.length, 21);
+    assert.match(run.stdout, /21 slides for 21 steps/);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
