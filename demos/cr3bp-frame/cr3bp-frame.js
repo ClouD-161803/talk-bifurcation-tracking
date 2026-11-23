@@ -121,6 +121,7 @@
       for (const old of el.querySelectorAll(':scope > svg.cr3bp-svg')) old.remove();
       this.labels = {};
       for (const l of el.querySelectorAll('.label[data-lab]')) this.labels[l.dataset.lab] = l;
+      for (const l of Object.values(this.labels)) if (l.textContent.includes('\\(')) window.Beeson?.typesetLabel?.(l);
       this.build();
       this.clock = 0;
       this.phi = STILL_ANGLE;
