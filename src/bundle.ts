@@ -10,6 +10,7 @@ export type BundleData = {
   libration_point?: Vec;
   strips: { id: string; tone: string; half_width: number; ribs: number[]; directions: Vec[] }[];
   arrows?: { id: string; toward: Vec }[];
+  times?: number[];
 };
 
 const GROW = 3600;
@@ -21,6 +22,16 @@ const TURN = 90;
 const ORBIT_WIDTH = 4;
 const RIB_WIDTH = 2;
 const DOT_SIZE = 18;
+const START = 'start';
+const NUDGE = 'nudge';
+const FLOW = 'flow';
+const LAP = 6000;
+const FILL = 400;
+const FADE = 300;
+const PULSE = 210;
+const RING = 17;
+const RING_WIDTH = 3;
+const NUDGE_LENGTH = 90;
 const COMPASS_LEFT = 190;
 const COMPASS_TOP = 170;
 const COMPASS_RADIUS = 70;
@@ -105,6 +116,8 @@ export function parseBundle(text: string): BundleData | string {
   for (const a of data.arrows ?? []) {
     if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
   }
+  const t = data.times;
+  if (t !== undefined && !(Array.isArray(t) && t.length === n && t.every((v, i) => Number.isFinite(v) && v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return 'its times are not increasing fractions of the period, one for each point of the orbit';
   return data;
 }
 
@@ -161,12 +174,23 @@ export class Bundle {
   private H = 0;
   private w = 0;
   private h = 0;
+  private times: number[] | null;
+  private laps: HTMLElement[];
+  private colors = { accent: '', blue: '', bg: '' };
+  private marked = false;
+  private nudged = false;
+  private flowing = false;
+  private arrow = 0;
+  private fill = 0;
+  private lapStart = 0;
+  private elapsed = 0;
 
   constructor(el: HTMLElement, data: BundleData, THREE: typeof Three) {
     this.el = el;
     this.THREE = THREE;
     this.orbit = data.orbit;
     this.point = data.libration_point ?? null;
+    this.times = data.times ?? null;
     this.setCamera();
     for (const old of el.querySelectorAll(':scope > canvas.surface-image')) old.remove();
     this.canvas = document.createElement('canvas');
@@ -176,6 +200,7 @@ export class Bundle {
     el.setAttribute('data-prevent-swipe', '');
     this.labels = [...el.querySelectorAll<HTMLElement>('.label')];
     typesetLabels(this.labels);
+    this.laps = [...(el.closest('section')?.querySelectorAll<HTMLElement>('[data-surface-lap]') ?? [])];
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
@@ -312,6 +337,7 @@ export class Bundle {
     const bg = css('--bg', [0.02, 0.02, 0.02]), text = css('--text', [0.95, 0.95, 0.94]);
     const set = (target: Three.Vector3, c: RGB) => target.set(c[0], c[1], c[2]);
     this.subtle = cs.getPropertyValue('--subtle').trim() || '#a6a6a0';
+    for (const k of ['accent', 'blue', 'bg'] as const) this.colors[k] = cs.getPropertyValue(`--${k}`).trim() || '#808080';
     set(this.line.material.uniforms.uColor.value, text);
     set(this.dot.material.uniforms.uColor.value, text);
     set(this.dot.material.uniforms.uRing.value, bg);
@@ -330,7 +356,7 @@ export class Bundle {
       if (i >= index) { best = f; index = i; }
     }
     const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? '').split(/\s+/).filter(Boolean);
-    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
+    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name) && !(this.times && [START, NUDGE, FLOW].includes(name)));
     if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(' ')}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(', ')}`);
     return names;
   }
@@ -341,6 +367,17 @@ export class Bundle {
     const jump = !animate || this.stateName === null;
     this.stateName = name;
     this.el.dataset.shown = name;
+    const has = (state: string) => this.times !== null && names.includes(state);
+    const flowing = has(FLOW);
+    if (flowing !== this.flowing) {
+      this.flowing = flowing;
+      this.elapsed = 0;
+      this.lapStart = performance.now();
+      this.fill = flowing && jump ? 1 : 0;
+    }
+    this.nudged = has(NUDGE);
+    this.marked = flowing || this.nudged || has(START);
+    if (jump) this.arrow = this.nudged ? 1 : 0;
     let longest = 0;
     for (const r of this.strips) {
       r.from = r.grow;
@@ -350,6 +387,7 @@ export class Bundle {
     if (jump || longest === 0) {
       this.settle();
       this.draw();
+      if (this.busy()) this.kick();
       return;
     }
     this.duration = longest;
@@ -441,6 +479,65 @@ export class Bundle {
     return [((p.x + 1) / 2) * this.w, ((1 - p.y) / 2) * this.h];
   }
 
+  private position(): Vec {
+    const t = this.times;
+    if (!this.flowing || !t) return this.orbit[0];
+    const n = this.orbit.length, phase = (this.elapsed / LAP) % 1;
+    let k = 0;
+    while (k + 1 < n && t[k + 1] <= phase) k++;
+    const next = k + 1 < n ? t[k + 1] : 1, f = (phase - t[k]) / (next - t[k] || 1);
+    const a = this.orbit[k], b = this.orbit[(k + 1) % n];
+    return [lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f)];
+  }
+
+  private nudge(): { e: [number, number]; tip: [number, number] } {
+    const [x, y] = this.screen(this.orbit[0]), [x1, y1] = this.screen(this.orbit[1]);
+    const l = Math.hypot(x1 - x, y1 - y) || 1, e: [number, number] = [(x1 - x) / l, (y1 - y) / l];
+    return { e, tip: [x + e[0] * NUDGE_LENGTH, y + e[1] * NUDGE_LENGTH] };
+  }
+
+  private drawPoint(ctx: CanvasRenderingContext2D): void {
+    if (!this.marked) return;
+    const [x, y] = this.screen(this.orbit[0]), c = this.colors;
+    ctx.save();
+    ctx.scale(this.W / this.w, this.H / this.h);
+    if (this.arrow > 0) {
+      const { e, tip } = this.nudge(), b = 0.4 * HEAD, base = [tip[0] - e[0] * HEAD, tip[1] - e[1] * HEAD];
+      ctx.globalAlpha = this.arrow;
+      ctx.strokeStyle = ctx.fillStyle = c.blue;
+      ctx.lineWidth = NEEDLE_WIDTH;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(base[0], base[1]);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(...tip);
+      ctx.lineTo(base[0] - e[1] * b, base[1] + e[0] * b);
+      ctx.lineTo(base[0] + e[1] * b, base[1] - e[0] * b);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, RING, 0, 2 * Math.PI);
+    ctx.globalAlpha = this.fill;
+    ctx.fillStyle = c.blue;
+    if (this.fill > 0) ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = c.blue;
+    ctx.lineWidth = RING_WIDTH;
+    ctx.stroke();
+    const [px, py] = this.screen(this.position()), lap = Math.round(this.elapsed / LAP);
+    const d = lap > 0 ? (this.elapsed - lap * LAP) / PULSE : Infinity;
+    ctx.beginPath();
+    ctx.arc(px, py, (DOT_SIZE / 2) * (1 + 0.7 * Math.exp(-d * d)), 0, 2 * Math.PI);
+    ctx.fillStyle = c.accent;
+    ctx.fill();
+    ctx.strokeStyle = c.bg;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private compass(): { middle: [number, number]; tips: [number, number][] } {
     const middle: [number, number] = [COMPASS_LEFT, COMPASS_TOP];
     const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
@@ -489,8 +586,16 @@ export class Bundle {
 
   private label(): void {
     const { middle, tips } = this.compass();
+    for (const el of this.laps) el.style.opacity = String(this.fill);
     for (const lab of this.labels) {
       const at = lab.dataset.at ?? '';
+      if (at === NUDGE && this.times) {
+        const { e, tip } = this.nudge(), reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
+        lab.style.left = `${tip[0] + e[0] * reach + num(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${tip[1] + e[1] * reach + num(lab.dataset.dy, 0)}px`;
+        lab.style.opacity = String(this.arrow);
+        continue;
+      }
       const i = this.arrows.findIndex((a) => a.id === at);
       if (i >= 0) {
         if (!lab.offsetWidth && !lab.offsetHeight) continue;
@@ -504,7 +609,10 @@ export class Bundle {
       }
       let anchor: Vec | null = null, alpha = 1;
       const r = this.strips.find((rb) => rb.id === at);
-      if (r) {
+      if (at === START && this.times) {
+        anchor = this.orbit[0];
+        alpha = this.marked ? 1 : 0;
+      } else if (r) {
         const k = clamp(Math.round(num(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i = r.ribs[k];
         anchor = add(this.orbit[i], r.directions[i], r.half * (num(lab.dataset.side, 1) < 0 ? -1 : 1));
         alpha = sheetGrowth(r.grow);
@@ -531,6 +639,11 @@ export class Bundle {
     ctx.clearRect(0, 0, this.W, this.H);
     ctx.drawImage(r.domElement, 0, 0);
     this.drawCompass(ctx);
+    this.drawPoint(ctx);
+  }
+
+  private busy(): boolean {
+    return this.moving || this.rate > 0 || this.flowing || this.arrow !== (this.nudged ? 1 : 0);
   }
 
   private kick(): void {
@@ -550,8 +663,14 @@ export class Bundle {
       if (k >= 1) this.settle();
     }
     if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
+    if (this.flowing) {
+      this.elapsed = Math.max(0, now - this.lapStart);
+      if (this.elapsed > LAP) this.fill = Math.min(1, this.fill + (1000 * dt) / FILL);
+    }
+    const arrow = this.nudged ? 1 : 0, da = (1000 * dt) / FADE;
+    this.arrow = arrow > this.arrow ? Math.min(arrow, this.arrow + da) : Math.max(arrow, this.arrow - da);
     this.draw();
-    if (this.moving || this.rate) this.kick();
+    if (this.busy()) this.kick();
   };
 
   private setCamera(): void {
@@ -594,7 +713,8 @@ export class Bundle {
   start(): void {
     this.active = true;
     this.last = 0;
-    if (this.moving || this.rate) this.kick();
+    this.lapStart = performance.now() - this.elapsed;
+    if (this.busy()) this.kick();
     else this.draw();
   }
 
