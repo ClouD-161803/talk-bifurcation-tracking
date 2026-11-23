@@ -492,7 +492,7 @@ The surface swept along the orbit of a strip bundle by a segment through each po
 
 ## Strip bundle
 
-A closed orbit drawn in 3D with the strips along it, from the JSON script named in `data-bundle` on a `surface`, with a compass toward far points. The strips shown at a step are named in `data-surface-state`, as the state of a surface.
+A closed orbit drawn in 3D with the strips along it, from the JSON script named in `data-bundle` on a `surface`, with a compass toward far points. The strips shown at a step are named in `data-surface-state`, as the state of a surface. With `times` in its script, the states `start`, `nudge`, and `flow` show a point at the start of the orbit, its nudge along the orbit, and its flow around it.
 
 ## Surface point
 
