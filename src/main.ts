@@ -25,7 +25,7 @@ import { coverAll, initVideos } from './video.ts';
 import { typesetLabel } from './drawn-text.ts';
 import { initViewers } from './viewers.ts';
 import { exported, themeFile, unpackLarge } from './files.ts';
-import type { RevealOptions, SlideEvent } from './reveal.d.ts';
+import type { Deck, RevealOptions, SlideEvent } from './reveal.d.ts';
 
 function numberOf(slide: HTMLElement | null | undefined, counted: HTMLElement[]): [string, string, string] {
   if (slide?.dataset.appendix) return [`A${slide.dataset.appendix}`, '', ''];
@@ -110,6 +110,45 @@ function fromSpeaker(ev: MessageEvent): void {
     return;
   }
   if (m?.namespace === 'beeson' && m.eventName === 'edit') (PLAYED || TAB ? toEditor('edit', m.state ?? window.Reveal.getState()) : edit());
+}
+
+type Indices = { indexh?: number; indexv?: number; indexf?: number };
+const stepOf = (s: Indices) => `${s.indexh ?? 0}/${s.indexv ?? 0}/${s.indexf ?? -1}`;
+
+function receiveSteps(deck: Deck): void {
+  let posted: string[] = [];
+  let setting = false;
+  const post = () => {
+    const step = stepOf(deck.getState());
+    if (!setting && deck.getConfig().postMessageEvents && posted.at(-1) !== step) posted.push(step);
+  };
+  for (const type of ['slidechanged', 'fragmentshown', 'fragmenthidden']) deck.on(type, post);
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window.parent || typeof ev.data !== 'string' || !deck.isReady()) return;
+    let m: { method?: string; args?: Indices[] } | null = null;
+    try {
+      m = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    const state = m?.method === 'setState' ? m.args?.[0] : null;
+    if (!state || typeof state !== 'object') return;
+    ev.stopImmediatePropagation();
+    const at = posted.lastIndexOf(stepOf(state));
+    const stale = at >= 0 && at < posted.length - 1;
+    posted = at >= 0 ? posted.slice(at + 1) : [];
+    if (stale) return;
+    const config = deck.getConfig();
+    const posts = config.postMessageEvents;
+    config.postMessageEvents = false;
+    setting = true;
+    try {
+      deck.setState(state as Parameters<Deck['setState']>[0]);
+    } finally {
+      config.postMessageEvents = posts;
+      setting = false;
+    }
+  });
 }
 
 function edit(): void {
@@ -267,6 +306,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   });
   const hooks: { internal?: Internal } = {};
   if (!EDITING) plugins.push({ id: 'beeson-restore', init: (reveal: unknown) => { hooks.internal = reveal as Internal; addRestoreSteps(document); } });
+  if (RECEIVER) receiveSteps(deck);
   const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
