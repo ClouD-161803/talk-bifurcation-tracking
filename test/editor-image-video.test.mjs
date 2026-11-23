@@ -561,6 +561,9 @@ const RECORD = `(() => {
   const v = window.BeesonEditor.selection()[0];
   window.__plays = [];
   window.__click = null;
+  window.__recorded = v;
+  window.__events = [];
+  for (const type of ['seeking', 'seeked', 'waiting', 'playing', 'pause', 'play', 'ended', 'emptied', 'loadstart', 'stalled', 'abort', 'canplay', 'loadeddata']) v.addEventListener(type, () => window.__events.push([Math.round(performance.now()), type, Number(v.currentTime.toFixed(2)), v.paused, v.readyState]));
   const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
   for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
   document.addEventListener('click', (e) => {
@@ -577,7 +580,7 @@ const RECORD = `(() => {
 const RECORDED = `(() => {
   const v = window.BeesonEditor.selection()[0];
   const play = document.querySelector('${PANEL} button.ed-play');
-  return JSON.stringify({ click: window.__click, plays: window.__plays.length, last: window.__plays.slice(-3), pauses: window.__pauses, video: v && { paused: v.paused, time: v.currentTime, ready: v.readyState, ended: v.ended }, play: play && { label: play.getAttribute('aria-label'), disabled: play.disabled } });
+  return JSON.stringify({ now: Math.round(performance.now()), same: v === window.__recorded, connected: window.__recorded.isConnected, recorded: { time: window.__recorded.currentTime, paused: window.__recorded.paused }, events: window.__events, times: window.__plays.map((p) => [Math.round(p.at), Number(p.time.toFixed(2)), p.paused]), videos: [...document.querySelectorAll('video')].map((x) => [x === window.__recorded, Number(x.currentTime.toFixed(2)), x.paused, x.isConnected]), click: window.__click, plays: window.__plays.length, last: window.__plays.slice(-3), pauses: window.__pauses, video: v && { paused: v.paused, time: v.currentTime, ready: v.readyState, ended: v.ended }, play: play && { label: play.getAttribute('aria-label'), disabled: play.disabled } });
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
