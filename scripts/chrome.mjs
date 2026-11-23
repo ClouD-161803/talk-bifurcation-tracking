@@ -105,10 +105,7 @@ export async function launch({ probe = 10000, ...options } = {}) {
       throw error;
     }
     const shot = await page.send('Page.captureScreenshot', { format: 'png' }, probe).then(() => null, (error) => error);
-    if (!shot) {
-      await page.close();
-      return browser;
-    }
+    if (!shot) return browser;
     await browser.close();
     if (n === LAUNCHES || !shot.message.includes('did not answer Page.captureScreenshot')) throw shot;
   }

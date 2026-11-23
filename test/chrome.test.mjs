@@ -392,6 +392,7 @@ input.on('data', function read(chunk) {
       send({ id: msg.id, result: { sessionId: 's' + msg.params.targetId } });
     } else if (msg.method === 'Target.closeTarget') {
       closed.push(msg.params.targetId);
+      fs.appendFileSync(__dirname + '/log', 'closeTarget ');
       if (mode === 'hangCloseFirst' && msg.params.targetId === 't1') continue;
       send({ id: msg.id, result: { success: true } });
     } else if (msg.method === 'Page.enable') {
@@ -428,7 +429,7 @@ input.on('data', function read(chunk) {
   }, { log: () => readFileSync(join(root, 'log'), 'utf8') });
 }
 
-test('a Chrome whose first screenshot is not answered is closed and launched again', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+test('a Chrome whose first screenshot is not answered is closed and launched again, and the page of the probe is left open', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
   const chrome = pipeChrome(t, 'hangShotOnce');
   const browser = await launch({ probe: 500 });
   await browser.close();
