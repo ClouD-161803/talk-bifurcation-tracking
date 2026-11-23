@@ -18,6 +18,10 @@ A 2D figure on a slide that is played as an animation, drawn from the JSON data 
 
 Avoid "chart", and avoid "graph" for a plot. The class of an animated plot is `plot`.
 
+## Appendix
+
+The slides after the closing slide, numbered A1, A2, and so on. Each section slide in the appendix opens a section of the appendix, lettered A, B, C in the order of the deck, and its label, e.g. Appendix A, is drawn by the theme above its heading.
+
 ## Attach
 
 To join an end of a line to an element in the editor, so that the end is moved together with the element.
@@ -402,7 +406,7 @@ The name of a section, drawn at the top of each slide of the section, written wi
 
 ## Scrubber
 
-A line of progress with ticks, on which a place is chosen with the pointer. The scrubber of a show is its progress line, magnified into a band while it is open. A tick is the place of a numbered slide on the band. The name of a section is the text of its running head, and the name of the closing slide is its heading, both written over the ticks. The scrubber of an animated plot is the line under the plot, with a tick at each event.
+A line of progress with ticks, on which a place is chosen with the pointer. The scrubber of a show is its progress line, magnified into a band while it is open. A tick is the place of a numbered slide on the band. The name of a section is the text of its running head, the name of a section of the appendix is its letter and its running head after the label, e.g. A: Convergence proofs, and the name of the closing slide is its heading, all written over the ticks. The scrubber of an animated plot is the line under the plot, with a tick at each event.
 
 ## Session
 

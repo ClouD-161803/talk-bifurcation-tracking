@@ -1,6 +1,12 @@
-import { heading } from './chrome.ts';
+import { appendixLetter, heading } from './chrome.ts';
 import { OWN } from './click.ts';
 import type { Deck } from './reveal.d.ts';
+
+function nameOf(slide: HTMLElement): string {
+  const letter = appendixLetter(slide);
+  if (letter) return `${letter}: ${heading(slide)}`;
+  return slide.dataset.appendix ? `A${slide.dataset.appendix}` : heading(slide);
+}
 
 type Timing = { totalTime?: number | null; defaultTiming?: number | null };
 
@@ -94,7 +100,7 @@ export function initScrub(deck: Deck): void {
       const at = Math.min(i / last, 1);
       if (numbered[i] !== slide) {
         section ||= slide.classList.contains('section');
-        if (slide.matches('.section, .closing') || slide === viewed?.slide) names.push(item('scrub-name', slide, at, slide.dataset.appendix ? `A${slide.dataset.appendix}` : heading(slide)));
+        if (slide.matches('.section, .closing') || slide === viewed?.slide) names.push(item('scrub-name', slide, at, nameOf(slide)));
         continue;
       }
       const t = item('scrub-tick', slide, at, String(i + 1));
