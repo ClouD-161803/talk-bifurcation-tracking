@@ -600,12 +600,9 @@ async function playInPlace(t, platform, { late = 0, hold = 0, seek = false } = {
   assert.ok(s.before, 'the Play button is not beside the slider');
 
   await page.evaluate(RECORD);
+  if (seek) await page.evaluate(`(() => { const v = window.__recorded; const jump = () => { if (v.paused) return; v.removeEventListener('timeupdate', jump); v.currentTime = ${from + 2}; v.dispatchEvent(new Event('playing')); }; v.addEventListener('timeupdate', jump); return true; })()`);
   await click(page, await playAt(page));
   if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
-  if (seek) {
-    await page.waitFor('window.__plays.some((p) => !p.paused)');
-    await page.evaluate(`(() => { const v = window.__recorded; v.currentTime = ${from + 2}; v.dispatchEvent(new Event('playing')); return true; })()`);
-  }
   const later = `(${playedOn})(window.__plays, ${from}, window.__click, window.__recorded.duration)`;
   await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
