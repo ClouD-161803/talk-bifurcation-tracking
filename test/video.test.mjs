@@ -106,6 +106,40 @@ test('two videos of one step are started together, also when one of them is load
   assert.deepEqual(page.errors, []);
 });
 
+test('a video that the person plays while its step waits for another video is left playing from where the person put it', { timeout: 120000 }, async (t) => {
+  held = Promise.withResolvers();
+  t.after(() => { held.resolve(); held = null; });
+  const page = await newPage(t);
+  await page.send('Page.navigate', { url: `${server.origin}/${DECK}#/1` });
+  await page.waitFor('!!window.Reveal?.isReady?.()');
+  await page.evaluate('Reveal.next()');
+  await page.waitFor(`right.preload === 'auto' && right.readyState < 3 && left.readyState >= 3 && left.paused`);
+  await page.evaluate('(left.currentTime = 4, void left.play().catch(() => {}), true)');
+  await page.waitFor('!left.paused && left.currentTime > 4.2');
+  held.resolve();
+  await page.waitFor('!right.paused && right.currentTime > 0.5', 30000);
+  const [time, paused] = await page.evaluate('[left.currentTime, left.paused]');
+  assert.ok(!paused && time > 4.2, `the video played from 4 s is at ${time} s${paused ? ', paused' : ''}`);
+  assert.deepEqual(page.errors, []);
+});
+
+for (const [how, play] of [['with a seek to 0 s', 'left.currentTime = 0, void left.play().catch(() => {})'], ['without a seek', 'void left.play().catch(() => {})']]) test(`without the autoplay of reveal.js, as in the editor, a video that the person plays from 0 s ${how} while its step waits for another video is not rewound`, { timeout: 120000 }, async (t) => {
+  held = Promise.withResolvers();
+  t.after(() => { held.resolve(); held = null; });
+  const page = await newPage(t);
+  await page.send('Page.navigate', { url: `${server.origin}/${DECK}#/1` });
+  await page.waitFor('!!window.Reveal?.isReady?.()');
+  await page.evaluate('(Reveal.configure({ autoPlayMedia: false }), Reveal.next(), true)');
+  await page.waitFor(`right.preload === 'auto' && right.readyState < 3 && left.readyState >= 3 && left.paused`);
+  await page.evaluate(`(${play}, true)`);
+  await page.waitFor('!left.paused && left.currentTime > 1.5');
+  held.resolve();
+  await page.waitFor('!right.paused && right.currentTime > 0.5', 30000);
+  const [time, other, paused] = await page.evaluate('[left.currentTime, right.currentTime, left.paused]');
+  assert.ok(!paused && time > other + 1, `the video played from 0 s is at ${time} s, and the video that was late at ${other} s${paused ? ', paused' : ''}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a video of the style play shows its poster until its step, and it is played from its step on without being dimmed', { timeout: 120000 }, async (t) => {
   const page = await open(t, '/0');
   const poster = { playing: false, time: 0, opacity: '1', visibility: 'visible', covered: false };

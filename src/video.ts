@@ -3,6 +3,7 @@ import type { Deck } from './reveal.d.ts';
 const running = new WeakSet<HTMLVideoElement>();
 const turns = new WeakMap<HTMLVideoElement, number>();
 let turn = 0;
+let revealSeeks = () => true;
 const guarded = new WeakSet<HTMLVideoElement>();
 
 const HIDES = '.fade-out, .fade-in-then-out:not(.current-fragment), .current-visible:not(.current-fragment)';
@@ -54,13 +55,20 @@ async function start(videos: HTMLVideoElement[]): Promise<void> {
     running.add(v);
     turns.set(v, mine);
   }
-  const current = () => videos.filter((v) => turns.get(v) === mine && running.has(v));
+  const taken = new Set<HTMLVideoElement>();
+  const current = () => videos.filter((v) => turns.get(v) === mine && running.has(v) && !taken.has(v));
   if (!videos.every(ready)) {
+    const take = (e: Event) => {
+      const v = e.target as HTMLVideoElement;
+      if (!revealSeeks() || (e.type === 'seeking' && v.currentTime > 0)) taken.add(v);
+    };
     for (const v of videos) {
       v.pause();
       if (!ready(v)) v.preload = 'auto';
+      for (const type of ['seeking', 'play']) v.addEventListener(type, take);
     }
     await Promise.race([Promise.all(videos.filter((v) => !ready(v)).map((v) => once(v, ['canplay', 'error']))), sleep(5000)]);
+    for (const v of videos) for (const type of ['seeking', 'play']) v.removeEventListener(type, take);
   }
   const seeks = current().filter((v) => v.currentTime > 0).map((v) => {
     v.currentTime = 0;
@@ -123,6 +131,7 @@ function leave(slide: Element): void {
 
 export function initVideos(deck: Deck): void {
   const speaker = deck.isSpeakerNotes();
+  revealSeeks = () => deck.getConfig().autoPlayMedia !== false;
   const sync = () => {
     const slide = deck.getCurrentSlide();
     if (slide) syncVideos(slide, speaker);
