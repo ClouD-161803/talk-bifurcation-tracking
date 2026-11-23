@@ -235,12 +235,12 @@ function serializeChildren(source: Source, s: SrcEl, el: Element, math: MathLook
 const RUNTIME_PREFIX = /^(beeson-|plot-)/;
 export const RUNTIME_CLASSES = new Set(['visible', 'current-fragment', 'present', 'past', 'future', 'disabled', 'enabled', 'stack', 'hl-target', 'hl-accent', 'hl-violet', 'hl-blue', 'hl-red']);
 export const isRuntimeClass = (c: string): boolean => RUNTIME_PREFIX.test(c) || RUNTIME_CLASSES.has(c);
-const RUNTIME_ATTRS: Record<string, string[]> = { p: ['data-head', 'data-style', 'data-missing'], cite: ['data-n', 'data-missing'] };
-const numbered = (el: Element): boolean => el.localName === 'cite' || el.matches('p.theorem');
+const RUNTIME_ATTRS: Record<string, string[]> = { p: ['data-head', 'data-style', 'data-missing'], cite: ['data-n', 'data-missing'], h1: ['data-appendix-letter'], h2: ['data-appendix-letter'] };
+const numbered = (el: Element): boolean => el.matches('cite, p.theorem, h1, h2');
 export const isRuntimeAttr = (el: Element, name: string): boolean => numbered(el) && RUNTIME_ATTRS[el.localName].includes(name);
 let inert: Document | undefined;
 export function stripRuntime(root: ParentNode): void {
-  for (const el of root.querySelectorAll('cite, p.theorem')) for (const name of RUNTIME_ATTRS[el.localName]) el.removeAttribute(name);
+  for (const el of root.querySelectorAll('cite, p.theorem, h1, h2')) for (const name of RUNTIME_ATTRS[el.localName]) el.removeAttribute(name);
   const linked = [...root.querySelectorAll('img, video, source')].filter((el) => ['src', 'poster'].some((name) => el.getAttribute(name)?.startsWith('blob:')));
   if (linked.length && root instanceof Node && !root.parentNode) (inert ??= document.implementation.createHTMLDocument('')).adoptNode(root);
   for (const el of linked) {

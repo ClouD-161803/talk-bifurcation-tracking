@@ -588,6 +588,33 @@ test('the title, section, and closing slides are not numbered, and the slides af
   assert.deepEqual(runs, ['', '', 'Chapter one', 'Chapter one', '', 'Chapter two', '', 'Appendix slides', 'Appendix slides']);
 });
 
+test('the section slides after the closing slide are lettered A, B in their labels, running heads, outline lists, and names on the band, past a hidden one', { timeout: 60000 }, async (t) => {
+  const { page, rest } = await openDeck(t, '', { deck: 'test/pages/appendix-sections.html' });
+  await rest();
+  const names = await page.evaluate(`[...document.querySelectorAll('.scrub-name')].map((n) => n.textContent)`);
+  assert.deepEqual(names, ['Chapter one', 'Thank you', 'A: Convergence proofs', 'B: Data']);
+
+  const slides = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].map((s) => {
+    const h = s.querySelector('h1, h2');
+    const label = getComputedStyle(h, '::before').content;
+    return { heading: h.textContent, letter: h.dataset.appendixLetter ?? '', drawn: label !== 'none' && label !== 'normal', run: s.querySelector('.run')?.textContent ?? '' };
+  })`);
+  assert.deepEqual(slides.map((s) => [s.heading, s.letter, s.drawn]), [
+    ['A title', '', false], ['Chapter one', '', false], ['First', '', false], ['Thank you', '', false], ['Loose slide', '', false],
+    ['Convergence proofs', 'A', true], ['Proof one', '', false], ['After the hidden part', '', false], ['Numerical data', 'B', true], ['Table one', '', false],
+  ]);
+  assert.deepEqual(slides.map((s) => s.run), ['', '', 'Chapter one', '', 'Appendix slides', '', 'Appendix A: Convergence proofs', 'Appendix A: Convergence proofs', '', 'Appendix B: Data']);
+
+  const outline = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')[5].querySelectorAll('.outline > li')].map((li) => [li.textContent, li.classList.contains('now'), getComputedStyle(li, '::before').content !== 'none'])`);
+  assert.deepEqual(outline, [['Chapter one', false, true], ['Appendix A: Convergence proofs', true, false], ['Appendix B: Numerical data', false, false]]);
+
+  const numbers = await page.evaluate(`[0, 1, 2, 3, 4, 5, 6].map((i) => {
+    Reveal.slide(i);
+    return document.querySelector('.reveal .slide-number').textContent.replace(/\\s+/g, ' ').trim();
+  })`);
+  assert.deepEqual(numbers, ['', '', '1 / 1', '', 'A1', 'A2', 'A3']);
+});
+
 test('the slides of a stack have ticks, and a step down a stack is not a jump', { timeout: 60000 }, async (t) => {
   const { page, rest } = await openDeck(t, '', { deck: 'test/pages/stack.html' });
   const at = (heading) => `Reveal.getCurrentSlide().querySelector('h1, h2').textContent === ${JSON.stringify(heading)}`;
