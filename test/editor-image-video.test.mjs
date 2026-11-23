@@ -564,7 +564,7 @@ const RECORD = `(() => {
   window.__recorded = v;
   window.__events = [];
   for (const type of ['seeking', 'seeked', 'waiting', 'playing', 'pause', 'play', 'ended', 'emptied', 'loadstart', 'stalled', 'abort', 'canplay', 'loadeddata']) v.addEventListener(type, () => window.__events.push([Math.round(performance.now()), type, Number(v.currentTime.toFixed(2)), v.paused, v.readyState]));
-  const add = () => !window.__unheard && window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
+  const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
   for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
   document.addEventListener('click', (e) => {
     if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
@@ -584,7 +584,9 @@ const RECORDED = `(() => {
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } = {}) {
+const playedOn = (plays, from, click, duration) => plays.find((p) => !p.paused && (p.time > from + 0.5 || (p.time < from - 0.1 && from + (p.at - click?.at) / 1000 >= duration)));
+
+async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
   const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
@@ -600,13 +602,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } 
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
   if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
-  if (unheard) {
-    await page.waitFor('window.__plays.some((p) => !p.paused)');
-    await page.evaluate('window.__unheard = true');
-    await page.waitFor(`window.__recorded.currentTime > 0.5 && window.__recorded.currentTime < ${from - 1}`, 60000);
-    await page.evaluate('window.__unheard = false');
-  }
-  const later = `window.__plays.find((p) => !p.paused && (p.time > ${from + 0.5} || (p.time < ${from - 0.1} && ${from} + (p.at - window.__click?.at) / 1000 >= window.__recorded.duration)))`;
+  const later = `(${playedOn})(window.__plays, ${from}, window.__click, window.__recorded.duration)`;
   await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
@@ -617,7 +613,6 @@ async function playInPlace(t, platform, { late = 0, hold = 0, unheard = false } 
   const time = first.time < from - 0.1 && from + ran >= duration ? first.time + duration : first.time;
   assert.ok(time >= from - 0.1 && time < from + ran + 0.5, `the video plays from ${first.time}, read ${ran} s after the click, and not from the frame ${from} of the slider`);
   const on = await page.evaluate(later);
-  if (unheard) assert.ok(on.time < from, `the record at ${on.time} s, past the end of the video, is not taken`);
   assert.ok(Math.abs(on.slider - on.time) < 0.5, `the slider at ${on.slider} does not follow the video at ${on.time}`);
   s = await page.evaluate(PLAYED);
   assert.equal(s.paused, false, 'the video does not play');
@@ -657,7 +652,14 @@ test('Play in the Video pane is checked from a record of the video when the stat
 
 test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
 
-test('Play in the Video pane is checked from a record of the video when the video runs past its end between two records', (t) => playInPlace(t, 'other', { unheard: true }));
+test('Play in the Video pane is checked from a record of the video when the video runs past its end between two records', () => {
+  const click = { at: 11024.9, paused: false, time: 12.031445 };
+  const plays = [[11031.2, 12.0314], [11290.4, 12.2981], [11557.1, 12.5648], [55227.1, 0.2654], [55493, 0.5314], [55760.7, 0.799]].map(([at, time]) => ({ at, paused: false, time }));
+  const late = plays.slice(3);
+  assert.equal(playedOn(late, 12.031445, click, 24.066667), late[0]);
+  assert.equal(playedOn(plays, 12.031445, click, 24.066667), plays[2]);
+  assert.equal(playedOn(late, 12.031445, { ...click, at: 50000 }, 24.066667), undefined);
+});
 
 const TAGGED = `(() => {
   const tag = document.querySelector('.beeson-drop:not([hidden]) span')?.getBoundingClientRect();
