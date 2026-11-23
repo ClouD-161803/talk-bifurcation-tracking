@@ -14,7 +14,7 @@ A session is one run of the edit command on one talk folder. It has one host, wh
 
 ## Allow
 
-To let `npm run check` pass a slide with a named problem of writing, i.e. long speaker notes, a heading out of its place, or an element copied or moved between two steps, with `data-allow` on the slide. The check still lists the slide.
+To let `npm run check` pass a slide with a named problem of writing, i.e. long speaker notes, a heading out of its place, an element copied or moved between two steps, or words off the slide, with `data-allow` on the slide. The check still lists the slide.
 
 ## Animated plot
 

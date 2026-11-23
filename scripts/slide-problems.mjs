@@ -1,4 +1,4 @@
-export const allowable = ['notes', 'heading', 'copy', 'move'];
+export const allowable = ['notes', 'heading', 'copy', 'move', 'outside'];
 export const notesWords = 40;
 
 export const slideFacts = `(() => {
@@ -28,6 +28,7 @@ export const stepSettled = `(async () => {
 
 export const stepWatch = String.raw`(() => {
   const kinds = 'h1, h2, h3, h4, p, li, td, th, .foot, figcaption, .caption, .math, table, figure, .figure-box, img, .tikz, .qr';
+  const texts = 'h1, h2, h3, h4, p, li, td, th, .foot, figcaption, .caption, .math';
   const inside = 'svg, canvas, pre, aside, .plot, .surface, .backdrop, tycho-viewer, mjx-container, .label';
   const unclass = (tex) => {
     const at = tex.search(/\\class\s*\{[^}]*\}\s*\{/);
@@ -65,10 +66,19 @@ export const stepWatch = String.raw`(() => {
       const shown = (box.width > 0 || box.height > 0) && el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
       now.set(el, { text: textOf(el), shown, left: (box.left - frame.left) / scale, top: (box.top - frame.top) / scale });
     }
+    const outside = [...slide.querySelectorAll(texts)].filter((el) => !el.parentElement.closest(inside) && !el.parentElement.closest(texts)).flatMap((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const box = range.getBoundingClientRect();
+      const x = (box.left - frame.left) / scale;
+      const y = (box.top - frame.top) / scale;
+      const out = Math.max(-x, -y, x + box.width / scale - Reveal.getConfig().width, y + box.height / scale - Reveal.getConfig().height);
+      return out > 1 && el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) ? [{ text: textOf(el), out }] : [];
+    });
     const before = last?.slide === slide ? last.seen : null;
     last = { slide, seen: now };
     const { h, v, f } = Reveal.getIndices();
-    const found = { h, v: v ?? 0, step: (f ?? -1) + 1, allow: slide.dataset.allow ?? null, copies: [], moves: [] };
+    const found = { h, v: v ?? 0, step: (f ?? -1) + 1, allow: slide.dataset.allow ?? null, copies: [], moves: [], outside };
     if (!before) return found;
     const was = (el) => before.get(el)?.shown ?? false;
     for (const [el, at] of now) {
@@ -126,4 +136,8 @@ export function stepProblems(found) {
     ...found.copies.map((text) => ({ kind: 'copy', text: `at step ${found.step}, a copy of ${quote(text)} is shown as this one is hidden: write it once, keep it shown, and change only what changes, e.g. with data-highlight or a stack` })),
     ...found.moves.map(({ text, dx, dy }) => ({ kind: 'move', text: `at step ${found.step}, ${quote(text)} is placed ${shift(dx, dy)} than at the step before: keep it at one place at every step` })),
   ];
+}
+
+export function outsideProblems(found) {
+  return found.outside.map(({ text, out }) => ({ kind: 'outside', text: `at the last step, ${quote(text)} runs ${out.toFixed(0)} px off the slide: shorten it, or move it into the 1920 by 1080 px of the slide` }));
 }

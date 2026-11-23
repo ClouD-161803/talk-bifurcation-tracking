@@ -29,7 +29,7 @@ test('the check fails on speaker notes of more than 40 words, unless the slide a
   assert.deepEqual(failed(run, 'slide 3 (#/2/0)'), []);
   assert.match(allowed(run, 'slide 3 (#/2/0)').join('\n'), /the speaker notes have 60 words/);
   assert.match(run.stdout, /^slide 3 \(#\/2\/0\) allows notes with data-allow$/m);
-  assert.match(failed(run, 'slide 4 (#/3/0)').join('\n'), /data-allow names jump, which the check does not know: write notes, heading, copy, move/);
+  assert.match(failed(run, 'slide 4 (#/3/0)').join('\n'), /data-allow names jump, which the check does not know: write notes, heading, copy, move, outside/);
 });
 
 test('the check fails on a heading away from its place on most slides of the layout, unless the slide allows heading', { timeout: 300000 }, async (t) => {
@@ -64,4 +64,15 @@ test('the check fails on an element moved at a step without a move in its markup
   assert.deepEqual(failed(run, 'slide 2 (#/1/0)'), []);
   assert.deepEqual(failed(run, 'slide 3 (#/2/0)'), []);
   assert.match(allowed(run, 'slide 3 (#/2/0)').join('\n'), /at step 1, "A line pushed down on purpose\." is placed \d+ px lower/);
+});
+
+test('the check fails on text off the slide at the last step of its slide, unless the slide allows outside', { timeout: 300000 }, async (t) => {
+  const run = await check(t, 'check-outside.html');
+  assert.equal(run.status, 1, run.stdout + run.stderr);
+  const outside = failed(run, 'slide 1 (#/0/0)');
+  assert.equal(outside.length, 1, outside.join('\n'));
+  assert.match(outside[0], /at the last step, "A line below the slide\." runs \d+ px off the slide: shorten it, or move it into the 1920 by 1080 px of the slide/);
+  assert.deepEqual(failed(run, 'slide 2 (#/1/0)'), []);
+  assert.deepEqual(failed(run, 'slide 3 (#/2/0)'), []);
+  assert.match(allowed(run, 'slide 3 (#/2/0)').join('\n'), /at the last step, "A line below the slide on purpose\." runs \d+ px off the slide/);
 });

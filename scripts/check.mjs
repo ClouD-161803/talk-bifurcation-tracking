@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { deckSettled, deckUrl, launch } from './chrome.mjs';
 import { figureProblems } from './figures.mjs';
 import { pdfFigureProblems } from './pdf-figures.mjs';
-import { allowable, allowedOf, headingProblems, notesProblem, slideFacts, stepProblems, stepSettled, stepsMeasured, stepWatch } from './slide-problems.mjs';
+import { allowable, allowedOf, headingProblems, notesProblem, outsideProblems, slideFacts, stepProblems, stepSettled, stepsMeasured, stepWatch } from './slide-problems.mjs';
 import { deckTex } from './tex.mjs';
 import { launch as launchWebDriver, serve } from './webdriver.mjs';
 
@@ -236,19 +236,25 @@ try {
     let steps = 1;
     const atEnd = 'Reveal.isLastSlide() && !Reveal.availableFragments().next';
     const measured = theme === themes[0] && (await animated.evaluate(stepsMeasured)) && (await animated.evaluate(stepWatch));
-    if (theme === themes[0] && !measured) console.log(`copies and moves between steps: not measured, since this browser lacks checkVisibility or getAnimations`);
-    if (measured) await animated.evaluate('beesonStep()');
+    if (theme === themes[0] && !measured) console.log(`copies, moves, and words off the slide: not measured, since this browser lacks checkVisibility or getAnimations`);
+    let shown = measured ? await animated.evaluate('beesonStep()') : null;
+    const ended = (found) => {
+      for (const problem of outsideProblems(found)) report(named(found.h, found.v), found.allow, problem);
+    };
     while (steps < 1000 && !(await animated.evaluate(atEnd))) {
       await animated.evaluate('Reveal.next()');
       if (measured) {
         await animated.waitFor(stepSettled, 60000);
         const found = await animated.evaluate('beesonStep()');
+        if (found.h !== shown.h || found.v !== shown.v) ended(shown);
+        shown = found;
         for (const problem of stepProblems(found)) report(named(found.h, found.v), found.allow, problem);
       } else {
         await new Promise((done) => setTimeout(done, stepDelay));
       }
       steps += 1;
     }
+    if (shown) ended(shown);
     await new Promise((done) => setTimeout(done, 1000));
     console.log(`${theme}: ${steps} steps run with animations`);
     for (const error of animated.errors) failures.push(`${theme} animated run: ${error}`);
